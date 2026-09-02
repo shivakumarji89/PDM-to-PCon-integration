@@ -238,21 +238,18 @@ class SifValidationService(BaseService):
     @staticmethod
     def _match_inc(inc, code: str) -> float:
         code = (code or "").strip()
-    
+
         # Exact match
         if code in inc:
             price, _is_fabric, quantity = inc[code]
             return price * quantity
-    
+
         # Legacy fallback matching
-        for key in (
-            code[:2] + "#",
-            code[:3] + "#",
-        ):
+        for key in (code[:2] + "#", code[:3] + "#"):
             if key in inc:
                 price, _is_fabric, quantity = inc[key]
                 return price * quantity
-    
+
         return 0.0
 
     def _server_date(self, repo, conn) -> str:
@@ -415,22 +412,6 @@ class SifValidationService(BaseService):
 
             group_site = site
             sites[cur] = group_site
-
-            results.extend(self._validate_group(
-                cur,
-                group,
-                group_site,
-                repo,
-                conn,
-                mydate,
-                done,
-                total,
-                progress,
-                stage,
-                on_result,
-            ))
-
-            sites[cur] = group_site
             results.extend(self._validate_group(
                 cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result
             ))
@@ -470,9 +451,10 @@ class SifValidationService(BaseService):
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
             
             if inc_items:
-                for r in repo.fetch_item_option_increment_prices(
+                inc_rows = repo.fetch_item_option_increment_prices(
                     inc_items, currency, mydate, site, conn
-                ):
+                )
+                for r in inc_rows:
                     inc_price = getattr(r, "IncPrice", None)
             
                     if inc_price is None:

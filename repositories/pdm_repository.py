@@ -21,6 +21,20 @@ if TYPE_CHECKING:
     from core.application_context import ApplicationContext
 
 
+class _IncPriceRow:
+    """Wraps a PDMOptionDataReportWithIncList row, supplying ``Item`` (the
+    proc is called per-item and never echoes it back as a column)."""
+
+    __slots__ = ("Item", "OrderCodeValue2", "IncPrice", "IsFabric", "Quantity")
+
+    def __init__(self, item: str, row: Any) -> None:
+        self.Item = item
+        self.OrderCodeValue2 = getattr(row, "OrderCodeValue2", None)
+        self.IncPrice = getattr(row, "IncPrice", None)
+        self.IsFabric = getattr(row, "IsFabric", None)
+        self.Quantity = getattr(row, "Quantity", None)
+
+
 class PDMRepository(BaseRepository):
     """SQL Server data access for PDM product data (read-only)."""
 
@@ -944,39 +958,39 @@ class PDMRepository(BaseRepository):
     
         vals = [str(i) for i in items if i]
     
-        for item in vals:
-            query = """
-                EXEC dbo.PDMOptionDataReportWithIncList
-                    @item = ?,
-                    @siteId = ?,
-                    @currency = ?,
-                    @effectivedate = ?
-            """
-    
-            cursor = connection.cursor()
-            cursor.execute(
-                query,
-                (item, site_id, currency, mydate),
-            )
-            
-            while True:
-                if cursor.description is not None:
-                    columns = {
-                        column[0].lower()
-                        for column in cursor.description
-                    }
-            
-                    required_columns = {
-                        "item",
-                        "ordercodevalue2",
-                        "incprice",
-                    }
-            
-                    if required_columns.issubset(columns):
-                        rows.extend(cursor.fetchall())
-            
-                if not cursor.nextset():
-                    break
+        # The proc's data result set has no "Item" column (it is called per-item
+        # and never echoes the item back), so callers' r.Item is supplied here.
+        required_columns = {"ordercodevalue2", "incprice"}
+        owns_connection = connection is None
+        conn = self.get_connection() if owns_connection else connection
+        try:
+            for item in vals:
+                query = """
+                    EXEC dbo.PDMOptionDataReportWithIncList
+                        @item = ?,
+                        @siteId = ?,
+                        @currency = ?,
+                        @effectivedate = ?
+                """
+
+                cursor = conn.cursor()
+                cursor.execute(query, (item, site_id, currency, mydate))
+
+                # The proc emits non-query result sets (rowcounts etc.) before
+                # the actual price rows; skip those and stop at the first match.
+                while True:
+                    if cursor.description is not None:
+                        columns = {c[0].lower() for c in cursor.description}
+                        if required_columns.issubset(columns):
+                            data = cursor.fetchall()
+                            rows.extend(_IncPriceRow(item, r) for r in data)
+                            break
+                    if not cursor.nextset():
+                        break
+        finally:
+            if owns_connection:
+                conn.close()
+
         return rows
 
     def fetch_category_master_notes(
