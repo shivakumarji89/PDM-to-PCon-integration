@@ -953,14 +953,30 @@ class PDMRepository(BaseRepository):
                     @effectivedate = ?
             """
     
-            result = self._execute(
+            cursor = connection.cursor()
+            cursor.execute(
                 query,
                 (item, site_id, currency, mydate),
-                connection=connection,
             )
-    
-            rows.extend(result)
-    
+            
+            while True:
+                if cursor.description is not None:
+                    columns = {
+                        column[0].lower()
+                        for column in cursor.description
+                    }
+            
+                    required_columns = {
+                        "item",
+                        "ordercodevalue2",
+                        "incprice",
+                    }
+            
+                    if required_columns.issubset(columns):
+                        rows.extend(cursor.fetchall())
+            
+                if not cursor.nextset():
+                    break
         return rows
 
     def fetch_category_master_notes(

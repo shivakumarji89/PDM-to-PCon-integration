@@ -194,13 +194,26 @@ class PricingService(BaseService):
             for cur in currencies:
                 cparams = replace(params, currency=cur)
                 base_rows = repo.fetch_item_base_prices(
-                    items, cur, params.mydate, conn
+                    items,
+                    cur,
+                    params.mydate,
+                    connection=conn,
+                    site_id=params.site_id,
                 )
                 # Increments for every item: non-super -> article upcharge, super
                 # -> global increment (both pulled from the same computed query).
                 inc_rows = repo.fetch_item_option_increment_prices(
                     items, cur, params.mydate, params.site_id, conn
                 )
+                for row in inc_rows:
+                    if str(row.Item) == "UQSBBFP.1114":
+                        print(
+                            "INC DEBUG:",
+                            row.Item,
+                            row.OptionId,
+                            row.Code,
+                            row.IncPrice
+                        )
                 records, unres = self.build_records(
                     base_rows, inc_rows, super_codes, prefix_by_item, cparams
                 )

@@ -236,23 +236,23 @@ class SifValidationService(BaseService):
         return line.base + "".join(" " + c for c in codes)
 
     @staticmethod
-    def _match_inc(
-        inc: dict[str, tuple[float, int, int]],
-        code: str,
-    ) -> float:
-        """Match exactly as the legacy PDM pricing code.
-
-        Exact OrderCodeValue2 match, or for fabric rows:
-        SIF code starts with PDM OrderCodeValue2 with '#' removed.
-        """
-
-        for pdm_code, (price, is_fabric, quantity) in inc.items():
-            if code == pdm_code:
+    def _match_inc(inc, code: str) -> float:
+        code = (code or "").strip()
+    
+        # Exact match
+        if code in inc:
+            price, _is_fabric, quantity = inc[code]
+            return price * quantity
+    
+        # Legacy fallback matching
+        for key in (
+            code[:2] + "#",
+            code[:3] + "#",
+        ):
+            if key in inc:
+                price, _is_fabric, quantity = inc[key]
                 return price * quantity
-
-            if is_fabric == 1 and code.startswith(pdm_code.replace("#", "")):
-                return price * quantity
-
+    
         return 0.0
 
     def _server_date(self, repo, conn) -> str:
@@ -290,6 +290,67 @@ class SifValidationService(BaseService):
             conn,
         )
         return int(rows[0].SiteId) if rows else None
+
+    def _diagnose_currency_sites(
+        self,
+        currency: str,
+        lines: list[SifLine],
+        repo,
+        conn,
+        mydate: str,
+    ) -> None:
+        rows = repo._execute(
+            """
+            SELECT SiteId, Description, Site, DomCurrCode
+            FROM Site
+            WHERE UPPER(DomCurrCode) = UPPER(?)
+            ORDER BY SiteId
+            """,
+            (currency,),
+            conn,
+        )
+
+        candidates = [int(r.SiteId) for r in rows]
+
+        if len(candidates) <= 1:
+            return
+
+        items = sorted({
+            line.base
+            for line in lines
+            if line.base
+        })[:10]
+
+        prices = repo.fetch_item_base_prices_all_sites(
+            items,
+            currency,
+            mydate,
+            candidates,
+            conn,
+        )
+
+        details = []
+        for site_id in candidates:
+            site_rows = [
+                r for r in prices
+                if int(r.SiteId) == site_id
+            ]
+
+            resolved = sum(
+                1 for r in site_rows
+                if r.price is not None
+            )
+
+            details.append(
+                f"SiteId={site_id}: "
+                f"{resolved}/{len(items)} sample items resolved"
+            )
+
+        raise RuntimeError(
+            f"CURRENCY SITE DIAGNOSTIC [{currency}] "
+            f"on [{mydate}]: "
+            + " | ".join(details)
+        )
 
     def resolve_site(self, currency: str, lines: list[SifLine], repo, conn, mydate: str) -> int | None:
         """Pick the PDM pricing SITE for this currency by calibrating on the
@@ -337,9 +398,6 @@ class SifValidationService(BaseService):
         conn = repo.get_connection()
         server_date = self._server_date(repo, conn)
         mydate = validation_date or server_date
-        future_validation_date = bool(
-            validation_date and self._is_future_date(validation_date, server_date)
-        )
         groups: dict[str, list[SifLine]] = {}
         for line in lines:
             groups.setdefault(line.currency or currency, []).append(line)
@@ -349,36 +407,38 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
-            if site is not None:
-                group_site = site
-            elif obx:
-                if stage:
-                    stage(f"Resolving PDM site for {cur}...")
-                group_site = self._site_id_for_currency(cur, repo, conn)
-            else:
-                if stage:
-                    stage(f"Resolving PDM pricing site for {cur}...")
-                group_site = self.resolve_site(
-                    cur, group, repo, conn, mydate
-                )
-            site_resolution_message = None
-            if group_site is None and future_validation_date:
-                site_resolution_message = (
-                    f"Unable to determine the PDM pricing site for {cur} on {mydate}. "
-                    "PDM may have future price changes effective on this date. "
-                    "No site was selected because no exact SIF/PDM calibration match exists; "
-                    "using a fallback site could produce incorrect prices."
-                )
+            site = self._site_id_for_currency(cur, repo, conn)
+
+            # Temporary diagnostic: use the proven CNY pricing site
+            if cur.upper() == "CNY":
+                site = 9
+
+            group_site = site
+            sites[cur] = group_site
+
+            results.extend(self._validate_group(
+                cur,
+                group,
+                group_site,
+                repo,
+                conn,
+                mydate,
+                done,
+                total,
+                progress,
+                stage,
+                on_result,
+            ))
+
             sites[cur] = group_site
             results.extend(self._validate_group(
-                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result,
-                site_resolution_message))
+                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result
+            ))
         results.sort(key=lambda r: r.seq)
         return sites, results
 
     def _validate_group(self, currency, lines, site, repo, conn, mydate,
-                        done, total, progress, stage, on_result=None,
-                        site_resolution_message: str | None = None) -> list[SifResult]:
+                        done, total, progress, stage, on_result=None) -> list[SifResult]:
         """Price one single-currency group of lines against PDM at ``site``."""
         results: list[SifResult] = []
         if site is None:
@@ -388,8 +448,8 @@ class SifValidationService(BaseService):
                     progress(done[0], total, line.base)
                 results.append(SifResult(
                     seq=line.seq, sku=self._sku(line), qty=line.qty, sif_price=line.sif_price,
-                    status="unresolved", message=(site_resolution_message or
-                    f"no PDM pricing site resolves currency {currency}")))
+                    status="unresolved", message=f"no PDM pricing site resolves currency {currency}"
+                    ))
                 if on_result:
                     on_result(results[-1])
             return results
@@ -464,11 +524,21 @@ class SifValidationService(BaseService):
             ph = repo._placeholders(len(chunk))
             rows = repo._execute(
                 "SELECT i.Item, pc.Product_Code AS Code, cat.Name AS Category "
-                "FROM Item i INNER JOIN Product p ON i.ProductId = p.ProductId "
-                "LEFT JOIN Product_Code pc ON p.ProductCodeId = pc.ProductCodeId AND pc.SiteId = ? "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "LEFT JOIN Product_Code pc ON "
+                "pc.ProductCodeId = CASE "
+                "WHEN i.ProductCodeIdOverride IS NOT NULL "
+                "THEN i.ProductCodeIdOverride "
+                "ELSE p.ProductCodeId "
+                "END "
+                "AND pc.SiteId = ? "
                 "LEFT JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
                 "LEFT JOIN ProductCategory cat ON pr.ProductCategoryId = cat.ProductCategoryId "
-                f"WHERE i.Item IN ({ph})", (site,) + tuple(chunk), conn)
+                f"WHERE i.Item IN ({ph})",
+                (site,) + tuple(chunk),
+                conn
+            )
             for r in rows:
                 code = (r.Code or "").strip()
                 cat = (r.Category or "").strip()
