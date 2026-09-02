@@ -1,0 +1,492 @@
+"""CET SIF order-file validation against PDM (replicates PDM 'Validate Order SIF').
+
+Parses a Herman Miller SIF order file, and for each order line re-prices the
+SKU against PDM using the SAME functions PDM uses (``fnGetListPriceByItem`` for
+the base, ``fnGetListPrice`` for option increments), then flags any line whose
+SIF price does not match PDM. Because the price is computed by the identical SQL
+UDFs, a reported mismatch is a genuine data discrepancy, not a replication error.
+
+Validated 2026-08-14 against a real ASIA/Atlas CNY SIF: 9/9 exact price matches.
+Recipe: currency from the ``PZ`` header; pricing SITE resolved by calibrating on
+the file's no-upcharge lines (the region site whose PDM base matches); effective
+date = server ``GetUTCDate()`` (the current price list, not the SIF date); fabric
+option codes matched to their PDM band by prefix (``1HA01`` -> ``1HA#``).
+
+OBX (pCon) is intentionally not handled yet - SIF (CET) only.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from tokenize import group
+
+from services.base_service import BaseService
+
+
+@dataclass
+class SifOption:
+    """One option line (``ON``/``OD``/``OG``/``OL``) under an order line."""
+
+    code: str = ""
+    desc: str = ""
+    group: str = ""
+    ol: float = 0.0
+
+
+@dataclass
+class SifLine:
+    """One order line in the SIF (a ``PN`` block)."""
+
+    seq: int = 0
+    base: str = ""          # PN - base article code
+    desc: str = ""          # PD
+    currency: str = ""      # PZ header of the file this line came from
+    market_config: str = "" # MC
+    pl: float = 0.0         # PL - base list price
+    sp: float = 0.0         # SP - configured (base + options) price
+    qty: int = 1            # QT
+    plc: str = ""           # GC - order PLC
+    tag: str = ""           # TG - parent/template tag
+    options: list[SifOption] = field(default_factory=list)
+
+    @property
+    def sif_price(self) -> float:
+        """The SIF's configured line price (base + option upcharges)."""
+        return round(self.pl + sum(o.ol for o in self.options), 2)
+
+
+@dataclass
+class SifResult:
+    """Validation outcome for one order line."""
+
+    seq: int = 0
+    sku: str = ""
+    plc: str = ""            # PDM "Category (Product_Code)"
+    qty: int = 1
+    sif_price: float = 0.0
+    pdm_price: float | None = None
+    status: str = "ok"       # ok | price_mismatch | unresolved
+    message: str = ""
+
+    @property
+    def result(self) -> str:
+        """The PDM report 'Result' cell: VALID or the error text."""
+        return "VALID" if self.status == "ok" else self.message.replace("too many options", "invalid options")
+
+
+class SifValidationService(BaseService):
+    """Validate a CET SIF order file's prices against PDM."""
+
+    _PRICE_WINDOW = 10  # lines priced per PDM round-trip so results stream steadily
+
+    @staticmethod
+    def _num(value: str) -> float:
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return 0.0
+
+    def parse_sif(self, text: str) -> tuple[str, list[SifLine]]:
+        """Parse SIF text into ``(currency, order lines)``. Each ``PN=`` starts a
+        new line; ``ON=``/``OD=``/``OG=``/``OL=`` build its options."""
+        currency = ""
+        lines: list[SifLine] = []
+        current: SifLine | None = None
+        option: SifOption | None = None
+        for raw in text.splitlines():
+            key, sep, val = raw.strip().partition("=")
+            if not sep:
+                continue
+            key, val = key.strip(), val.strip()
+            if key == "PZ":
+                currency = val
+            elif key == "SL":  # SL=END OF ...
+                break
+            elif key == "PN":
+                current = SifLine(seq=len(lines) + 1, base=val, currency=currency)
+                lines.append(current)
+                option = None
+            elif current is None:
+                continue
+            elif key == "PD":
+                current.desc = val
+            elif key == "PL":
+                current.pl = self._num(val)
+            elif key == "SP":
+                current.sp = self._num(val)
+            elif key == "QT":
+                current.qty = int(self._num(val))
+            elif key == "GC":
+                current.plc = val
+            elif key == "MC":
+                current.market_config = val
+            elif key == "TG":
+                current.tag = val
+            elif key == "ON":
+                option = SifOption(code=val)
+                current.options.append(option)
+            elif key == "OD" and option is not None:
+                option.desc = val
+            elif key == "OG" and option is not None:
+                option.group = val
+            elif key == "OL" and option is not None:
+                option.ol = self._num(val)
+        return currency, lines
+
+    def parse_obx(self, text: str) -> tuple[str, list[SifLine]]:
+        """Parse an OBX file using the legacy PDM OBX validation behavior."""
+
+        import re
+
+        lines: list[SifLine] = []
+
+        # OBX contains currency on its itemPrice elements.
+        currency = "EUR"
+
+        currency_match = re.search(
+            r"<itemPrice\b[^>]*\bcurrency=['\"]([^'\"]+)['\"]",
+            text,
+            re.IGNORECASE,
+        )
+
+        if currency_match:
+            currency = currency_match.group(1).strip()
+
+        # Legacy behavior:
+        # Search for <artNr type='final' and allow additional attributes
+        # such as default='1'.
+        article_matches = list(
+            re.finditer(
+                r"<artNr\s+type=['\"]final['\"][^>]*>",
+                text,
+                re.IGNORECASE,
+            )
+        )
+
+        for seq, match in enumerate(article_matches, start=1):
+            # Text immediately after the opening artNr tag.
+            start = match.end()
+
+            # The legacy implementation reads until </...>.
+            end_tag = text.find("</", start)
+
+            if end_tag == -1:
+                continue
+
+            sku = text[start:end_tag].strip()
+
+            # Match legacy behavior of collapsing repeated spaces.
+            sku = re.sub(r" {2,}", " ", sku)
+
+            # Limit this item's search area to the next final article.
+            if seq < len(article_matches):
+                item_end = article_matches[seq].start()
+                item_text = text[start:item_end]
+            else:
+                item_text = text[start:]
+
+            # PLC
+            plc = ""
+
+            plc_match = re.search(
+                r"<feature\s+name=['\"]PLC['\"]\s+value=['\"]([^'\"]*)['\"]",
+                item_text,
+                re.IGNORECASE,
+            )
+
+            if plc_match:
+                plc = plc_match.group(1).strip()
+
+            # Price
+            # Legacy behavior uses the FIRST <itemPrice> after the
+            # final article. In the supplied OBX this is the purchase price.
+            price = 0.0
+
+            price_match = re.search(
+                r"<itemPrice\b[^>]*\bvalue=['\"]([^'\"]*)['\"]",
+                item_text,
+                re.IGNORECASE,
+            )
+
+            if price_match:
+                price_text = price_match.group(1).strip()
+                price_text = price_text.lower().replace("nan", "")
+
+                if price_text:
+                    price = self._num(price_text)
+
+            lines.append(
+                SifLine(
+                    seq=seq,
+                    base=sku,
+                    currency=currency,
+                    pl=price,
+                    sp=price,
+                    qty=1,
+                    plc=plc,
+                )
+            )
+
+        return currency, lines
+        
+    @staticmethod
+    def _sku(line: SifLine) -> str:
+        """Full order-code SKU: base + option codes (skip ``!`` and ``#`` codes)."""
+        codes = [o.code for o in line.options if o.code and o.code != "!" and "#" not in o.code]
+        return line.base + "".join(" " + c for c in codes)
+
+    @staticmethod
+    def _match_inc(
+        inc: dict[str, tuple[float, int, int]],
+        code: str,
+    ) -> float:
+        """Match exactly as the legacy PDM pricing code.
+
+        Exact OrderCodeValue2 match, or for fabric rows:
+        SIF code starts with PDM OrderCodeValue2 with '#' removed.
+        """
+
+        for pdm_code, (price, is_fabric, quantity) in inc.items():
+            if code == pdm_code:
+                return price * quantity
+
+            if is_fabric == 1 and code.startswith(pdm_code.replace("#", "")):
+                return price * quantity
+
+        return 0.0
+
+    def _server_date(self, repo, conn) -> str:
+        """Effective date = PDM ``GetUTCDate()`` (the current price list)."""
+        rows = repo._execute("SELECT CONVERT(varchar, GetUTCDate(), 106) AS d", (), conn)
+        return rows[0].d if rows else ""
+
+    @staticmethod
+    def _is_future_date(value: str, server_date: str) -> bool:
+        """Whether a user-selected date is later than PDM's current date."""
+        try:
+            return (
+                datetime.strptime(value, "%d-%b-%Y").date()
+                > datetime.strptime(server_date, "%d %b %Y").date()
+            )
+        except (TypeError, ValueError):
+            return False
+    def _site_ids(self, repo, conn) -> list[int]:
+        rows = repo._execute(
+            "SELECT SiteId FROM Site ORDER BY SiteId",
+            (),
+            conn,
+        )
+        return [int(r.SiteId) for r in rows]
+    
+    def _site_id_for_currency(self, currency: str, repo, conn) -> int | None:
+        rows = repo._execute(
+            """
+            SELECT SiteId
+            FROM Site
+            WHERE UPPER(DomCurrCode) = UPPER(?)
+            ORDER BY SiteId
+            """,
+            (currency,),
+            conn,
+        )
+        return int(rows[0].SiteId) if rows else None
+
+    def resolve_site(self, currency: str, lines: list[SifLine], repo, conn, mydate: str) -> int | None:
+        """Pick the PDM pricing SITE for this currency by calibrating on the
+        file's no-upcharge lines - the site whose PDM base price matches the SIF
+        for the most of them. Returns None if no site matches any. Prices the
+        sample across all sites in one query so calibration is a single round trip."""
+        sample = [l for l in lines if l.base and not any(o.ol for o in l.options)][:10]
+        if not sample:
+            sample = [l for l in lines if l.base][:10]
+        items = [l.base for l in sample]
+        want = {l.base: l.pl for l in sample}
+        if not items:
+            return None
+        site_ids = self._site_ids(repo, conn)
+        rows = repo.fetch_item_base_prices_all_sites(items, currency, mydate, site_ids, conn)
+        by_site: dict[int, dict[str, object]] = {}
+        for r in rows:
+            by_site.setdefault(int(r.SiteId), {})[str(r.Item)] = r.price
+        best_site, best_hits = None, 0
+        for site in site_ids:
+            prices = by_site.get(site, {})
+            hits = sum(1 for it in items
+                       if prices.get(it) is not None and abs(float(prices[it]) - want[it]) < 0.005)
+            if hits > best_hits:
+                best_hits, best_site = hits, site
+        return best_site
+    def validate(
+        self,
+        currency: str,
+        lines: list[SifLine],
+        site: int | None = None,
+        obx: bool = False,
+        validation_date: str | None = None,
+        progress=None,
+        stage=None,
+        on_result=None,
+    ) -> tuple[dict[str, int | None], list[SifResult]]:
+        """Re-price every order line against PDM and flag mismatches. Lines are
+        grouped by their own currency (so a batch of files in different
+        currencies each price correctly), and each group resolves its own site.
+        Returns ``({currency: site}, results)`` with results in file order."""
+        from repositories.pdm_repository import PDMRepository
+
+        repo = PDMRepository(self.context)
+        conn = repo.get_connection()
+        server_date = self._server_date(repo, conn)
+        mydate = validation_date or server_date
+        future_validation_date = bool(
+            validation_date and self._is_future_date(validation_date, server_date)
+        )
+        groups: dict[str, list[SifLine]] = {}
+        for line in lines:
+            groups.setdefault(line.currency or currency, []).append(line)
+
+        sites: dict[str, int | None] = {}
+        results: list[SifResult] = []
+        done = [0]
+        total = len(lines)
+        for cur, group in groups.items():
+            if site is not None:
+                group_site = site
+            elif obx:
+                if stage:
+                    stage(f"Resolving PDM site for {cur}...")
+                group_site = self._site_id_for_currency(cur, repo, conn)
+            else:
+                if stage:
+                    stage(f"Resolving PDM pricing site for {cur}...")
+                group_site = self.resolve_site(
+                    cur, group, repo, conn, mydate
+                )
+            site_resolution_message = None
+            if group_site is None and future_validation_date:
+                site_resolution_message = (
+                    f"Unable to determine the PDM pricing site for {cur} on {mydate}. "
+                    "PDM may have future price changes effective on this date. "
+                    "No site was selected because no exact SIF/PDM calibration match exists; "
+                    "using a fallback site could produce incorrect prices."
+                )
+            sites[cur] = group_site
+            results.extend(self._validate_group(
+                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result,
+                site_resolution_message))
+        results.sort(key=lambda r: r.seq)
+        return sites, results
+
+    def _validate_group(self, currency, lines, site, repo, conn, mydate,
+                        done, total, progress, stage, on_result=None,
+                        site_resolution_message: str | None = None) -> list[SifResult]:
+        """Price one single-currency group of lines against PDM at ``site``."""
+        results: list[SifResult] = []
+        if site is None:
+            for line in lines:
+                done[0] += 1
+                if progress:
+                    progress(done[0], total, line.base)
+                results.append(SifResult(
+                    seq=line.seq, sku=self._sku(line), qty=line.qty, sif_price=line.sif_price,
+                    status="unresolved", message=(site_resolution_message or
+                    f"no PDM pricing site resolves currency {currency}")))
+                if on_result:
+                    on_result(results[-1])
+            return results
+
+        if stage:
+            stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
+
+        # Price in small windows so rows appear steadily instead of one big
+        # batch at the end, while keeping PDM queries bulk (fast) and parity exact.
+        window = self._PRICE_WINDOW
+        for start in range(0, len(lines), window):
+            chunk = lines[start:start + window]
+            items = sorted({l.base for l in chunk if l.base})
+            got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
+            base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
+            plc_by_item = self._fetch_plc(items, site, repo, conn)
+            inc_items = sorted({l.base for l in chunk if any(o.ol for o in l.options)})
+            inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
+            
+            if inc_items:
+                for r in repo.fetch_item_option_increment_prices(
+                    inc_items, currency, mydate, site, conn
+                ):
+                    inc_price = getattr(r, "IncPrice", None)
+            
+                    if inc_price is None:
+                        continue
+                    
+                    item = str(r.Item)
+                    code = str(r.OrderCodeValue2)
+                    is_fabric = int(r.IsFabric or 0)
+                    quantity = int(r.Quantity or 1)
+            
+                    inc_by_item.setdefault(item, {})[code] = (
+                        float(inc_price),
+                        is_fabric,
+                        quantity,
+                    )
+            for line in chunk:
+                done[0] += 1
+                if progress:
+                    progress(done[0], total, line.base)
+                sku = self._sku(line)
+                sif = line.sif_price
+                base = base_price.get(line.base)
+                plc = plc_by_item.get(line.base, "")
+                if base is None:
+                    results.append(SifResult(
+                        seq=line.seq, sku=sku, plc=plc, qty=line.qty, sif_price=sif,
+                        status="unresolved", message=f"unable to resolve SKU in PDM [{line.base}]"))
+                    if on_result:
+                        on_result(results[-1])
+                    continue
+                inc = inc_by_item.get(line.base, {})
+                pdm = round(base + sum(self._match_inc(inc, o.code) for o in line.options), 2)
+                if abs(pdm - sif) < 0.005:
+                    status, message = "ok", ""
+                else:
+                    status = "price_mismatch"
+                    message = f"price mismatch: SIF [{sif:.2f}] does NOT match PDM [{pdm:.2f}]"
+                results.append(SifResult(
+                    seq=line.seq, sku=sku, plc=plc, qty=line.qty, sif_price=sif,
+                    pdm_price=pdm, status=status, message=message))
+                if on_result:
+                    on_result(results[-1])
+        return results
+
+    def _fetch_plc(self, items, site, repo, conn) -> dict[str, str]:
+        """Per-item PDM PLC as ``Category (Product_Code)`` at the site."""
+        out: dict[str, str] = {}
+        for chunk in repo._chunked([str(i) for i in items if i], repo._IN_CHUNK):
+            ph = repo._placeholders(len(chunk))
+            rows = repo._execute(
+                "SELECT i.Item, pc.Product_Code AS Code, cat.Name AS Category "
+                "FROM Item i INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "LEFT JOIN Product_Code pc ON p.ProductCodeId = pc.ProductCodeId AND pc.SiteId = ? "
+                "LEFT JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                "LEFT JOIN ProductCategory cat ON pr.ProductCategoryId = cat.ProductCategoryId "
+                f"WHERE i.Item IN ({ph})", (site,) + tuple(chunk), conn)
+            for r in rows:
+                code = (r.Code or "").strip()
+                cat = (r.Category or "").strip()
+                out[str(r.Item)] = f"{cat} ({code})" if code else cat
+        return out
+
+    def export_csv(self, path, currency: str, results: list[SifResult]) -> None:
+        """Write the validation report as CSV, matching PDM's exact columns
+        (``SKU, Category (PLC), PDM List Price, SIF List Price, SIF Qty, Result``)."""
+        import csv
+
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow([
+                "SKU", "Category (PLC)", f"PDM List Price ({currency})",
+                f"SIF List Price ({currency})", "SIF Qty", "Result"])
+            for r in results:
+                writer.writerow([
+                    r.sku, r.plc,
+                    "" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+                    f"{r.sif_price:.2f}", r.qty, r.result])
