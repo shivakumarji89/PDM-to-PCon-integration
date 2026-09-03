@@ -49,4 +49,6 @@ if CET_SIF_VALIDATION_ENABLED:
     WORKFLOW_ITEMS = WORKFLOW_ITEMS + (
         WorkflowItem(WorkflowStep.CET_SIF_VALIDATION, "CET SIF Validation",
                      "Validate CET-generated SIF files (standalone tool)."),
+        WorkflowItem(WorkflowStep.OBX_VALIDATION, "OBX Validation",
+                     "Validate OBX files against PDM (standalone tool)."),
     )
