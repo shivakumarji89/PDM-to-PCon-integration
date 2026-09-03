@@ -432,7 +432,7 @@ class ObxValidationPage(BasePage):
     def _put_row(self, row: int, r) -> None:
         self._table.insertRow(row)
         cells = [
-            str(r.seq), r.sku, r.plc, str(r.qty), f"{r.obx_price:.2f}",
+            str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}",
             "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
             r.source_date or "-",
             r.result,
