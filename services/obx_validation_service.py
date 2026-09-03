@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from services.base_service import BaseService
-from services.sif_validation_service import SifValidationService
+from services.sif_validation_service import SifOption, SifValidationService
 
 
 @dataclass
