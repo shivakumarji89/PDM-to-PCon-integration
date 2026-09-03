@@ -42,13 +42,12 @@ class _SifSignals(QObject):
 class _SifWorker(QRunnable):
     """Runs the SIF validation off the UI thread, driving a ProgressReporter."""
 
-    def __init__(self, svc, currency, lines, site_id, obx, validation_date, reporter, signals):
+    def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals):
         super().__init__()
         self._svc = svc
         self._currency = currency
         self._lines = lines
         self._site_id = site_id
-        self._obx = obx
         self._validation_date = validation_date
         self._reporter = reporter
         self._signals = signals
@@ -61,7 +60,6 @@ class _SifWorker(QRunnable):
                 self._currency,
                 self._lines,
                 site=self._site_id,
-                obx=self._obx,
                 validation_date=self._validation_date,
                 progress=lambda done, total, text: self._reporter.advance(text),
                 stage=lambda text: self._reporter.note(text),
@@ -180,9 +178,9 @@ class CetSifValidationPage(BasePage):
     def _on_load(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Load SIF / OBX file(s)",
+            "Load SIF file(s)",
             "",
-            "SIF / OBX order files (*.sif *.obx);;SIF files (*.sif);;OBX files (*.obx);;All files (*.*)"
+            "SIF files (*.sif);;All files (*.*)"
         )
         if paths:
             self._load_paths(paths)
@@ -190,7 +188,7 @@ class CetSifValidationPage(BasePage):
     def _on_load_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
             self,
-            "Load all SIF / OBX files in folder"
+            "Load all SIF files in folder"
         )
 
         if not folder:
@@ -201,14 +199,14 @@ class CetSifValidationPage(BasePage):
         paths = sorted(
             str(p)
             for p in folder_path.iterdir()
-            if p.is_file() and p.suffix.lower() in {".sif", ".obx"}
+            if p.is_file() and p.suffix.lower() == ".sif"
         )
 
         if not paths:
             QMessageBox.information(
                 self,
                 "CET SIF Validation",
-                "No .sif or .obx files found in that folder."
+                "No .sif files found in that folder."
             )
             return
 
@@ -226,10 +224,7 @@ class CetSifValidationPage(BasePage):
             except OSError as exc:
                 QMessageBox.warning(self, "CET SIF Validation", f"Could not read {path}:\n{exc}")
                 continue
-            if Path(path).suffix.lower() == ".obx":
-                cur, file_lines = svc.parse_obx(text)
-            else:
-                cur, file_lines = svc.parse_sif(text)
+            cur, file_lines = svc.parse_sif(text)
             if not currency:
                 currency = cur
             self._currency_of_path[path] = cur
@@ -267,11 +262,6 @@ class CetSifValidationPage(BasePage):
         self._signals = signals  # keep a reference alive
         self._begin_live()
         site_id = None
-        obx = bool(self._paths) and all(
-            Path(p).suffix.lower() == ".obx"
-            for p in self._paths
-        )
-
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         
         QThreadPool.globalInstance().start(_SifWorker(
@@ -279,7 +269,6 @@ class CetSifValidationPage(BasePage):
             self._currency,
             self._lines,
             site_id,
-            obx,
             validation_date,
             reporter,
             signals,
