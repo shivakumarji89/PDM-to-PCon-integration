@@ -162,16 +162,16 @@ class CetSifValidationPage(BasePage):
         self._grid.set_metric("unresolved", "Unresolved", "-")
         layout.addWidget(self._grid)
 
-        self._table = QTableWidget(0, 7, container)
+        self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
-            ["#", "SKU", "Category (PLC)", "Qty", "SIF price", "PDM price", "Result"])
+            ["#", "SKU", "Category (PLC)", "Qty", "SIF price", "PDM price", "Source date", "Result"])
         self._table.setSortingEnabled(False)  # we control row order by seq; sorting would scatter cells
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, 1)
         return container
 
@@ -445,6 +445,7 @@ class CetSifValidationPage(BasePage):
         cells = [
             str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}",
             "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+            r.source_date or "-",
             r.result,
         ]
         for col, text in enumerate(cells):
