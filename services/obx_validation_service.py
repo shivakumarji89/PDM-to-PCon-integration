@@ -186,9 +186,12 @@ class ObxValidationService(BaseService):
         )
         return [int(r.SiteId) for r in rows]
 
-    def _resolve_site(self, currency, lines, pricing, repo, conn, mydate) -> int | None:
-        """Several PDM sites can share a currency (EUR has four), so pick the one
-        whose PDM price reproduces the most OBX prices on a sample of lines."""
+    def _resolve_site(self, currency, lines, pricing, repo, conn, calibration_date) -> int | None:
+        """Resolve the pricing site against the OBX source-date prices.
+
+        Site identity must not depend on the user-selected validation date: a
+        future date can legitimately have different prices, so calibrating against
+        the old OBX prices would produce zero hits and fall back to the wrong site."""
         candidates = self._candidate_sites(currency, repo, conn)
 
         if len(candidates) <= 1:
@@ -202,7 +205,7 @@ class ObxValidationService(BaseService):
         best_site, best_hits = None, 0
         for site in candidates:
             results = pricing._validate_group(
-                currency, sample, site, repo, conn, mydate,
+                currency, sample, site, repo, conn, calibration_date,
                 [0], len(sample), None, None, None, "OBX", True,
             )
             hits = sum(1 for r in results if r.status == "ok")
@@ -234,7 +237,15 @@ class ObxValidationService(BaseService):
             sites: dict[str, int | None] = {}
             results = []
             for cur, group in groups.items():
-                resolved = self._resolve_site(cur, group, pricing, repo, conn, mydate)
+                # Resolve the permanent pricing site using the OBX price date,
+                # then price that same site at the user-selected validation date.
+                calibration_date = next(
+                    (line.source_date for line in group if line.source_date),
+                    mydate,
+                )
+                resolved = self._resolve_site(
+                    cur, group, pricing, repo, conn, calibration_date
+                )
                 group_sites, group_results = pricing.validate(
                     cur, group, site=resolved, obx=True, validation_date=mydate,
                     progress=progress, stage=stage, on_result=on_result)
