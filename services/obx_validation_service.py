@@ -43,11 +43,21 @@ class ObxLine:
 
     @property
     def options(self) -> list[SifOption]:
-        """Adapt selected OBX feature values to the shared pricing contract."""
-        return [
-            SifOption(code=value, desc=name)
-            for name, value in self.features.items()
-        ]
+        """Priced order codes for this configuration, in PDM option order.
+
+        The OBX final article (``NODLE140 OAK WSE``) already carries exactly one
+        code per priced option group; the feature list also contains derived,
+        non-priced values that must not be charged.
+        """
+        final = self.final_article.strip()
+        base = self.base_article.strip()
+
+        if base and final.upper().startswith(base.upper()):
+            rest = final[len(base):]
+        else:
+            _, _, rest = final.partition(" ")
+
+        return [SifOption(code=code) for code in rest.split()]
 
     @property
     def sif_price(self) -> float:
@@ -57,6 +67,8 @@ class ObxLine:
 
 class ObxValidationService(BaseService):
     """Validate incoming OBX prices against PDM using shared pricing logic."""
+
+    _CALIBRATION_SAMPLE = 10  # lines priced per candidate site when resolving one
 
     @staticmethod
     def _local_name(element: ET.Element) -> str:
@@ -165,10 +177,74 @@ class ObxValidationService(BaseService):
         """Resolve the existing shared PDM pricing implementation."""
         return self.context.sif_validation_service
 
-    def validate(self, currency, lines, **kwargs):
-        """Reuse shared PDM pricing until OBX-specific mapping is introduced."""
-        kwargs["obx"] = True
-        return self._pricing_service().validate(currency, lines, **kwargs)
+    @staticmethod
+    def _candidate_sites(currency: str, repo, conn) -> list[int]:
+        rows = repo._execute(
+            "SELECT SiteId FROM Site WHERE UPPER(DomCurrCode) = UPPER(?) ORDER BY SiteId",
+            (currency,),
+            conn,
+        )
+        return [int(r.SiteId) for r in rows]
+
+    def _resolve_site(self, currency, lines, pricing, repo, conn, mydate) -> int | None:
+        """Several PDM sites can share a currency (EUR has four), so pick the one
+        whose PDM price reproduces the most OBX prices on a sample of lines."""
+        candidates = self._candidate_sites(currency, repo, conn)
+
+        if len(candidates) <= 1:
+            return candidates[0] if candidates else None
+
+        sample = [line for line in lines if line.base][:self._CALIBRATION_SAMPLE]
+
+        if not sample:
+            return candidates[0]
+
+        best_site, best_hits = None, 0
+        for site in candidates:
+            results = pricing._validate_group(
+                currency, sample, site, repo, conn, mydate,
+                [0], len(sample), None, None, None, "OBX", True,
+            )
+            hits = sum(1 for r in results if r.status == "ok")
+            if hits > best_hits:
+                best_site, best_hits = site, hits
+
+        return best_site if best_site is not None else candidates[0]
+
+    def validate(self, currency, lines, site=None, validation_date=None,
+                 progress=None, stage=None, on_result=None):
+        """Reuse the shared PDM pricing, resolving the OBX pricing site first."""
+        from repositories.pdm_repository import PDMRepository
+
+        pricing = self._pricing_service()
+
+        if site is not None:
+            return pricing.validate(
+                currency, lines, site=site, obx=True, validation_date=validation_date,
+                progress=progress, stage=stage, on_result=on_result)
+
+        repo = PDMRepository(self.context)
+        conn = repo.get_connection()
+        try:
+            mydate = validation_date or pricing._server_date(repo, conn)
+            groups: dict[str, list] = {}
+            for line in lines:
+                groups.setdefault(line.currency or currency, []).append(line)
+
+            sites: dict[str, int | None] = {}
+            results = []
+            for cur, group in groups.items():
+                resolved = self._resolve_site(cur, group, pricing, repo, conn, mydate)
+                group_sites, group_results = pricing.validate(
+                    cur, group, site=resolved, obx=True, validation_date=mydate,
+                    progress=progress, stage=stage, on_result=on_result)
+                sites.update(group_sites)
+                results.extend(group_results)
+        finally:
+            conn.close()
+
+        results.sort(key=lambda r: r.seq)
+        return sites, results
 
     def export_csv(self, path, currency, results) -> None:
         """Reuse the existing report writer until OBX-specific reporting differs."""

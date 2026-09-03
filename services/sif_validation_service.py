@@ -279,6 +279,26 @@ class SifValidationService(BaseService):
 
         return 0.0
 
+    @staticmethod
+    def _match_inc_groups(groups: dict[str, dict[str, float]], codes) -> float:
+        """OBX upcharge: each order code is resolved inside its own PDM option
+        group, and a group can only be consumed once (the same code appears in
+        several groups with different increments)."""
+        order = list(groups.values())
+        used: set[int] = set()
+        total = 0.0
+        for raw in codes:
+            code = (raw or "").strip().upper()
+            if not code:
+                continue
+            for index, values in enumerate(order):
+                if index in used or code not in values:
+                    continue
+                total += values[code]
+                used.add(index)
+                break
+        return total
+
     def _server_date(self, repo, conn) -> str:
         """Effective date = PDM ``GetUTCDate()`` (the current price list)."""
         rows = repo._execute("SELECT CONVERT(varchar, GetUTCDate(), 106) AS d", (), conn)
@@ -431,22 +451,26 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
-            site = self._site_id_for_currency(cur, repo, conn)
+            if site is not None:
+                group_site = site
+            else:
+                group_site = self._site_id_for_currency(cur, repo, conn)
 
-            # Temporary diagnostic: use the proven CNY pricing site
-            if cur.upper() == "CNY":
-                site = 9
+                # Temporary diagnostic: use the proven CNY pricing site
+                if cur.upper() == "CNY":
+                    group_site = 9
 
-            group_site = site
             sites[cur] = group_site
             results.extend(self._validate_group(
-                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result, "OBX" if obx else "SIF"
+                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result,
+                "OBX" if obx else "SIF", obx
             ))
         results.sort(key=lambda r: r.seq)
         return sites, results
 
     def _validate_group(self, currency, lines, site, repo, conn, mydate,
-                        done, total, progress, stage, on_result=None, source_label="SIF") -> list[SifResult]:
+                        done, total, progress, stage, on_result=None, source_label="SIF",
+                        obx: bool = False) -> list[SifResult]:
         """Price one single-currency group of lines against PDM at ``site``."""
         results: list[SifResult] = []
         if site is None:
@@ -479,6 +503,9 @@ class SifValidationService(BaseService):
             # source increment amounts. Both must be repriced from PDM.
             inc_items = sorted({l.base for l in chunk if l.options})
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
+            # OBX order codes repeat across option groups, so OBX also keeps the
+            # rows grouped by PDM OptionId (in PDM row order).
+            inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
             
             if inc_items:
                 inc_rows = repo.fetch_item_option_increment_prices(
@@ -486,12 +513,18 @@ class SifValidationService(BaseService):
                 )
                 for r in inc_rows:
                     inc_price = getattr(r, "IncPrice", None)
+                    item = str(r.Item)
+                    code = str(r.OrderCodeValue2 or "").strip().upper()
+
+                    if obx:
+                        group = str(getattr(r, "OptionId", "") or "")
+                        inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
+                            0.0 if inc_price is None else float(inc_price)
+                        )
             
                     if inc_price is None:
                         continue
                     
-                    item = str(r.Item)
-                    code = str(r.OrderCodeValue2 or "").strip().upper()
                     is_fabric = int(r.IsFabric or 0)
                     quantity = int(r.Quantity or 1)
             
@@ -515,8 +548,13 @@ class SifValidationService(BaseService):
                     if on_result:
                         on_result(results[-1])
                     continue
-                inc = inc_by_item.get(line.base, {})
-                pdm = round(base + sum(self._match_inc(inc, o.code) for o in line.options), 2)
+                if obx:
+                    upcharge = self._match_inc_groups(
+                        inc_groups_by_item.get(line.base, {}), [o.code for o in line.options])
+                else:
+                    inc = inc_by_item.get(line.base, {})
+                    upcharge = sum(self._match_inc(inc, o.code) for o in line.options)
+                pdm = round(base + upcharge, 2)
                 if abs(pdm - sif) < 0.005:
                     status, message = "ok", ""
                 else:
