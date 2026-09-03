@@ -24,6 +24,7 @@ from services.ocd_export_service import OcdExportService
 from services.price_update_service import PriceUpdateService
 from services.version_update_service import VersionUpdateService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
+from services.obx_validation_service import ObxValidationService
 from services.pip_service import PipService
 from services.price_list_service import PriceListService
 from services.mdb_reconcile_service import MdbReconcileService
@@ -318,6 +319,10 @@ class ApplicationContext:
     @property
     def sif_validation_service(self) -> SifValidationService:
         return self.get_service(SifValidationService)
+
+    @property
+    def obx_validation_service(self) -> ObxValidationService:
+        return self.get_service(ObxValidationService)
 
     @property
     def pip_service(self) -> PipService:
