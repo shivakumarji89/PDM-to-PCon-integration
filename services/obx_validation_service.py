@@ -167,8 +167,9 @@ class ObxValidationService(BaseService):
 
     def validate(self, currency, lines, **kwargs):
         """Reuse shared PDM pricing until OBX-specific mapping is introduced."""
+        kwargs["obx"] = True
         return self._pricing_service().validate(currency, lines, **kwargs)
 
     def export_csv(self, path, currency, results) -> None:
         """Reuse the existing report writer until OBX-specific reporting differs."""
-        self._pricing_service().export_csv(path, currency, results)
+        self._pricing_service().export_csv(path, currency, results, source_label="OBX")
