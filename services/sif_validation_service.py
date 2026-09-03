@@ -47,6 +47,7 @@ class SifLine:
     qty: int = 1            # QT
     plc: str = ""           # GC - order PLC
     tag: str = ""           # TG - parent/template tag
+    source_date: str = ""    # Date carried by the source order file (display only)
     options: list[SifOption] = field(default_factory=list)
 
     @property
@@ -63,6 +64,7 @@ class SifResult:
     sku: str = ""
     plc: str = ""            # PDM "Category (Product_Code)"
     qty: int = 1
+    source_date: str = ""
     sif_price: float = 0.0
     pdm_price: float | None = None
     status: str = "ok"       # ok | price_mismatch | unresolved
@@ -197,6 +199,17 @@ class SifValidationService(BaseService):
             if plc_match:
                 plc = plc_match.group(1).strip()
 
+            # Source price date (display only; PDM pricing still uses the
+            # manually selected validation date).
+            source_date = ""
+            date_match = re.search(
+                r"<priceDate\b[^>]*\bvalue=['\"]([^'\"]*)['\"]",
+                item_text,
+                re.IGNORECASE,
+            )
+            if date_match:
+                source_date = date_match.group(1).strip()
+
             # Price
             # Legacy behavior uses the FIRST <itemPrice> after the
             # final article. In the supplied OBX this is the purchase price.
@@ -224,6 +237,7 @@ class SifValidationService(BaseService):
                     sp=price,
                     qty=1,
                     plc=plc,
+                    source_date=source_date,
                 )
             )
 
@@ -428,7 +442,7 @@ class SifValidationService(BaseService):
                 if progress:
                     progress(done[0], total, line.base)
                 results.append(SifResult(
-                    seq=line.seq, sku=self._sku(line), qty=line.qty, sif_price=line.sif_price,
+                    seq=line.seq, sku=self._sku(line), qty=line.qty, source_date=line.source_date, sif_price=line.sif_price,
                     status="unresolved", message=f"no PDM pricing site resolves currency {currency}"
                     ))
                 if on_result:
@@ -480,7 +494,7 @@ class SifValidationService(BaseService):
                 plc = plc_by_item.get(line.base, "")
                 if base is None:
                     results.append(SifResult(
-                        seq=line.seq, sku=sku, plc=plc, qty=line.qty, sif_price=sif,
+                        seq=line.seq, sku=sku, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
                         status="unresolved", message=f"unable to resolve SKU in PDM [{line.base}]"))
                     if on_result:
                         on_result(results[-1])
@@ -493,7 +507,7 @@ class SifValidationService(BaseService):
                     status = "price_mismatch"
                     message = f"price mismatch: SIF [{sif:.2f}] does NOT match PDM [{pdm:.2f}]"
                 results.append(SifResult(
-                    seq=line.seq, sku=sku, plc=plc, qty=line.qty, sif_price=sif,
+                    seq=line.seq, sku=sku, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
                     pdm_price=pdm, status=status, message=message))
                 if on_result:
                     on_result(results[-1])
