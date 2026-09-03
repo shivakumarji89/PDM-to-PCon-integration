@@ -92,6 +92,7 @@ class SifValidationService(BaseService):
         """Parse SIF text into ``(currency, order lines)``. Each ``PN=`` starts a
         new line; ``ON=``/``OD=``/``OG=``/``OL=`` build its options."""
         currency = ""
+        source_date = ""
         lines: list[SifLine] = []
         current: SifLine | None = None
         option: SifOption | None = None
@@ -102,10 +103,22 @@ class SifValidationService(BaseService):
             key, val = key.strip(), val.strip()
             if key == "PZ":
                 currency = val
+            elif key == "DT":
+                # SIF source date format: MMDDYYYY. Display only; PDM pricing
+                # continues to use the manually selected validation date.
+                try:
+                    source_date = datetime.strptime(val, "%m%d%Y").strftime("%Y-%m-%d")
+                except ValueError:
+                    source_date = val
             elif key == "SL":  # SL=END OF ...
                 break
             elif key == "PN":
-                current = SifLine(seq=len(lines) + 1, base=val, currency=currency)
+                current = SifLine(
+                    seq=len(lines) + 1,
+                    base=val,
+                    currency=currency,
+                    source_date=source_date,
+                )
                 lines.append(current)
                 option = None
             elif current is None:
