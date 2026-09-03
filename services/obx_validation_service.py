@@ -41,6 +41,19 @@ class ObxLine:
     def sp(self) -> float:
         return self.obx_price
 
+    @property
+    def options(self) -> list[SifOption]:
+        """Adapt selected OBX feature values to the shared pricing contract."""
+        return [
+            SifOption(code=value, desc=name)
+            for name, value in self.features.items()
+        ]
+
+    @property
+    def sif_price(self) -> float:
+        """Source price used by the shared validation result."""
+        return self.obx_price
+
 
 class ObxValidationService(BaseService):
     """Validate incoming OBX prices against PDM using shared pricing logic."""
