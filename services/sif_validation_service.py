@@ -264,7 +264,7 @@ class SifValidationService(BaseService):
 
     @staticmethod
     def _match_inc(inc, code: str) -> float:
-        code = (code or "").strip()
+        code = (code or "").strip().upper()
 
         # Exact match
         if code in inc:
@@ -491,7 +491,7 @@ class SifValidationService(BaseService):
                         continue
                     
                     item = str(r.Item)
-                    code = str(r.OrderCodeValue2)
+                    code = str(r.OrderCodeValue2 or "").strip().upper()
                     is_fabric = int(r.IsFabric or 0)
                     quantity = int(r.Quantity or 1)
             
