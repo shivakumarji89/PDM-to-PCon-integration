@@ -205,15 +205,6 @@ class PricingService(BaseService):
                 inc_rows = repo.fetch_item_option_increment_prices(
                     items, cur, params.mydate, params.site_id, conn
                 )
-                for row in inc_rows:
-                    if str(row.Item) == "UQSBBFP.1114":
-                        print(
-                            "INC DEBUG:",
-                            row.Item,
-                            row.OptionId,
-                            row.Code,
-                            row.IncPrice
-                        )
                 records, unres = self.build_records(
                     base_rows, inc_rows, super_codes, prefix_by_item, cparams
                 )
