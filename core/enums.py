@@ -26,6 +26,8 @@ class WorkflowStep(Enum):
     MAINTENANCE = "maintenance"
     #: Standalone CET SIF validation tool (self-contained, disconnectable).
     CET_SIF_VALIDATION = "cet_sif_validation"
+    #: Standalone OBX validation tool.
+    OBX_VALIDATION = "obx_validation"
 
 
 class SnapshotStatus(Enum):
