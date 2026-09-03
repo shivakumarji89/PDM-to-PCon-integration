@@ -474,7 +474,10 @@ class SifValidationService(BaseService):
             got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
             base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
             plc_by_item = self._fetch_plc(items, site, repo, conn)
-            inc_items = sorted({l.base for l in chunk if any(o.ol for o in l.options)})
+            # Fetch increments whenever a line has selected options. SIF may carry
+            # explicit OL values, while OBX supplies selected option codes without
+            # source increment amounts. Both must be repriced from PDM.
+            inc_items = sorted({l.base for l in chunk if l.options})
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
             
             if inc_items:
