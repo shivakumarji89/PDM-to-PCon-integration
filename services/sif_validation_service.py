@@ -440,13 +440,13 @@ class SifValidationService(BaseService):
             group_site = site
             sites[cur] = group_site
             results.extend(self._validate_group(
-                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result
+                cur, group, group_site, repo, conn, mydate, done, total, progress, stage, on_result, "OBX" if obx else "SIF"
             ))
         results.sort(key=lambda r: r.seq)
         return sites, results
 
     def _validate_group(self, currency, lines, site, repo, conn, mydate,
-                        done, total, progress, stage, on_result=None) -> list[SifResult]:
+                        done, total, progress, stage, on_result=None, source_label="SIF") -> list[SifResult]:
         """Price one single-currency group of lines against PDM at ``site``."""
         results: list[SifResult] = []
         if site is None:
@@ -521,7 +521,7 @@ class SifValidationService(BaseService):
                     status, message = "ok", ""
                 else:
                     status = "price_mismatch"
-                    message = f"price mismatch: SIF [{sif:.2f}] does NOT match PDM [{pdm:.2f}]"
+                    message = f"price mismatch: {source_label} [{sif:.2f}] does NOT match PDM [{pdm:.2f}]"
                 results.append(SifResult(
                     seq=line.seq, sku=sku, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
                     pdm_price=pdm, status=status, message=message))
@@ -557,7 +557,7 @@ class SifValidationService(BaseService):
                 out[str(r.Item)] = f"{cat} ({code})" if code else cat
         return out
 
-    def export_csv(self, path, currency: str, results: list[SifResult]) -> None:
+    def export_csv(self, path, currency: str, results: list[SifResult], source_label: str = "SIF") -> None:
         """Write the validation report as CSV, matching PDM's exact columns
         (``SKU, Category (PLC), PDM List Price, SIF List Price, SIF Qty, Result``)."""
         import csv
@@ -566,7 +566,7 @@ class SifValidationService(BaseService):
             writer = csv.writer(fh)
             writer.writerow([
                 "SKU", "Category (PLC)", f"PDM List Price ({currency})",
-                f"SIF List Price ({currency})", "SIF Qty", "Result"])
+                f"{source_label} List Price ({currency})", f"{source_label} Qty", "Result"])
             for r in results:
                 writer.writerow([
                     r.sku, r.plc,
