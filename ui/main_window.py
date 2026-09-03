@@ -42,6 +42,7 @@ from ui.pages.review_page import ReviewPage
 from ui.pages.text_page import TextPage
 from ui.pages.maintenance_page import MaintenancePage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
+from ui.pages.obx_validation_page import ObxValidationPage
 from workflow.host import WorkspaceHost
 from workflow.manager import WorkflowManager
 from ui.widgets.activity_panel import ActivityPanel
@@ -158,6 +159,7 @@ class MainWindow(QMainWindow):
             WorkflowStep.MAINTENANCE: MaintenancePage,
             # CET SIF Validation - unused when the step is disconnected in core.workflow.
             WorkflowStep.CET_SIF_VALIDATION: CetSifValidationPage,
+            WorkflowStep.OBX_VALIDATION: ObxValidationPage,
         }
 
         self._refreshable_pages: list[BasePage] = []
