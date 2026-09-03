@@ -105,7 +105,7 @@ class ObxValidationPage(BasePage):
             "Order file", "Load a CET OBX file, then launch item entry to validate every line against PDM."))
         row = QHBoxLayout()
         row.setSpacing(theme.SPACE_2)
-        self._load_btn = QPushButton("Load SIF File...", container)
+        self._load_btn = QPushButton("Load OBX File...", container)
         self._load_btn.clicked.connect(self._on_load)
         self._folder_btn = QPushButton("Load Folder...", container)
         self._folder_btn.clicked.connect(self._on_load_folder)
