@@ -912,6 +912,42 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, params, connection=connection))
         return rows
 
+    def fetch_validation_catalogue_ids(
+        self,
+        currency: str,
+        site_id: int | None,
+        *,
+        obx: bool = False,
+        connection: Any = None,
+    ) -> list[int]:
+        """Return the catalogue scope used by the legacy SIF/OBX validator."""
+        code = (currency or "").strip().upper()
+        if obx:
+            site_scope = [1, 4]
+        elif code in {"GBP", "EUR"}:
+            site_scope = [1, 4]
+        elif code in {"JPY", "CNY", "HKD"} or (code == "USD" and site_id == 3):
+            site_scope = [2, 3, 7, 9]
+        elif code == "USD" and site_id in {10, 16}:
+            site_scope = [site_id]
+        elif code == "BRL" and site_id == 11:
+            site_scope = [11]
+        elif code == "INR" and site_id == 8:
+            site_scope = [8]
+        elif site_id is not None:
+            site_scope = [site_id]
+        else:
+            return []
+
+        ph = self._placeholders(len(site_scope))
+        rows = self._execute(
+            "SELECT CatalogueId FROM Catalogue "
+            f"WHERE PrimarySiteId IN ({ph}) ORDER BY LeadTime, Name",
+            tuple(site_scope),
+            connection=connection,
+        )
+        return [int(r.CatalogueId) for r in rows]
+
     def fetch_item_get_price_ext_base_prices(
         self,
         items: Sequence[Any],
