@@ -166,11 +166,14 @@ class OcdExportService(BaseService):
 
     # -- Template selection ---------------------------------------------
 
-    @staticmethod
-    def _infer_template(product) -> str:
-        """Pick 'tables' when the product reads as desking/tables, else 'seating'."""
-        text = f"{product.category} {product.range_name} {product.name}".lower()
-        return "tables" if any(k in text for k in _TABLES_KEYWORDS) else "seating"
+    def _infer_template(self, product) -> str:
+        """Resolve the MDB template from the shared category/workspace context."""
+        category = self.context.category_context_service.from_product(product)
+        if category.workspace_kind in _TEMPLATES:
+            return category.workspace_kind
+
+        # Preserve the previous safe default when the source category is unknown.
+        return "seating"
 
     # -- Prototype rows -------------------------------------------------
 
