@@ -912,6 +912,45 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, params, connection=connection))
         return rows
 
+    def fetch_item_get_price_ext_base_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        connection: Any = None,
+        site_id: int = 1,
+    ) -> list[Any]:
+        """Bulk base prices using the same query shape as legacy GetPriceExt."""
+        vals = [str(i) for i in items if i]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT i.Item, "
+                "dbo.fnGetListPrice("
+                "c.Currency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN i.BasePrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN i.BasePrice3 "
+                "ELSE i.BasePrice END, "
+                "pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL"
+                ") AS price "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                "INNER JOIN Product_Code pc ON "
+                "pc.ProductCodeId = CASE "
+                "WHEN i.ProductCodeIdOverride IS NOT NULL THEN i.ProductCodeIdOverride "
+                "ELSE p.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE i.Item IN ({ph})"
+            )
+            params = (mydate, site_id, site_id, currency) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
     def fetch_item_base_prices_all_sites(
         self,
         items: Sequence[Any],
