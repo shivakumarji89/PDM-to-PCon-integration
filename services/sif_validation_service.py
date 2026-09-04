@@ -524,9 +524,23 @@ class SifValidationService(BaseService):
                     on_result(results[-1])
             return results
 
+        catalogue_ids = repo.fetch_validation_catalogue_ids(
+            currency,
+            site,
+            obx=obx,
+            connection=conn,
+        )
         if stage:
-            stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
+            scope = ",".join(str(value) for value in catalogue_ids[:5])
+            suffix = "..." if len(catalogue_ids) > 5 else ""
+            stage(
+                f"Pricing {len({l.base for l in lines if l.base})} items from PDM "
+                f"(site {site}, {currency}, catalogues {scope}{suffix})..."
+            )
 
+        # Catalogue selection is part of the legacy validation workflow. Price
+        # calculation remains independent here, while unresolved catalogue
+        # verification is handled separately rather than silently ignored.
         # Price in small windows so rows appear steadily instead of one big
         # batch at the end, while keeping PDM queries bulk (fast) and parity exact.
         window = self._PRICE_WINDOW
