@@ -313,6 +313,63 @@ class SifValidationService(BaseService):
                 break
         return total
 
+    @staticmethod
+    def _feature_option_indexes(feature_position: object, option_id: object) -> set[int] | None:
+        """Map a component OptionId to parent option positions like getListPrice."""
+        text = str(feature_position or "")
+        if not text:
+            return None
+        target = str(option_id or "")
+        position = 1
+        while text.startswith("|"):
+            text = text[1:]
+            position += 1
+        if target and target in text:
+            prefix = text[:text.index(target) + len(target)]
+            position += prefix.count("|")
+        return {position - 1}
+
+    @classmethod
+    def _match_component_increments(cls, rows, codes: list[str]) -> float:
+        """Allocate SuperProduct component increments by tertiary/feature position."""
+        total = 0.0
+        used: set[tuple[str, str, int]] = set()
+        normalized = [(code or "").strip().upper() for code in codes]
+        for row in rows:
+            code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+            if not code:
+                continue
+            option_id = str(getattr(row, "OptionId", "") or "")
+            tertiary = int(getattr(row, "TertiaryOption", 0) or 0)
+            positions = cls._feature_option_indexes(
+                getattr(row, "FeaturePositionString", None), option_id
+            )
+            candidate_positions = (
+                {tertiary - 1} if tertiary > 0 else positions
+            )
+            if candidate_positions is None:
+                candidate_positions = set(range(len(normalized)))
+            for position in candidate_positions:
+                if position < 0 or position >= len(normalized):
+                    continue
+                selected = normalized[position]
+                if cls._increment_key_match(selected, {code: row}) is None:
+                    continue
+                key = (
+                    str(getattr(row, "CompItem", "") or ""),
+                    option_id,
+                    position,
+                )
+                if key in used:
+                    continue
+                used.add(key)
+                price = getattr(row, "IncPrice", None)
+                qty = int(getattr(row, "Quantity", 1) or 1)
+                if price is not None:
+                    total += float(price) * qty
+                break
+        return total
+
     @classmethod
     def _verify_selected_options(cls, option_rows, codes: list[str]) -> str | None:
         """Verify selected order codes with the core legacy VerifyOptions rules.
