@@ -982,6 +982,57 @@ class PDMRepository(BaseRepository):
         )
         return [int(row.CatalogueId) for row in rows]
 
+    def fetch_us_item_price_context(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Legacy GetPrice USdata item context."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT u.USItem AS Item, u.USItemId AS ItemId, 1 AS Status, "
+                "-1 AS ProductId, CAST(0 AS bit) AS IsSuperProduct, "
+                "pc.ProductCodeId, pc.PriceCode, pm.Rounding, pc.BasePriceRef, "
+                "u.BasePrice "
+                "FROM USItem u "
+                "LEFT JOIN Product_Code pc ON u.Product_Code = pc.Product_Code "
+                "AND pc.SiteId = ? "
+                "LEFT JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "LEFT JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE u.USItem IN ({ph})"
+            )
+            rows.extend(self._execute(
+                query, (site_id, currency) + tuple(chunk), connection=connection
+            ))
+        return rows
+
+    def find_us_items(
+        self,
+        items: Sequence[Any],
+        connection: Any = None,
+    ) -> set[str]:
+        """Identify items that exist only in the legacy USItem pricing domain."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return set()
+        found: set[str] = set()
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            rows = self._execute(
+                f"SELECT USItem FROM USItem WHERE USItem IN ({ph})",
+                tuple(chunk), connection=connection,
+            )
+            found.update(str(row.USItem) for row in rows)
+        return found
+
     def fetch_item_price_context(
         self,
         items: Sequence[Any],
