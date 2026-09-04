@@ -557,11 +557,11 @@ class SifValidationService(BaseService):
 
                     group = str(getattr(r, "OptionId", "") or "")
                     inc_price = getattr(r, "IncPrice", None)
-                    quantity = int(getattr(r, "Quantity", 1) or 1)
 
-                    # A NULL increment is still a selectable value in PDM and
-                    # therefore consumes its OptionId with a zero upcharge.
-                    amount = 0.0 if inc_price is None else float(inc_price) * quantity
+                    # GetPriceExt adds IncPrice directly. The Quantity column is
+                    # retained by the legacy option data but is not multiplied
+                    # into the standard GetPriceExt upcharge loop.
+                    amount = 0.0 if inc_price is None else float(inc_price)
                     inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = amount
             for line in chunk:
                 done[0] += 1
