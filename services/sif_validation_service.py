@@ -713,6 +713,7 @@ class SifValidationService(BaseService):
                 component_price[parent] = component_price.get(parent, 0.0) + (
                     float(price) * int(getattr(row, "Quantity", 1) or 1)
                 )
+            super_items: set[str] = set()
             for row in contexts:
                 item = str(row.Item)
                 is_super = bool(getattr(row, "IsSuperProduct", False))
@@ -722,6 +723,16 @@ class SifValidationService(BaseService):
                 )
                 if is_super and not legacy_exception and item in component_seen:
                     base_price[item] = round(component_price.get(item, 0.0), 2)
+                    super_items.add(item)
+
+            component_increment_rows = repo.fetch_item_component_increment_prices(
+                sorted(super_items), currency, mydate, site, connection=conn
+            ) if super_items else []
+            component_increments_by_item: dict[str, list[object]] = {}
+            for row in component_increment_rows:
+                component_increments_by_item.setdefault(
+                    str(getattr(row, "ParentItem", "")), []
+                ).append(row)
 
             plc_by_item = self._fetch_plc(items, site, repo, conn)
             # The legacy validator sends the complete configured SKU to GetPrice.
@@ -822,10 +833,16 @@ class SifValidationService(BaseService):
                     continue
                 # Both SIF and OBX ultimately pass selected order codes through
                 # the same GetPriceExt option-group consumption behaviour.
-                upcharge = self._match_inc_groups(
-                    inc_groups_by_item.get(line.base, {}),
-                    [o.code for o in line.options],
-                )
+                if str(line.base) in super_items:
+                    upcharge = self._match_component_increments(
+                        component_increments_by_item.get(str(line.base), []),
+                        [o.code for o in line.options],
+                    )
+                else:
+                    upcharge = self._match_inc_groups(
+                        inc_groups_by_item.get(line.base, {}),
+                        [o.code for o in line.options],
+                    )
                 pdm = round(base + upcharge, 2)
                 if abs(pdm - sif) < 0.005:
                     status, message = "ok", ""
