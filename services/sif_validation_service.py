@@ -626,6 +626,46 @@ class SifValidationService(BaseService):
                 str(r.Item): (float(r.price) if r.price is not None else None)
                 for r in got
             }
+
+            # Legacy GetPrice switches SuperProducts to getListPrice(), where
+            # the parent price is the sum of priced ItemComponents × quantity.
+            component_rows = repo.fetch_item_component_prices(
+                [
+                    str(row.Item)
+                    for row in contexts
+                    if bool(getattr(row, "IsSuperProduct", False))
+                    and not (
+                        (str(row.Item).startswith("MK12O")
+                         or str(row.Item).startswith("MK14O"))
+                        and str(row.Item).endswith("O")
+                    )
+                ],
+                currency,
+                mydate,
+                site,
+                connection=conn,
+            )
+            component_price: dict[str, float] = {}
+            component_seen: dict[str, int] = {}
+            for row in component_rows:
+                parent = str(row.ParentItem)
+                price = getattr(row, "price", None)
+                if price is None:
+                    continue
+                component_seen[parent] = component_seen.get(parent, 0) + 1
+                component_price[parent] = component_price.get(parent, 0.0) + (
+                    float(price) * int(getattr(row, "Quantity", 1) or 1)
+                )
+            for row in contexts:
+                item = str(row.Item)
+                is_super = bool(getattr(row, "IsSuperProduct", False))
+                legacy_exception = (
+                    (item.startswith("MK12O") or item.startswith("MK14O"))
+                    and item.endswith("O")
+                )
+                if is_super and not legacy_exception and item in component_seen:
+                    base_price[item] = round(component_price.get(item, 0.0), 2)
+
             plc_by_item = self._fetch_plc(items, site, repo, conn)
             # The legacy validator sends the complete configured SKU to GetPrice.
             # Option pricing therefore depends on selected order codes, not on
