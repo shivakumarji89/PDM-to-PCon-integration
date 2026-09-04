@@ -1160,16 +1160,43 @@ class PDMRepository(BaseRepository):
         site_id: int,
         connection: Any = None,
     ) -> list[Any]:
-        """Legacy US dependent-option increments from getListPrice."""
+        """Legacy US option + dependent-option increment stream from getListPrice."""
         vals = [str(value) for value in items if value]
         if not vals:
             return []
         rows: list[Any] = []
         for item in vals:
             query = """
-                SELECT 1 AS Quantity, -1 AS SubItemId, 1 AS DisplayOrder,
-                       0 AS TertiaryOption,
+                SELECT 1 AS Quantity, -1 AS SubItemId, '' AS CompItem,
+                       1 AS DisplayOrder, 0 AS TertiaryOption,
+                       optval.USOptionValueId AS OptionValueId,
+                       '' AS FeaturePositionString,
+                       optval.DisplayOrder AS DisplayOrdinal,
+                       USItem.USItem AS Item,
+                       optval.OrderCodeValue AS OrderCodeValue2,
+                       optval.USOptionId AS OptionId,
+                       dbo.fnGetListPrice(
+                           Currency.Currency, uitov.IncrementalPrice,
+                           pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL
+                       ) AS IncPrice
+                FROM USItemOptionValues uitov
+                INNER JOIN USOptionValue optval
+                    ON uitov.USOptionValueId = optval.USOptionValueId
+                INNER JOIN USOption opt ON optval.USOptionId = opt.USOptionId
+                INNER JOIN USItem ON uitov.USItemId = USItem.USItemId
+                INNER JOIN Product_Code pc
+                    ON USItem.Product_Code = pc.Product_Code AND pc.SiteId = ?
+                INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode
+                INNER JOIN Currency ON pm.CustPriceCode = Currency.PriceCode
+                    AND UPPER(Currency.Currency) = UPPER(?)
+                WHERE USItem.USItem = ?
+
+                UNION
+
+                SELECT 1 AS Quantity, -1 AS SubItemId, '' AS CompItem,
+                       1 AS DisplayOrder, 0 AS TertiaryOption,
                        optval2.USOptionValueId AS OptionValueId,
+                       '' AS FeaturePositionString,
                        optval2.DisplayOrder AS DisplayOrdinal,
                        USItem.USItem AS Item,
                        optval2.OrderCodeValue AS OrderCodeValue2,
@@ -1191,11 +1218,12 @@ class PDMRepository(BaseRepository):
                     ON optval.USOptionValueId = udov.USOptionValueId
                 INNER JOIN USOptionValue optval2
                     ON udov.USAdditionalOptionValueId = optval2.USOptionValueId
+                INNER JOIN USOption opt2 ON optval2.USOptionId = opt2.USOptionId
                 WHERE USItem.USItem = ?
-                ORDER BY optval2.DisplayOrder
+                ORDER BY DisplayOrdinal
             """
             rows.extend(self._execute(
-                query, (mydate, site_id, site_id, currency, item),
+                query, (mydate, site_id, site_id, currency, item, mydate, site_id, site_id, currency, item),
                 connection=connection,
             ))
         return rows
