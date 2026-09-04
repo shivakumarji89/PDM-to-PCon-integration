@@ -530,6 +530,11 @@ class SifValidationService(BaseService):
             obx=obx,
             connection=conn,
         )
+        catalogue_ids = repo.fetch_validation_catalogue_ids_ordered(
+            catalogue_ids,
+            site,
+            connection=conn,
+        )
         if stage:
             scope = ",".join(str(value) for value in catalogue_ids[:5])
             suffix = "..." if len(catalogue_ids) > 5 else ""
@@ -547,8 +552,34 @@ class SifValidationService(BaseService):
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
-            got = repo.fetch_item_get_price_ext_base_prices(items, currency, mydate, conn, site_id=site)
-            base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
+            # Reproduce GetPrice's pre-pricing validation: the item must have
+            # an active PDM row and a complete price matrix for the selected
+            # site/currency before GetPriceExt is allowed to price it.
+            contexts = repo.fetch_item_price_context(
+                items,
+                currency,
+                site,
+                connection=conn,
+            )
+            valid_items: set[str] = set()
+            for row in contexts:
+                item = str(row.Item)
+                status = getattr(row, "Status", None)
+                price_ref = getattr(row, "BasePriceRef", None)
+                is_super = bool(getattr(row, "IsSuperProduct", False))
+                if status is not None and int(status) >= 2:
+                    continue
+                if not is_super and price_ref is None:
+                    continue
+                valid_items.add(item)
+
+            got = repo.fetch_item_get_price_ext_base_prices(
+                sorted(valid_items), currency, mydate, conn, site_id=site
+            )
+            base_price = {
+                str(r.Item): (float(r.price) if r.price is not None else None)
+                for r in got
+            }
             plc_by_item = self._fetch_plc(items, site, repo, conn)
             # The legacy validator sends the complete configured SKU to GetPrice.
             # Option pricing therefore depends on selected order codes, not on
@@ -586,9 +617,30 @@ class SifValidationService(BaseService):
                 base = base_price.get(line.base)
                 plc = plc_by_item.get(line.base, "")
                 if base is None:
+                    context = next(
+                        (row for row in contexts if str(row.Item) == str(line.base)),
+                        None,
+                    )
+                    if context is None:
+                        reason = f"unable to resolve SKU in PDM [{line.base}]"
+                    elif (
+                        getattr(context, "Status", None) is not None
+                        and int(context.Status) >= 2
+                    ):
+                        reason = f"SKU is inactive in PDM [{line.base}]"
+                    elif (
+                        not bool(getattr(context, "IsSuperProduct", False))
+                        and getattr(context, "BasePriceRef", None) is None
+                    ):
+                        reason = (
+                            f"incomplete price matrix for SKU [{line.base}] "
+                            f"(site {site}, currency {currency})"
+                        )
+                    else:
+                        reason = f"unable to obtain PDM price [{line.base}]"
                     results.append(SifResult(
                         seq=line.seq, sku=sku, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
-                        status="unresolved", message=f"unable to resolve SKU in PDM [{line.base}]"))
+                        status="unresolved", message=reason))
                     if on_result:
                         on_result(results[-1])
                     continue
