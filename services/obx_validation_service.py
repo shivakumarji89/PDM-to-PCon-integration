@@ -30,8 +30,22 @@ class ObxLine:
     # Temporary compatibility properties for the existing shared pricing flow.
     # These can be removed when OBX -> PDM mapping has its own input contract.
     @property
+    def _final_tokens(self) -> list[str]:
+        return self.final_article.strip().split()
+
+    @property
     def base(self) -> str:
-        return self.base_article
+        """The PDM Item code: the first space-delimited token of the final
+        article - NOT necessarily the ``<artNr type='base'>`` value.
+
+        Most ranges have the two coincide (``NODLE140 OAK WSE`` -> base
+        ``NODLE140``), but some (e.g. Lino chairs) fold extra head attributes
+        into the item code with no separating space (``MI7E3`` + ``15AF`` ->
+        item ``MI7E315AF``), so the parsed base artNr alone does not resolve
+        in PDM.
+        """
+        tokens = self._final_tokens
+        return tokens[0] if tokens else self.base_article
 
     @property
     def pl(self) -> float:
@@ -45,19 +59,11 @@ class ObxLine:
     def options(self) -> list[SifOption]:
         """Priced order codes for this configuration, in PDM option order.
 
-        The OBX final article (``NODLE140 OAK WSE``) already carries exactly one
-        code per priced option group; the feature list also contains derived,
-        non-priced values that must not be charged.
+        Everything in the final article after the PDM item code (see
+        :attr:`base`) is a priced order code; the feature list also contains
+        derived, non-priced values that must not be charged.
         """
-        final = self.final_article.strip()
-        base = self.base_article.strip()
-
-        if base and final.upper().startswith(base.upper()):
-            rest = final[len(base):]
-        else:
-            _, _, rest = final.partition(" ")
-
-        return [SifOption(code=code) for code in rest.split()]
+        return [SifOption(code=code) for code in self._final_tokens[1:]]
 
     @property
     def sif_price(self) -> float:
