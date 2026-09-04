@@ -982,6 +982,39 @@ class PDMRepository(BaseRepository):
         )
         return [int(row.CatalogueId) for row in rows]
 
+    def fetch_us_item_base_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Price legacy USdata base items with the same fnGetListPrice call."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT u.USItem AS Item, "
+                "dbo.fnGetListPrice(c.Currency, u.BasePrice, pc.PriceCode, "
+                "?, 'DMY', pm.Rounding, ?, NULL) AS price "
+                "FROM USItem u "
+                "INNER JOIN Product_Code pc ON u.Product_Code = pc.Product_Code "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE u.USItem IN ({ph})"
+            )
+            rows.extend(self._execute(
+                query, (mydate, site_id, site_id, currency) + tuple(chunk),
+                connection=connection,
+            ))
+        return rows
+
     def fetch_us_item_price_context(
         self,
         items: Sequence[Any],
