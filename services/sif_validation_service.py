@@ -451,7 +451,9 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
-            if site is not None:
+            # Preserve SIF's original currency-based site resolution.
+            # OBX alone may supply a pre-resolved fixed site.
+            if obx and site is not None:
                 group_site = site
             else:
                 group_site = self._site_id_for_currency(cur, repo, conn)
@@ -498,10 +500,16 @@ class SifValidationService(BaseService):
             got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
             base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
             plc_by_item = self._fetch_plc(items, site, repo, conn)
-            # Fetch increments whenever a line has selected options. SIF may carry
-            # explicit OL values, while OBX supplies selected option codes without
-            # source increment amounts. Both must be repriced from PDM.
-            inc_items = sorted({l.base for l in chunk if l.options})
+            # Preserve original SIF behavior: only fetch increments for explicit
+            # OL values. OBX has selected order codes without OL amounts, so it
+            # always needs increment lookup.
+            if obx:
+                inc_items = sorted({l.base for l in chunk if l.options})
+            else:
+                inc_items = sorted({
+                    l.base for l in chunk
+                    if any(o.ol for o in l.options)
+                })
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
