@@ -339,6 +339,8 @@ class ProductPage(BasePage):
     #: Emitted once when a load is fully complete (all phases done): triggers a
     #: single final refresh of the Articles and Class Creation workspaces.
     load_complete = Signal()
+    #: Requests the Review workspace for repository ↔ PDM comparison.
+    repository_review_requested = Signal()
 
     #: Max results requested per search.
     SEARCH_LIMIT = 50
@@ -559,6 +561,11 @@ class ProductPage(BasePage):
         sources_layout.addWidget(note)
 
         self._check_pdm_btn = QPushButton("Check PDM Changes", sources_section)
+        self._check_pdm_btn.setToolTip(
+            "Open Review to compare the selected repository series with discovered "
+            "PDM candidates. Candidates are evidence only and are not auto-mapped."
+        )
+        self._check_pdm_btn.clicked.connect(self._on_check_repository_pdm)
         self._check_pdm_btn.setEnabled(False)
         sources_layout.addWidget(self._check_pdm_btn)
         layout.addWidget(sources_section)
@@ -649,6 +656,12 @@ class ProductPage(BasePage):
         )
         self._clear_repository_btn.setEnabled(True)
         self._check_pdm_btn.setEnabled(True)
+
+    def _on_check_repository_pdm(self) -> None:
+        """Send repository/PDM evidence to the existing Review workflow."""
+        if self._context.repository_context_service.active_context is None:
+            return
+        self.repository_review_requested.emit()
 
     def _on_clear_repository(self) -> None:
         self._repository_path.setText("Not connected")
