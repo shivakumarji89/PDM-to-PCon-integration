@@ -561,6 +561,11 @@ class SifValidationService(BaseService):
                 site,
                 connection=conn,
             )
+            valid_catalogues_by_item = repo.fetch_items_valid_catalogues(
+                items,
+                catalogue_ids,
+                connection=conn,
+            )
             valid_items: set[str] = set()
             for row in contexts:
                 item = str(row.Item)
@@ -616,6 +621,19 @@ class SifValidationService(BaseService):
                 sif = line.sif_price
                 base = base_price.get(line.base)
                 plc = plc_by_item.get(line.base, "")
+                if line.base not in valid_catalogues_by_item:
+                    results.append(SifResult(
+                        seq=line.seq, sku=sku, plc=plc, qty=line.qty,
+                        source_date=line.source_date, sif_price=sif,
+                        status="unresolved",
+                        message=(
+                            f"SKU/options do not resolve in validation catalogue scope "
+                            f"[{line.base}]"
+                        ),
+                    ))
+                    if on_result:
+                        on_result(results[-1])
+                    continue
                 if base is None:
                     context = next(
                         (row for row in contexts if str(row.Item) == str(line.base)),
