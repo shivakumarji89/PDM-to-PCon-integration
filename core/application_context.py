@@ -33,7 +33,6 @@ from services.option_service import OptionService
 from services.option_value_service import OptionValueService
 from services.pdm_service import PDMService
 from services.product_profile_service import ProductProfileService
-from services.data_lineage_service import DataLineageService
 from services.project_service import ProjectService
 from services.property_service import PropertyService
 from services.property_value_service import PropertyValueService
@@ -142,7 +141,6 @@ class ApplicationContext:
             OptionService: OptionService,
             OptionValueService: OptionValueService,
             ProductProfileService: ProductProfileService,
-            DataLineageService: DataLineageService,
             ValidationService: ValidationService,
             EngineeringInitializationService: EngineeringInitializationService,
             EngineeringFamilyService: EngineeringFamilyService,
@@ -270,11 +268,6 @@ class ApplicationContext:
     @property
     def product_profile_service(self) -> ProductProfileService:
         return self.get_service(ProductProfileService)
-
-    @property
-    def data_lineage_service(self) -> DataLineageService:
-        """Shared traceable cross-source context for the active product."""
-        return self.get_service(DataLineageService)
 
     @property
     def engineering_text_service(self) -> EngineeringTextService:
