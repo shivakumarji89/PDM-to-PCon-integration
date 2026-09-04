@@ -948,6 +948,75 @@ class PDMRepository(BaseRepository):
         )
         return [int(r.CatalogueId) for r in rows]
 
+    def fetch_validation_catalogue_ids_ordered(
+        self,
+        catalogue_ids: Sequence[int],
+        site_id: int,
+        connection: Any = None,
+    ) -> list[int]:
+        """Apply the exact legacy GetPrice catalogue ordering.
+
+        GetPrice reorders the supplied catalogue ids by LeadTime and gives the
+        current pricing site priority when lead times are equal.
+        """
+        ids = [int(value) for value in catalogue_ids]
+        if not ids:
+            return []
+        ph = self._placeholders(len(ids))
+        query = (
+            "SELECT CatalogueId, LeadTime "
+            "FROM Catalogue "
+            f"WHERE CatalogueId IN ({ph}) "
+            "ORDER BY LeadTime, "
+            "CASE WHEN PrimarySiteId = ? THEN PrimarySiteId ELSE PrimarySiteId * 10 END, "
+            "Name"
+        )
+        rows = self._execute(
+            query,
+            tuple(ids) + (int(site_id),),
+            connection=connection,
+        )
+        return [int(row.CatalogueId) for row in rows]
+
+    def fetch_item_price_context(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Legacy GetPrice item/price-matrix validation context."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT i.Item, i.ItemId, i.Status, i.ProductId, "
+                "p.IsSuperProduct, pc.ProductCodeId, pc.PriceCode, "
+                "pm.Rounding, pc.BasePriceRef "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "LEFT JOIN Product_Code pc ON "
+                "pc.ProductCodeId = CASE "
+                "WHEN i.ProductCodeIdOverride IS NOT NULL THEN i.ProductCodeIdOverride "
+                "ELSE p.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "LEFT JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "LEFT JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE i.Item IN ({ph})"
+            )
+            rows.extend(
+                self._execute(
+                    query,
+                    (site_id, currency) + tuple(chunk),
+                    connection=connection,
+                )
+            )
+        return rows
+
     def fetch_item_get_price_ext_base_prices(
         self,
         items: Sequence[Any],
