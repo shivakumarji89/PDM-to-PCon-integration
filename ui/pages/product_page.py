@@ -618,9 +618,34 @@ class ProductPage(BasePage):
             return
 
         directory = paths[selected]
+        try:
+            data_context = self._context.data_lineage_service.open_repository_series(
+                directory
+            )
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Open Repository",
+                f"Series was selected but its data context could not be read:\n{exc}",
+            )
+            return
+
         self._repository_path.setText(directory)
+        self._info_name.setText(str(data_context.records["name"].value or "-"))
+        self._info_code.setText(str(data_context.records["code"].value or "-"))
+        self._info_category.setText(str(data_context.records["category"].value or "-"))
+        self._info_catalogue.setText(
+            str(data_context.records["catalogue"].value or "-")
+        )
+
+        pdm_status = {
+            "exact_match": "PDM exact match",
+            "candidates_found": f"PDM candidates: {data_context.pdm_match_count}",
+            "not_found": "No PDM match found",
+            "unavailable": "PDM cross-check unavailable",
+        }.get(data_context.pdm_match_status, "PDM not checked")
         self._repository_status.setText(
-            f"Existing series selected: {selected}"
+            f"Existing series selected: {data_context.series_name} · {pdm_status}"
         )
         self._clear_repository_btn.setEnabled(True)
         self._check_pdm_btn.setEnabled(True)
@@ -632,6 +657,14 @@ class ProductPage(BasePage):
         )
         self._clear_repository_btn.setEnabled(False)
         self._check_pdm_btn.setEnabled(False)
+        self._context.data_lineage_service.clear()
+        for label in (
+            self._info_name,
+            self._info_code,
+            self._info_category,
+            self._info_catalogue,
+        ):
+            label.setText("-")
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
