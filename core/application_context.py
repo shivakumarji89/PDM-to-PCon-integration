@@ -23,6 +23,7 @@ from services.xocd_export_service import XocdExportService
 from services.ocd_export_service import OcdExportService
 from services.price_update_service import PriceUpdateService
 from services.version_update_service import VersionUpdateService, RepositoryContextService
+from services.category_context_service import CategoryContextService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
 from services.obx_validation_service import ObxValidationService
 from services.pip_service import PipService
@@ -134,6 +135,7 @@ class ApplicationContext:
             SnapshotService: SnapshotService,
             PDMService: PDMService,
             RepositoryContextService: RepositoryContextService,
+            CategoryContextService: CategoryContextService,
             MDBService: MDBService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
