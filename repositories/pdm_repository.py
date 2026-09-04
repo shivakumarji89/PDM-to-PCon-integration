@@ -971,7 +971,9 @@ class PDMRepository(BaseRepository):
                         @item = ?,
                         @siteId = ?,
                         @currency = ?,
-                        @effectivedate = ?
+                        @effectivedate = ?,
+                        @custPriceCodeOverride = NULL,
+                        @excludeFabricColours = 1
                 """
 
                 cursor = conn.cursor()
