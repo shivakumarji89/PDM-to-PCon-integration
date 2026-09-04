@@ -313,6 +313,47 @@ class SifValidationService(BaseService):
                 break
         return total
 
+    @classmethod
+    def _verify_selected_options(cls, option_rows, codes: list[str]) -> str | None:
+        """Verify selected order codes with the core legacy VerifyOptions rules.
+
+        Values are matched in PDM display order, exact first and then longest
+        '#' prefix. Once matched, the complete OptionId group is consumed.
+        """
+        groups: dict[str, dict[str, object]] = {}
+        order: list[str] = []
+        for row in option_rows:
+            try:
+                if int(getattr(row, "Status", 1) or 1) != 1:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+            if not code or code == " ":
+                continue
+            group = str(getattr(row, "OptionId", "") or "")
+            if group not in groups:
+                groups[group] = {}
+                order.append(group)
+            groups[group][code] = row
+
+        used: set[str] = set()
+        for position, raw in enumerate(codes, start=1):
+            code = (raw or "").strip().upper()
+            if not code or code in {"!", "#"}:
+                continue
+            matched_group = None
+            for group in order:
+                if group in used:
+                    continue
+                if cls._increment_key_match(code, groups[group]) is not None:
+                    matched_group = group
+                    break
+            if matched_group is None:
+                return f"invalid option string in order code at position {position}: {code}"
+            used.add(matched_group)
+        return None
+
     def _server_date(self, repo, conn) -> str:
         """Effective date = PDM ``GetUTCDate()`` (the current price list)."""
         rows = repo._execute("SELECT CONVERT(varchar, GetUTCDate(), 106) AS d", (), conn)
