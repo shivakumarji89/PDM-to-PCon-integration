@@ -567,18 +567,63 @@ class ProductPage(BasePage):
         return box
 
     def _on_open_repository(self) -> None:
-        from PySide6.QtWidgets import QFileDialog
+        """Discover existing series from the standard Seating + Tables roots."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
 
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select Repository Workspace"
-        )
-        if not directory:
+        roots = [
+            r"C:\\HermanMillerOFMLSVN\\Staging\\HermanMiller\\WS\\Seating\\Seating",
+            r"C:\\HermanMillerOFMLSVN\\Staging\\HermanMiller\\WS\\Tables\\Tables",
+        ]
+        repository = ";".join(roots)
+
+        try:
+            folders = self._context.version_update_service.series_folders(repository)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Open Repository",
+                f"Could not scan the standard repository locations:\\n{exc}",
+            )
             return
+
+        if not folders:
+            QMessageBox.information(
+                self,
+                "Open Repository",
+                "No series were found in the Seating or Tables repository locations.",
+            )
+            return
+
+        items = []
+        paths = {}
+        for folder in folders:
+            label = folder.name
+            # Keep the UI label unambiguous when the same series name exists
+            # under more than one workspace root.
+            if label in paths:
+                label = f"{folder.name} ({folder.parent.name})"
+            paths[label] = str(folder)
+            items.append(label)
+
+        items.sort(key=str.lower)
+        selected, accepted = QInputDialog.getItem(
+            self,
+            "Open Existing Series",
+            f"Select a series ({len(items)} found):",
+            items,
+            0,
+            False,
+        )
+        if not accepted or not selected:
+            return
+
+        directory = paths[selected]
         self._repository_path.setText(directory)
         self._repository_status.setText(
-            "Connected. Repository discovery can now identify existing series."
+            f"Existing series selected: {selected}"
         )
         self._clear_repository_btn.setEnabled(True)
+        self._check_pdm_btn.setEnabled(True)
 
     def _on_clear_repository(self) -> None:
         self._repository_path.setText("Not connected")
@@ -586,6 +631,7 @@ class ProductPage(BasePage):
             "Select a repository workspace to begin existing-series discovery."
         )
         self._clear_repository_btn.setEnabled(False)
+        self._check_pdm_btn.setEnabled(False)
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
