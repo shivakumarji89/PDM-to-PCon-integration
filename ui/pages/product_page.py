@@ -619,7 +619,7 @@ class ProductPage(BasePage):
 
         directory = paths[selected]
         try:
-            data_context = self._context.data_lineage_service.open_repository_series(
+            data_context = self._context.repository_context_service.open_series(
                 directory
             )
         except Exception as exc:
@@ -657,7 +657,7 @@ class ProductPage(BasePage):
         )
         self._clear_repository_btn.setEnabled(False)
         self._check_pdm_btn.setEnabled(False)
-        self._context.data_lineage_service.clear()
+        self._context.repository_context_service.clear()
         for label in (
             self._info_name,
             self._info_code,
