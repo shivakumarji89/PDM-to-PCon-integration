@@ -1064,6 +1064,52 @@ class PDMRepository(BaseRepository):
             for item, ids in allowed.items()
         }
 
+    def fetch_item_component_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Resolve legacy getListPrice component base prices for SuperProducts."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT parent.Item AS ParentItem, component.Item AS ComponentItem, "
+                "ic.Quantity, ic.FeaturePositionString, "
+                "dbo.fnGetListPrice(c.Currency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN component.BasePrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN component.BasePrice3 "
+                "ELSE component.BasePrice END, "
+                "pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL) AS price "
+                "FROM Item parent "
+                "INNER JOIN ItemComponents ic ON ic.ItemId = parent.ItemId "
+                "INNER JOIN Item component ON component.ItemId = ic.SubItemId "
+                "INNER JOIN Product cp ON component.ProductId = cp.ProductId "
+                "INNER JOIN Product_Code pc ON pc.ProductCodeId = "
+                "CASE WHEN component.ProductCodeIdOverride IS NOT NULL "
+                "THEN component.ProductCodeIdOverride ELSE cp.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE parent.Item IN ({ph}) "
+                "AND component.Status < 2 AND parent.Status = 1"
+            )
+            rows.extend(
+                self._execute(
+                    query,
+                    (mydate, site_id, currency) + tuple(chunk),
+                    connection=connection,
+                )
+            )
+        return rows
+
     def fetch_item_get_price_ext_base_prices(
         self,
         items: Sequence[Any],
