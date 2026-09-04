@@ -193,32 +193,13 @@ class ObxValidationService(BaseService):
         return [int(r.SiteId) for r in rows]
 
     def _resolve_site(self, currency, lines, pricing, repo, conn, calibration_date) -> int | None:
-        """Resolve the pricing site against the OBX source-date prices.
+        """Resolve the OBX pricing site using the original PDM OBX rule.
 
-        Site identity must not depend on the user-selected validation date: a
-        future date can legitimately have different prices, so calibrating against
-        the old OBX prices would produce zero hits and fall back to the wrong site."""
-        candidates = self._candidate_sites(currency, repo, conn)
-
-        if len(candidates) <= 1:
-            return candidates[0] if candidates else None
-
-        sample = [line for line in lines if line.base][:self._CALIBRATION_SAMPLE]
-
-        if not sample:
-            return candidates[0]
-
-        best_site, best_hits = None, 0
-        for site in candidates:
-            results = pricing._validate_group(
-                currency, sample, site, repo, conn, calibration_date,
-                [0], len(sample), None, None, None, "OBX", True,
-            )
-            hits = sum(1 for r in results if r.status == "ok")
-            if hits > best_hits:
-                best_site, best_hits = site, hits
-
-        return best_site if best_site is not None else candidates[0]
+        The legacy validator sets both GBP and EUR OBX files to UK. Resolve the
+        SiteId by name from PDM; do not infer a site from DomCurrCode or from a
+        price-match calibration.
+        """
+        return pricing.site_for_currency(currency, repo, conn, obx=True)
 
     def validate(self, currency, lines, site=None, validation_date=None,
                  progress=None, stage=None, on_result=None):
