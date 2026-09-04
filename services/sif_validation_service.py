@@ -533,7 +533,7 @@ class SifValidationService(BaseService):
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
-            got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
+            got = repo.fetch_item_get_price_ext_base_prices(items, currency, mydate, conn, site_id=site)
             base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
             plc_by_item = self._fetch_plc(items, site, repo, conn)
             # The legacy validator sends the complete configured SKU to GetPrice.
