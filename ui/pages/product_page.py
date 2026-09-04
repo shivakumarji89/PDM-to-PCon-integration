@@ -412,7 +412,7 @@ class ProductPage(BasePage):
 
     # -- UI construction ---------------------------------------------------
     def _build_top_section(self) -> QWidget:
-        """Working area: Product Explorer (left) + Engineering Context tabs (right)."""
+        """Working area: Product Explorer (left) + Repository Workspace (right)."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("productTopSplitter")
         splitter.setChildrenCollapsible(False)
@@ -485,82 +485,107 @@ class ProductPage(BasePage):
         return box
 
     def _build_context(self) -> QWidget:
-        """Engineering Context: Product, Snapshot and Engineering Summary shown
-        together as vertically stacked sections (no tabs) so all engineering
-        context is visible at once. Scrolls if the window is short."""
-        box = QGroupBox("Engineering Context", self)
+        """Centralized product workspace for repository and data-source controls."""
+        box = QGroupBox("Repository Workspace", self)
         layout = QVBoxLayout(box)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
-        scroll = QScrollArea(box)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        product_section = QGroupBox("Current Product", box)
+        product_form = QFormLayout(product_section)
+        product_form.setContentsMargins(8, 6, 8, 8)
+        product_form.setSpacing(4)
 
-        inner = QWidget()
-        stack = QVBoxLayout(inner)
-        stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(8)
-        stack.addWidget(self._context_section("Product", self._build_product_tab()))
-        stack.addWidget(self._context_section("Snapshot", self._build_snapshot_tab()))
-        stack.addStretch(1)
+        self._info_name = QLabel("-", product_section)
+        self._info_code = QLabel("-", product_section)
+        self._info_category = QLabel("-", product_section)
+        self._info_catalogue = QLabel("-", product_section)
+        for widget in (
+            self._info_name,
+            self._info_code,
+            self._info_category,
+            self._info_catalogue,
+        ):
+            widget.setWordWrap(True)
 
-        scroll.setWidget(inner)
-        layout.addWidget(scroll)
+        product_form.addRow("Name:", self._info_name)
+        product_form.addRow("Code:", self._info_code)
+        product_form.addRow("Category:", self._info_category)
+        product_form.addRow("Catalogue:", self._info_catalogue)
+        layout.addWidget(product_section)
+
+        repository_section = QGroupBox("Repository", box)
+        repository_layout = QVBoxLayout(repository_section)
+        repository_layout.setContentsMargins(8, 6, 8, 8)
+        repository_layout.setSpacing(6)
+
+        self._repository_path = QLabel("Not connected", repository_section)
+        self._repository_path.setObjectName("pageSubtitle")
+        self._repository_path.setWordWrap(True)
+        repository_layout.addWidget(self._repository_path)
+
+        self._repository_status = QLabel(
+            "Select a repository workspace to begin existing-series discovery.",
+            repository_section,
+        )
+        self._repository_status.setObjectName("pageSubtitle")
+        self._repository_status.setWordWrap(True)
+        repository_layout.addWidget(self._repository_status)
+
+        buttons = QHBoxLayout()
+        self._open_repository_btn = QPushButton("Open Repository", repository_section)
+        self._open_repository_btn.clicked.connect(self._on_open_repository)
+        buttons.addWidget(self._open_repository_btn)
+
+        self._clear_repository_btn = QPushButton("Clear", repository_section)
+        self._clear_repository_btn.clicked.connect(self._on_clear_repository)
+        self._clear_repository_btn.setEnabled(False)
+        buttons.addWidget(self._clear_repository_btn)
+        repository_layout.addLayout(buttons)
+        layout.addWidget(repository_section)
+
+        sources_section = QGroupBox("Data Sources", box)
+        sources_layout = QVBoxLayout(sources_section)
+        sources_layout.setContentsMargins(8, 6, 8, 8)
+        sources_layout.setSpacing(6)
+
+        note = QLabel(
+            "Repository provides the existing engineered baseline. PDM remains "
+            "available for targeted live updates such as fabric, finish or pricing.",
+            sources_section,
+        )
+        note.setObjectName("pageSubtitle")
+        note.setWordWrap(True)
+        sources_layout.addWidget(note)
+
+        self._check_pdm_btn = QPushButton("Check PDM Changes", sources_section)
+        self._check_pdm_btn.setEnabled(False)
+        sources_layout.addWidget(self._check_pdm_btn)
+        layout.addWidget(sources_section)
+
+        layout.addStretch(1)
         return box
 
-    def _context_section(self, title: str, content: QWidget) -> QWidget:
-        section = QGroupBox(title, self)
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(8, 4, 8, 6)
-        layout.setSpacing(2)
-        layout.addWidget(content)
-        return section
+    def _on_open_repository(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
 
-    def _tab_form(self) -> tuple[QWidget, QFormLayout]:
-        widget = QWidget(self)
-        form = QFormLayout(widget)
-        form.setContentsMargins(4, 2, 4, 2)
-        form.setSpacing(4)
-        return widget, form
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Repository Workspace"
+        )
+        if not directory:
+            return
+        self._repository_path.setText(directory)
+        self._repository_status.setText(
+            "Connected. Repository discovery can now identify existing series."
+        )
+        self._clear_repository_btn.setEnabled(True)
 
-    def _build_product_tab(self) -> QWidget:
-        widget, form = self._tab_form()
-        self._info_name = QLabel("-", widget)
-        self._info_code = QLabel("-", widget)
-        self._info_category = QLabel("-", widget)
-        self._info_catalogue = QLabel("-", widget)
-        self._info_range = QLabel("-", widget)
-        self._info_status = QLabel("-", widget)
-        self._info_super = QLabel("-", widget)
-        self._info_new = QLabel("-", widget)
-        for w in (
-            self._info_name, self._info_code, self._info_category,
-            self._info_catalogue, self._info_range,
-        ):
-            w.setWordWrap(True)
-        form.addRow("Product Name:", self._info_name)
-        form.addRow("Product Code:", self._info_code)
-        form.addRow("Category:", self._info_category)
-        form.addRow("Catalogue:", self._info_catalogue)
-        form.addRow("Product Range:", self._info_range)
-        form.addRow("Status:", self._info_status)
-        form.addRow("Super Product:", self._info_super)
-        form.addRow("New Product:", self._info_new)
-        return widget
-
-    def _build_snapshot_tab(self) -> QWidget:
-        widget, form = self._tab_form()
-        self._status_labels: dict[str, QLabel] = {}
-        for label, _attr in self._STATUS_ROWS:
-            value = QLabel("-", widget)
-            self._status_labels[label] = value
-            form.addRow(f"{label}:", value)
-        self._readiness = QLabel("-", widget)
-        self._readiness.setObjectName("readiness")
-        form.addRow("Overall:", self._readiness)
-        return widget
+    def _on_clear_repository(self) -> None:
+        self._repository_path.setText("Not connected")
+        self._repository_status.setText(
+            "Select a repository workspace to begin existing-series discovery."
+        )
+        self._clear_repository_btn.setEnabled(False)
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
@@ -1386,38 +1411,10 @@ class ProductPage(BasePage):
 
     # -- display -----------------------------------------------------------
     def _refresh_display(self, product, duration, warnings) -> None:
-        snapshot = self._context.active_snapshot
-
-        # Product Information (real data only).
         self._info_name.setText(product.name or "-")
         self._info_code.setText(product.code or "-")
         self._info_category.setText(product.category or "-")
         self._info_catalogue.setText(product.description or "-")
-        self._info_range.setText(product.range_name or "-")
-        self._info_status.setText(product.status or "-")
-        self._info_super.setText("Yes" if product.is_super_product else "No")
-        self._info_new.setText("Yes" if product.new_product else "No")
-
-        # Snapshot status (loaded/empty + counts + readiness).
-        self._update_status_rows(snapshot)
-
-    def _update_status_rows(self, snapshot) -> None:
-        for label, attr in self._STATUS_ROWS:
-            widget = self._status_labels[label]
-            if snapshot is None:
-                widget.setText("Not loaded")
-                continue
-            if label == "Product":
-                widget.setText("Loaded" if snapshot.product is not None else "Not loaded")
-            elif label == "Metadata":
-                has_meta = bool(snapshot.metadata and snapshot.metadata.source)
-                widget.setText("Loaded" if has_meta else "Empty")
-            else:
-                count = len(getattr(snapshot, attr))
-                widget.setText(f"Loaded ({count})" if count else "Empty")
-
-        ready, _reason = self._compute_readiness(snapshot)
-        self._readiness.setText("READY" if ready else "INCOMPLETE")
 
     def _compute_readiness(self, snapshot) -> tuple[bool, str]:
         if snapshot is None or snapshot.product is None:
@@ -1428,12 +1425,12 @@ class ProductPage(BasePage):
 
     def _reset_display(self) -> None:
         for label in (
-            self._info_name, self._info_code, self._info_category,
-            self._info_catalogue, self._info_range, self._info_status,
-            self._info_super, self._info_new,
+            self._info_name,
+            self._info_code,
+            self._info_category,
+            self._info_catalogue,
         ):
             label.setText("-")
-        self._update_status_rows(None)
 
     # -- readiness (for navigation checks) --------------------------------
     def is_snapshot_ready(self) -> bool:
