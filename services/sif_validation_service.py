@@ -935,10 +935,15 @@ class SifValidationService(BaseService):
                 sif = line.sif_price
                 base = base_price.get(line.base)
                 plc = plc_by_item.get(line.base, "")
-                option_error = self._verify_selected_options(
-                    option_rows_by_item.get(str(line.base), []),
-                    [option.code for option in line.options],
-                )
+                # Legacy USdata pricing does not run the normal Item/Option
+                # catalogue verification branch; its ordered US option stream is
+                # priced directly, including dependent option values.
+                option_error = None
+                if str(line.base) not in us_items:
+                    option_error = self._verify_selected_options(
+                        option_rows_by_item.get(str(line.base), []),
+                        [option.code for option in line.options],
+                    )
                 if option_error:
                     results.append(SifResult(
                         seq=line.seq, sku=sku, plc=plc, qty=line.qty,
