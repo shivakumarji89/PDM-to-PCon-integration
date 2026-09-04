@@ -111,13 +111,13 @@ class ObxValidationService(BaseService):
 
     @classmethod
     def _sale_price(cls, article: ET.Element) -> tuple[str, float]:
-        prices = cls._children(article, "itemPrice")
+        """Return the first itemPrice exactly like the legacy PDM OBX parser.
 
-        sale_price = next(
-            (price for price in prices if (price.get("type") or "").lower() == "sale"),
-            None,
-        )
-        price = sale_price or (prices[0] if prices else None)
+        The reference implementation starts at the final article and reads the
+        first <itemPrice ...> element.  It does not prefer type="sale".
+        """
+        prices = cls._children(article, "itemPrice")
+        price = prices[0] if prices else None
 
         if price is None:
             return "", 0.0
