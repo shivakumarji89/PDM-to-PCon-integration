@@ -574,14 +574,15 @@ class SifValidationService(BaseService):
     # pricing region; DomCurrCode is only that site's domestic currency and must
     # not be used to discover the pricing site.
     _SIF_SITE_BY_CURRENCY = {
+        # These are PDM Site.Site codes, not Site.Description values.
         "GBP": "UK",
         "EUR": "UK",
-        "HKD": "Hong Kong",
-        "CNY": "HM Dongguan",
-        "JPY": "Japan",
-        "INR": "India",
-        "BRL": "Brazil",
-        "USD": "Singapore",
+        "HKD": "HK",
+        "CNY": "DG",
+        "JPY": "JP",
+        "INR": "IN",
+        "BRL": "BR",
+        "USD": "SG",
     }
 
     def site_for_currency(self, currency: str, repo, conn, *, obx: bool = False) -> int | None:
@@ -601,9 +602,11 @@ class SifValidationService(BaseService):
             SELECT SiteId
             FROM Site
             WHERE UPPER(Site) = UPPER(?)
-            ORDER BY SiteId
+               OR UPPER(Description) = UPPER(?)
+            ORDER BY CASE WHEN UPPER(Site) = UPPER(?) THEN 0 ELSE 1 END,
+                     SiteId
             """,
-            (site_name,),
+            (site_name, site_name, site_name),
             conn,
         )
         return int(rows[0].SiteId) if rows else None
