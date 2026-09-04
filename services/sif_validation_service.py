@@ -451,16 +451,13 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
-            # Preserve SIF's original currency-based site resolution.
-            # OBX alone may supply a pre-resolved fixed site.
+            # OBX supplies a resolved site. SIF must calibrate the pricing site
+            # from the file prices because a site's DomCurrCode is not the same
+            # thing as every currency that can be priced at that site.
             if obx and site is not None:
                 group_site = site
             else:
-                group_site = self._site_id_for_currency(cur, repo, conn)
-
-                # Temporary diagnostic: use the proven CNY pricing site
-                if cur.upper() == "CNY":
-                    group_site = 9
+                group_site = self.resolve_site(cur, group, repo, conn, mydate)
 
             sites[cur] = group_site
             results.extend(self._validate_group(
