@@ -637,7 +637,9 @@ class SifValidationService(BaseService):
             inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
 
             if inc_items:
-                inc_rows = repo.fetch_item_option_increment_prices(
+                # Same ordered PDM option data drives both VerifyOptions and
+                # GetPriceExt; do not resolve validation from a different query.
+                inc_rows = repo.fetch_item_validation_options(
                     inc_items, currency, mydate, site, conn
                 )
                 for r in inc_rows:
