@@ -896,10 +896,18 @@ class SifValidationService(BaseService):
 
             if inc_items:
                 # Same ordered PDM option data drives both VerifyOptions and
-                # GetPriceExt; do not resolve validation from a different query.
+                # GetPriceExt; USdata uses its own direct + dependent stream.
+                normal_inc_items = sorted(set(inc_items) - us_items)
+                us_inc_items = sorted(set(inc_items) & us_items)
                 inc_rows = repo.fetch_item_validation_options(
-                    inc_items, currency, mydate, site, conn
-                )
+                    normal_inc_items, currency, mydate, site, conn
+                ) if normal_inc_items else []
+                if us_inc_items:
+                    inc_rows.extend(
+                        repo.fetch_item_us_dependent_increment_prices(
+                            us_inc_items, currency, mydate, site, connection=conn
+                        )
+                    )
                 for r in inc_rows:
                     item = str(r.Item)
                     code = str(r.OrderCodeValue2 or "").strip().upper()
