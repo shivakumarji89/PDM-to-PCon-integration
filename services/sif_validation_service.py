@@ -330,45 +330,97 @@ class SifValidationService(BaseService):
         return {position - 1}
 
     @classmethod
-    def _match_component_increments(cls, rows, codes: list[str]) -> float:
-        """Allocate SuperProduct component increments by tertiary/feature position."""
-        total = 0.0
-        used: set[tuple[str, str, int]] = set()
-        normalized = [(code or "").strip().upper() for code in codes]
+    def _match_component_increments(cls, rows, codes: list[str], item: str = "") -> float:
+        """Port the core getListPrice SuperProduct increment matching semantics."""
+        prepared = []
         for row in rows:
             code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
             if not code:
                 continue
-            option_id = str(getattr(row, "OptionId", "") or "")
+            display = int(getattr(row, "DisplayOrder", 0) or 0)
             tertiary = int(getattr(row, "TertiaryOption", 0) or 0)
-            positions = cls._feature_option_indexes(
-                getattr(row, "FeaturePositionString", None), option_id
-            )
-            candidate_positions = (
-                {tertiary - 1} if tertiary > 0 else positions
-            )
-            if candidate_positions is None:
-                candidate_positions = set(range(len(normalized)))
-            for position in candidate_positions:
-                if position < 0 or position >= len(normalized):
-                    continue
-                selected = normalized[position]
-                if cls._increment_key_match(selected, {code: row}) is None:
-                    continue
-                key = (
-                    str(getattr(row, "CompItem", "") or ""),
-                    option_id,
-                    position,
+            option_id = str(getattr(row, "OptionId", "") or "")
+            if tertiary == 0:
+                derived = cls._feature_option_indexes(
+                    getattr(row, "FeaturePositionString", None), option_id
                 )
-                if key in used:
-                    continue
-                used.add(key)
-                price = getattr(row, "IncPrice", None)
-                qty = int(getattr(row, "Quantity", 1) or 1)
-                if price is not None:
-                    total += float(price) * qty
-                break
-        return total
+                if derived:
+                    tertiary = min(derived) + 1
+            prepared.append({
+                "row": row, "code": code, "display": display,
+                "tertiary": tertiary, "option_id": option_id,
+                "component": str(getattr(row, "CompItem", "") or ""),
+            })
+
+        total = 0.0
+        applied_option_ids: set[str] = set()
+        normalized = [(code or "").strip().upper() for code in codes if code]
+        deferred = 0.0
+
+        for position, selected in enumerate(normalized, start=1):
+            alternatives = [selected]
+            if len(selected) > 2:
+                alternatives.append(selected[:2] + "#")
+            if len(selected) > 3:
+                alternatives.append(selected[:3] + "#")
+
+            matches = [entry for entry in prepared if entry["code"] in alternatives]
+            if not matches:
+                continue
+
+            matches.sort(key=lambda entry: (
+                0 if entry["tertiary"] == position else 1,
+                0 if entry["display"] == position else 1,
+                entry["display"] or 999,
+            ))
+
+            chosen = None
+            for entry in matches:
+                display = entry["display"]
+                tertiary = entry["tertiary"]
+                position_ok = (
+                    selected.find("#") >= 0
+                    or entry["code"].find("#") >= 0
+                    or item.startswith("AK")
+                    or (position == 1 and display == 1 and position == tertiary)
+                    or (position == 1 and display == 1)
+                    or (position > 1 and display > 1 and tertiary == 0)
+                    or position == display
+                    or not entry["component"]
+                )
+                if position_ok:
+                    chosen = entry
+                    break
+            if chosen is None:
+                continue
+
+            option_id = chosen["option_id"]
+            if option_id in applied_option_ids:
+                continue
+            applied_option_ids.add(option_id)
+
+            row = chosen["row"]
+            price = getattr(row, "IncPrice", None)
+            if price is None:
+                continue
+            amount = float(price)
+
+            if item.startswith("OF") and item.endswith("2"):
+                try:
+                    option_num = int(option_id)
+                except ValueError:
+                    option_num = -1
+                if option_num == 3344:
+                    deferred = amount
+                    amount = 0.0
+                elif option_num == 8:
+                    amount = max(deferred, amount)
+                    deferred = 0.0
+
+            qty = int(getattr(row, "Quantity", 1) or 1)
+            total += amount * qty
+
+        return total + deferred
 
     @classmethod
     def _verify_selected_options(cls, option_rows, codes: list[str]) -> str | None:
@@ -837,6 +889,7 @@ class SifValidationService(BaseService):
                     upcharge = self._match_component_increments(
                         component_increments_by_item.get(str(line.base), []),
                         [o.code for o in line.options],
+                        str(line.base),
                     )
                 else:
                     upcharge = self._match_inc_groups(
