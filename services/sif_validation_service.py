@@ -758,6 +758,9 @@ class SifValidationService(BaseService):
                     on_result(results[-1])
             return results
 
+        # Source-specific catalogue selection is intentionally resolved before
+        # the shared pricing pipeline. After this point SIF and OBX use the same
+        # item/option/pricing engine so neither source can bypass parity logic.
         catalogue_ids = repo.fetch_validation_catalogue_ids(
             currency,
             site,
