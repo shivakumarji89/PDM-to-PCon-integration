@@ -329,6 +329,49 @@ class SifValidationService(BaseService):
             position += prefix.count("|")
         return {position - 1}
 
+    @staticmethod
+    def _legacy_display_override(item: str, option_id: str, display: int) -> tuple[int, int]:
+        """Exact product-family display-position overrides from legacy getListPrice."""
+        try:
+            oid = int(option_id)
+        except (TypeError, ValueError):
+            return display, 1
+
+        if item.startswith(("YH304", "YH306", "YH307")) and oid == 6733:
+            display = 3
+        elif item.startswith(("YI303", "YI305")) and oid == 6768:
+            display = 3
+        elif item.startswith("NOFTE") and oid == 6820:
+            display = 1
+        elif item.startswith(("NODLE1", "NODLE2")):
+            if oid == 6699:
+                display = 1
+            elif oid == 6695:
+                display = 2
+        elif item.startswith(("EX1", "EZ1")) and oid == 1206 and display == 1:
+            display = 3
+        elif item.startswith("OAW30"):
+            if oid == 3278:
+                display = 1
+            elif oid == 3716:
+                display = 2
+        elif item.startswith("HE"):
+            if oid == 3765:
+                display = 3
+            elif oid == 3761:
+                display = 4
+
+        base_display = 1
+        if item.startswith("AS"):
+            if item.startswith(("AS4", "AS5")) and display == 3:
+                display = 1
+            if display == 4:
+                display = 2
+            if display == 2:
+                base_display = 2
+
+        return display, base_display
+
     @classmethod
     def _match_component_increments(cls, rows, codes: list[str], item: str = "") -> float:
         """Port the core getListPrice SuperProduct increment matching semantics."""
@@ -340,6 +383,7 @@ class SifValidationService(BaseService):
             display = int(getattr(row, "DisplayOrder", 0) or 0)
             tertiary = int(getattr(row, "TertiaryOption", 0) or 0)
             option_id = str(getattr(row, "OptionId", "") or "")
+            display, base_display = cls._legacy_display_override(item, option_id, display)
             if tertiary == 0:
                 derived = cls._feature_option_indexes(
                     getattr(row, "FeaturePositionString", None), option_id
@@ -348,7 +392,8 @@ class SifValidationService(BaseService):
                     tertiary = min(derived) + 1
             prepared.append({
                 "row": row, "code": code, "display": display,
-                "tertiary": tertiary, "option_id": option_id,
+                "tertiary": tertiary, "base_display": base_display,
+                "option_id": option_id,
                 "component": str(getattr(row, "CompItem", "") or ""),
             })
 
