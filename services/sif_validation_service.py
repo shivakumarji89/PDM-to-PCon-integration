@@ -263,38 +263,52 @@ class SifValidationService(BaseService):
         return line.base + "".join(" " + c for c in codes)
 
     @staticmethod
-    def _match_inc(inc, code: str) -> float:
+    def _increment_key_match(code: str, values: dict[str, object]) -> str | None:
+        """Match one order code using the legacy GetPriceExt rule.
+
+        Exact values win. Prefix values ending in '#' are then considered and
+        the longest matching prefix wins (for example ABC# before AB#).
+        """
         code = (code or "").strip().upper()
+        if not code:
+            return None
+        if code in values:
+            return code
 
-        # Exact match
-        if code in inc:
-            price, _is_fabric, quantity = inc[code]
-            return price * quantity
+        matches = [
+            key for key in values
+            if key.endswith("#") and code.startswith(key[:-1])
+        ]
+        return max(matches, key=len) if matches else None
 
-        # Legacy fallback matching
-        for key in (code[:2] + "#", code[:3] + "#"):
-            if key in inc:
-                price, _is_fabric, quantity = inc[key]
-                return price * quantity
+    @classmethod
+    def _match_inc(cls, inc, code: str) -> float:
+        key = cls._increment_key_match(code, inc)
+        if key is None:
+            return 0.0
+        price, _is_fabric, quantity = inc[key]
+        return price * quantity
 
-        return 0.0
+    @classmethod
+    def _match_inc_groups(cls, groups: dict[str, dict[str, float]], codes) -> float:
+        """Match selected codes against PDM OptionId groups.
 
-    @staticmethod
-    def _match_inc_groups(groups: dict[str, dict[str, float]], codes) -> float:
-        """OBX upcharge: each order code is resolved inside its own PDM option
-        group, and a group can only be consumed once (the same code appears in
-        several groups with different increments)."""
+        The legacy GetPriceExt implementation removes an OptionId after a value
+        has been consumed. This prevents one selected code from charging more
+        than one row from the same option group and handles duplicate codes
+        across groups deterministically.
+        """
         order = list(groups.values())
         used: set[int] = set()
         total = 0.0
         for raw in codes:
-            code = (raw or "").strip().upper()
-            if not code:
-                continue
             for index, values in enumerate(order):
-                if index in used or code not in values:
+                if index in used:
                     continue
-                total += values[code]
+                key = cls._increment_key_match(raw, values)
+                if key is None:
+                    continue
+                total += float(values[key])
                 used.add(index)
                 break
         return total
@@ -522,16 +536,10 @@ class SifValidationService(BaseService):
             got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
             base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
             plc_by_item = self._fetch_plc(items, site, repo, conn)
-            # Preserve original SIF behavior: only fetch increments for explicit
-            # OL values. OBX has selected order codes without OL amounts, so it
-            # always needs increment lookup.
-            if obx:
-                inc_items = sorted({l.base for l in chunk if l.options})
-            else:
-                inc_items = sorted({
-                    l.base for l in chunk
-                    if any(o.ol for o in l.options)
-                })
+            # The legacy validator sends the complete configured SKU to GetPrice.
+            # Option pricing therefore depends on selected order codes, not on
+            # whether the source SIF happened to contain an OL amount.
+            inc_items = sorted({l.base for l in chunk if l.options})
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
