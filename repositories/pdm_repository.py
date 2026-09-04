@@ -1339,6 +1339,10 @@ class PDMRepository(BaseRepository):
         rows: list[Any] = []
         for chunk in self._chunked(vals, self._IN_CHUNK):
             ph = self._placeholders(len(chunk))
+            # Legacy GetPriceExt does not pass a locale-dependent date string.
+            # It constructs a SQL datetime expression from the effective date and
+            # passes that datetime into fnGetListPrice. Keep the same behaviour so
+            # future PriceFormula selection cannot fall back to the current list.
             query = (
                 "SELECT i.Item, "
                 "dbo.fnGetListPrice("
@@ -1346,7 +1350,10 @@ class PDMRepository(BaseRepository):
                 "CASE WHEN pc.BasePriceRef = 2 THEN i.BasePrice2 "
                 "WHEN pc.BasePriceRef = 3 THEN i.BasePrice3 "
                 "ELSE i.BasePrice END, "
-                "pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL"
+                "pc.PriceCode, "
+                "DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime), "
+                "CAST(? AS datetime)), CAST('19700101' AS datetime)), "
+                "'DMY', pm.Rounding, ?, NULL"
                 ") AS price "
                 "FROM Item i "
                 "INNER JOIN Product p ON i.ProductId = p.ProductId "
