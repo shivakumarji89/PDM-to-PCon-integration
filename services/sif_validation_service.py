@@ -322,15 +322,40 @@ class SifValidationService(BaseService):
         )
         return [int(r.SiteId) for r in rows]
     
-    def _site_id_for_currency(self, currency: str, repo, conn) -> int | None:
+    # Original PDM Validate Order SIF site rules. Currency selects the intended
+    # pricing region; DomCurrCode is only that site's domestic currency and must
+    # not be used to discover the pricing site.
+    _SIF_SITE_BY_CURRENCY = {
+        "GBP": "UK",
+        "EUR": "UK",
+        "HKD": "Hong Kong",
+        "CNY": "HM Dongguan",
+        "JPY": "Japan",
+        "INR": "India",
+        "BRL": "Brazil",
+        "USD": "Singapore",
+    }
+
+    def site_for_currency(self, currency: str, repo, conn, *, obx: bool = False) -> int | None:
+        """Resolve the intended PDM pricing site dynamically from the original
+        PDM validator's currency-to-site rule, then return the PDM SiteId.
+
+        This deliberately does not use Site.DomCurrCode: PDM can price a SKU in
+        currencies other than a site's domestic currency (for example UK/EUR).
+        """
+        code = (currency or "").strip().upper()
+        site_name = "UK" if obx and code in {"GBP", "EUR"} else self._SIF_SITE_BY_CURRENCY.get(code)
+        if not site_name:
+            return None
+
         rows = repo._execute(
             """
             SELECT SiteId
             FROM Site
-            WHERE UPPER(DomCurrCode) = UPPER(?)
+            WHERE UPPER(Site) = UPPER(?)
             ORDER BY SiteId
             """,
-            (currency,),
+            (site_name,),
             conn,
         )
         return int(rows[0].SiteId) if rows else None
@@ -451,13 +476,13 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
-            # OBX supplies a resolved site. SIF must calibrate the pricing site
-            # from the file prices because a site's DomCurrCode is not the same
-            # thing as every currency that can be priced at that site.
-            if obx and site is not None:
+            # Use the original PDM validator's currency-to-site business rule.
+            # PDM remains the final authority: this only selects the context for
+            # fnGetListPriceByItem and option pricing.
+            if site is not None:
                 group_site = site
             else:
-                group_site = self.resolve_site(cur, group, repo, conn, mydate)
+                group_site = self.site_for_currency(cur, repo, conn, obx=obx)
 
             sites[cur] = group_site
             results.extend(self._validate_group(
