@@ -40,6 +40,7 @@ class ReviewPage(BasePage):
         self._last_review = None  # cached review() output; reused by is_ready()
 
         self.add_content(self._build_toolbar())
+        self.add_content(self._build_source_comparison_group())
         self.add_content(self._build_summary_group())
         self.add_content(self._build_lists_row())
         self.add_content(self._build_readiness_group())
@@ -54,6 +55,45 @@ class ReviewPage(BasePage):
         self._refresh_btn.clicked.connect(self.refresh)
         layout.addWidget(self._refresh_btn)
         layout.addStretch(1)
+        return box
+
+    def _build_source_comparison_group(self) -> QWidget:
+        """Evidence-only comparison for an existing repository series.
+
+        This deliberately displays source values and PDM search candidates
+        without asserting that similarly named records are equivalent.
+        """
+        box = QGroupBox("Repository ↔ PDM Discovery", self)
+        layout = QVBoxLayout(box)
+
+        self._source_status = QLabel(
+            "No repository series selected. Open a repository series from Product.",
+            box,
+        )
+        self._source_status.setWordWrap(True)
+        layout.addWidget(self._source_status)
+
+        form = QFormLayout()
+        self._source_rows = {}
+        for key, label in (
+            ("name", "Repository Name"),
+            ("code", "Repository Code"),
+            ("category", "Repository Category"),
+            ("catalogue", "Repository Catalogue"),
+        ):
+            value = QLabel("-", box)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._source_rows[key] = value
+            form.addRow(f"{label}:", value)
+        layout.addLayout(form)
+
+        candidates_label = QLabel(
+            "PDM candidates (discovery only — not standardized mappings):", box
+        )
+        layout.addWidget(candidates_label)
+        self._pdm_candidates = QListWidget(box)
+        self._pdm_candidates.setMinimumHeight(110)
+        layout.addWidget(self._pdm_candidates)
         return box
 
     def _build_summary_group(self) -> QWidget:
@@ -252,8 +292,41 @@ class ReviewPage(BasePage):
         layout.addWidget(buttons)
         dialog.exec()
 
+    def _refresh_source_comparison(self) -> None:
+        context = self._context.repository_context_service.active_context
+        if context is None:
+            self._source_status.setText(
+                "No repository series selected. Open a repository series from Product."
+            )
+            for widget in self._source_rows.values():
+                widget.setText("-")
+            self._pdm_candidates.clear()
+            self._pdm_candidates.addItem("None")
+            return
+
+        self._source_status.setText(
+            f"Repository: {context.repository_path}\n"
+            f"PDM discovery status: {context.pdm_match_status.replace('_', ' ')}"
+        )
+        for key, widget in self._source_rows.items():
+            record = context.records.get(key)
+            widget.setText(str(record.value if record and record.value not in (None, "") else "-"))
+
+        self._pdm_candidates.clear()
+        if context.candidate_products:
+            for index, product in enumerate(context.candidate_products, start=1):
+                self._pdm_candidates.addItem(
+                    f"{index}. {product['name'] or '-'}"
+                    f" | Code: {product['code'] or '-'}"
+                    f" | Category: {product['category'] or '-'}"
+                    f" | Catalogue: {product['catalogue'] or '-'}"
+                )
+        else:
+            self._pdm_candidates.addItem("No PDM candidates found.")
+
     # -- refresh -----------------------------------------------------------
     def refresh(self) -> None:
+        self._refresh_source_comparison()
         review = self._context.validation_service.review()
         self._last_review = review
         for label, widget in self._rows.items():
