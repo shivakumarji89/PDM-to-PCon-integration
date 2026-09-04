@@ -187,6 +187,7 @@ class RepositoryProductContext:
     pdm_match_count: int = 0
     pdm_match_status: str = "not_checked"
     pdm_product_id: str | None = None
+    candidate_products: list[dict[str, Any]] = field(default_factory=list)
 
 
 class RepositoryContextService(BaseService):
@@ -336,31 +337,27 @@ class RepositoryContextService(BaseService):
             return
 
         active.pdm_match_count = len(candidates)
-        name_key = self._normalize(name)
-        code_key = self._normalize(code)
-        exact = [
-            product for product in candidates.values()
-            if (
-                name_key and self._normalize(product.name) == name_key
-            ) or (
-                code_key and self._normalize(product.code) == code_key
-            )
+        # Discovery is deliberately non-semantic: a search hit is evidence only,
+        # never proof that a repository series and a PDM product are equivalent.
+        active.candidate_products = [
+            {
+                "id": str(product.id),
+                "code": product.code or "",
+                "name": product.name or "",
+                "category": product.category or "",
+                "catalogue": product.description or "",
+            }
+            for product in candidates.values()
         ]
 
-        if len(exact) == 1:
-            product = exact[0]
-            active.pdm_match_status = "exact_match"
-            active.pdm_product_id = str(product.id)
-            for record in active.records.values():
-                record.pdm_mapping_status = "matched"
-            active.records["catalogue"].value = product.description or None
-            active.records["catalogue"].fetch_status = (
-                "fetched" if product.description else "not_available"
-            )
-        elif candidates:
+        if candidates:
             active.pdm_match_status = "candidates_found"
             for record in active.records.values():
                 record.pdm_mapping_status = "candidates_found"
+            active.records["name"].notes = (
+                "Candidate discovery only. Repository and PDM meanings are not "
+                "standardized automatically."
+            )
         else:
             active.pdm_match_status = "not_found"
             for record in active.records.values():
