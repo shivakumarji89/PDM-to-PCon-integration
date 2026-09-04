@@ -1135,44 +1135,49 @@ class PDMRepository(BaseRepository):
     def fetch_item_validation_options(
         self,
         items: Sequence[Any],
-        catalogue_id: int,
+        currency: str,
+        mydate: str,
+        site_id: int,
         connection: Any = None,
     ) -> list[Any]:
-        """Option rows for legacy VerifyOptions semantics.
-
-        Unlike pricing, validation must retain OptionId ordering, IsFabric and
-        both product and item catalogue exclusions.
-        """
+        """Ordered PDM option rows used by VerifyOptions parity."""
         vals = [str(value) for value in items if value]
         if not vals:
             return []
         rows: list[Any] = []
-        for chunk in self._chunked(vals, self._IN_CHUNK):
-            ph = self._placeholders(len(chunk))
-            query = (
-                "EXEC dbo.PDMOptionDataReportWithIncList "
-                "@item = ?, @siteId = 1, @currency = 'GBP', "
-                "@effectivedate = GETUTCDATE(), "
-                "@custPriceCodeOverride = NULL, @excludeFabricColours = 1"
-            )
-            # Stored procedure calls remain per item because the PDM procedure
-            # derives dependent values from the individual item.
-            for item in chunk:
-                cursor = connection.cursor() if connection is not None else self.get_connection().cursor()
+        owns_connection = connection is None
+        conn = self.get_connection() if owns_connection else connection
+        try:
+            for item in vals:
+                query = """
+                    EXEC dbo.PDMOptionDataReportWithIncList
+                        @item = ?,
+                        @siteId = ?,
+                        @currency = ?,
+                        @effectivedate = ?,
+                        @custPriceCodeOverride = NULL,
+                        @excludeFabricColours = 1
+                """
+                cursor = conn.cursor()
                 try:
-                    cursor.execute(query, (item,))
+                    cursor.execute(query, (item, site_id, currency, mydate))
                     while True:
                         if cursor.description is not None:
                             cols = {column[0].lower() for column in cursor.description}
-                            required = {"optionid", "optionvalueid", "ordercodevalue2", "status", "isfabric"}
+                            required = {
+                                "optionid", "optionvalueid", "ordercodevalue2",
+                                "status", "isfabric",
+                            }
                             if required.issubset(cols):
-                                for row in cursor.fetchall():
-                                    rows.append(_IncPriceRow(item, row))
+                                rows.extend(_IncPriceRow(item, row) for row in cursor.fetchall())
                                 break
                         if not cursor.nextset():
                             break
                 finally:
                     cursor.close()
+        finally:
+            if owns_connection:
+                conn.close()
         return rows
 
     def fetch_item_option_increment_prices(
