@@ -423,13 +423,14 @@ class SifValidationService(BaseService):
             for entry in matches:
                 display = entry["display"]
                 tertiary = entry["tertiary"]
+                base_display = entry["base_display"]
                 position_ok = (
                     selected.find("#") >= 0
                     or entry["code"].find("#") >= 0
                     or item.startswith("AK")
                     or (position == 1 and display == 1 and position == tertiary)
-                    or (position == 1 and display == 1)
-                    or (position > 1 and display > 1 and tertiary == 0)
+                    or (position == base_display and display == base_display)
+                    or (position > base_display and display > base_display and tertiary == 0)
                     or position == display
                     or not entry["component"]
                 )
