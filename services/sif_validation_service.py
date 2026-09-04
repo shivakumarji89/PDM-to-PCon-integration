@@ -540,37 +540,29 @@ class SifValidationService(BaseService):
             # Option pricing therefore depends on selected order codes, not on
             # whether the source SIF happened to contain an OL amount.
             inc_items = sorted({l.base for l in chunk if l.options})
-            inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
-            # OBX order codes repeat across option groups, so OBX also keeps the
-            # rows grouped by PDM OptionId (in PDM row order).
+            # Keep option rows grouped by PDM OptionId for both SIF and OBX.
+            # GetPriceExt consumes an option group once it has matched a selected
+            # order code; flattening by code loses that behaviour.
             inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
-            
+
             if inc_items:
                 inc_rows = repo.fetch_item_option_increment_prices(
                     inc_items, currency, mydate, site, conn
                 )
                 for r in inc_rows:
-                    inc_price = getattr(r, "IncPrice", None)
                     item = str(r.Item)
                     code = str(r.OrderCodeValue2 or "").strip().upper()
-
-                    if obx:
-                        group = str(getattr(r, "OptionId", "") or "")
-                        inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
-                            0.0 if inc_price is None else float(inc_price)
-                        )
-            
-                    if inc_price is None:
+                    if not code:
                         continue
-                    
-                    is_fabric = int(r.IsFabric or 0)
-                    quantity = int(r.Quantity or 1)
-            
-                    inc_by_item.setdefault(item, {})[code] = (
-                        float(inc_price),
-                        is_fabric,
-                        quantity,
-                    )
+
+                    group = str(getattr(r, "OptionId", "") or "")
+                    inc_price = getattr(r, "IncPrice", None)
+                    quantity = int(getattr(r, "Quantity", 1) or 1)
+
+                    # A NULL increment is still a selectable value in PDM and
+                    # therefore consumes its OptionId with a zero upcharge.
+                    amount = 0.0 if inc_price is None else float(inc_price) * quantity
+                    inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = amount
             for line in chunk:
                 done[0] += 1
                 if progress:
@@ -586,12 +578,12 @@ class SifValidationService(BaseService):
                     if on_result:
                         on_result(results[-1])
                     continue
-                if obx:
-                    upcharge = self._match_inc_groups(
-                        inc_groups_by_item.get(line.base, {}), [o.code for o in line.options])
-                else:
-                    inc = inc_by_item.get(line.base, {})
-                    upcharge = sum(self._match_inc(inc, o.code) for o in line.options)
+                # Both SIF and OBX ultimately pass selected order codes through
+                # the same GetPriceExt option-group consumption behaviour.
+                upcharge = self._match_inc_groups(
+                    inc_groups_by_item.get(line.base, {}),
+                    [o.code for o in line.options],
+                )
                 pdm = round(base + upcharge, 2)
                 if abs(pdm - sif) < 0.005:
                     status, message = "ok", ""
