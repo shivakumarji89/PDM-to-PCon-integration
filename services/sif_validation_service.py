@@ -795,6 +795,15 @@ class SifValidationService(BaseService):
                 site,
                 connection=conn,
             )
+            normal_context_items = {str(row.Item) for row in contexts}
+            us_items = repo.find_us_items(items, connection=conn) - normal_context_items
+            if us_items:
+                contexts.extend(
+                    repo.fetch_us_item_price_context(
+                        sorted(us_items), currency, site, connection=conn
+                    )
+                )
+
             valid_catalogues_by_item = repo.fetch_items_valid_catalogues(
                 items,
                 catalogue_ids,
