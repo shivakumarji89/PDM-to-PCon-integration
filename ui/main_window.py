@@ -172,6 +172,9 @@ class MainWindow(QMainWindow):
                 page.snapshot_published.connect(self._on_snapshot_published)
                 page.engineering_ready.connect(self._on_engineering_ready)
                 page.load_complete.connect(self._on_load_complete)
+                page.repository_review_requested.connect(
+                    lambda: self._manager.jump_to(WorkflowStep.REVIEW)
+                )
             elif hasattr(page, "refresh"):
                 self._refreshable_pages.append(page)
             self._stack.addWidget(page)
