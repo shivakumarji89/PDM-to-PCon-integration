@@ -325,6 +325,11 @@ class ApplicationContext:
         return self.get_service(RepositoryContextService)
 
     @property
+    def category_context_service(self) -> CategoryContextService:
+        """Shared Seating/Tables category context across workflows."""
+        return self.get_service(CategoryContextService)
+
+    @property
     def sif_validation_service(self) -> SifValidationService:
         return self.get_service(SifValidationService)
 
