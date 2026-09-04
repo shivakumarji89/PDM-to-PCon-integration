@@ -1068,6 +1068,58 @@ class PDMRepository(BaseRepository):
             for item, ids in allowed.items()
         }
 
+    def fetch_item_component_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Legacy getListPrice option rows for parent and component items."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT parent.Item AS ParentItem, "
+                "itco.Quantity, itco.SubItemId, sub_item.Item AS CompItem, "
+                "opt.DisplayOrder, "
+                "CASE WHEN opt.TertiaryOption > 0 AND opt.TertiaryOption < 20 "
+                "THEN opt.TertiaryOption ELSE 0 END AS TertiaryOption, "
+                "ov.OptionValueId, itco.FeaturePositionString, ov.DisplayOrdinal, "
+                "ov.OrderCodeValue AS OrderCodeValue2, ov.OptionId, "
+                "dbo.fnGetListPrice(c.Currency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN itov.IncrementalPrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN itov.IncrementalPrice3 "
+                "ELSE itov.IncrementalPrice END, "
+                "pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL) AS IncPrice "
+                "FROM Item parent "
+                "INNER JOIN ItemComponents itco ON itco.ItemId = parent.ItemId "
+                "INNER JOIN Item sub_item ON sub_item.ItemId = itco.SubItemId "
+                "INNER JOIN ItemOptionValues itov ON itov.ItemId = sub_item.ItemId "
+                "INNER JOIN OptionValue ov ON itov.OptionValueId = ov.OptionValueId "
+                "INNER JOIN [Option] opt ON ov.OptionId = opt.OptionId "
+                "INNER JOIN Product sub_product ON sub_item.ProductId = sub_product.ProductId "
+                "INNER JOIN Product_Code pc ON pc.ProductCodeId = "
+                "CASE WHEN sub_item.ProductCodeIdOverride IS NOT NULL "
+                "THEN sub_item.ProductCodeIdOverride ELSE sub_product.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE parent.Item IN ({ph}) "
+                "AND parent.Status = 1 AND sub_item.Status < 2 "
+                "ORDER BY opt.DisplayOrder, ov.DisplayOrdinal"
+            )
+            rows.extend(self._execute(
+                query, (mydate, site_id, site_id, currency) + tuple(chunk),
+                connection=connection,
+            ))
+        return rows
+
     def fetch_item_component_prices(
         self,
         items: Sequence[Any],
