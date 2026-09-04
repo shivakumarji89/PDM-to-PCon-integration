@@ -1017,6 +1017,53 @@ class PDMRepository(BaseRepository):
             )
         return rows
 
+    def fetch_items_valid_catalogues(
+        self,
+        items: Sequence[Any],
+        catalogue_ids: Sequence[int],
+        connection: Any = None,
+    ) -> dict[str, list[int]]:
+        """Resolve legacy GetShortestLeadTime catalogue eligibility.
+
+        A candidate catalogue must contain the item, have the product category
+        active, and contain the product range. Results are ordered by the
+        caller's already legacy-ordered catalogue list.
+        """
+        vals = [str(value) for value in items if value]
+        cats = [int(value) for value in catalogue_ids]
+        if not vals or not cats:
+            return {}
+        item_ph = self._placeholders(len(vals))
+        cat_ph = self._placeholders(len(cats))
+        query = (
+            "SELECT DISTINCT i.Item, c.CatalogueId "
+            "FROM Item i "
+            "INNER JOIN Product p ON i.ProductId = p.ProductId "
+            "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+            "INNER JOIN CatalogueItems ci ON ci.ItemId = i.ItemId "
+            "INNER JOIN Catalogue c ON c.CatalogueId = ci.CatalogueId "
+            "INNER JOIN CatalogueProductCategories cpc ON "
+            "cpc.CatalogueId = c.CatalogueId "
+            "AND cpc.ProductCategoryId = pr.ProductCategoryId "
+            "AND cpc.Status = 1 "
+            "INNER JOIN CatalogueProductRanges cpr ON "
+            "cpr.CatalogueId = c.CatalogueId "
+            "AND cpr.ProductRangeId = pr.ProductRangeId "
+            f"WHERE i.Item IN ({item_ph}) AND c.CatalogueId IN ({cat_ph})"
+        )
+        rows = self._execute(
+            query,
+            tuple(vals) + tuple(cats),
+            connection=connection,
+        )
+        allowed: dict[str, set[int]] = {}
+        for row in rows:
+            allowed.setdefault(str(row.Item), set()).add(int(row.CatalogueId))
+        return {
+            item: [catalogue for catalogue in cats if catalogue in ids]
+            for item, ids in allowed.items()
+        }
+
     def fetch_item_get_price_ext_base_prices(
         self,
         items: Sequence[Any],
