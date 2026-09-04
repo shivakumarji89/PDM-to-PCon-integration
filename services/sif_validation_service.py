@@ -374,7 +374,7 @@ class SifValidationService(BaseService):
 
     @classmethod
     def _match_component_increments(cls, rows, codes: list[str], item: str = "") -> float:
-        """Port the core getListPrice SuperProduct increment matching semantics."""
+        """Port getListPrice matching, re-indexing and component-row consumption."""
         prepared = []
         for row in rows:
             code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
@@ -384,12 +384,6 @@ class SifValidationService(BaseService):
             tertiary = int(getattr(row, "TertiaryOption", 0) or 0)
             option_id = str(getattr(row, "OptionId", "") or "")
             display, base_display = cls._legacy_display_override(item, option_id, display)
-            if tertiary == 0:
-                derived = cls._feature_option_indexes(
-                    getattr(row, "FeaturePositionString", None), option_id
-                )
-                if derived:
-                    tertiary = min(derived) + 1
             prepared.append({
                 "row": row, "code": code, "display": display,
                 "tertiary": tertiary, "base_display": base_display,
@@ -401,6 +395,7 @@ class SifValidationService(BaseService):
         applied_option_ids: set[str] = set()
         normalized = [(code or "").strip().upper() for code in codes if code]
         deferred = 0.0
+        work = list(prepared)
 
         for position, selected in enumerate(normalized, start=1):
             alternatives = [selected]
@@ -409,43 +404,72 @@ class SifValidationService(BaseService):
             if len(selected) > 3:
                 alternatives.append(selected[:3] + "#")
 
-            matches = [entry for entry in prepared if entry["code"] in alternatives]
-            if not matches:
-                continue
-
-            matches.sort(key=lambda entry: (
-                0 if entry["tertiary"] == position else 1,
-                0 if entry["display"] == position else 1,
-                entry["display"] or 999,
-            ))
-
+            search_from = 0
             chosen = None
-            for entry in matches:
+            while search_from < len(work):
+                matches = [
+                    (idx, entry) for idx, entry in enumerate(work)
+                    if idx >= search_from and entry["code"] in alternatives
+                ]
+                if not matches:
+                    break
+                idx, entry = matches[0]
                 display = entry["display"]
                 tertiary = entry["tertiary"]
-                base_display = entry["base_display"]
+
+                # Legacy tertiary/display re-indexing: if the current occurrence
+                # belongs to an earlier position, search the row for this position.
+                if tertiary > 0 and position > tertiary:
+                    later = next(
+                        (i for i, value in enumerate(work)
+                         if i > idx and value["tertiary"] == position),
+                        None,
+                    )
+                    if later is not None:
+                        search_from = later
+                        continue
+                    later = next(
+                        (i for i, value in enumerate(work)
+                         if i > idx and value["display"] == position),
+                        None,
+                    )
+                    if later is not None:
+                        search_from = later
+                        continue
+
+                if item.startswith(("NOCLE7", "NOCLE8")) and position == 3:
+                    if entry["option_id"] != "8" and idx + 1 < len(work):
+                        search_from = idx + 1
+                        continue
+
                 position_ok = (
-                    selected.find("#") >= 0
-                    or entry["code"].find("#") >= 0
+                    "#" in selected
+                    or "#" in entry["code"]
                     or item.startswith("AK")
                     or (position == 1 and display == 1 and position == tertiary)
-                    or (position == base_display and display == base_display)
-                    or (position > base_display and display > base_display and tertiary == 0)
+                    or (position == entry["base_display"] and display == entry["base_display"])
+                    or (position > entry["base_display"] and display > entry["base_display"] and tertiary == 0)
                     or position == display
                     or not entry["component"]
                 )
                 if position_ok:
-                    chosen = entry
+                    chosen = (idx, entry)
                     break
+                break
+
             if chosen is None:
                 continue
 
-            option_id = chosen["option_id"]
-            if option_id in applied_option_ids:
+            idx, chosen_entry = chosen
+            option_id = chosen_entry["option_id"]
+            allow_duplicate = (
+                item.startswith("NODL") and position == 3 and selected == "OAK"
+            )
+            if option_id in applied_option_ids and not allow_duplicate:
                 continue
             applied_option_ids.add(option_id)
 
-            row = chosen["row"]
+            row = chosen_entry["row"]
             price = getattr(row, "IncPrice", None)
             if price is None:
                 continue
@@ -465,6 +489,20 @@ class SifValidationService(BaseService):
 
             qty = int(getattr(row, "Quantity", 1) or 1)
             total += amount * qty
+
+            # Legacy AA/BB removal: once a component row is consumed, remove
+            # competing rows for that component and conflicting OptionId.
+            component = chosen_entry["component"]
+            work = [
+                entry for entry in work
+                if entry is chosen_entry
+                or entry["component"] != component
+                and not (
+                    entry["option_id"] == option_id
+                    and entry["component"] == component
+                    and entry["code"] != selected
+                )
+            ]
 
         return total + deferred
 
