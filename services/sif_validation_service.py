@@ -553,6 +553,25 @@ class SifValidationService(BaseService):
         return rows[0].d if rows else ""
 
     @staticmethod
+    def _normalise_pricing_date(value) -> str:
+        """Return one unambiguous ISO date for every PDM pricing call.
+
+        The desktop controls, OBX source dates and server defaults can expose
+        dates in different textual formats. SQL Server must never depend on the
+        session DATEFORMAT when selecting a future PriceFormula.
+        """
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+        text = str(value or "").strip()
+        for fmt in ("%Y-%m-%d", "%d-%b-%Y", "%d %b %Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        return text
+
+
+    @staticmethod
     def _is_future_date(value: str, server_date: str) -> bool:
         """Whether a user-selected date is later than PDM's current date."""
         try:
@@ -717,7 +736,7 @@ class SifValidationService(BaseService):
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
         server_date = self._server_date(repo, conn)
-        mydate = validation_date or server_date
+        mydate = self._normalise_pricing_date(validation_date or server_date)
         groups: dict[str, list[SifLine]] = {}
         for line in lines:
             groups.setdefault(line.currency or currency, []).append(line)
