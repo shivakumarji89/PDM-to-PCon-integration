@@ -821,12 +821,17 @@ class SifValidationService(BaseService):
                     continue
                 valid_items.add(item)
 
+            normal_items = sorted(valid_items - us_items)
             got = repo.fetch_item_get_price_ext_base_prices(
-                sorted(valid_items), currency, mydate, conn, site_id=site
+                normal_items, currency, mydate, conn, site_id=site
             )
+            us_got = repo.fetch_us_item_base_prices(
+                sorted(valid_items & us_items),
+                currency, mydate, site, connection=conn,
+            ) if (valid_items & us_items) else []
             base_price = {
                 str(r.Item): (float(r.price) if r.price is not None else None)
-                for r in got
+                for r in [*got, *us_got]
             }
 
             # Legacy GetPrice switches SuperProducts to getListPrice(), where
