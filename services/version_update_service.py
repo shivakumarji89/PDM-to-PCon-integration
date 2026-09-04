@@ -363,14 +363,9 @@ class RepositoryContextService(BaseService):
             for record in active.records.values():
                 record.pdm_mapping_status = "not_found"
 
-    @staticmethod
-    def _category_from_path(folder: Path) -> str:
-        parts = {part.casefold() for part in folder.parts}
-        if "seating" in parts:
-            return "Seating"
-        if "tables" in parts:
-            return "Tables"
-        return ""
+    def _category_from_path(self, folder: Path) -> str:
+        """Resolve repository workspace category through the shared context."""
+        return self.context.category_context_service.from_repository_path(folder).category
 
     @staticmethod
     def _normalize(value: str) -> str:
