@@ -654,6 +654,11 @@ class SifValidationService(BaseService):
                     # into the standard GetPriceExt upcharge loop.
                     amount = 0.0 if inc_price is None else float(inc_price)
                     inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = amount
+            option_rows_by_item: dict[str, list[object]] = {}
+            if inc_items:
+                for row in inc_rows:
+                    option_rows_by_item.setdefault(str(getattr(row, "Item", "")), []).append(row)
+
             for line in chunk:
                 done[0] += 1
                 if progress:
@@ -662,6 +667,19 @@ class SifValidationService(BaseService):
                 sif = line.sif_price
                 base = base_price.get(line.base)
                 plc = plc_by_item.get(line.base, "")
+                option_error = self._verify_selected_options(
+                    option_rows_by_item.get(str(line.base), []),
+                    [option.code for option in line.options],
+                )
+                if option_error:
+                    results.append(SifResult(
+                        seq=line.seq, sku=sku, plc=plc, qty=line.qty,
+                        source_date=line.source_date, sif_price=sif,
+                        status="unresolved", message=option_error,
+                    ))
+                    if on_result:
+                        on_result(results[-1])
+                    continue
                 if line.base not in valid_catalogues_by_item:
                     results.append(SifResult(
                         seq=line.seq, sku=sku, plc=plc, qty=line.qty,
