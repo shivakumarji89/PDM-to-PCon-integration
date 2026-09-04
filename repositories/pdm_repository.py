@@ -1068,6 +1068,54 @@ class PDMRepository(BaseRepository):
             for item, ids in allowed.items()
         }
 
+    def fetch_item_us_dependent_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Legacy US dependent-option increments from getListPrice."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        for item in vals:
+            query = """
+                SELECT 1 AS Quantity, -1 AS SubItemId, 1 AS DisplayOrder,
+                       0 AS TertiaryOption,
+                       optval2.USOptionValueId AS OptionValueId,
+                       optval2.DisplayOrder AS DisplayOrdinal,
+                       USItem.USItem AS Item,
+                       optval2.OrderCodeValue AS OrderCodeValue2,
+                       optval2.USOptionId AS OptionId,
+                       dbo.fnGetListPrice(
+                           Currency.Currency, udov.CommonIncrementalPrice,
+                           pc.PriceCode, ?, 'DMY', pm.Rounding, ?, NULL
+                       ) AS IncPrice
+                FROM USItemOptionValues uitov
+                INNER JOIN USOptionValue optval
+                    ON uitov.USOptionValueId = optval.USOptionValueId
+                INNER JOIN USItem ON uitov.USItemId = USItem.USItemId
+                INNER JOIN Product_Code pc
+                    ON USItem.Product_Code = pc.Product_Code AND pc.SiteId = ?
+                INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode
+                INNER JOIN Currency ON pm.CustPriceCode = Currency.PriceCode
+                    AND UPPER(Currency.Currency) = UPPER(?)
+                INNER JOIN USDependentOptionValues udov
+                    ON optval.USOptionValueId = udov.USOptionValueId
+                INNER JOIN USOptionValue optval2
+                    ON udov.USAdditionalOptionValueId = optval2.USOptionValueId
+                WHERE USItem.USItem = ?
+                ORDER BY optval2.DisplayOrder
+            """
+            rows.extend(self._execute(
+                query, (mydate, site_id, site_id, currency, item),
+                connection=connection,
+            ))
+        return rows
+
     def fetch_item_component_increment_prices(
         self,
         items: Sequence[Any],
