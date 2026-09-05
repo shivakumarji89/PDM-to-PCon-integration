@@ -963,16 +963,24 @@ class MainWindow(QMainWindow):
         self._product_status.setText(label)
 
     def _on_review_series_loaded(self, product_name: str) -> None:
-        """Publish a Review-selected PDM series to the normal workflow.
+        """Load existing-work articles directly from the repository OCD.
 
-        Review establishes the repository ↔ PDM relationship; this window owns
-        refreshing downstream pages so Articles and later steps immediately use
-        the same active Snapshot.
+        Existing repository work is independent from PDM. The Review selection
+        establishes the repository context, then this handler publishes the
+        workspace's actual article records into the normal Article workflow.
         """
-        self._product_status.setText(product_name or "PDM Series Loaded")
+        snapshot = self._context.workspace_article_service.load_active_repository()
+        if snapshot is None:
+            self.statusBar().showMessage(
+                "Repository OCD could not be loaded", 6000
+            )
+            return
+
+        self._product_status.setText(product_name or "Repository Series Loaded")
         self.refresh_workspaces()
         self.statusBar().showMessage(
-            f"Loaded {product_name} into the working Snapshot", 6000
+            f"Loaded {len(snapshot.articles)} workspace articles from repository",
+            6000,
         )
 
     def _on_snapshot_changed(self) -> None:
