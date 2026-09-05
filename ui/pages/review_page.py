@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -117,6 +118,13 @@ class ReviewPage(BasePage):
         hint.setWordWrap(True)
         candidates_layout.addWidget(hint)
 
+        self._candidate_search = QLineEdit(candidates_box)
+        self._candidate_search.setPlaceholderText(
+            "Search by product name, code, category or catalogue..."
+        )
+        self._candidate_search.textChanged.connect(self._filter_candidates)
+        candidates_layout.addWidget(self._candidate_search)
+
         self._pdm_candidates = QTableWidget(candidates_box)
         self._pdm_candidates.setColumnCount(len(self._COLUMNS))
         self._pdm_candidates.setHorizontalHeaderLabels(
@@ -169,6 +177,24 @@ class ReviewPage(BasePage):
             f"Selected candidate: {name} — ready to load into the working Snapshot."
         )
         self._load_snapshot_btn.setEnabled(True)
+
+    def _filter_candidates(self, text: str) -> None:
+        """Filter visible rows only; discovery evidence remains unchanged."""
+        query = text.casefold().strip()
+        for row in range(self._pdm_candidates.rowCount()):
+            searchable = " ".join(
+                (
+                    self._pdm_candidates.item(row, column).text()
+                    if self._pdm_candidates.item(row, column)
+                    else ""
+                )
+                for column in range(self._pdm_candidates.columnCount() - 1)
+            ).casefold()
+            self._pdm_candidates.setRowHidden(
+                row, bool(query and query not in searchable)
+            )
+
+        self._pdm_candidates.clearSelection()
 
     def _selected_candidate(self) -> dict | None:
         """Return the selected discovery record without creating a saved mapping."""
