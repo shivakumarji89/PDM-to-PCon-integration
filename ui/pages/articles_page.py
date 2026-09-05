@@ -498,9 +498,31 @@ class ArticlesPage(BasePage):
                 break
         return prefix
 
-    def _applied_length(self, member) -> int | None:
-        """A member's applied base length: the in-memory override, else the
-        persisted ``reduced_article`` length; ``None`` when not applied."""
+    def _repository_base(self, article) -> str:
+        """Return the implemented repository base for an existing article.
+
+        Repository evidence is optional and therefore this method is a no-op
+        for new series. The lookup stays here only as a presentation resolver;
+        extraction and persistence remain centralized on the snapshot.
+        """
+        snapshot = self._context.active_snapshot
+        code = getattr(article, "code", "") if article is not None else ""
+        overrides = getattr(snapshot, "base_article_overrides", {}) if snapshot else {}
+        return overrides.get(code, "") if code else ""
+
+    def _applied_length(self, member, article=None) -> int | None:
+        """Resolve base length with repository evidence taking precedence for
+        existing work, while preserving the current new-series behaviour."""
+        snapshot = self._context.active_snapshot
+        code = getattr(article, "code", "") if article is not None else ""
+        repository_lengths = (
+            getattr(snapshot, "base_length_overrides", {}) if snapshot else {}
+        )
+        if code in repository_lengths:
+            return repository_lengths[code]
+        repository_base = self._repository_base(article)
+        if repository_base:
+            return len(repository_base)
         mid = getattr(member, "id", "")
         if mid in self._base_len_by_member:
             return self._base_len_by_member[mid]
@@ -765,9 +787,14 @@ class ArticlesPage(BasePage):
         order_keys: list[str] = []
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            base, remaining = self._split_base(
-                code, self._applied_length(member) or default_len
-            )
+            repository_base = self._repository_base(article)
+            if repository_base:
+                base = repository_base
+                remaining = code[len(base):] if code.startswith(base) else ""
+            else:
+                base, remaining = self._split_base(
+                    code, self._applied_length(member, article) or default_len
+                )
             group = groups.get(base)
             if group is None:
                 group = {"members": [], "remainders": set(),
