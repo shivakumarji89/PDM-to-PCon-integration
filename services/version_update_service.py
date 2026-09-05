@@ -335,6 +335,7 @@ class RepositoryContextService(BaseService):
         name = active.series_name.strip()
         code = str(active.records["code"].value or "").strip()
         candidates = {}
+        discovery_level = ""
 
         try:
             # Search the complete cached hierarchy first. The old bounded live
@@ -366,6 +367,26 @@ class RepositoryContextService(BaseService):
                 if name_hit or code_hit:
                     candidates[str(product.id)] = product
 
+            if candidates:
+                discovery_level = "direct name/code match"
+
+            # Level 2: first-word discovery. Repository folder naming can contain
+            # technical suffixes (for example Nevi_enhanced) while PDM may use
+            # the base series name. This remains discovery-only evidence.
+            if not candidates and name:
+                first_word = re.split(r"[_\\-\\s]+", name, maxsplit=1)[0].strip()
+                normalized_first_word = self._normalize(first_word)
+                if normalized_first_word:
+                    for product in hierarchy:
+                        product_name = self._normalize(product.name)
+                        if (
+                            product_name == normalized_first_word
+                            or product_name.startswith(normalized_first_word + " ")
+                        ):
+                            candidates[str(product.id)] = product
+                if candidates:
+                    discovery_level = f"first-word match ({first_word})"
+
             # Live search remains a fallback for an empty/stale local hierarchy.
             if not candidates:
                 if name:
@@ -374,6 +395,16 @@ class RepositoryContextService(BaseService):
                 if code:
                     for product in self.context.pdm_service.search_products_by_code(code, 100):
                         candidates[str(product.id)] = product
+                if candidates:
+                    discovery_level = "direct live search"
+
+            if not candidates and name:
+                first_word = re.split(r"[_\\-\\s]+", name, maxsplit=1)[0].strip()
+                if first_word:
+                    for product in self.context.pdm_service.search_products_by_name(first_word, 100):
+                        candidates[str(product.id)] = product
+                if candidates:
+                    discovery_level = f"first-word live search ({first_word})"
         except Exception as exc:
             active.pdm_match_status = "unavailable"
             for record in active.records.values():
@@ -426,7 +457,8 @@ class RepositoryContextService(BaseService):
             for record in active.records.values():
                 record.pdm_mapping_status = "candidates_found"
             active.records["name"].notes = (
-                f"Discovery searched {len(by_catalogue)} catalogue(s) and selected "
+                f"Discovery used {discovery_level or 'matching evidence'}, searched "
+                f"{len(by_catalogue)} catalogue(s) and selected "
                 f"'{catalogue or '-'}' as the {priority_text}. "
                 "Candidate selection is still not a verified relationship."
             )
