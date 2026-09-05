@@ -177,6 +177,18 @@ class DataLineageRecord:
 
 
 @dataclass
+class RepositoryArticleContext:
+    """Read-only article evidence extracted from an existing repository OCD."""
+
+    source_path: str = ""
+    article_count: int = 0
+    base_articles: dict[str, str] = field(default_factory=dict)
+    base_lengths: dict[str, int] = field(default_factory=dict)
+    status: str = "not_loaded"
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class RepositoryProductContext:
     """Read-only cross-source context created for one existing series."""
 
@@ -190,6 +202,9 @@ class RepositoryProductContext:
     candidate_products: list[dict[str, Any]] = field(default_factory=list)
     candidate_catalogues: list[dict[str, Any]] = field(default_factory=list)
     established_connection: dict[str, Any] | None = None
+    article_context: RepositoryArticleContext = field(
+        default_factory=RepositoryArticleContext
+    )
 
 
 class RepositoryContextService(BaseService):
@@ -282,6 +297,10 @@ class RepositoryContextService(BaseService):
             records=records,
         )
 
+        # Read repository article evidence once, centrally. This is intentionally
+        # read-only and does not alter the PDM loading/new-series pipeline.
+        active.article_context = self._read_repository_article_context(folder)
+
         # Reopen established work from the stored repository ↔ PDM connection.
         # Fresh discovery is intentionally explicit and is triggered from
         # Review's "Refresh Discovery" action.
@@ -293,6 +312,20 @@ class RepositoryContextService(BaseService):
 
         self._active = active
         return active
+
+    def apply_repository_article_context(self, snapshot) -> None:
+        """Overlay established repository evidence onto an existing-work snapshot.
+
+        This is the single integration boundary between repository facts and the
+        normal PDM/engineering pipeline. New series have no active repository
+        context and therefore remain unchanged.
+        """
+        active = self._active
+        if active is None or active.article_context.status != "loaded":
+            return
+        evidence = active.article_context
+        if evidence.base_lengths:
+            snapshot.base_length_overrides.update(evidence.base_lengths)
 
     def refresh_pdm_discovery(self) -> RepositoryProductContext | None:
         """Explicitly reconnect the active repository to fresh PDM discovery."""
@@ -309,6 +342,78 @@ class RepositoryContextService(BaseService):
             self._apply_established_connection(active, established)
 
         return active
+
+    def _read_repository_article_context(
+        self, folder: Path
+    ) -> RepositoryArticleContext:
+        """Extract existing article/base evidence from the repository OCD.
+
+        The repository remains authoritative for existing implementation facts.
+        PDM loading continues to own the incoming article population. The reader
+        deliberately records only evidence that can be established from OCD
+        tables and never mutates either source.
+        """
+        mdb_path = folder / self._OCD_FILE
+        result = RepositoryArticleContext(source_path=str(mdb_path))
+        if not mdb_path.is_file():
+            result.status = "missing"
+            result.notes.append("Repository OCD file was not found.")
+            return result
+
+        rows = self.context.mdb_service.read_table(
+            mdb_path,
+            "SELECT com_ArticleID, com_ArticleNr FROM tCOMd_Article",
+        )
+        result.article_count = len(rows)
+        if not rows:
+            result.status = "empty"
+            result.notes.append("No repository articles were found.")
+            return result
+
+        # ArtBase is optional across OCD versions. Read it independently so a
+        # missing table/column never invalidates the basic article evidence.
+        base_rows = self.context.mdb_service.read_table(
+            mdb_path,
+            "SELECT * FROM tCOMd_ArtBase",
+        )
+        article_codes = {
+            str(row.get("com_ArticleID") or ""): str(
+                row.get("com_ArticleNr") or ""
+            ).strip()
+            for row in rows
+        }
+
+        for row in base_rows:
+            values = {str(k).casefold(): v for k, v in row.items()}
+            base_id = (
+                values.get("com_articleid")
+                or values.get("com_basearticleid")
+                or values.get("com_artbaseid")
+            )
+            member_id = (
+                values.get("com_memberarticleid")
+                or values.get("com_childarticleid")
+                or values.get("com_articleid")
+            )
+            if base_id is not None and member_id is not None:
+                member_code = article_codes.get(str(member_id), "")
+                base_code = article_codes.get(str(base_id), "")
+                if member_code and base_code:
+                    result.base_articles[member_code] = base_code
+
+        result.status = "loaded"
+        result.notes.append(
+            f"Read {result.article_count} repository article(s)."
+        )
+        if base_rows:
+            result.notes.append(
+                f"Read {len(result.base_articles)} base-article relationship(s)."
+            )
+        else:
+            result.notes.append(
+                "No ArtBase relationships were available in the repository OCD."
+            )
+        return result
 
     def _apply_established_connection(
         self,
