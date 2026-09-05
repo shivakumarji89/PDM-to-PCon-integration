@@ -326,6 +326,8 @@ class RepositoryContextService(BaseService):
         evidence = active.article_context
         if evidence.base_lengths:
             snapshot.base_length_overrides.update(evidence.base_lengths)
+        if evidence.base_articles:
+            snapshot.base_article_overrides.update(evidence.base_articles)
 
     def refresh_pdm_discovery(self) -> RepositoryProductContext | None:
         """Explicitly reconnect the active repository to fresh PDM discovery."""
