@@ -314,20 +314,39 @@ class RepositoryContextService(BaseService):
         return active
 
     def apply_repository_article_context(self, snapshot) -> None:
-        """Overlay established repository evidence onto an existing-work snapshot.
+        """Resolve loaded PDM articles against repository base/master codes.
 
-        This is the single integration boundary between repository facts and the
-        normal PDM/engineering pipeline. New series have no active repository
-        context and therefore remain unchanged.
+        The repository OCD stores implemented base articles in tCOMd_Article.
+        For existing-series maintenance the longest repository base that prefixes
+        a loaded PDM article is authoritative.
         """
         active = self._active
         if active is None or active.article_context.status != "loaded":
             return
-        evidence = active.article_context
-        if evidence.base_lengths:
-            snapshot.base_length_overrides.update(evidence.base_lengths)
-        if evidence.base_articles:
-            snapshot.base_article_overrides.update(evidence.base_articles)
+
+        masters = sorted(
+            active.article_context.base_articles.keys(),
+            key=len,
+            reverse=True,
+        )
+        if not masters:
+            return
+
+        resolved_bases: dict[str, str] = {}
+        resolved_lengths: dict[str, int] = {}
+        for article in getattr(snapshot, "articles", []) or []:
+            code = str(getattr(article, "code", "") or "").strip()
+            if not code:
+                continue
+            base = next((master for master in masters if code.startswith(master)), "")
+            if base:
+                resolved_bases[code] = base
+                resolved_lengths[code] = len(base)
+
+        snapshot.base_article_overrides.clear()
+        snapshot.base_length_overrides.clear()
+        snapshot.base_article_overrides.update(resolved_bases)
+        snapshot.base_length_overrides.update(resolved_lengths)
 
     def refresh_pdm_discovery(self) -> RepositoryProductContext | None:
         """Explicitly reconnect the active repository to fresh PDM discovery."""
@@ -348,13 +367,7 @@ class RepositoryContextService(BaseService):
     def _read_repository_article_context(
         self, folder: Path
     ) -> RepositoryArticleContext:
-        """Extract existing article/base evidence from the repository OCD.
-
-        The repository remains authoritative for existing implementation facts.
-        PDM loading continues to own the incoming article population. The reader
-        deliberately records only evidence that can be established from OCD
-        tables and never mutates either source.
-        """
+        """Read established BASE article masters from the repository OCD."""
         mdb_path = folder / self._OCD_FILE
         result = RepositoryArticleContext(source_path=str(mdb_path))
         if not mdb_path.is_file():
@@ -364,57 +377,24 @@ class RepositoryContextService(BaseService):
 
         rows = self.context.mdb_service.read_table(
             mdb_path,
-            "SELECT com_ArticleID, com_ArticleNr FROM tCOMd_Article",
+            "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article",
         )
-        result.article_count = len(rows)
-        if not rows:
-            result.status = "empty"
-            result.notes.append("No repository articles were found.")
-            return result
-
-        # ArtBase is optional across OCD versions. Read it independently so a
-        # missing table/column never invalidates the basic article evidence.
-        base_rows = self.context.mdb_service.read_table(
-            mdb_path,
-            "SELECT * FROM tCOMd_ArtBase",
+        base_codes = sorted(
+            {
+                str(row.get("com_ArticleCode") or "").strip()
+                for row in rows
+                if str(row.get("com_ArticleCode") or "").strip()
+            },
+            key=lambda code: (-len(code), code),
         )
-        article_codes = {
-            str(row.get("com_ArticleID") or ""): str(
-                row.get("com_ArticleNr") or ""
-            ).strip()
-            for row in rows
-        }
-
-        for row in base_rows:
-            values = {str(k).casefold(): v for k, v in row.items()}
-            base_id = (
-                values.get("com_articleid")
-                or values.get("com_basearticleid")
-                or values.get("com_artbaseid")
-            )
-            member_id = (
-                values.get("com_memberarticleid")
-                or values.get("com_childarticleid")
-                or values.get("com_articleid")
-            )
-            if base_id is not None and member_id is not None:
-                member_code = article_codes.get(str(member_id), "")
-                base_code = article_codes.get(str(base_id), "")
-                if member_code and base_code:
-                    result.base_articles[member_code] = base_code
-
-        result.status = "loaded"
+        result.article_count = len(base_codes)
+        result.base_articles = {code: code for code in base_codes}
+        result.base_lengths = {code: len(code) for code in base_codes}
+        result.status = "loaded" if base_codes else "empty"
         result.notes.append(
-            f"Read {result.article_count} repository article(s)."
+            f"Read {len(base_codes)} established base article master(s)."
+            if base_codes else "No article masters were found in the repository OCD."
         )
-        if base_rows:
-            result.notes.append(
-                f"Read {len(result.base_articles)} base-article relationship(s)."
-            )
-        else:
-            result.notes.append(
-                "No ArtBase relationships were available in the repository OCD."
-            )
         return result
 
     def _apply_established_connection(
