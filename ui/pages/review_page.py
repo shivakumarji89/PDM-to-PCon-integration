@@ -33,6 +33,7 @@ class ReviewPage(BasePage):
         ("Category", 120),
         ("Range", 220),
         ("Catalogue", 180),
+        ("Lead Time", 90),
         ("Status", 110),
     )
 
@@ -232,7 +233,8 @@ class ReviewPage(BasePage):
 
         self._source_status.setText(
             f"Repository: {context.repository_path}\n"
-            f"PDM discovery status: {context.pdm_match_status.replace('_', ' ')}"
+            f"PDM discovery status: {context.pdm_match_status.replace('_', ' ')}\n"
+            f"{context.records['name'].notes}"
         )
 
         for key, widget in self._source_rows.items():
@@ -258,6 +260,11 @@ class ReviewPage(BasePage):
                 self._value(product, "category", "category_name"),
                 self._value(product, "range_name", "range", "product_range"),
                 self._value(product, "catalogue", "catalogue_name"),
+                (
+                    f"{product.get('lead_time')}-day"
+                    if product.get("lead_time") is not None
+                    else "-"
+                ),
                 "Candidate",
             )
             for column, value in enumerate(values):
