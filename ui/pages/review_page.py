@@ -5,7 +5,7 @@ PDM records discovered for it, without asserting an automatic relationship.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFormLayout,
@@ -26,6 +26,10 @@ from ui.pages.base_page import BasePage
 
 class ReviewPage(BasePage):
     """Comparison workspace for repository evidence and PDM candidates."""
+
+    # Emitted only after a selected PDM series has been loaded into the shared
+    # Snapshot and engineering data is ready for downstream workflow pages.
+    series_loaded = Signal(str)
 
     _CATALOGUE_COLUMNS = (
         ("#", 42),
@@ -259,15 +263,40 @@ class ReviewPage(BasePage):
             name=str(candidate.get("name") or ""),
             category=str(candidate.get("category") or ""),
             description=str(candidate.get("catalogue") or ""),
+            catalogue_id=(
+                str(candidate.get("catalogue_id"))
+                if candidate.get("catalogue_id") is not None
+                else None
+            ),
+            lead_time=candidate.get("lead_time"),
+            range_name=str(
+                candidate.get("range_name")
+                or candidate.get("range")
+                or ""
+            ),
         )
         result = self._context.pdm_service.load_product(product)
         if not result.ok:
             QMessageBox.warning(self, "Snapshot Load", result.message)
             return
 
+        # The Review workflow is also a real loading entry point. Initialise the
+        # same downstream engineering structure used by the normal Product load
+        # so Articles and subsequent workflow pages can immediately consume the
+        # selected PDM series.
+        snapshot = self._context.active_snapshot
+        try:
+            self._context.engineering_initialization_service.initialize(snapshot)
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Engineering Initialization",
+                f"The PDM series loaded, but workflow initialization failed:\n{error}",
+            )
+            return
+
         repository_context = self._context.repository_context_service.active_context
         if repository_context is not None:
-            snapshot = self._context.active_snapshot
             engineering_summary = {
                 "article_count": len(getattr(snapshot, "articles", []) or []),
                 "article_length": None,
@@ -282,9 +311,10 @@ class ReviewPage(BasePage):
                 engineering_summary=engineering_summary,
             )
 
+        self.series_loaded.emit(product.name)
         self._selection_info.setText(
             f"Working connection established: {product.name}. "
-            "Future maintenance will reuse this repository ↔ PDM link."
+            "Article workflow is loaded and future maintenance will reuse this repository ↔ PDM link."
         )
         QMessageBox.information(
             self,
