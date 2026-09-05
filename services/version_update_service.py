@@ -188,6 +188,7 @@ class RepositoryProductContext:
     pdm_match_status: str = "not_checked"
     pdm_product_id: str | None = None
     candidate_products: list[dict[str, Any]] = field(default_factory=list)
+    candidate_catalogues: list[dict[str, Any]] = field(default_factory=list)
     established_connection: dict[str, Any] | None = None
 
 
@@ -478,14 +479,21 @@ class RepositoryContextService(BaseService):
                 entry[0].casefold(),
             ),
         )
-        selected_catalogues = ranked_catalogues[:1]
-        selected_products = [
-            product
-            for _catalogue, products in selected_catalogues
-            for product in products
+        # Discovery must not auto-select a catalogue. Aggregate the evidence so
+        # the user first chooses the PDM catalogue/lead-time context, then loads
+        # the series belonging to that catalogue.
+        active.candidate_catalogues = [
+            {
+                "catalogue": catalogue,
+                "lead_time": self._catalogue_lead_time(catalogue),
+                "product_count": len(products),
+                "categories": sorted({
+                    str(product.category or "") for product in products
+                    if str(product.category or "")
+                }),
+            }
+            for catalogue, products in ranked_catalogues
         ]
-
-        active.pdm_match_count = len(selected_products)
         active.candidate_products = [
             {
                 "id": str(product.id),
@@ -495,25 +503,19 @@ class RepositoryContextService(BaseService):
                 "catalogue": product.description or "",
                 "lead_time": self._catalogue_lead_time(product.description or ""),
             }
-            for product in selected_products
+            for _catalogue, products in ranked_catalogues
+            for product in products
         ]
+        active.pdm_match_count = len(active.candidate_products)
 
-        if selected_catalogues:
-            catalogue, _products = selected_catalogues[0]
-            lead_time = self._catalogue_lead_time(catalogue)
-            priority_text = (
-                f"highest explicit lead-time catalogue ({lead_time}-day)"
-                if lead_time is not None
-                else "highest available catalogue (no explicit lead time found)"
-            )
-            active.pdm_match_status = "candidates_found"
+        if active.candidate_catalogues:
+            active.pdm_match_status = "catalogues_found"
             for record in active.records.values():
-                record.pdm_mapping_status = "candidates_found"
+                record.pdm_mapping_status = "catalogues_found"
             active.records["name"].notes = (
-                f"Discovery used {discovery_level or 'matching evidence'}, searched "
-                f"{len(by_catalogue)} catalogue(s) and selected "
-                f"'{catalogue or '-'}' as the {priority_text}. "
-                "Candidate selection is still not a verified relationship."
+                f"Discovery used {discovery_level or 'matching evidence'} and found "
+                f"{len(active.candidate_catalogues)} catalogue(s). "
+                "Select a catalogue/lead-time first; no catalogue is automatically chosen."
             )
         else:
             active.pdm_match_status = "not_found"
