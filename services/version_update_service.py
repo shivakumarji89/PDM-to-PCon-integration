@@ -282,14 +282,14 @@ class RepositoryContextService(BaseService):
             records=records,
         )
 
-        # An established connection is stronger evidence than a fresh discovery.
-        # Reuse it for maintenance so the repository does not need to guess the
-        # same PDM relationship again years later.
+        # Always run fresh discovery. An established connection is persistent
+        # evidence for maintenance, but it must never replace or narrow the live
+        # catalogue list shown in Review.
+        self._cross_check_pdm(active)
+
         established = self.context.repository_connection_service.get(folder)
         if established is not None:
             self._apply_established_connection(active, established)
-        else:
-            self._cross_check_pdm(active)
 
         self._active = active
         return active
@@ -299,37 +299,63 @@ class RepositoryContextService(BaseService):
         active: RepositoryProductContext,
         connection: dict[str, Any],
     ) -> None:
-        """Use the persistent repository ↔ PDM relationship as maintenance context."""
+        """Attach stored connection evidence without replacing fresh discovery.
+
+        The central registry remembers the previously established relationship
+        for maintenance and future agents. Review discovery remains independent:
+        all currently matching catalogues stay visible so the user can inspect
+        PDM changes or choose a different catalogue when required.
+        """
         pdm = connection.get("pdm") or {}
+        established_catalogue = str(pdm.get("catalogue") or "")
         active.established_connection = connection
-        active.pdm_match_status = "established"
         active.pdm_product_id = str(pdm.get("product_id") or "") or None
-        active.candidate_products = [{
-            "id": str(pdm.get("product_id") or ""),
-            "code": str(pdm.get("product_code") or ""),
-            "name": str(pdm.get("product_name") or ""),
-            "category": str(pdm.get("category") or ""),
-            "range": str(pdm.get("range") or ""),
-            "catalogue": str(pdm.get("catalogue") or ""),
-            "lead_time": pdm.get("lead_time"),
-        }]
-        active.pdm_match_count = len(active.candidate_products)
-        active.candidate_catalogues = [{
-            "catalogue": str(pdm.get("catalogue") or ""),
-            "lead_time": pdm.get("lead_time"),
-            "product_count": 1,
-            "categories": [str(pdm.get("category") or "")] if pdm.get("category") else [],
-        }]
+
+        # Preserve the fresh candidate_products/candidate_catalogues generated
+        # by _cross_check_pdm(). Only add the stored catalogue as fallback when
+        # fresh discovery did not return it.
+        if established_catalogue and not any(
+            item.get("catalogue") == established_catalogue
+            for item in active.candidate_catalogues
+        ):
+            active.candidate_catalogues.append({
+                "catalogue": established_catalogue,
+                "lead_time": pdm.get("lead_time"),
+                "product_count": 0,
+                "categories": [
+                    str(pdm.get("category") or "")
+                ] if pdm.get("category") else [],
+            })
+
+        active.candidate_catalogues.sort(
+            key=lambda item: (
+                item.get("lead_time") is None,
+                -(int(item.get("lead_time") or 0)),
+                str(item.get("catalogue") or "").casefold(),
+            )
+        )
+
         for record in active.records.values():
-            record.pdm_mapping_status = "established"
-        active.records["catalogue"].value = pdm.get("catalogue") or None
-        active.records["catalogue"].fetch_status = (
-            "fetched" if pdm.get("catalogue") else "not_available"
+            record.pdm_mapping_status = (
+                "established_with_fresh_discovery"
+                if active.candidate_catalogues
+                else "established"
+            )
+
+        if established_catalogue:
+            active.records["catalogue"].value = established_catalogue
+            active.records["catalogue"].fetch_status = "fetched"
+
+        discovery_count = len(active.candidate_catalogues)
+        active.pdm_match_status = (
+            "established_with_catalogues_found"
+            if discovery_count
+            else "established"
         )
         active.records["name"].notes = (
-            "Established repository ↔ PDM connection loaded from the central registry. "
-            f"Catalogue: {pdm.get('catalogue') or '-'}; "
-            f"PDM product: {pdm.get('product_name') or '-'}."
+            "Established repository ↔ PDM connection loaded from the central registry "
+            f"(Catalogue: {established_catalogue or '-'}). Fresh discovery remains "
+            f"available and found {discovery_count} catalogue(s)."
         )
 
     @staticmethod
