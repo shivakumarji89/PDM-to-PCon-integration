@@ -317,18 +317,63 @@ class RepositoryContextService(BaseService):
                 return
         code_record.notes = "reg_ProgramCode is empty or unavailable."
 
+    @staticmethod
+    def _catalogue_lead_time(name: str) -> int | None:
+        """Extract the explicit NN-day lead time from a catalogue name."""
+        match = re.search(r"\\b(\\d+)\\s*-?\\s*day\\b", name or "", re.IGNORECASE)
+        return int(match.group(1)) if match else None
+
     def _cross_check_pdm(self, active: RepositoryProductContext) -> None:
-        """Find candidates without silently treating a fuzzy result as a match."""
+        """Discover across the hierarchy, then apply catalogue lead-time priority.
+
+        Standard discovery order:
+        repository series -> all matching hierarchy records -> catalogue grouping
+        -> highest explicit lead-time catalogue -> product candidates.
+
+        Results remain discovery evidence only; no relationship is auto-created.
+        """
         name = active.series_name.strip()
         code = str(active.records["code"].value or "").strip()
         candidates = {}
+
         try:
-            if name:
-                for product in self.context.pdm_service.search_products_by_name(name, 25):
+            # Search the complete cached hierarchy first. The old bounded live
+            # search could stop inside one catalogue and therefore could not
+            # apply the established catalogue-selection standard.
+            hierarchy = self.context.pdm_service.get_cached_products()
+            normalized_name = self._normalize(name)
+            normalized_code = self._normalize(code)
+
+            for product in hierarchy:
+                product_name = self._normalize(product.name)
+                product_code = self._normalize(product.code)
+                product_category = self._normalize(product.category)
+                name_hit = bool(
+                    normalized_name
+                    and (
+                        normalized_name in product_name
+                        or product_name in normalized_name
+                        or normalized_name == product_category
+                    )
+                )
+                code_hit = bool(
+                    normalized_code
+                    and (
+                        normalized_code == product_code
+                        or normalized_code in product_code
+                    )
+                )
+                if name_hit or code_hit:
                     candidates[str(product.id)] = product
-            if code:
-                for product in self.context.pdm_service.search_products_by_code(code, 25):
-                    candidates[str(product.id)] = product
+
+            # Live search remains a fallback for an empty/stale local hierarchy.
+            if not candidates:
+                if name:
+                    for product in self.context.pdm_service.search_products_by_name(name, 100):
+                        candidates[str(product.id)] = product
+                if code:
+                    for product in self.context.pdm_service.search_products_by_code(code, 100):
+                        candidates[str(product.id)] = product
         except Exception as exc:
             active.pdm_match_status = "unavailable"
             for record in active.records.values():
@@ -336,9 +381,27 @@ class RepositoryContextService(BaseService):
             active.records["name"].notes = f"PDM cross-check unavailable: {exc}"
             return
 
-        active.pdm_match_count = len(candidates)
-        # Discovery is deliberately non-semantic: a search hit is evidence only,
-        # never proof that a repository series and a PDM product are equivalent.
+        by_catalogue: dict[str, list] = {}
+        for product in candidates.values():
+            catalogue = (product.description or "").strip()
+            by_catalogue.setdefault(catalogue, []).append(product)
+
+        ranked_catalogues = sorted(
+            by_catalogue.items(),
+            key=lambda entry: (
+                self._catalogue_lead_time(entry[0]) is None,
+                -(self._catalogue_lead_time(entry[0]) or 0),
+                entry[0].casefold(),
+            ),
+        )
+        selected_catalogues = ranked_catalogues[:1]
+        selected_products = [
+            product
+            for _catalogue, products in selected_catalogues
+            for product in products
+        ]
+
+        active.pdm_match_count = len(selected_products)
         active.candidate_products = [
             {
                 "id": str(product.id),
@@ -346,17 +409,26 @@ class RepositoryContextService(BaseService):
                 "name": product.name or "",
                 "category": product.category or "",
                 "catalogue": product.description or "",
+                "lead_time": self._catalogue_lead_time(product.description or ""),
             }
-            for product in candidates.values()
+            for product in selected_products
         ]
 
-        if candidates:
+        if selected_catalogues:
+            catalogue, _products = selected_catalogues[0]
+            lead_time = self._catalogue_lead_time(catalogue)
+            priority_text = (
+                f"highest explicit lead-time catalogue ({lead_time}-day)"
+                if lead_time is not None
+                else "highest available catalogue (no explicit lead time found)"
+            )
             active.pdm_match_status = "candidates_found"
             for record in active.records.values():
                 record.pdm_mapping_status = "candidates_found"
             active.records["name"].notes = (
-                "Candidate discovery only. Repository and PDM meanings are not "
-                "standardized automatically."
+                f"Discovery searched {len(by_catalogue)} catalogue(s) and selected "
+                f"'{catalogue or '-'}' as the {priority_text}. "
+                "Candidate selection is still not a verified relationship."
             )
         else:
             active.pdm_match_status = "not_found"
