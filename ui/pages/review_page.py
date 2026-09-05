@@ -31,6 +31,10 @@ class ReviewPage(BasePage):
     # Snapshot and engineering data is ready for downstream workflow pages.
     series_loaded = Signal(str)
 
+    # Request the Product page to run the already-established asynchronous family
+    # loader. This keeps Review free of duplicate loading/progress logic.
+    catalogue_load_requested = Signal(object, str)
+
     _CATALOGUE_COLUMNS = (
         ("#", 42),
         ("Catalogue", 360),
@@ -218,7 +222,12 @@ class ReviewPage(BasePage):
         return products
 
     def _load_selected_catalogue(self) -> None:
-        """Load the complete selected catalogue through the established family flow."""
+        """Hand the selected catalogue to the established Product family loader.
+
+        Review resolves the product boundary; ProductPage owns the actual
+        asynchronous load, reusable progress popup, activity reporting and
+        engineering/workspace completion flow.
+        """
         catalogue_name = self._selected_catalogue_name()
         if not catalogue_name:
             QMessageBox.warning(
@@ -235,25 +244,6 @@ class ReviewPage(BasePage):
             )
             return
 
-        # Reuse the existing family loader. Review only decides the catalogue
-        # boundary; Articles remains responsible for deciding which loaded
-        # articles are required.
-        result = self._context.pdm_service.load_family(products, catalogue_name)
-        if not result.ok:
-            QMessageBox.warning(self, "Catalogue Load", result.message)
-            return
-
-        snapshot = self._context.active_snapshot
-        try:
-            self._context.engineering_initialization_service.initialize(snapshot)
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "Engineering Initialization",
-                f"The PDM catalogue loaded, but workflow initialization failed:\n{error}",
-            )
-            return
-
         repository_context = self._context.repository_context_service.active_context
         if repository_context is not None:
             representative = next(
@@ -264,9 +254,6 @@ class ReviewPage(BasePage):
                 ),
                 None,
             )
-            # Reopening an established connection may intentionally skip a fresh
-            # discovery. Preserve the known PDM identity instead of overwriting
-            # it with an empty representative when the catalogue is loaded again.
             if representative is None:
                 representative = dict(
                     (repository_context.established_connection or {}).get("pdm") or {}
@@ -290,36 +277,25 @@ class ReviewPage(BasePage):
                     for item in repository_context.candidate_catalogues
                 ],
             }
-            engineering_summary = {
-                "article_count": len(getattr(snapshot, "articles", []) or []),
-                "article_length": None,
-                "links": [],
-            }
             self._context.repository_connection_service.establish(
                 repository_path=repository_context.repository_path,
                 repository_name=str(repository_context.records["name"].value or ""),
                 repository_code=str(repository_context.records["code"].value or ""),
                 repository_category=repository_context.category,
                 pdm_candidate=representative,
-                engineering_summary=engineering_summary,
+                engineering_summary={
+                    "article_count": None,
+                    "article_length": None,
+                    "links": [],
+                },
                 discovery=discovery,
             )
 
-        self.series_loaded.emit(catalogue_name)
         self._selection_info.setText(
-            f"Loaded catalogue: {catalogue_name} "
-            f"({len(products)} PDM product record(s), "
-            f"{len(getattr(snapshot, 'articles', []) or [])} articles)."
+            f"Loading catalogue: {catalogue_name}. Please wait..."
         )
-        QMessageBox.information(
-            self,
-            "Catalogue Loaded",
-            f"The complete PDM catalogue '{catalogue_name}' was loaded through "
-            f"the existing workflow ({len(products)} product record(s), "
-            f"{len(getattr(snapshot, 'articles', []) or [])} articles).\n\n"
-            "Continue to Articles to decide which articles are required. "
-            "The repository ↔ PDM connection was stored.",
-        )
+        self._load_snapshot_btn.setEnabled(False)
+        self.catalogue_load_requested.emit(products, catalogue_name)
 
     def _clear_catalogues(self, message: str) -> None:
         self._catalogues.clearContents()
