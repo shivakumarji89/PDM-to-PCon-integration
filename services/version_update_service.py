@@ -373,18 +373,33 @@ class RepositoryContextService(BaseService):
         return int(match.group(1)) if match else None
 
     def _cross_check_pdm(self, active: RepositoryProductContext) -> None:
-        """Discover across the hierarchy, then apply catalogue lead-time priority.
+        """Discover matching hierarchy occurrences and preserve their catalogue links.
 
         Standard discovery order:
-        repository series -> all matching hierarchy records -> catalogue grouping
-        -> highest explicit lead-time catalogue -> product candidates.
+        repository series -> all matching Catalogue/Product occurrences
+        -> catalogue grouping -> user selects catalogue -> user selects series.
 
-        Results remain discovery evidence only; no relationship is auto-created.
+        Discovery never auto-selects a catalogue and must preserve repeated
+        ProductIds when they occur under different catalogues.
         """
         name = active.series_name.strip()
         code = str(active.records["code"].value or "").strip()
-        candidates = {}
+        # Keep each catalogue occurrence. A ProductId can legitimately appear
+        # in several catalogues, so deduplicating by ProductId would destroy the
+        # exact Catalogue → Product relationship visible in Product Explorer.
+        candidates: list[Any] = []
+        candidate_keys: set[tuple[str, str, str]] = set()
         discovery_level = ""
+
+        def add_candidate(product) -> None:
+            key = (
+                str(product.id),
+                str(getattr(product, "catalogue_id", "") or ""),
+                str(product.description or ""),
+            )
+            if key not in candidate_keys:
+                candidate_keys.add(key)
+                candidates.append(product)
 
         try:
             # Search the complete cached hierarchy first. The old bounded live
@@ -401,9 +416,8 @@ class RepositoryContextService(BaseService):
                 name_hit = bool(
                     normalized_name
                     and (
-                        normalized_name in product_name
-                        or product_name in normalized_name
-                        or normalized_name == product_category
+                        product_name == normalized_name
+                        or product_name.startswith(normalized_name + " ")
                     )
                 )
                 code_hit = bool(
@@ -414,7 +428,7 @@ class RepositoryContextService(BaseService):
                     )
                 )
                 if name_hit or code_hit:
-                    candidates[str(product.id)] = product
+                    add_candidate(product)
 
             if candidates:
                 discovery_level = "direct name/code match"
@@ -432,7 +446,7 @@ class RepositoryContextService(BaseService):
                             product_name == normalized_first_word
                             or product_name.startswith(normalized_first_word + " ")
                         ):
-                            candidates[str(product.id)] = product
+                            add_candidate(product)
                 if candidates:
                     discovery_level = f"first-word match ({first_word})"
 
@@ -440,10 +454,10 @@ class RepositoryContextService(BaseService):
             if not candidates:
                 if name:
                     for product in self.context.pdm_service.search_products_by_name(name, 100):
-                        candidates[str(product.id)] = product
+                        add_candidate(product)
                 if code:
                     for product in self.context.pdm_service.search_products_by_code(code, 100):
-                        candidates[str(product.id)] = product
+                        add_candidate(product)
                 if candidates:
                     discovery_level = "direct live search"
 
@@ -451,7 +465,7 @@ class RepositoryContextService(BaseService):
                 first_word = re.split(r"[_\\-\\s]+", name, maxsplit=1)[0].strip()
                 if first_word:
                     for product in self.context.pdm_service.search_products_by_name(first_word, 100):
-                        candidates[str(product.id)] = product
+                        add_candidate(product)
                 if candidates:
                     discovery_level = f"first-word live search ({first_word})"
 
@@ -462,7 +476,7 @@ class RepositoryContextService(BaseService):
                 normalized_category = self._normalize(active.category)
                 for product in hierarchy:
                     if self._normalize(product.category) == normalized_category:
-                        candidates[str(product.id)] = product
+                        add_candidate(product)
                 if candidates:
                     discovery_level = f"category discovery ({active.category})"
         except Exception as exc:
@@ -473,7 +487,7 @@ class RepositoryContextService(BaseService):
             return
 
         by_catalogue: dict[str, list] = {}
-        for product in candidates.values():
+        for product in candidates:
             catalogue = (product.description or "").strip()
             by_catalogue.setdefault(catalogue, []).append(product)
 
