@@ -188,6 +188,7 @@ class RepositoryProductContext:
     pdm_match_status: str = "not_checked"
     pdm_product_id: str | None = None
     candidate_products: list[dict[str, Any]] = field(default_factory=list)
+    established_connection: dict[str, Any] | None = None
 
 
 class RepositoryContextService(BaseService):
@@ -279,9 +280,50 @@ class RepositoryContextService(BaseService):
             category=category,
             records=records,
         )
-        self._cross_check_pdm(active)
+
+        # An established connection is stronger evidence than a fresh discovery.
+        # Reuse it for maintenance so the repository does not need to guess the
+        # same PDM relationship again years later.
+        established = self.context.repository_connection_service.get(folder)
+        if established is not None:
+            self._apply_established_connection(active, established)
+        else:
+            self._cross_check_pdm(active)
+
         self._active = active
         return active
+
+    def _apply_established_connection(
+        self,
+        active: RepositoryProductContext,
+        connection: dict[str, Any],
+    ) -> None:
+        """Use the persistent repository ↔ PDM relationship as maintenance context."""
+        pdm = connection.get("pdm") or {}
+        active.established_connection = connection
+        active.pdm_match_status = "established"
+        active.pdm_product_id = str(pdm.get("product_id") or "") or None
+        active.candidate_products = [{
+            "id": str(pdm.get("product_id") or ""),
+            "code": str(pdm.get("product_code") or ""),
+            "name": str(pdm.get("product_name") or ""),
+            "category": str(pdm.get("category") or ""),
+            "range": str(pdm.get("range") or ""),
+            "catalogue": str(pdm.get("catalogue") or ""),
+            "lead_time": pdm.get("lead_time"),
+        }]
+        active.pdm_match_count = len(active.candidate_products)
+        for record in active.records.values():
+            record.pdm_mapping_status = "established"
+        active.records["catalogue"].value = pdm.get("catalogue") or None
+        active.records["catalogue"].fetch_status = (
+            "fetched" if pdm.get("catalogue") else "not_available"
+        )
+        active.records["name"].notes = (
+            "Established repository ↔ PDM connection loaded from the central registry. "
+            f"Catalogue: {pdm.get('catalogue') or '-'}; "
+            f"PDM product: {pdm.get('product_name') or '-'}."
+        )
 
     @staticmethod
     def _record(
