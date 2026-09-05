@@ -103,6 +103,10 @@ class Snapshot:
     # populated it wins over the reduction/PDM length in the base article split.
     base_length_overrides: dict[str, int] = field(default_factory=dict)
 
+    # Repository-derived implemented base relationships for existing-series work.
+    # member article CODE -> base article CODE. Empty for new series.
+    base_article_overrides: dict[str, str] = field(default_factory=dict)
+
     # Option increment prices (PDM ``ItemOptionValues.IncrementalPrice``): item
     # prefix (name up to and including the first ``.``) -> option-value rows,
     # each ``{item, option_id, option_name, value_name, code, increment}``. Feeds
