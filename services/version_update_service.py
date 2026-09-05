@@ -314,39 +314,8 @@ class RepositoryContextService(BaseService):
         return active
 
     def apply_repository_article_context(self, snapshot) -> None:
-        """Resolve loaded PDM articles against repository base/master codes.
-
-        The repository OCD stores implemented base articles in tCOMd_Article.
-        For existing-series maintenance the longest repository base that prefixes
-        a loaded PDM article is authoritative.
-        """
-        active = self._active
-        if active is None or active.article_context.status != "loaded":
-            return
-
-        masters = sorted(
-            active.article_context.base_articles.keys(),
-            key=len,
-            reverse=True,
-        )
-        if not masters:
-            return
-
-        resolved_bases: dict[str, str] = {}
-        resolved_lengths: dict[str, int] = {}
-        for article in getattr(snapshot, "articles", []) or []:
-            code = str(getattr(article, "code", "") or "").strip()
-            if not code:
-                continue
-            base = next((master for master in masters if code.startswith(master)), "")
-            if base:
-                resolved_bases[code] = base
-                resolved_lengths[code] = len(base)
-
-        snapshot.base_article_overrides.clear()
-        snapshot.base_length_overrides.clear()
-        snapshot.base_article_overrides.update(resolved_bases)
-        snapshot.base_length_overrides.update(resolved_lengths)
+        """No-op: repository workspace loading must not mutate PDM snapshots."""
+        return
 
     def refresh_pdm_discovery(self) -> RepositoryProductContext | None:
         """Explicitly reconnect the active repository to fresh PDM discovery."""
@@ -367,41 +336,31 @@ class RepositoryContextService(BaseService):
     def _read_repository_article_context(
         self, folder: Path
     ) -> RepositoryArticleContext:
-        """Read established article evidence from the repository OCD."""
+        """Read repository article data only; existing work is independent of PDM."""
         mdb_path = folder / self._OCD_FILE
         result = RepositoryArticleContext(source_path=str(mdb_path))
         if not mdb_path.is_file():
             result.status = "missing"
             result.notes.append("Repository OCD file was not found.")
             return result
-
-        rows = self.context.mdb_service.get_article_context(mdb_path)
-        candidates: set[str] = set()
-        article_codes: set[str] = set()
-        for row in rows:
-            article_code = str(row.get("com_ArticleCode") or "").strip()
-            if article_code:
-                article_codes.add(article_code)
-                candidates.add(article_code)
-            class_name = str(row.get("com_ClassName") or "").strip().upper()
-            if class_name == "ARTICLE_NUMBER":
-                value = str(row.get("com_PropValue") or "").strip()
-                if value:
-                    candidates.add(value)
-
-        ordered = sorted(candidates, key=lambda code: (-len(code), code))
-        result.article_count = len(article_codes)
-        result.base_articles = {code: code for code in ordered}
-        result.base_lengths = {code: len(code) for code in ordered}
-        result.status = "loaded" if ordered else "empty"
-        if ordered:
-            result.notes.append(
-                f"Read repository article masters and ARTICLE_NUMBER evidence: "
-                f"{len(article_codes)} articles, {len(ordered)} candidate bases."
-            )
-        else:
-            result.notes.append("No repository article/base evidence was found.")
+        rows = self.context.mdb_service.read_table(
+            mdb_path, "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article"
+        )
+        codes = [
+            str(row.get("com_ArticleCode") or "").strip()
+            for row in rows
+            if str(row.get("com_ArticleCode") or "").strip()
+        ]
+        result.article_count = len(codes)
+        result.base_articles = {code: code for code in codes}
+        result.base_lengths = {code: len(code) for code in codes}
+        result.status = "loaded" if codes else "empty"
+        result.notes.append(
+            f"Read {len(codes)} article record(s) from repository OCD."
+            if codes else "No article records were found in the repository OCD."
+        )
         return result
+
     def _apply_established_connection(
         self,
         active: RepositoryProductContext,
