@@ -76,7 +76,7 @@ class PDMService(BaseService):
     )
     # Bumped to 2 when catalogue fetching was scoped to active + region (UK):
     # invalidates the stale all-region cache so it rebuilds on next launch.
-    _REGISTRY_SCHEMA_VERSION = 2
+    _REGISTRY_SCHEMA_VERSION = 3
 
     #: On-disk cache of a loaded FAMILY snapshot's source PDM data - one JSON
     #: file per family, named after the family (e.g. "bolster.json").
@@ -128,6 +128,7 @@ class PDMService(BaseService):
                     category=(row.ProductCategoryName or "").strip(),
                     description=(row.CatalogueName or "").strip(),
                     catalogue_id=str(row.CatalogueId) if row.CatalogueId is not None else None,
+                    lead_time=int(row.LeadTime) if getattr(row, "LeadTime", None) is not None else None,
                 )
             )
         self._connected = True
@@ -165,6 +166,7 @@ class PDMService(BaseService):
                     category=entry.get("category", ""),
                     description=entry.get("description", ""),
                     catalogue_id=entry.get("catalogue_id"),
+                    lead_time=entry.get("lead_time"),
                 )
                 for entry in data.get("products", [])
             ]
@@ -188,6 +190,7 @@ class PDMService(BaseService):
                         "category": p.category,
                         "description": p.description,
                         "catalogue_id": p.catalogue_id,
+                        "lead_time": p.lead_time,
                     }
                     for p in products
                 ],
