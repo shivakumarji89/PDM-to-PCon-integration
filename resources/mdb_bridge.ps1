@@ -101,6 +101,21 @@ try {
                     $conn.Execute($sql) | Out-Null
                     $r.updated = 1
                 }
+                "schema" {
+                    $schema = $conn.OpenSchema(20) # adSchemaTables
+                    $rows = @()
+                    while (-not $schema.EOF) {
+                        $tableType = [string]$schema.Fields.Item("TABLE_TYPE").Value
+                        if ($tableType -eq "TABLE") {
+                            $rows += [pscustomobject]@{
+                                table = [string]$schema.Fields.Item("TABLE_NAME").Value
+                            }
+                        }
+                        $schema.MoveNext()
+                    }
+                    $schema.Close()
+                    $r.rows = $rows
+                }
                 "query" {
                     $rs = $conn.Execute($op.sql)
                     $rows = @()
