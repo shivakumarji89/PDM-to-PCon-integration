@@ -502,8 +502,8 @@ class RepositoryContextService(BaseService):
         ranked_catalogues = sorted(
             by_catalogue.items(),
             key=lambda entry: (
-                self._catalogue_lead_time(entry[0]) is None,
-                -(self._catalogue_lead_time(entry[0]) or 0),
+                self._catalogue_lead_time(entry[0]) is None and not any(getattr(p, "lead_time", None) is not None for p in entry[1]),
+                -(next((int(p.lead_time) for p in entry[1] if getattr(p, "lead_time", None) is not None), self._catalogue_lead_time(entry[0]) or 0)),
                 entry[0].casefold(),
             ),
         )
@@ -513,7 +513,7 @@ class RepositoryContextService(BaseService):
         active.candidate_catalogues = [
             {
                 "catalogue": catalogue,
-                "lead_time": self._catalogue_lead_time(catalogue),
+                "lead_time": next((int(product.lead_time) for product in products if getattr(product, "lead_time", None) is not None), self._catalogue_lead_time(catalogue)),
                 "product_count": len(products),
                 "categories": sorted({
                     str(product.category or "") for product in products
@@ -529,7 +529,7 @@ class RepositoryContextService(BaseService):
                 "name": product.name or "",
                 "category": product.category or "",
                 "catalogue": product.description or "",
-                "lead_time": self._catalogue_lead_time(product.description or ""),
+                "lead_time": (int(product.lead_time) if getattr(product, "lead_time", None) is not None else self._catalogue_lead_time(product.description or "")),
             }
             for _catalogue, products in ranked_catalogues
             for product in products
