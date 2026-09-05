@@ -314,6 +314,12 @@ class RepositoryContextService(BaseService):
             "lead_time": pdm.get("lead_time"),
         }]
         active.pdm_match_count = len(active.candidate_products)
+        active.candidate_catalogues = [{
+            "catalogue": str(pdm.get("catalogue") or ""),
+            "lead_time": pdm.get("lead_time"),
+            "product_count": 1,
+            "categories": [str(pdm.get("category") or "")] if pdm.get("category") else [],
+        }]
         for record in active.records.values():
             record.pdm_mapping_status = "established"
         active.records["catalogue"].value = pdm.get("catalogue") or None
