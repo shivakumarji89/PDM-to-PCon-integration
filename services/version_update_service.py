@@ -367,7 +367,7 @@ class RepositoryContextService(BaseService):
     def _read_repository_article_context(
         self, folder: Path
     ) -> RepositoryArticleContext:
-        """Read established BASE article masters from the repository OCD."""
+        """Read established article evidence from the repository OCD."""
         mdb_path = folder / self._OCD_FILE
         result = RepositoryArticleContext(source_path=str(mdb_path))
         if not mdb_path.is_file():
@@ -375,28 +375,33 @@ class RepositoryContextService(BaseService):
             result.notes.append("Repository OCD file was not found.")
             return result
 
-        rows = self.context.mdb_service.read_table(
-            mdb_path,
-            "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article",
-        )
-        base_codes = sorted(
-            {
-                str(row.get("com_ArticleCode") or "").strip()
-                for row in rows
-                if str(row.get("com_ArticleCode") or "").strip()
-            },
-            key=lambda code: (-len(code), code),
-        )
-        result.article_count = len(base_codes)
-        result.base_articles = {code: code for code in base_codes}
-        result.base_lengths = {code: len(code) for code in base_codes}
-        result.status = "loaded" if base_codes else "empty"
-        result.notes.append(
-            f"Read {len(base_codes)} established base article master(s)."
-            if base_codes else "No article masters were found in the repository OCD."
-        )
-        return result
+        rows = self.context.mdb_service.get_article_context(mdb_path)
+        candidates: set[str] = set()
+        article_codes: set[str] = set()
+        for row in rows:
+            article_code = str(row.get("com_ArticleCode") or "").strip()
+            if article_code:
+                article_codes.add(article_code)
+                candidates.add(article_code)
+            class_name = str(row.get("com_ClassName") or "").strip().upper()
+            if class_name == "ARTICLE_NUMBER":
+                value = str(row.get("com_PropValue") or "").strip()
+                if value:
+                    candidates.add(value)
 
+        ordered = sorted(candidates, key=lambda code: (-len(code), code))
+        result.article_count = len(article_codes)
+        result.base_articles = {code: code for code in ordered}
+        result.base_lengths = {code: len(code) for code in ordered}
+        result.status = "loaded" if ordered else "empty"
+        if ordered:
+            result.notes.append(
+                f"Read repository article masters and ARTICLE_NUMBER evidence: "
+                f"{len(article_codes)} articles, {len(ordered)} candidate bases."
+            )
+        else:
+            result.notes.append("No repository article/base evidence was found.")
+        return result
     def _apply_established_connection(
         self,
         active: RepositoryProductContext,
