@@ -1136,21 +1136,21 @@ class ProductPage(BasePage):
             self._on_refresh_hierarchy()
 
     def _on_load_family(self) -> None:
-        """Load every product under the selected family into one session.
-
-        Collects the family's direct Product children and loads them on a worker
-        thread while a concise :class:`~ui.dialogs.progress_dialog.ProgressDialog`
-        shows high-level progress. The same
-        :class:`~core.progress.ProgressReporter` feeds the detailed timeline into
-        the Engineering Activity panel. Engineering initialization and the single
-        workspace refresh run once the load completes.
-        """
-        # Products come from every selected node (products / categories /
-        # catalogues), so multi-selection loads them all in one family.
+        """Load the family represented by the current Product selection."""
         products, family_name = self._selected_family_products()
+        self.load_family_products(products, family_name)
+
+    def load_family_products(self, products, family_name: str) -> bool:
+        """Start the established family loader for an externally resolved product set.
+
+        Review uses this entry point after the user confirms a catalogue. The
+        exact same worker, reusable ProgressDialog, ProgressReporter, Activity
+        bridge and completion signals are used as a normal Product-page family
+        load; Review only supplies the already-resolved product boundary.
+        """
         if not products:
-            self._search_status.setText("Select product(s) or categories to load.")
-            return
+            self._search_status.setText("No PDM products were supplied for loading.")
+            return False
 
         # One reusable reporter drives both the progress dialog and the Activity
         # panel; business logic in the service only calls the reporter methods.
@@ -1209,6 +1209,7 @@ class ProductPage(BasePage):
         dialog.show()
         dialog.raise_()
         self._pool.start(worker)
+        return True
 
     def _on_add_family_to_session(self) -> None:
         """Merge the selected family into the CURRENT session (accumulate).
