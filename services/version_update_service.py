@@ -473,4 +473,11 @@ class RepositoryContextService(BaseService):
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return " ".join((value or "").casefold().split())
+        """Normalize repository/PDM formatting for direct comparison.
+
+        Repository folder names commonly use underscores while PDM display names
+        use spaces. Treat separators as formatting only; do not remove words or
+        otherwise guess semantic equivalence.
+        """
+        text = re.sub(r"[_-]+", " ", value or "")
+        return " ".join(text.casefold().split())
