@@ -1,19 +1,20 @@
 """Review workspace for repository ↔ PDM source discovery.
 
-This page is intentionally evidence-only. It helps compare an existing
-repository series with PDM candidates before any semantic mapping is
-standardized.
+This page is evidence-first: it compares a selected repository series with the
+PDM records discovered for it, without asserting an automatic relationship.
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -22,14 +23,24 @@ from ui.pages.base_page import BasePage
 
 
 class ReviewPage(BasePage):
-    """Source discovery workspace for repository and PDM comparison."""
+    """Comparison workspace for repository evidence and PDM candidates."""
+
+    _COLUMNS = (
+        ("#", 42),
+        ("Product Name", 280),
+        ("Product Code", 170),
+        ("Category", 120),
+        ("Range", 220),
+        ("Catalogue", 180),
+        ("Status", 110),
+    )
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Review",
             description=(
-                "Compare repository evidence with PDM candidates before "
-                "standardizing source mappings."
+                "Compare repository evidence with PDM candidates. "
+                "Candidates are discovery results and are not auto-mapped."
             ),
             parent=parent,
             show_placeholder=False,
@@ -43,14 +54,21 @@ class ReviewPage(BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Review Actions", self)
         layout = QHBoxLayout(box)
-        self._refresh_btn = QPushButton("Refresh", box)
+
+        self._refresh_btn = QPushButton("Refresh Discovery", box)
         self._refresh_btn.clicked.connect(self.refresh)
         layout.addWidget(self._refresh_btn)
+
+        self._selection_info = QLabel(
+            "Select a candidate to inspect its relationship with the repository.",
+            box,
+        )
+        layout.addWidget(self._selection_info)
         layout.addStretch(1)
         return box
 
     def _build_source_comparison_group(self) -> QWidget:
-        """Show evidence without asserting repository/PDM equivalence."""
+        """Build the structured repository/PDM comparison workspace."""
         box = QGroupBox("Repository ↔ PDM Discovery", self)
         layout = QVBoxLayout(box)
 
@@ -77,15 +95,79 @@ class ReviewPage(BasePage):
         layout.addWidget(repository_box)
 
         candidates_box = QGroupBox(
-            "PDM Candidates (discovery only — not standardized mappings)", box
+            "PDM Candidates — Discovery Only (no automatic relationship)",
+            box,
         )
         candidates_layout = QVBoxLayout(candidates_box)
-        self._pdm_candidates = QListWidget(candidates_box)
-        self._pdm_candidates.setMinimumHeight(180)
-        candidates_layout.addWidget(self._pdm_candidates)
-        layout.addWidget(candidates_box)
 
+        hint = QLabel(
+            "Each row is a PDM record returned by discovery. Select rows to "
+            "compare them with the repository series; no selection is saved or "
+            "treated as verified at this stage.",
+            candidates_box,
+        )
+        hint.setWordWrap(True)
+        candidates_layout.addWidget(hint)
+
+        self._pdm_candidates = QTableWidget(candidates_box)
+        self._pdm_candidates.setColumnCount(len(self._COLUMNS))
+        self._pdm_candidates.setHorizontalHeaderLabels(
+            [column[0] for column in self._COLUMNS]
+        )
+        for index, (_, width) in enumerate(self._COLUMNS):
+            self._pdm_candidates.setColumnWidth(index, width)
+
+        self._pdm_candidates.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._pdm_candidates.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self._pdm_candidates.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._pdm_candidates.verticalHeader().setVisible(False)
+        self._pdm_candidates.setAlternatingRowColors(True)
+        self._pdm_candidates.itemSelectionChanged.connect(
+            self._on_candidate_selection_changed
+        )
+        self._pdm_candidates.setMinimumHeight(240)
+        candidates_layout.addWidget(self._pdm_candidates)
+
+        layout.addWidget(candidates_box)
         return box
+
+    @staticmethod
+    def _value(product: dict, *keys: str) -> str:
+        """Read the first available candidate field without guessing identity."""
+        for key in keys:
+            value = product.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return "-"
+
+    def _on_candidate_selection_changed(self) -> None:
+        rows = self._pdm_candidates.selectionModel().selectedRows()
+        if not rows:
+            self._selection_info.setText(
+                "Select a candidate to inspect its relationship with the repository."
+            )
+            return
+
+        row = rows[0].row()
+        name_item = self._pdm_candidates.item(row, 1)
+        name = name_item.text() if name_item else "-"
+        self._selection_info.setText(
+            f"Selected candidate: {name} — discovery selection only."
+        )
+
+    def _clear_candidates(self, message: str) -> None:
+        self._pdm_candidates.clearContents()
+        self._pdm_candidates.setRowCount(1)
+        item = QTableWidgetItem(message)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self._pdm_candidates.setItem(0, 0, item)
+        self._pdm_candidates.setSpan(0, 0, 1, len(self._COLUMNS))
 
     def _refresh_source_comparison(self) -> None:
         context = self._context.repository_context_service.active_context
@@ -95,8 +177,7 @@ class ReviewPage(BasePage):
             )
             for widget in self._source_rows.values():
                 widget.setText("-")
-            self._pdm_candidates.clear()
-            self._pdm_candidates.addItem("No PDM discovery data available.")
+            self._clear_candidates("No PDM discovery data available.")
             return
 
         self._source_status.setText(
@@ -110,19 +191,37 @@ class ReviewPage(BasePage):
                 str(record.value if record and record.value not in (None, "") else "-")
             )
 
-        self._pdm_candidates.clear()
-        if context.candidate_products:
-            for index, product in enumerate(context.candidate_products, start=1):
-                self._pdm_candidates.addItem(
-                    f"{index}. {product['name'] or '-'}"
-                    f" | Code: {product['code'] or '-'}"
-                    f" | Category: {product['category'] or '-'}"
-                    f" | Catalogue: {product['catalogue'] or '-'}"
-                )
-        else:
-            self._pdm_candidates.addItem("No PDM candidates found.")
+        candidates = context.candidate_products or []
+        if not candidates:
+            self._clear_candidates("No PDM candidates found.")
+            return
+
+        self._pdm_candidates.clearSpans()
+        self._pdm_candidates.clearContents()
+        self._pdm_candidates.setRowCount(len(candidates))
+
+        for row, product in enumerate(candidates):
+            values = (
+                str(row + 1),
+                self._value(product, "name", "product_name"),
+                self._value(product, "code", "product_code"),
+                self._value(product, "category", "category_name"),
+                self._value(product, "range_name", "range", "product_range"),
+                self._value(product, "catalogue", "catalogue_name"),
+                "Candidate",
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._pdm_candidates.setItem(row, column, item)
+
+        self._pdm_candidates.resizeRowsToContents()
 
     def refresh(self) -> None:
+        self._selection_info.setText(
+            "Select a candidate to inspect its relationship with the repository."
+        )
         self._refresh_source_comparison()
 
     def showEvent(self, event) -> None:  # noqa: N802
@@ -130,5 +229,4 @@ class ReviewPage(BasePage):
         self.refresh()
 
     def is_ready(self) -> bool:
-        # Review is investigative; it must not block the workflow.
         return True
