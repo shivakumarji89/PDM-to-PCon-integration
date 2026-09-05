@@ -60,7 +60,7 @@ class ReviewPage(BasePage):
         layout = QHBoxLayout(box)
 
         self._refresh_btn = QPushButton("Refresh Discovery", box)
-        self._refresh_btn.clicked.connect(self.refresh)
+        self._refresh_btn.clicked.connect(self._refresh_discovery)
         layout.addWidget(self._refresh_btn)
 
         self._selection_info = QLabel(
@@ -364,7 +364,19 @@ class ReviewPage(BasePage):
             ).casefold()
             self._catalogues.setRowHidden(row, bool(query and query not in searchable))
 
+    def _refresh_discovery(self) -> None:
+        """Run a new PDM discovery only when explicitly requested by the user."""
+        self._selection_info.setText("Refreshing PDM discovery...")
+        self._load_snapshot_btn.setEnabled(False)
+        self._context.repository_context_service.refresh_pdm_discovery()
+        self._catalogue_search.clear()
+        self._refresh_source_comparison()
+        self._selection_info.setText(
+            "Fresh PDM discovery loaded. Select a catalogue to load its complete product data."
+        )
+
     def refresh(self) -> None:
+        """Refresh the view without reconnecting to PDM."""
         self._selection_info.setText(
             "Select a PDM catalogue to load its complete product data."
         )
