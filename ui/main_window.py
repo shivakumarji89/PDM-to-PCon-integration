@@ -175,6 +175,9 @@ class MainWindow(QMainWindow):
                 page.repository_review_requested.connect(
                     lambda: self._manager.jump_to(WorkflowStep.REVIEW)
                 )
+            elif item.step == WorkflowStep.REVIEW:
+                page.series_loaded.connect(self._on_review_series_loaded)
+                self._refreshable_pages.append(page)
             elif hasattr(page, "refresh"):
                 self._refreshable_pages.append(page)
             self._stack.addWidget(page)
@@ -955,6 +958,19 @@ class MainWindow(QMainWindow):
 
     def _on_product_loaded(self, label: str) -> None:
         self._product_status.setText(label)
+
+    def _on_review_series_loaded(self, product_name: str) -> None:
+        """Publish a Review-selected PDM series to the normal workflow.
+
+        Review establishes the repository ↔ PDM relationship; this window owns
+        refreshing downstream pages so Articles and later steps immediately use
+        the same active Snapshot.
+        """
+        self._product_status.setText(product_name or "PDM Series Loaded")
+        self.refresh_workspaces()
+        self.statusBar().showMessage(
+            f"Loaded {product_name} into the working Snapshot", 6000
+        )
 
     def _on_snapshot_changed(self) -> None:
         self.refresh_workspaces()
