@@ -132,6 +132,7 @@ class PDMRepository(BaseRepository):
             p.Status      AS ProductStatus,
             c.CatalogueId,
             c.Name        AS CatalogueName,
+            c.LeadTime,
             cpc.Name      AS ProductCategoryName
         FROM (
             SELECT TOP (?)
