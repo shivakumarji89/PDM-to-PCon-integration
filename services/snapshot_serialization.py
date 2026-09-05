@@ -876,6 +876,8 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "component_head_attrs": snapshot.component_head_attrs,
         "article_varcond_terms": snapshot.article_varcond_terms,
         "article_prefix_length": snapshot.article_prefix_length,
+        "base_length_overrides": snapshot.base_length_overrides,
+        "base_article_overrides": snapshot.base_article_overrides,
         "option_increments": snapshot.option_increments,
         "attribute_value_exclusions": snapshot.attribute_value_exclusions,
         "attribute_option_dependencies": snapshot.attribute_option_dependencies,
@@ -967,6 +969,16 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
         article_prefix_length={
             str(k): int(v)
             for k, v in (data.get("article_prefix_length") or {}).items()
+            if v is not None
+        },
+        base_length_overrides={
+            str(k): int(v)
+            for k, v in (data.get("base_length_overrides") or {}).items()
+            if v is not None
+        },
+        base_article_overrides={
+            str(k): str(v)
+            for k, v in (data.get("base_article_overrides") or {}).items()
             if v is not None
         },
         option_increments={
