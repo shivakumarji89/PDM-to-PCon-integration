@@ -101,6 +101,35 @@ try {
                     $conn.Execute($sql) | Out-Null
                     $r.updated = 1
                 }
+                "article_context" {
+                    $sql = @"
+SELECT
+    a.com_ArticleID,
+    a.com_ArticleCode,
+    b.com_ClassName,
+    b.com_PropName,
+    b.com_PropValue
+FROM tCOMd_Article AS a
+LEFT JOIN tCOMd_ArtBase AS b
+    ON a.com_ArticleID = b.com_ArticleID
+WHERE a.com_ArticleCode IS NOT NULL
+"@
+                    $rs = $conn.Execute($sql)
+                    $rows = @()
+                    while (-not $rs.EOF) {
+                        $row = [ordered]@{}
+                        for ($i = 0; $i -lt $rs.Fields.Count; $i++) {
+                            $name = $rs.Fields.Item($i).Name
+                            $value = $rs.Fields.Item($i).Value
+                            if ($value -is [System.DBNull]) { $value = $null }
+                            $row[$name] = $value
+                        }
+                        $rows += [pscustomobject]$row
+                        $rs.MoveNext()
+                    }
+                    $rs.Close()
+                    $r.rows = $rows
+                }
                 "schema" {
                     $schema = $conn.OpenSchema(20) # adSchemaTables
                     $rows = @()
