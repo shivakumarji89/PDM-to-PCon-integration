@@ -177,6 +177,9 @@ class MainWindow(QMainWindow):
                 )
             elif item.step == WorkflowStep.REVIEW:
                 page.series_loaded.connect(self._on_review_series_loaded)
+                page.catalogue_load_requested.connect(
+                    self._product_page.load_family_products
+                )
                 self._refreshable_pages.append(page)
             elif hasattr(page, "refresh"):
                 self._refreshable_pages.append(page)
