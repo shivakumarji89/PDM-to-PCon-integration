@@ -26,6 +26,7 @@ class AppConfig:
     workspace_path: str = "workspace/"
     snapshot_location: str = "workspace/snapshots/"
     temp_folder: str = "workspace/tmp/"
+    repository_connection_registry: str = "workspace/repository_connections.json"
 
     # PDM (SQL Server) connection parameters. Defaults mirror the proven V1
     # configuration; the connection string is assembled in PDMRepository.
