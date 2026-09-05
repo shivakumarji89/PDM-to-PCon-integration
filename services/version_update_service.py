@@ -374,7 +374,7 @@ class RepositoryContextService(BaseService):
         # value as an integer so sorting is numeric (120, 110, 100 ...), not
         # alphabetical (05, 10, 100 ...).
         match = re.search(
-            r"(?<!\\d)(\\d+)\\s*-\\s*day\\b",
+            r"(?<!\d)(\d+)\s*-\s*day\b",
             str(name or ""),
             re.IGNORECASE,
         )
