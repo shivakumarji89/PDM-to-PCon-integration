@@ -262,8 +262,34 @@ class ReviewPage(BasePage):
                     for item in repository_context.candidate_products
                     if self._value(item, "catalogue", "catalogue_name") == catalogue_name
                 ),
-                {},
+                None,
             )
+            # Reopening an established connection may intentionally skip a fresh
+            # discovery. Preserve the known PDM identity instead of overwriting
+            # it with an empty representative when the catalogue is loaded again.
+            if representative is None:
+                representative = dict(
+                    (repository_context.established_connection or {}).get("pdm") or {}
+                )
+                representative["catalogue"] = catalogue_name
+
+            selected_discovery = next(
+                (
+                    dict(item)
+                    for item in repository_context.candidate_catalogues
+                    if self._value(item, "catalogue") == catalogue_name
+                ),
+                {"catalogue": catalogue_name},
+            )
+            discovery = {
+                "status": "recorded",
+                "selected_catalogue": catalogue_name,
+                "selected": selected_discovery,
+                "catalogues": [
+                    dict(item)
+                    for item in repository_context.candidate_catalogues
+                ],
+            }
             engineering_summary = {
                 "article_count": len(getattr(snapshot, "articles", []) or []),
                 "article_length": None,
@@ -276,6 +302,7 @@ class ReviewPage(BasePage):
                 repository_category=repository_context.category,
                 pdm_candidate=representative,
                 engineering_summary=engineering_summary,
+                discovery=discovery,
             )
 
         self.series_loaded.emit(catalogue_name)
