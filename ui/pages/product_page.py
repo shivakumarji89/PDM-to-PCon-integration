@@ -1347,6 +1347,9 @@ class ProductPage(BasePage):
             self._context.engineering_initialization_service.initialize(
                 self._context.active_snapshot
             )
+            self._context.repository_context_service.apply_repository_article_context(
+                self._context.active_snapshot
+            )
         except Exception as error:  # never let init break the load
             reporter.log("error", f"Engineering init: {error}")
 
