@@ -21,6 +21,7 @@ class Product:
     description: str = ""
     category: str = ""
     catalogue_id: str | None = None
+    lead_time: int | None = None
     range_name: str = ""
     status: str = ""
     is_super_product: bool = False
