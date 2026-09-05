@@ -130,6 +130,13 @@ class MDBService(BaseService):
             return []
         return batch.results[0].rows
 
+    def get_article_context(self, mdb_path: str | Path) -> list[dict[str, Any]]:
+        """Read article masters together with their actual ArtBase evidence."""
+        batch = self.execute_batch(mdb_path, [{"op": "article_context"}])
+        if not batch.ok or not batch.results:
+            return []
+        return batch.results[0].rows
+
     def get_tables(self, mdb_path: str | Path) -> list[str]:
         """Return table names from an MDB without assuming its schema."""
         batch = self.execute_batch(mdb_path, [{"op": "schema"}])
