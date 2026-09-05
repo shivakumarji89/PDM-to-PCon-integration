@@ -68,7 +68,7 @@ class ReviewPage(BasePage):
         )
         layout.addWidget(self._selection_info)
 
-        self._load_snapshot_btn = QPushButton("Load Selected into Snapshot", box)
+        self._load_snapshot_btn = QPushButton("Start Work & Establish Connection", box)
         self._load_snapshot_btn.setEnabled(False)
         self._load_snapshot_btn.clicked.connect(self._load_selected_candidate)
         layout.addWidget(self._load_snapshot_btn)
@@ -228,14 +228,32 @@ class ReviewPage(BasePage):
             QMessageBox.warning(self, "Snapshot Load", result.message)
             return
 
+        repository_context = self._context.repository_context_service.active_context
+        if repository_context is not None:
+            snapshot = self._context.active_snapshot
+            engineering_summary = {
+                "article_count": len(getattr(snapshot, "articles", []) or []),
+                "article_length": None,
+                "links": [],
+            }
+            self._context.repository_connection_service.establish(
+                repository_path=repository_context.repository_path,
+                repository_name=str(repository_context.records["name"].value or ""),
+                repository_code=str(repository_context.records["code"].value or ""),
+                repository_category=repository_context.category,
+                pdm_candidate=candidate,
+                engineering_summary=engineering_summary,
+            )
+
         self._selection_info.setText(
-            f"Loaded into Snapshot: {product.name}. Existing workflows can now use this context."
+            f"Working connection established: {product.name}. "
+            "Future maintenance will reuse this repository ↔ PDM link."
         )
         QMessageBox.information(
             self,
-            "Snapshot Loaded",
-            "The selected PDM candidate was loaded into the active Snapshot. "
-            "No repository ↔ PDM relationship was saved or verified.",
+            "Connection Established",
+            "The selected PDM series was loaded into the active Snapshot and the "
+            "repository ↔ PDM connection was stored in the central registry.",
         )
 
     def _clear_candidates(self, message: str) -> None:
