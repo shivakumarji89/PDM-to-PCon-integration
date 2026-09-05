@@ -712,10 +712,17 @@ class ArticlesPage(BasePage):
             self._table.insertRow(row)
 
             code = article.code if article is not None else ""
-            applied = self._applied_length(member)
+            applied = self._applied_length(member, article)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            base, remaining = self._split_base(code, length)
+            repository_base = self._repository_base(article)
+            if repository_base:
+                base = repository_base
+                remaining = (
+                    code[len(base):] if code.startswith(base) else ""
+                )
+            else:
+                base, remaining = self._split_base(code, length)
 
             source_item = QTableWidgetItem(code)
             source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
