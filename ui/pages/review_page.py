@@ -27,6 +27,14 @@ from ui.pages.base_page import BasePage
 class ReviewPage(BasePage):
     """Comparison workspace for repository evidence and PDM candidates."""
 
+    _CATALOGUE_COLUMNS = (
+        ("#", 42),
+        ("Catalogue", 360),
+        ("Lead Time", 100),
+        ("Series Found", 110),
+        ("Category", 220),
+    )
+
     _COLUMNS = (
         ("#", 42),
         ("Product Name", 280),
@@ -49,6 +57,7 @@ class ReviewPage(BasePage):
             show_placeholder=False,
         )
         self._context = context
+        self._visible_candidates: list[dict] = []
 
         self.add_content(self._build_toolbar())
         self.add_content(self._build_source_comparison_group())
@@ -103,16 +112,45 @@ class ReviewPage(BasePage):
             form.addRow(f"{label}:", value)
         layout.addWidget(repository_box)
 
+        catalogues_box = QGroupBox(
+            "Step 1 — Select PDM Catalogue / Lead Time",
+            box,
+        )
+        catalogues_layout = QVBoxLayout(catalogues_box)
+        catalogue_hint = QLabel(
+            "Discovery groups matching PDM records by catalogue. Select the correct "
+            "catalogue first; lead time is shown as evidence and is not auto-selected.",
+            catalogues_box,
+        )
+        catalogue_hint.setWordWrap(True)
+        catalogues_layout.addWidget(catalogue_hint)
+        self._catalogue_search = QLineEdit(catalogues_box)
+        self._catalogue_search.setPlaceholderText("Search catalogue or lead time...")
+        self._catalogue_search.textChanged.connect(self._filter_catalogues)
+        catalogues_layout.addWidget(self._catalogue_search)
+        self._catalogues = QTableWidget(catalogues_box)
+        self._catalogues.setColumnCount(len(self._CATALOGUE_COLUMNS))
+        self._catalogues.setHorizontalHeaderLabels([column[0] for column in self._CATALOGUE_COLUMNS])
+        for index, (_, width) in enumerate(self._CATALOGUE_COLUMNS):
+            self._catalogues.setColumnWidth(index, width)
+        self._catalogues.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._catalogues.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._catalogues.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._catalogues.verticalHeader().setVisible(False)
+        self._catalogues.itemSelectionChanged.connect(self._on_catalogue_selection_changed)
+        self._catalogues.setMinimumHeight(180)
+        catalogues_layout.addWidget(self._catalogues)
+        layout.addWidget(catalogues_box)
+
         candidates_box = QGroupBox(
-            "PDM Candidates — Discovery Only (no automatic relationship)",
+            "Step 2 — Select PDM Series",
             box,
         )
         candidates_layout = QVBoxLayout(candidates_box)
 
         hint = QLabel(
-            "Each row is a PDM record returned by discovery. Select rows to "
-            "compare them with the repository series; no selection is saved or "
-            "treated as verified at this stage.",
+            "After selecting a catalogue, only the PDM series belonging to that "
+            "catalogue are shown below. Select the series to establish the connection.",
             candidates_box,
         )
         hint.setWordWrap(True)
@@ -120,7 +158,7 @@ class ReviewPage(BasePage):
 
         self._candidate_search = QLineEdit(candidates_box)
         self._candidate_search.setPlaceholderText(
-            "Search by product name, code, category or catalogue..."
+            "Search series by product name, code or category..."
         )
         self._candidate_search.textChanged.connect(self._filter_candidates)
         candidates_layout.addWidget(self._candidate_search)
@@ -205,8 +243,7 @@ class ReviewPage(BasePage):
         if context is None:
             return None
         row = rows[0].row()
-        candidates = context.candidate_products or []
-        return candidates[row] if 0 <= row < len(candidates) else None
+        return self._visible_candidates[row] if 0 <= row < len(self._visible_candidates) else None
 
     def _load_selected_candidate(self) -> None:
         """Bridge an explicitly selected PDM candidate into the normal Snapshot."""
@@ -256,7 +293,16 @@ class ReviewPage(BasePage):
             "repository ↔ PDM connection was stored in the central registry.",
         )
 
+    def _clear_catalogues(self, message: str) -> None:
+        self._catalogues.clearContents()
+        self._catalogues.setRowCount(1)
+        item = QTableWidgetItem(message)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self._catalogues.setItem(0, 0, item)
+        self._catalogues.setSpan(0, 0, 1, len(self._CATALOGUE_COLUMNS))
+
     def _clear_candidates(self, message: str) -> None:
+        self._visible_candidates = []
         self._pdm_candidates.clearContents()
         self._pdm_candidates.setRowCount(1)
         item = QTableWidgetItem(message)
@@ -287,14 +333,44 @@ class ReviewPage(BasePage):
                 str(record.value if record and record.value not in (None, "") else "-")
             )
 
-        candidates = context.candidate_products or []
-        if not candidates:
-            self._clear_candidates("No PDM candidates found.")
+        catalogues = context.candidate_catalogues or []
+        self._catalogues.clearSpans()
+        self._catalogues.clearContents()
+        if not catalogues:
+            self._clear_catalogues("No PDM catalogues found.")
+            self._clear_candidates("Select a catalogue to load its series.")
             return
 
+        self._catalogues.setRowCount(len(catalogues))
+        for row, catalogue in enumerate(catalogues):
+            values = (
+                str(row + 1),
+                self._value(catalogue, "catalogue"),
+                (f"{catalogue.get('lead_time')}-day" if catalogue.get("lead_time") is not None else "-"),
+                str(catalogue.get("product_count") or 0),
+                ", ".join(catalogue.get("categories") or []) or "-",
+            )
+            for column, value in enumerate(values):
+                self._catalogues.setItem(row, column, QTableWidgetItem(value))
+        self._catalogues.resizeRowsToContents()
+        self._clear_candidates("Select a catalogue to load its series.")
+
+    def _load_catalogue_series(self, catalogue_name: str) -> None:
+        context = self._context.repository_context_service.active_context
+        all_candidates = context.candidate_products if context else []
+        self._visible_candidates = [
+            product for product in all_candidates
+            if self._value(product, "catalogue") == catalogue_name
+        ]
+        candidates = self._visible_candidates
+        self._candidate_search.clear()
         self._pdm_candidates.clearSpans()
         self._pdm_candidates.clearContents()
         self._pdm_candidates.setRowCount(len(candidates))
+        self._load_snapshot_btn.setEnabled(False)
+        if not candidates:
+            self._clear_candidates("No PDM series found for this catalogue.")
+            return
 
         for row, product in enumerate(candidates):
             values = (
@@ -318,6 +394,30 @@ class ReviewPage(BasePage):
                 self._pdm_candidates.setItem(row, column, item)
 
         self._pdm_candidates.resizeRowsToContents()
+
+    def _on_catalogue_selection_changed(self) -> None:
+        rows = self._catalogues.selectionModel().selectedRows()
+        if not rows:
+            return
+        row = rows[0].row()
+        item = self._catalogues.item(row, 1)
+        if item is None:
+            return
+        catalogue = item.text()
+        self._selection_info.setText(
+            f"Catalogue selected: {catalogue}. Select a PDM series next."
+        )
+        self._load_catalogue_series(catalogue)
+
+    def _filter_catalogues(self, text: str) -> None:
+        query = text.casefold().strip()
+        for row in range(self._catalogues.rowCount()):
+            searchable = " ".join(
+                self._catalogues.item(row, column).text()
+                if self._catalogues.item(row, column) else ""
+                for column in range(self._catalogues.columnCount())
+            ).casefold()
+            self._catalogues.setRowHidden(row, bool(query and query not in searchable))
 
     def refresh(self) -> None:
         self._selection_info.setText(
