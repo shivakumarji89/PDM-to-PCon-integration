@@ -368,8 +368,16 @@ class RepositoryContextService(BaseService):
 
     @staticmethod
     def _catalogue_lead_time(name: str) -> int | None:
-        """Extract the explicit NN-day lead time from a catalogue name."""
-        match = re.search(r"\\b(\\d+)\\s*-?\\s*day\\b", name or "", re.IGNORECASE)
+        """Extract a numeric lead time from catalogue names such as 120-day."""
+        # Catalogue names are the source of lead-time evidence in the cached
+        # hierarchy. Accept optional spaces around the hyphen and preserve the
+        # value as an integer so sorting is numeric (120, 110, 100 ...), not
+        # alphabetical (05, 10, 100 ...).
+        match = re.search(
+            r"(?<!\\d)(\\d+)\\s*-\\s*day\\b",
+            str(name or ""),
+            re.IGNORECASE,
+        )
         return int(match.group(1)) if match else None
 
     def _cross_check_pdm(self, active: RepositoryProductContext) -> None:
