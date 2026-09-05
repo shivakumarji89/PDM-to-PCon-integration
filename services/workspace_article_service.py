@@ -69,10 +69,21 @@ class WorkspaceArticleService(BaseService):
             articles=articles,
         )
         snapshot = self.context.snapshot_service.create_snapshot(product)
+        # Replaces whatever repository/series was previously active: create_snapshot
+        # always installs a brand new Snapshot on the shared SnapshotManager. `id`
+        # must be set (mirrors the PDM path, e.g. services/pdm_service.py) so
+        # snapshot-keyed UI caches (e.g. ArticlesPage._snapshot_key) detect the
+        # change and drop stale per-snapshot state instead of leaking it across
+        # repositories.
+        snapshot.id = product.id
         snapshot.articles = articles
         snapshot.metadata.source = "repository_ocd"
         snapshot.metadata.product_code = product.code
         snapshot.metadata.notes = f"Loaded directly from {mdb_path}"
 
+        # Same central pipeline PDM loading uses for base article / base length /
+        # article-set grouping (services/engineering/engineering_reduction_service.py)
+        # and for engineering initialization - no repository-specific duplicate.
+        self.context.engineering_reduction_service.materialize_article_sets(snapshot)
         self.context.engineering_initialization_service.initialize(snapshot)
         return snapshot

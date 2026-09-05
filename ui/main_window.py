@@ -175,6 +175,7 @@ class MainWindow(QMainWindow):
                 page.repository_review_requested.connect(
                     lambda: self._manager.jump_to(WorkflowStep.REVIEW)
                 )
+                page.repository_opened.connect(self._on_repository_opened)
             elif item.step == WorkflowStep.REVIEW:
                 page.series_loaded.connect(self._on_review_series_loaded)
                 page.catalogue_load_requested.connect(
@@ -961,6 +962,14 @@ class MainWindow(QMainWindow):
 
     def _on_product_loaded(self, label: str) -> None:
         self._product_status.setText(label)
+
+    def _on_repository_opened(self, series_name: str) -> None:
+        """Existing repository OCD data was loaded directly into the active
+        snapshot (Product page's "Open Repository"). Refresh every workspace so
+        the new Snapshot - already installed on the shared SnapshotManager -
+        replaces whatever repository/series was previously active there."""
+        self._product_status.setText(series_name or "Repository Loaded")
+        self.refresh_workspaces()
 
     def _on_review_series_loaded(self, product_name: str) -> None:
         """Load existing-work articles directly from the repository OCD.

@@ -341,6 +341,9 @@ class ProductPage(BasePage):
     load_complete = Signal()
     #: Requests the Review workspace for repository ↔ PDM comparison.
     repository_review_requested = Signal()
+    #: Emitted after an existing repository's OCD article data has been loaded
+    #: directly into the active snapshot (no PDM involved).
+    repository_opened = Signal(str)
 
     #: Max results requested per search.
     SEARCH_LIMIT = 50
@@ -651,11 +654,30 @@ class ProductPage(BasePage):
             "not_found": "No PDM match found",
             "unavailable": "PDM cross-check unavailable",
         }.get(data_context.pdm_match_status, "PDM not checked")
-        self._repository_status.setText(
-            f"Existing series selected: {data_context.series_name} · {pdm_status}"
-        )
         self._clear_repository_btn.setEnabled(True)
         self._check_pdm_btn.setEnabled(True)
+
+        # Existing work: load the repository's own OCD/MDB article data directly
+        # into the Article workflow through the central pipeline. PDM is not
+        # involved here at all - "Check PDM Changes" remains a separate, explicit
+        # action for later PDM Explorer integration.
+        snapshot = self._context.workspace_article_service.load_repository(
+            directory,
+            str(data_context.records["name"].value or data_context.series_name),
+            str(data_context.records["category"].value or data_context.category),
+        )
+        if snapshot is None:
+            self._repository_status.setText(
+                f"Existing series selected: {data_context.series_name} · {pdm_status} · "
+                "repository OCD could not be read"
+            )
+            return
+
+        self._repository_status.setText(
+            f"Existing series selected: {data_context.series_name} · {pdm_status} · "
+            f"{len(snapshot.articles)} article(s) loaded from repository OCD"
+        )
+        self.repository_opened.emit(data_context.series_name)
 
     def _on_check_repository_pdm(self) -> None:
         """Send repository/PDM evidence to the existing Review workflow."""
