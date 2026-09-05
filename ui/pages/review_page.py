@@ -1,7 +1,7 @@
 """Review workspace for repository ↔ PDM source discovery.
 
-This page is evidence-first: it compares a selected repository series with the
-PDM records discovered for it, without asserting an automatic relationship.
+This page is evidence-first: the user selects the correct PDM catalogue before
+loading its complete product data into the established engineering workflow.
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ from ui.pages.base_page import BasePage
 
 
 class ReviewPage(BasePage):
-    """Comparison workspace for repository evidence and PDM candidates."""
+    """Comparison workspace for repository evidence and PDM catalogues."""
 
-    # Emitted only after a selected PDM series has been loaded into the shared
+    # Emitted after the selected catalogue has been loaded into the shared
     # Snapshot and engineering data is ready for downstream workflow pages.
     series_loaded = Signal(str)
 
@@ -39,29 +39,17 @@ class ReviewPage(BasePage):
         ("Category", 220),
     )
 
-    _COLUMNS = (
-        ("#", 42),
-        ("Product Name", 280),
-        ("Product Code", 170),
-        ("Category", 120),
-        ("Range", 220),
-        ("Catalogue", 180),
-        ("Lead Time", 90),
-        ("Status", 110),
-    )
-
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Review",
             description=(
-                "Compare repository evidence with PDM candidates. "
-                "Candidates are discovery results and are not auto-mapped."
+                "Select the correct PDM catalogue and load its complete data "
+                "into the established engineering workflow."
             ),
             parent=parent,
             show_placeholder=False,
         )
         self._context = context
-        self._visible_candidates: list[dict] = []
 
         self.add_content(self._build_toolbar())
         self.add_content(self._build_source_comparison_group())
@@ -76,14 +64,14 @@ class ReviewPage(BasePage):
         layout.addWidget(self._refresh_btn)
 
         self._selection_info = QLabel(
-            "Select a candidate to inspect its relationship with the repository.",
+            "Select a PDM catalogue to load its complete product data.",
             box,
         )
         layout.addWidget(self._selection_info)
 
-        self._load_snapshot_btn = QPushButton("Start Work & Establish Connection", box)
+        self._load_snapshot_btn = QPushButton("Load Selected Catalogue", box)
         self._load_snapshot_btn.setEnabled(False)
-        self._load_snapshot_btn.clicked.connect(self._load_selected_candidate)
+        self._load_snapshot_btn.clicked.connect(self._load_selected_catalogue)
         layout.addWidget(self._load_snapshot_btn)
 
         layout.addStretch(1)
@@ -146,53 +134,7 @@ class ReviewPage(BasePage):
         catalogues_layout.addWidget(self._catalogues)
         layout.addWidget(catalogues_box)
 
-        candidates_box = QGroupBox(
-            "Step 2 — Select PDM Series",
-            box,
-        )
-        candidates_layout = QVBoxLayout(candidates_box)
 
-        hint = QLabel(
-            "After selecting a catalogue, only the PDM series belonging to that "
-            "catalogue are shown below. Select the series to establish the connection.",
-            candidates_box,
-        )
-        hint.setWordWrap(True)
-        candidates_layout.addWidget(hint)
-
-        self._candidate_search = QLineEdit(candidates_box)
-        self._candidate_search.setPlaceholderText(
-            "Search series by product name, code or category..."
-        )
-        self._candidate_search.textChanged.connect(self._filter_candidates)
-        candidates_layout.addWidget(self._candidate_search)
-
-        self._pdm_candidates = QTableWidget(candidates_box)
-        self._pdm_candidates.setColumnCount(len(self._COLUMNS))
-        self._pdm_candidates.setHorizontalHeaderLabels(
-            [column[0] for column in self._COLUMNS]
-        )
-        for index, (_, width) in enumerate(self._COLUMNS):
-            self._pdm_candidates.setColumnWidth(index, width)
-
-        self._pdm_candidates.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._pdm_candidates.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self._pdm_candidates.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        self._pdm_candidates.verticalHeader().setVisible(False)
-        self._pdm_candidates.setAlternatingRowColors(True)
-        self._pdm_candidates.itemSelectionChanged.connect(
-            self._on_candidate_selection_changed
-        )
-        self._pdm_candidates.setMinimumHeight(240)
-        candidates_layout.addWidget(self._pdm_candidates)
-
-        layout.addWidget(candidates_box)
         return box
 
     @staticmethod
@@ -203,51 +145,6 @@ class ReviewPage(BasePage):
             if value not in (None, ""):
                 return str(value)
         return "-"
-
-    def _on_candidate_selection_changed(self) -> None:
-        rows = self._pdm_candidates.selectionModel().selectedRows()
-        if not rows:
-            self._selection_info.setText(
-                "Select a candidate to inspect its relationship with the repository."
-            )
-            return
-
-        row = rows[0].row()
-        name_item = self._pdm_candidates.item(row, 1)
-        name = name_item.text() if name_item else "-"
-        self._selection_info.setText(
-            f"Selected candidate: {name} — ready to load into the working Snapshot."
-        )
-        self._load_snapshot_btn.setEnabled(True)
-
-    def _filter_candidates(self, text: str) -> None:
-        """Filter visible rows only; discovery evidence remains unchanged."""
-        query = text.casefold().strip()
-        for row in range(self._pdm_candidates.rowCount()):
-            searchable = " ".join(
-                (
-                    self._pdm_candidates.item(row, column).text()
-                    if self._pdm_candidates.item(row, column)
-                    else ""
-                )
-                for column in range(self._pdm_candidates.columnCount() - 1)
-            ).casefold()
-            self._pdm_candidates.setRowHidden(
-                row, bool(query and query not in searchable)
-            )
-
-        self._pdm_candidates.clearSelection()
-
-    def _selected_candidate(self) -> dict | None:
-        """Return the selected discovery record without creating a saved mapping."""
-        rows = self._pdm_candidates.selectionModel().selectedRows()
-        if not rows:
-            return None
-        context = self._context.repository_context_service.active_context
-        if context is None:
-            return None
-        row = rows[0].row()
-        return self._visible_candidates[row] if 0 <= row < len(self._visible_candidates) else None
 
     @staticmethod
     def _candidate_to_product(candidate: dict):
@@ -273,66 +170,59 @@ class ReviewPage(BasePage):
             ),
         )
 
-    def _selected_series_products(self, candidate: dict) -> list:
-        """Return the complete PDM series represented by the selected row.
+    def _selected_catalogue_name(self) -> str | None:
+        """Return the explicitly selected PDM catalogue."""
+        rows = self._catalogues.selectionModel().selectedRows()
+        if not rows:
+            return None
+        item = self._catalogues.item(rows[0].row(), 1)
+        return item.text() if item and item.text() else None
 
-        Review discovery contains the product records already grouped by
-        catalogue. Once a user chooses a catalogue and then a series/category,
-        the downstream workflow must use the established *family* loader rather
-        than loading one arbitrary product record. This keeps the existing
-        Product -> Articles -> Class Creation pipeline unchanged.
+    def _selected_catalogue_products(self, catalogue_name: str) -> list:
+        """Return every discovered PDM product belonging to one catalogue.
+
+        Catalogue selection is the boundary for loading. Article selection and
+        reduction remain downstream responsibilities of the existing Articles
+        workflow.
         """
         context = self._context.repository_context_service.active_context
         all_candidates = context.candidate_products if context else []
 
-        catalogue = self._value(candidate, "catalogue", "catalogue_name")
-        category = self._value(candidate, "category", "category_name")
-
-        series_candidates = [
-            item for item in all_candidates
-            if self._value(item, "catalogue", "catalogue_name") == catalogue
-            and self._value(item, "category", "category_name") == category
-        ]
-
-        # The selected row must always remain a valid fallback even if discovery
-        # evidence was reduced or filtered.
-        if not series_candidates:
-            series_candidates = [candidate]
-
         products = []
         seen = set()
-        for item in series_candidates:
+        for item in all_candidates:
+            if self._value(item, "catalogue", "catalogue_name") != catalogue_name:
+                continue
             product = self._candidate_to_product(item)
             if product.id and product.id not in seen:
                 seen.add(product.id)
                 products.append(product)
         return products
 
-    def _load_selected_candidate(self) -> None:
-        """Load the selected catalogue/series through the existing family flow."""
-        candidate = self._selected_candidate()
-        if candidate is None:
-            return
-
-        products = self._selected_series_products(candidate)
-        if not products:
+    def _load_selected_catalogue(self) -> None:
+        """Load the complete selected catalogue through the established family flow."""
+        catalogue_name = self._selected_catalogue_name()
+        if not catalogue_name:
             QMessageBox.warning(
-                self, "Snapshot Load", "No valid PDM products were found for the selected series."
+                self, "Catalogue Load", "Select a PDM catalogue before loading."
             )
             return
 
-        family_name = (
-            self._value(candidate, "category", "category_name")
-            if self._value(candidate, "category", "category_name") != "-"
-            else self._value(candidate, "name", "product_name")
-        )
+        products = self._selected_catalogue_products(catalogue_name)
+        if not products:
+            QMessageBox.warning(
+                self,
+                "Catalogue Load",
+                "No valid PDM products were found for the selected catalogue.",
+            )
+            return
 
-        # IMPORTANT: use the established family loader. It is the existing
-        # workflow responsible for loading all articles and their details into
-        # one Snapshot. Do not replace it with single-product loading here.
-        result = self._context.pdm_service.load_family(products, family_name)
+        # Reuse the existing family loader. Review only decides the catalogue
+        # boundary; Articles remains responsible for deciding which loaded
+        # articles are required.
+        result = self._context.pdm_service.load_family(products, catalogue_name)
         if not result.ok:
-            QMessageBox.warning(self, "Snapshot Load", result.message)
+            QMessageBox.warning(self, "Catalogue Load", result.message)
             return
 
         snapshot = self._context.active_snapshot
@@ -342,12 +232,20 @@ class ReviewPage(BasePage):
             QMessageBox.warning(
                 self,
                 "Engineering Initialization",
-                f"The PDM series loaded, but workflow initialization failed:\n{error}",
+                f"The PDM catalogue loaded, but workflow initialization failed:\n{error}",
             )
             return
 
         repository_context = self._context.repository_context_service.active_context
         if repository_context is not None:
+            representative = next(
+                (
+                    item
+                    for item in repository_context.candidate_products
+                    if self._value(item, "catalogue", "catalogue_name") == catalogue_name
+                ),
+                {},
+            )
             engineering_summary = {
                 "article_count": len(getattr(snapshot, "articles", []) or []),
                 "article_length": None,
@@ -358,23 +256,24 @@ class ReviewPage(BasePage):
                 repository_name=str(repository_context.records["name"].value or ""),
                 repository_code=str(repository_context.records["code"].value or ""),
                 repository_category=repository_context.category,
-                pdm_candidate=candidate,
+                pdm_candidate=representative,
                 engineering_summary=engineering_summary,
             )
 
-        self.series_loaded.emit(family_name)
+        self.series_loaded.emit(catalogue_name)
         self._selection_info.setText(
-            f"Working connection established: {family_name} "
+            f"Loaded catalogue: {catalogue_name} "
             f"({len(products)} PDM product record(s), "
-            f"{len(getattr(snapshot, 'articles', []) or [])} articles loaded)."
+            f"{len(getattr(snapshot, 'articles', []) or [])} articles)."
         )
         QMessageBox.information(
             self,
-            "Connection Established",
-            f"The selected PDM series '{family_name}' was loaded through the "
-            f"existing family workflow ({len(products)} product record(s), "
-            f"{len(getattr(snapshot, 'articles', []) or [])} articles) and the "
-            "repository ↔ PDM connection was stored in the central registry.",
+            "Catalogue Loaded",
+            f"The complete PDM catalogue '{catalogue_name}' was loaded through "
+            f"the existing workflow ({len(products)} product record(s), "
+            f"{len(getattr(snapshot, 'articles', []) or [])} articles).\n\n"
+            "Continue to Articles to decide which articles are required. "
+            "The repository ↔ PDM connection was stored.",
         )
 
     def _clear_catalogues(self, message: str) -> None:
@@ -385,15 +284,6 @@ class ReviewPage(BasePage):
         self._catalogues.setItem(0, 0, item)
         self._catalogues.setSpan(0, 0, 1, len(self._CATALOGUE_COLUMNS))
 
-    def _clear_candidates(self, message: str) -> None:
-        self._visible_candidates = []
-        self._pdm_candidates.clearContents()
-        self._pdm_candidates.setRowCount(1)
-        item = QTableWidgetItem(message)
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-        self._pdm_candidates.setItem(0, 0, item)
-        self._pdm_candidates.setSpan(0, 0, 1, len(self._COLUMNS))
-
     def _refresh_source_comparison(self) -> None:
         context = self._context.repository_context_service.active_context
         if context is None:
@@ -402,7 +292,6 @@ class ReviewPage(BasePage):
             )
             for widget in self._source_rows.values():
                 widget.setText("-")
-            self._clear_candidates("No PDM discovery data available.")
             return
 
         self._source_status.setText(
@@ -422,7 +311,6 @@ class ReviewPage(BasePage):
         self._catalogues.clearContents()
         if not catalogues:
             self._clear_catalogues("No PDM catalogues found.")
-            self._clear_candidates("Select a catalogue to load its series.")
             return
 
         self._catalogues.setRowCount(len(catalogues))
@@ -437,61 +325,16 @@ class ReviewPage(BasePage):
             for column, value in enumerate(values):
                 self._catalogues.setItem(row, column, QTableWidgetItem(value))
         self._catalogues.resizeRowsToContents()
-        self._clear_candidates("Select a catalogue to load its series.")
-
-    def _load_catalogue_series(self, catalogue_name: str) -> None:
-        context = self._context.repository_context_service.active_context
-        all_candidates = context.candidate_products if context else []
-        self._visible_candidates = [
-            product for product in all_candidates
-            if self._value(product, "catalogue") == catalogue_name
-        ]
-        candidates = self._visible_candidates
-        self._candidate_search.clear()
-        self._pdm_candidates.clearSpans()
-        self._pdm_candidates.clearContents()
-        self._pdm_candidates.setRowCount(len(candidates))
-        self._load_snapshot_btn.setEnabled(False)
-        if not candidates:
-            self._clear_candidates("No PDM series found for this catalogue.")
-            return
-
-        for row, product in enumerate(candidates):
-            values = (
-                str(row + 1),
-                self._value(product, "name", "product_name"),
-                self._value(product, "code", "product_code"),
-                self._value(product, "category", "category_name"),
-                self._value(product, "range_name", "range", "product_range"),
-                self._value(product, "catalogue", "catalogue_name"),
-                (
-                    f"{product.get('lead_time')}-day"
-                    if product.get("lead_time") is not None
-                    else "-"
-                ),
-                "Candidate",
-            )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 0:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._pdm_candidates.setItem(row, column, item)
-
-        self._pdm_candidates.resizeRowsToContents()
 
     def _on_catalogue_selection_changed(self) -> None:
-        rows = self._catalogues.selectionModel().selectedRows()
-        if not rows:
+        catalogue = self._selected_catalogue_name()
+        if not catalogue:
+            self._load_snapshot_btn.setEnabled(False)
             return
-        row = rows[0].row()
-        item = self._catalogues.item(row, 1)
-        if item is None:
-            return
-        catalogue = item.text()
         self._selection_info.setText(
-            f"Catalogue selected: {catalogue}. Select a PDM series next."
+            f"Catalogue selected: {catalogue}. Ready to load all catalogue data into Articles."
         )
-        self._load_catalogue_series(catalogue)
+        self._load_snapshot_btn.setEnabled(True)
 
     def _filter_catalogues(self, text: str) -> None:
         query = text.casefold().strip()
@@ -505,7 +348,7 @@ class ReviewPage(BasePage):
 
     def refresh(self) -> None:
         self._selection_info.setText(
-            "Select a candidate to inspect its relationship with the repository."
+            "Select a PDM catalogue to load its complete product data."
         )
         self._load_snapshot_btn.setEnabled(False)
         self._refresh_source_comparison()
