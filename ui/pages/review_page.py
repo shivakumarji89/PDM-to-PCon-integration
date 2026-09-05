@@ -249,15 +249,12 @@ class ReviewPage(BasePage):
         row = rows[0].row()
         return self._visible_candidates[row] if 0 <= row < len(self._visible_candidates) else None
 
-    def _load_selected_candidate(self) -> None:
-        """Bridge an explicitly selected PDM candidate into the normal Snapshot."""
-        candidate = self._selected_candidate()
-        if candidate is None:
-            return
-
+    @staticmethod
+    def _candidate_to_product(candidate: dict):
+        """Convert discovery evidence back into the existing Product model."""
         from models.product import Product
 
-        product = Product(
+        return Product(
             id=str(candidate.get("id") or ""),
             code=str(candidate.get("code") or ""),
             name=str(candidate.get("name") or ""),
@@ -275,15 +272,69 @@ class ReviewPage(BasePage):
                 or ""
             ),
         )
-        result = self._context.pdm_service.load_product(product)
+
+    def _selected_series_products(self, candidate: dict) -> list:
+        """Return the complete PDM series represented by the selected row.
+
+        Review discovery contains the product records already grouped by
+        catalogue. Once a user chooses a catalogue and then a series/category,
+        the downstream workflow must use the established *family* loader rather
+        than loading one arbitrary product record. This keeps the existing
+        Product -> Articles -> Class Creation pipeline unchanged.
+        """
+        context = self._context.repository_context_service.active_context
+        all_candidates = context.candidate_products if context else []
+
+        catalogue = self._value(candidate, "catalogue", "catalogue_name")
+        category = self._value(candidate, "category", "category_name")
+
+        series_candidates = [
+            item for item in all_candidates
+            if self._value(item, "catalogue", "catalogue_name") == catalogue
+            and self._value(item, "category", "category_name") == category
+        ]
+
+        # The selected row must always remain a valid fallback even if discovery
+        # evidence was reduced or filtered.
+        if not series_candidates:
+            series_candidates = [candidate]
+
+        products = []
+        seen = set()
+        for item in series_candidates:
+            product = self._candidate_to_product(item)
+            if product.id and product.id not in seen:
+                seen.add(product.id)
+                products.append(product)
+        return products
+
+    def _load_selected_candidate(self) -> None:
+        """Load the selected catalogue/series through the existing family flow."""
+        candidate = self._selected_candidate()
+        if candidate is None:
+            return
+
+        products = self._selected_series_products(candidate)
+        if not products:
+            QMessageBox.warning(
+                self, "Snapshot Load", "No valid PDM products were found for the selected series."
+            )
+            return
+
+        family_name = (
+            self._value(candidate, "category", "category_name")
+            if self._value(candidate, "category", "category_name") != "-"
+            else self._value(candidate, "name", "product_name")
+        )
+
+        # IMPORTANT: use the established family loader. It is the existing
+        # workflow responsible for loading all articles and their details into
+        # one Snapshot. Do not replace it with single-product loading here.
+        result = self._context.pdm_service.load_family(products, family_name)
         if not result.ok:
             QMessageBox.warning(self, "Snapshot Load", result.message)
             return
 
-        # The Review workflow is also a real loading entry point. Initialise the
-        # same downstream engineering structure used by the normal Product load
-        # so Articles and subsequent workflow pages can immediately consume the
-        # selected PDM series.
         snapshot = self._context.active_snapshot
         try:
             self._context.engineering_initialization_service.initialize(snapshot)
@@ -311,15 +362,18 @@ class ReviewPage(BasePage):
                 engineering_summary=engineering_summary,
             )
 
-        self.series_loaded.emit(product.name)
+        self.series_loaded.emit(family_name)
         self._selection_info.setText(
-            f"Working connection established: {product.name}. "
-            "Article workflow is loaded and future maintenance will reuse this repository ↔ PDM link."
+            f"Working connection established: {family_name} "
+            f"({len(products)} PDM product record(s), "
+            f"{len(getattr(snapshot, 'articles', []) or [])} articles loaded)."
         )
         QMessageBox.information(
             self,
             "Connection Established",
-            "The selected PDM series was loaded into the active Snapshot and the "
+            f"The selected PDM series '{family_name}' was loaded through the "
+            f"existing family workflow ({len(products)} product record(s), "
+            f"{len(getattr(snapshot, 'articles', []) or [])} articles) and the "
             "repository ↔ PDM connection was stored in the central registry.",
         )
 
