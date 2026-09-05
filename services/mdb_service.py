@@ -130,6 +130,27 @@ class MDBService(BaseService):
             return []
         return batch.results[0].rows
 
+    def get_tables(self, mdb_path: str | Path) -> list[str]:
+        """Return table names from an MDB without assuming its schema."""
+        batch = self.execute_batch(mdb_path, [{"op": "schema"}])
+        if not batch.ok or not batch.results:
+            return []
+        return [
+            str(row.get("table") or "")
+            for row in batch.results[0].rows
+            if row.get("table")
+        ]
+
+    def get_table_columns(self, mdb_path: str | Path, table: str) -> list[str]:
+        """Return column names using an empty query against the actual table."""
+        rows = self.read_table(mdb_path, f"SELECT * FROM [{table}] WHERE 1=0")
+        if rows:
+            return list(rows[0].keys())
+        # The bridge currently returns no fields for an empty recordset, so a
+        # one-row probe is the portable fallback.
+        rows = self.read_table(mdb_path, f"SELECT TOP 1 * FROM [{table}]")
+        return list(rows[0].keys()) if rows else []
+
     def clear_tables(self, mdb_path: str | Path, tables: list[str]) -> MDBBatchResult:
         """DELETE all rows from each named table."""
         return self.execute_batch(mdb_path, [{"op": "delete", "table": t} for t in tables])
