@@ -62,6 +62,7 @@ class RepositoryConnectionService(BaseService):
         repository_category: str,
         pdm_candidate: dict[str, Any],
         engineering_summary: dict[str, Any] | None = None,
+        discovery: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist a confirmed working relationship and its current evidence."""
         document = self._read()
@@ -94,6 +95,11 @@ class RepositoryConnectionService(BaseService):
                 ),
                 "lead_time": pdm_candidate.get("lead_time"),
             },
+            "discovery": discovery
+            or existing.get("discovery", {
+                "status": "not_recorded",
+                "catalogues": [],
+            }),
             "engineering": engineering_summary
             or existing.get("engineering", {
                 "article_count": None,
