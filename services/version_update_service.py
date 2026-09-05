@@ -282,16 +282,32 @@ class RepositoryContextService(BaseService):
             records=records,
         )
 
-        # Always run fresh discovery. An established connection is persistent
-        # evidence for maintenance, but it must never replace or narrow the live
-        # catalogue list shown in Review.
-        self._cross_check_pdm(active)
-
+        # Reopen established work from the stored repository ↔ PDM connection.
+        # Fresh discovery is intentionally explicit and is triggered from
+        # Review's "Refresh Discovery" action.
         established = self.context.repository_connection_service.get(folder)
         if established is not None:
             self._apply_established_connection(active, established)
+        else:
+            self._cross_check_pdm(active)
 
         self._active = active
+        return active
+
+    def refresh_pdm_discovery(self) -> RepositoryProductContext | None:
+        """Explicitly reconnect the active repository to fresh PDM discovery."""
+        active = self._active
+        if active is None:
+            return None
+
+        active.candidate_products = []
+        active.candidate_catalogues = []
+        self._cross_check_pdm(active)
+
+        established = active.established_connection
+        if established is not None:
+            self._apply_established_connection(active, established)
+
         return active
 
     def _apply_established_connection(
