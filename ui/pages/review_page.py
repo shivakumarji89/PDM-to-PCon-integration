@@ -179,24 +179,42 @@ class ReviewPage(BasePage):
         return item.text() if item and item.text() else None
 
     def _selected_catalogue_products(self, catalogue_name: str) -> list:
-        """Return every discovered PDM product belonging to one catalogue.
+        """Return the complete PDM product set for the selected catalogue.
 
-        Catalogue selection is the boundary for loading. Article selection and
-        reduction remain downstream responsibilities of the existing Articles
-        workflow.
+        Discovery candidates are only evidence used to identify the catalogue.
+        Once the user explicitly selects it, the full PDM registry is used as
+        the source boundary so downstream Articles receives every product and
+        article belonging to that catalogue.
         """
         context = self._context.repository_context_service.active_context
-        all_candidates = context.candidate_products if context else []
+        discovery_products = context.candidate_products if context else []
 
-        products = []
-        seen = set()
-        for item in all_candidates:
-            if self._value(item, "catalogue", "catalogue_name") != catalogue_name:
-                continue
-            product = self._candidate_to_product(item)
-            if product.id and product.id not in seen:
-                seen.add(product.id)
-                products.append(product)
+        matching_evidence = [
+            item for item in discovery_products
+            if self._value(item, "catalogue", "catalogue_name") == catalogue_name
+        ]
+        catalogue_ids = {
+            str(item.get("catalogue_id"))
+            for item in matching_evidence
+            if item.get("catalogue_id") is not None
+        }
+
+        # The global registry contains the complete PDM hierarchy. Prefer the
+        # stable catalogue ID; fall back to catalogue name only if legacy
+        # discovery evidence has no ID.
+        registry_products = self._context.pdm_service.get_cached_products()
+        if catalogue_ids:
+            products = [
+                product for product in registry_products
+                if product.catalogue_id is not None
+                and str(product.catalogue_id) in catalogue_ids
+            ]
+        else:
+            products = [
+                product for product in registry_products
+                if (product.description or "").strip() == catalogue_name
+            ]
+
         return products
 
     def _load_selected_catalogue(self) -> None:
