@@ -182,17 +182,27 @@ class ReviewPage(BasePage):
         item = self._catalogues.item(rows[0].row(), 1)
         return item.text() if item and item.text() else None
 
-    def _selected_catalogue_products(self, catalogue_name: str) -> list:
-        """Return the complete PDM product set for the selected catalogue.
+    @staticmethod
+    def _match_key(value: object) -> str:
+        """Normalize identity text only for boundary comparison."""
+        return " ".join(
+            str(value or "").replace("_", " ").replace("-", " ").split()
+        ).casefold()
 
-        Discovery candidates are only evidence used to identify the catalogue.
-        Once the user explicitly selects it, the full PDM registry is used as
-        the source boundary so downstream Articles receives every product and
-        article belonging to that catalogue.
+    def _selected_catalogue_products(self, catalogue_name: str) -> list:
+        """Return products for the selected catalogue and matched PDM category.
+
+        A catalogue can contain several PDM categories. Loading every category
+        was too broad: discovery establishes the series/category boundary first,
+        then the selected catalogue narrows that same category by lead time.
+        If no category boundary can be established, do not silently broaden the
+        load to the entire catalogue.
         """
         context = self._context.repository_context_service.active_context
-        discovery_products = context.candidate_products if context else []
+        if context is None:
+            return []
 
+        discovery_products = context.candidate_products or []
         matching_evidence = [
             item for item in discovery_products
             if self._value(item, "catalogue", "catalogue_name") == catalogue_name
@@ -203,20 +213,46 @@ class ReviewPage(BasePage):
             if item.get("catalogue_id") is not None
         }
 
-        # The global registry contains the complete PDM hierarchy. Prefer the
-        # stable catalogue ID; fall back to catalogue name only if legacy
-        # discovery evidence has no ID.
+        # The repository series name/code define the intended series boundary.
+        # Prefer an exact PDM category match; otherwise accept categories only
+        # from discovery records whose product name/code exactly matches the
+        # repository identity. Never fall back to all categories.
+        repository_name = self._match_key(
+            context.records.get("name").value if context.records.get("name") else ""
+        )
+        repository_code = self._match_key(
+            context.records.get("code").value if context.records.get("code") else ""
+        )
+
+        categories = {
+            self._match_key(item.get("category"))
+            for item in matching_evidence
+            if self._match_key(item.get("category")) in {repository_name, repository_code}
+        }
+        if not categories:
+            categories = {
+                self._match_key(item.get("category"))
+                for item in matching_evidence
+                if self._match_key(item.get("name")) in {repository_name, repository_code}
+                or self._match_key(item.get("code")) in {repository_name, repository_code}
+            }
+
+        if not categories:
+            return []
+
         registry_products = self._context.pdm_service.get_cached_products()
         if catalogue_ids:
             products = [
                 product for product in registry_products
                 if product.catalogue_id is not None
                 and str(product.catalogue_id) in catalogue_ids
+                and self._match_key(product.category) in categories
             ]
         else:
             products = [
                 product for product in registry_products
                 if (product.description or "").strip() == catalogue_name
+                and self._match_key(product.category) in categories
             ]
 
         return products
@@ -240,7 +276,8 @@ class ReviewPage(BasePage):
             QMessageBox.warning(
                 self,
                 "Catalogue Load",
-                "No valid PDM products were found for the selected catalogue.",
+                "No PDM products were found for the selected catalogue and matched series category. "
+                "The loader will not broaden the selection to every category in the catalogue.",
             )
             return
 
