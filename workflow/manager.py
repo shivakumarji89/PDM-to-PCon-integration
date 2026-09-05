@@ -64,7 +64,14 @@ class WorkflowManager(QObject):
     def enabled_steps(self) -> set[WorkflowStep]:
         # Steps that work on the published-package repository (not the loaded
         # product) stay reachable; the rest unlock once a product is loaded.
-        standalone = {WorkflowStep.MAINTENANCE, WorkflowStep.CET_SIF_VALIDATION}
+        standalone = {
+            WorkflowStep.MAINTENANCE,
+            WorkflowStep.CET_SIF_VALIDATION,
+            # Review is also a pre-load discovery workspace: an existing
+            # repository series can be checked against PDM before a snapshot
+            # exists, so it must not be locked behind Product loading.
+            WorkflowStep.REVIEW,
+        }
         always = {self._steps[0]} | (standalone & set(self._steps))
         if self._product_loaded():
             return set(self._steps)
@@ -72,7 +79,11 @@ class WorkflowManager(QObject):
 
     def can_continue(self) -> bool:
         index = self._index(self.current_step())
-        return index < len(self._steps) - 1 and self.is_ready(self.current_step())
+        if index >= len(self._steps) - 1 or not self.is_ready(self.current_step()):
+            return False
+        # A pre-load Review jump is allowed for discovery, but Continue must not
+        # bypass the normal product-load gate into later engineering steps.
+        return self._steps[index + 1] in self.enabled_steps()
 
     def can_go_back(self) -> bool:
         return self._index(self.current_step()) > 0
