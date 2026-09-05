@@ -405,6 +405,17 @@ class RepositoryContextService(BaseService):
                         candidates[str(product.id)] = product
                 if candidates:
                     discovery_level = f"first-word live search ({first_word})"
+
+            # Level 3: category-based discovery. When repository naming does
+            # not exist in PDM, use the workspace category as independent
+            # evidence and let catalogue lead-time priority narrow the result.
+            if not candidates and active.category:
+                normalized_category = self._normalize(active.category)
+                for product in hierarchy:
+                    if self._normalize(product.category) == normalized_category:
+                        candidates[str(product.id)] = product
+                if candidates:
+                    discovery_level = f"category discovery ({active.category})"
         except Exception as exc:
             active.pdm_match_status = "unavailable"
             for record in active.records.values():
