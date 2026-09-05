@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -64,6 +65,12 @@ class ReviewPage(BasePage):
             box,
         )
         layout.addWidget(self._selection_info)
+
+        self._load_snapshot_btn = QPushButton("Load Selected into Snapshot", box)
+        self._load_snapshot_btn.setEnabled(False)
+        self._load_snapshot_btn.clicked.connect(self._load_selected_candidate)
+        layout.addWidget(self._load_snapshot_btn)
+
         layout.addStretch(1)
         return box
 
@@ -158,7 +165,50 @@ class ReviewPage(BasePage):
         name_item = self._pdm_candidates.item(row, 1)
         name = name_item.text() if name_item else "-"
         self._selection_info.setText(
-            f"Selected candidate: {name} — discovery selection only."
+            f"Selected candidate: {name} — ready to load into the working Snapshot."
+        )
+        self._load_snapshot_btn.setEnabled(True)
+
+    def _selected_candidate(self) -> dict | None:
+        """Return the selected discovery record without creating a saved mapping."""
+        rows = self._pdm_candidates.selectionModel().selectedRows()
+        if not rows:
+            return None
+        context = self._context.repository_context_service.active_context
+        if context is None:
+            return None
+        row = rows[0].row()
+        candidates = context.candidate_products or []
+        return candidates[row] if 0 <= row < len(candidates) else None
+
+    def _load_selected_candidate(self) -> None:
+        """Bridge an explicitly selected PDM candidate into the normal Snapshot."""
+        candidate = self._selected_candidate()
+        if candidate is None:
+            return
+
+        from models.product import Product
+
+        product = Product(
+            id=str(candidate.get("id") or ""),
+            code=str(candidate.get("code") or ""),
+            name=str(candidate.get("name") or ""),
+            category=str(candidate.get("category") or ""),
+            description=str(candidate.get("catalogue") or ""),
+        )
+        result = self._context.pdm_service.load_product(product)
+        if not result.ok:
+            QMessageBox.warning(self, "Snapshot Load", result.message)
+            return
+
+        self._selection_info.setText(
+            f"Loaded into Snapshot: {product.name}. Existing workflows can now use this context."
+        )
+        QMessageBox.information(
+            self,
+            "Snapshot Loaded",
+            "The selected PDM candidate was loaded into the active Snapshot. "
+            "No repository ↔ PDM relationship was saved or verified.",
         )
 
     def _clear_candidates(self, message: str) -> None:
@@ -222,6 +272,7 @@ class ReviewPage(BasePage):
         self._selection_info.setText(
             "Select a candidate to inspect its relationship with the repository."
         )
+        self._load_snapshot_btn.setEnabled(False)
         self._refresh_source_comparison()
 
     def showEvent(self, event) -> None:  # noqa: N802
