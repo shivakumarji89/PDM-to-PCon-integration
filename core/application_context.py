@@ -23,6 +23,7 @@ from services.xocd_export_service import XocdExportService
 from services.ocd_export_service import OcdExportService
 from services.price_update_service import PriceUpdateService
 from services.version_update_service import VersionUpdateService, RepositoryContextService
+from services.repository_connection_service import RepositoryConnectionService
 from services.category_context_service import CategoryContextService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
 from services.obx_validation_service import ObxValidationService
@@ -135,6 +136,7 @@ class ApplicationContext:
             SnapshotService: SnapshotService,
             PDMService: PDMService,
             RepositoryContextService: RepositoryContextService,
+            RepositoryConnectionService: RepositoryConnectionService,
             CategoryContextService: CategoryContextService,
             MDBService: MDBService,
             ArticleService: ArticleService,
@@ -323,6 +325,11 @@ class ApplicationContext:
     def repository_context_service(self) -> RepositoryContextService:
         """Shared traceable context for the selected existing repository series."""
         return self.get_service(RepositoryContextService)
+
+    @property
+    def repository_connection_service(self) -> RepositoryConnectionService:
+        """Persistent registry of established repository ↔ PDM relationships."""
+        return self.get_service(RepositoryConnectionService)
 
     @property
     def category_context_service(self) -> CategoryContextService:
