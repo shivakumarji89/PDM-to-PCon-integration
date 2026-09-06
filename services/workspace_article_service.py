@@ -106,6 +106,7 @@ class WorkspaceArticleService(BaseService):
 
         code_to_article_id = {a.code: a.id for a in articles}
         text_index = self._load_texts(mdb_path, snapshot)
+        self._apply_member_texts(snapshot, code_to_article_id)
         self._load_classes(mdb_path, snapshot, text_index)
         self._load_relations(mdb_path, snapshot)
         self._load_art_base(mdb_path, snapshot, code_to_article_id)
@@ -139,6 +140,49 @@ class WorkspaceArticleService(BaseService):
             by_id[row.get("com_TextID")] = block
             snapshot.text_blocks.append(block)
         return by_id
+
+    # -- Article short/long text ---------------------------------------------
+
+    def _apply_member_texts(
+        self, snapshot: Snapshot, code_to_article_id: dict[str, str]
+    ) -> None:
+        """Wire the just-loaded ``artshort``/``artlong`` text blocks onto
+        ``MemberArticle.short_description``/``long_description``.
+
+        This is the exact reverse of ``EngineeringTextService.build_text_blocks``
+        (services/engineering/engineering_text_service.py), which derives those
+        blocks FROM ``member.short_description``/``long_description`` keyed by
+        ``member.reduced_article or article.code`` - and of
+        ``OcdExportService._articles`` (services/ocd_export_service.py), which
+        writes ``tCOMd_Article.com_ShortTextID``/``com_LongTextID`` from a text
+        block named after that same code. ``ui/pages/articles_page.py`` reads
+        Short/Long Text exclusively from ``member.short_description``/
+        ``long_description`` (never from ``snapshot.text_blocks`` directly), so
+        without this step the loaded text blocks are reconstructed but never
+        reach the Article workflow's actual display fields."""
+        short_by_code = {
+            block.name: block.en
+            for block in snapshot.text_blocks
+            if block.type_code == "artshort" and block.en
+        }
+        long_by_code = {
+            block.name: block.en
+            for block in snapshot.text_blocks
+            if block.type_code == "artlong" and block.en
+        }
+        if not short_by_code and not long_by_code:
+            return
+
+        article_code_by_id = {v: k for k, v in code_to_article_id.items()}
+        for family in snapshot.engineering.families:
+            for member in family.members:
+                code = member.reduced_article or article_code_by_id.get(member.article_id, "")
+                if not code:
+                    continue
+                if not member.short_description and code in short_by_code:
+                    member.short_description = short_by_code[code]
+                if not member.long_description and code in long_by_code:
+                    member.long_description = long_by_code[code]
 
     # -- Classes / properties / values --------------------------------------
 
@@ -175,6 +219,7 @@ class WorkspaceArticleService(BaseService):
             values_by_property.setdefault(row.get("com_PropertyID"), []).append(row)
 
         classes: list[EngineeringClass] = []
+        display_order = 0
         for class_row in sorted(class_rows, key=lambda r: r.get("com_ClassID") or 0):
             class_id = class_row.get("com_ClassID")
             engineering_class = EngineeringClass(
@@ -192,6 +237,7 @@ class WorkspaceArticleService(BaseService):
                 text_block = text_index.get(prop_row.get("com_TextID"))
                 text_block_name = text_block.name if text_block is not None else property_name
                 width = int(prop_row.get("com_PropDigits") or 0)
+                display_order += 1
 
                 values = sorted(
                     values_by_property.get(prop_row.get("com_PropertyID"), []),
@@ -199,7 +245,7 @@ class WorkspaceArticleService(BaseService):
                 )
                 class_values: list[ClassValue] = []
                 property_values: list[PropertyValue] = []
-                for value_row in values:
+                for position, value_row in enumerate(values):
                     code = str(value_row.get("com_PropValueFrom") or "")
                     if not code:
                         continue
@@ -208,7 +254,10 @@ class WorkspaceArticleService(BaseService):
                     value_id = f"mdb-val-{value_row.get('com_ValueID')}"
                     class_values.append(ClassValue(code=code, value=value_name, source="repository_ocd"))
                     property_values.append(
-                        PropertyValue(id=value_id, property_id=property_id, value=value_name, code=code)
+                        PropertyValue(
+                            id=value_id, property_id=property_id, value=value_name,
+                            code=code, display_order=position,
+                        )
                     )
 
                 engineering_class.properties.append(
@@ -222,8 +271,22 @@ class WorkspaceArticleService(BaseService):
                         values=class_values,
                     )
                 )
+                # `Property.values` is the live join target the Class Creation
+                # workflow actually reads (ui/pages/class_creation_page.py builds
+                # its Property -> Value tree rows from `prop.values`, joining
+                # `ClassPropertyAssignment.property_id` to `Property.id` - see
+                # services/engineering/engineering_class_service.py's own
+                # `assign_property`/`_seed_values`, which seeds
+                # `ClassPropertyAssignment.values` FROM `Property.values` the same
+                # way). Populating only the flat `snapshot.property_values` list
+                # left every `Property.values` empty, which is why Class Creation
+                # showed properties with no nested values.
                 snapshot.properties.append(
-                    Property(id=property_id, code=property_name, name=property_name, data_type=type_code)
+                    Property(
+                        id=property_id, code=property_name, name=property_name,
+                        data_type=type_code, display_order=display_order,
+                        values=property_values,
+                    )
                 )
                 snapshot.property_values.extend(property_values)
             classes.append(engineering_class)
