@@ -19,15 +19,19 @@ from typing import Any
 
 from models.article import Article
 from models.engineering_class import ClassPropertyAssignment, ClassValue, EngineeringClass
+from models.option import Option
+from models.option_value import OptionValue
 from models.price_list import PriceList
 from models.price_record import PriceRecord
 from models.product import Product
 from models.property import Property
+from models.property_definition import PropertyDefinition
 from models.property_value import PropertyValue
 from models.relation_object import RelationObject
 from models.snapshot import Snapshot
 from models.text_block import TextBlock
 from services.base_service import BaseService
+from services.engineering.engineering_class_service import EngineeringClassService
 
 
 class WorkspaceArticleService(BaseService):
@@ -107,9 +111,9 @@ class WorkspaceArticleService(BaseService):
         code_to_article_id = {a.code: a.id for a in articles}
         text_index = self._load_texts(mdb_path, snapshot)
         self._apply_member_texts(snapshot, code_to_article_id)
-        self._load_classes(mdb_path, snapshot, text_index)
+        value_id_by_property = self._load_classes(mdb_path, snapshot, text_index)
         self._load_relations(mdb_path, snapshot)
-        self._load_art_base(mdb_path, snapshot, code_to_article_id)
+        self._load_art_base(mdb_path, snapshot, code_to_article_id, value_id_by_property)
         self._load_prices(mdb_path, snapshot, text_index)
         return snapshot
 
@@ -188,17 +192,42 @@ class WorkspaceArticleService(BaseService):
 
     def _load_classes(
         self, mdb_path: Path, snapshot: Snapshot, text_index: dict[Any, TextBlock]
-    ) -> None:
+    ) -> dict[str, dict[str, str]]:
         """Read ``tCOMd_Class``/``tCOMd_Property``/``tCOMd_PropValue`` back into
         ``snapshot.engineering.classes`` (the same structure
-        ``EngineeringClassService`` manages) plus the flat ``snapshot.properties``/
-        ``property_values`` indexes other central services key off of. Mirrors
-        ``OcdExportService._classes``/``_properties``/``_property_values``."""
+        ``EngineeringClassService`` manages). Mirrors
+        ``OcdExportService._classes``/``_properties``/``_property_values``.
+
+        Class Creation (``ui/pages/class_creation_page.py``) does NOT render its
+        three tabs by grouping ``EngineeringClass.properties`` directly - each
+        tab is a fixed source collection keyed by the class's own
+        ``<Group>_<suffix>`` name (``EngineeringClassService.STANDARD_SUFFIXES``,
+        set up identically by ``ensure_standard_classes``/``assign_property``):
+
+          * ``<Group>_Attribute`` -> ``snapshot.properties`` (``Property``)
+          * ``<Group>_Options``   -> ``snapshot.options``    (``Option``)
+          * ``<Group>_Visual``    -> ``snapshot.engineering.properties``
+                                     (``PropertyDefinition``, no value list -
+                                     its values stay on the ``ClassPropertyAssignment``
+                                     itself, since Class Creation's Visual tab
+                                     shows no value column)
+
+        ``ClassPropertyAssignment.property_id`` only carries metadata
+        (width/type/usage/text_block); the tab that actually displays a
+        property's values is decided by which of those three collections its id
+        lives in. Every reconstructed property/option/value here was previously
+        dumped into ``snapshot.properties`` regardless of its real class kind,
+        which is why every class's properties (and their values) appeared
+        flattened under the Attribute tab while Options/Visual stayed empty.
+
+        Returns ``{property_id: {code: value_id}}`` for every kind (Attribute
+        and Options) so :meth:`_load_art_base` can resolve ArtBase rows without
+        re-deriving this join."""
         class_rows = self.context.mdb_service.read_table(
             mdb_path, "SELECT com_ClassID, com_ClassName FROM tCOMd_Class"
         )
         if not class_rows:
-            return
+            return {}
         property_rows = self.context.mdb_service.read_table(
             mdb_path,
             "SELECT com_PropertyID, com_ClassID, com_PropName, com_PropTypeCode, "
@@ -219,12 +248,18 @@ class WorkspaceArticleService(BaseService):
             values_by_property.setdefault(row.get("com_PropertyID"), []).append(row)
 
         classes: list[EngineeringClass] = []
+        value_id_by_property: dict[str, dict[str, str]] = {}
         display_order = 0
         for class_row in sorted(class_rows, key=lambda r: r.get("com_ClassID") or 0):
             class_id = class_row.get("com_ClassID")
-            engineering_class = EngineeringClass(
-                id=f"mdb-class-{class_id}", name=str(class_row.get("com_ClassName") or "")
-            )
+            class_name = str(class_row.get("com_ClassName") or "")
+            engineering_class = EngineeringClass(id=f"mdb-class-{class_id}", name=class_name)
+            # Same suffix convention `ensure_standard_classes` writes classes
+            # with (<Group>_Attribute/_Options/_Visual); an unrecognised name
+            # falls back to Attribute rather than silently dropping the class.
+            suffix = class_name.rsplit("_", 1)[-1]
+            kind = suffix if suffix in EngineeringClassService.STANDARD_SUFFIXES else "Attribute"
+
             props = sorted(
                 properties_by_class.get(class_id, []),
                 key=lambda r: r.get("com_PropPosition") or 0,
@@ -244,7 +279,9 @@ class WorkspaceArticleService(BaseService):
                     key=lambda r: r.get("com_PropValPosition") or 0,
                 )
                 class_values: list[ClassValue] = []
+                code_to_value_id: dict[str, str] = {}
                 property_values: list[PropertyValue] = []
+                option_values: list[OptionValue] = []
                 for position, value_row in enumerate(values):
                     code = str(value_row.get("com_PropValueFrom") or "")
                     if not code:
@@ -253,12 +290,26 @@ class WorkspaceArticleService(BaseService):
                     value_name = value_text.en if value_text is not None and value_text.en else code
                     value_id = f"mdb-val-{value_row.get('com_ValueID')}"
                     class_values.append(ClassValue(code=code, value=value_name, source="repository_ocd"))
-                    property_values.append(
-                        PropertyValue(
-                            id=value_id, property_id=property_id, value=value_name,
-                            code=code, display_order=position,
+                    code_to_value_id[code] = value_id
+                    if kind == "Options":
+                        option_values.append(
+                            OptionValue(
+                                id=value_id, option_id=property_id, value=value_name,
+                                code=code, display_order=position,
+                            )
                         )
-                    )
+                    elif kind == "Attribute":
+                        property_values.append(
+                            PropertyValue(
+                                id=value_id, property_id=property_id, value=value_name,
+                                code=code, display_order=position,
+                            )
+                        )
+                    # Visual: no value list on PropertyDefinition - the codes stay
+                    # on the ClassPropertyAssignment's own `values` (class_values)
+                    # only, matching what Class Creation's Visual tab reads.
+                if code_to_value_id:
+                    value_id_by_property[property_id] = code_to_value_id
 
                 engineering_class.properties.append(
                     ClassPropertyAssignment(
@@ -271,27 +322,36 @@ class WorkspaceArticleService(BaseService):
                         values=class_values,
                     )
                 )
-                # `Property.values` is the live join target the Class Creation
-                # workflow actually reads (ui/pages/class_creation_page.py builds
-                # its Property -> Value tree rows from `prop.values`, joining
-                # `ClassPropertyAssignment.property_id` to `Property.id` - see
-                # services/engineering/engineering_class_service.py's own
-                # `assign_property`/`_seed_values`, which seeds
-                # `ClassPropertyAssignment.values` FROM `Property.values` the same
-                # way). Populating only the flat `snapshot.property_values` list
-                # left every `Property.values` empty, which is why Class Creation
-                # showed properties with no nested values.
-                snapshot.properties.append(
-                    Property(
-                        id=property_id, code=property_name, name=property_name,
-                        data_type=type_code, display_order=display_order,
-                        values=property_values,
+                if kind == "Options":
+                    snapshot.options.append(
+                        Option(
+                            id=property_id, code=property_name, name=text_block_name or property_name,
+                            display_order=display_order, values=option_values,
+                        )
                     )
-                )
-                snapshot.property_values.extend(property_values)
+                    snapshot.option_values.extend(option_values)
+                elif kind == "Visual":
+                    snapshot.engineering.properties.append(
+                        PropertyDefinition(id=property_id, name=text_block_name or property_name, order=display_order)
+                    )
+                else:
+                    # `Property.values` is the live join target Class Creation's
+                    # Attribute tab reads (ui/pages/class_creation_page.py builds
+                    # its tree from `prop.values`, see
+                    # `services/property_service.py::get_properties`), mirroring
+                    # `EngineeringClassService.assign_property`/`_seed_values`.
+                    snapshot.properties.append(
+                        Property(
+                            id=property_id, code=property_name, name=property_name,
+                            data_type=type_code, display_order=display_order,
+                            values=property_values,
+                        )
+                    )
+                    snapshot.property_values.extend(property_values)
             classes.append(engineering_class)
 
         snapshot.engineering.classes = classes
+        return value_id_by_property
 
     # -- Relations ------------------------------------------------------------
 
@@ -321,12 +381,22 @@ class WorkspaceArticleService(BaseService):
     # -- Article base (per-base value restrictions) --------------------------
 
     def _load_art_base(
-        self, mdb_path: Path, snapshot: Snapshot, code_to_article_id: dict[str, str]
+        self,
+        mdb_path: Path,
+        snapshot: Snapshot,
+        code_to_article_id: dict[str, str],
+        value_id_by_property: dict[str, dict[str, str]],
     ) -> None:
         """Read ``tCOMd_ArtBase`` back into ``snapshot.art_base``
         (``base article code -> {property_id: [value_id, ...]}``), resolving
         each row's ``(class_name, prop_name, value code)`` against the classes
-        just rebuilt by :meth:`_load_classes`. Mirrors ``OcdExportService._artbase``."""
+        just rebuilt by :meth:`_load_classes`. Mirrors ``OcdExportService._artbase``.
+
+        ``value_id_by_property`` (``{property_id: {code: value_id}}``) comes
+        straight from :meth:`_load_classes` - it already knows each value's id
+        regardless of which collection (``Property``/``Option``) it landed in,
+        so this method only needs to resolve ``(class_name, prop_name)`` to a
+        ``property_id``."""
         rows = self.context.mdb_service.read_table(
             mdb_path,
             "SELECT a.com_ArticleCode, ab.com_ClassName, ab.com_PropName, "
@@ -336,36 +406,22 @@ class WorkspaceArticleService(BaseService):
         if not rows:
             return
 
-        # (class_name, prop_name) -> (property_id, {code: value_id})
-        lookup: dict[tuple[str, str], tuple[str, dict[str, str]]] = {}
-        for engineering_class in snapshot.engineering.classes:
-            for assignment in engineering_class.properties:
-                code_to_value_id = {
-                    value.code: value_id
-                    for value, value_id in zip(
-                        assignment.values,
-                        (
-                            pv.id
-                            for pv in snapshot.property_values
-                            if pv.property_id == assignment.property_id
-                        ),
-                    )
-                }
-                lookup[(engineering_class.name, assignment.property_name)] = (
-                    assignment.property_id,
-                    code_to_value_id,
-                )
+        # (class_name, prop_name) -> property_id
+        property_id_by_key: dict[tuple[str, str], str] = {
+            (engineering_class.name, assignment.property_name): assignment.property_id
+            for engineering_class in snapshot.engineering.classes
+            for assignment in engineering_class.properties
+        }
 
         for row in rows:
             code = str(row.get("com_ArticleCode") or "")
             if code not in code_to_article_id:
                 continue
             key = (str(row.get("com_ClassName") or ""), str(row.get("com_PropName") or ""))
-            match = lookup.get(key)
-            if match is None:
+            property_id = property_id_by_key.get(key)
+            if property_id is None:
                 continue
-            property_id, code_to_value_id = match
-            value_id = code_to_value_id.get(str(row.get("com_PropValue") or ""))
+            value_id = value_id_by_property.get(property_id, {}).get(str(row.get("com_PropValue") or ""))
             if value_id is None:
                 continue
             snapshot.art_base.setdefault(code, {}).setdefault(property_id, []).append(value_id)
