@@ -28,6 +28,9 @@ class Engineering:
     families: list[EngineeringFamily] = field(default_factory=list)
     properties: list[PropertyDefinition] = field(default_factory=list)
     classes: list[EngineeringClass] = field(default_factory=list)
+    # Repository/OCD source hierarchy. PDM continues to use ``classes`` only.
+    # One entry per real tCOMd_Class row, preserved without workspace merging.
+    source_classes: list[EngineeringClass] = field(default_factory=list)
     relationships: EngineeringRelationships = field(
         default_factory=EngineeringRelationships
     )
