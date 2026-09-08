@@ -42,6 +42,9 @@ class ClassPropertyAssignment:
     usage: str = ""     # MDB Usage: Configuration | Graphic
     text_block: str = ""  # MDB Text-block (display key, e.g. Desk_Type)
     values: list[ClassValue] = field(default_factory=list)
+    # Repository provenance. Empty for PDM-created assignments.
+    source_class_id: str = ""
+    source_class_name: str = ""
 
 
 @dataclass
@@ -51,3 +54,5 @@ class EngineeringClass:
     id: str = ""
     name: str = ""
     properties: list[ClassPropertyAssignment] = field(default_factory=list)
+    # Repository-only workspace classification. Empty for PDM classes.
+    workspace_type: str = ""
