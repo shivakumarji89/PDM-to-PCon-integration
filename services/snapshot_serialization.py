@@ -526,6 +526,8 @@ def class_property_assignment_to_dict(
         "usage": assignment.usage,
         "text_block": assignment.text_block,
         "values": [class_value_to_dict(v) for v in assignment.values],
+        "source_class_id": assignment.source_class_id,
+        "source_class_name": assignment.source_class_name,
     }
 
 
@@ -542,6 +544,8 @@ def class_property_assignment_from_dict(
         values=[
             class_value_from_dict(v) for v in data.get("values", [])
         ],
+        source_class_id=data.get("source_class_id", ""),
+        source_class_name=data.get("source_class_name", ""),
     )
 
 
@@ -564,6 +568,7 @@ def engineering_class_to_dict(cls: EngineeringClass) -> dict[str, Any]:
         "properties": [
             class_property_assignment_to_dict(a) for a in cls.properties
         ],
+        "workspace_type": cls.workspace_type,
     }
 
 
@@ -575,6 +580,7 @@ def engineering_class_from_dict(data: dict[str, Any]) -> EngineeringClass:
             class_property_assignment_from_dict(a)
             for a in data.get("properties", [])
         ],
+        workspace_type=data.get("workspace_type", ""),
     )
 
 
@@ -588,6 +594,9 @@ def engineering_to_dict(engineering: Engineering) -> dict[str, Any]:
         ],
         "classes": [
             engineering_class_to_dict(c) for c in engineering.classes
+        ],
+        "source_classes": [
+            engineering_class_to_dict(c) for c in engineering.source_classes
         ],
         "relationships": engineering_relationships_to_dict(
             engineering.relationships
@@ -606,6 +615,9 @@ def engineering_from_dict(data: dict[str, Any]) -> Engineering:
         ],
         classes=[
             engineering_class_from_dict(c) for c in data.get("classes", [])
+        ],
+        source_classes=[
+            engineering_class_from_dict(c) for c in data.get("source_classes", [])
         ],
         relationships=(
             engineering_relationships_from_dict(relationships_data)
