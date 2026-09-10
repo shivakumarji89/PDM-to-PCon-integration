@@ -9,7 +9,6 @@ flagged. Self-contained and easily disconnectable - set
 from __future__ import annotations
 
 from pathlib import Path
-#from unittest import signals
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.errors import PDMConnectionError, PDMQueryError
 from ui import theme
 from ui.components import SectionHeader, StatisticsGrid
 from ui.pages.base_page import BasePage
@@ -53,25 +53,51 @@ class _ObxWorker(QRunnable):
         self._validation_date = validation_date
         self._reporter = reporter
         self._signals = signals
-        
+
     @staticmethod
     def _is_connection_error(exc: Exception) -> bool:
-        """Return True only for errors that look like a broken DB/network connection."""
-        text = str(exc).lower()
-        markers = (
-            "connectionread",
-            "general network error",
-            "communication link failure",
-            "08s01",
-            "tcp provider",
-            "connection is broken",
-            "connection was closed",
-            "server has gone away",
-            "connection reset",
-            "connection aborted",
-        )
-        return any(marker in text for marker in markers)
-        
+        """Return True for transient PDM/network connection failures only."""
+        current = exc
+        seen: set[int] = set()
+
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+
+            if isinstance(current, PDMConnectionError):
+                return True
+
+            text = str(current).lower()
+            markers = (
+                "08001",  # SQL Server connection failure
+                "08s01",  # communication link failure
+                "connectionread",
+                "general network error",
+                "communication link failure",
+                "tcp provider",
+                "connection is broken",
+                "connection was closed",
+                "server has gone away",
+                "connection reset",
+                "connection aborted",
+                "network is unreachable",
+                "network path was not found",
+                "connection timeout",
+                "connect timeout",
+                "timed out",
+            )
+
+            if any(marker in text for marker in markers):
+                return True
+
+            # PDMQueryError may wrap the original pyodbc exception.
+            # Follow the original cause/context so transient network errors
+            # are recoverable without retrying permanent SQL errors.
+            current = getattr(current, "__cause__", None) or getattr(
+                current, "__context__", None
+            )
+
+        return False
+
     def run(self) -> None:
         completed: dict[int, object] = {}
         pending = list(self._lines)
@@ -223,7 +249,7 @@ class ObxValidationPage(BasePage):
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
             ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
-        self._table.setSortingEnabled(False)  # we control row order by seq; sorting would scatter cells
+        self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -319,11 +345,11 @@ class ObxValidationPage(BasePage):
         signals.finished.connect(self._on_results)
         signals.failed.connect(self._on_failed)
         signals.line_done.connect(self._on_line_done)
-        self._signals = signals  # keep a reference alive
+        self._signals = signals
         self._begin_live()
         site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-        
+
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
             self._currency,
@@ -349,7 +375,7 @@ class ObxValidationPage(BasePage):
         """Reset the results view so lines stream in one by one as they validate."""
         self._results = []
         self._live = {"lines": 0, "ok": 0, "mismatch": 0, "unresolved": 0}
-        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         for key, label in (("lines", "Order lines"), ("ok", "Matched"),
                            ("mismatch", "Price mismatch"), ("unresolved", "Unresolved")):
@@ -405,7 +431,6 @@ class ObxValidationPage(BasePage):
             return
         paths = getattr(self, "_paths", [])
         svc = self._context.obx_validation_service
-        # One source file -> a single CSV, as before.
         if len(paths) <= 1:
             default = str(Path(self._source_path).with_suffix(".csv")) if self._source_path else ""
             path, _ = QFileDialog.getSaveFileName(
@@ -419,7 +444,6 @@ class ObxValidationPage(BasePage):
                 return
             QMessageBox.information(self, "OBX Validation", "Validation report exported successfully.")
             return
-        # Folder / multiple files -> one CSV per source OBX file.
         out_dir = QFileDialog.getExistingDirectory(
             self, "Choose a folder for the per-file CSV reports",
             str(Path(paths[0]).parent))
@@ -460,7 +484,7 @@ class ObxValidationPage(BasePage):
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
         rows = sorted(rows, key=lambda r: self._seq_key(r.seq))
-        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         for r in rows:
             self._put_row(self._table.rowCount(), r)
