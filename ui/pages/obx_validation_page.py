@@ -9,6 +9,7 @@ flagged. Self-contained and easily disconnectable - set
 from __future__ import annotations
 
 from pathlib import Path
+#from unittest import signals
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
@@ -52,7 +53,7 @@ class _ObxWorker(QRunnable):
         self._validation_date = validation_date
         self._reporter = reporter
         self._signals = signals
-
+        
     @staticmethod
     def _is_connection_error(exc: Exception) -> bool:
         """Return True only for errors that look like a broken DB/network connection."""
@@ -70,7 +71,7 @@ class _ObxWorker(QRunnable):
             "connection aborted",
         )
         return any(marker in text for marker in markers)
-
+        
     def run(self) -> None:
         completed: dict[int, object] = {}
         pending = list(self._lines)
@@ -78,11 +79,8 @@ class _ObxWorker(QRunnable):
         recovery_attempts = 0
         total = len(self._lines)
 
-        self._reporter.begin(
-            max(total, 1),
-            title="Validate OBX",
-            subject=f"{total} order line(s)",
-        )
+        self._reporter.begin(max(total, 1), title="Validate OBX",
+                             subject=f"{total} order line(s)")
 
         def on_result(result) -> None:
             """Keep completed results locally so a retry never re-emits them."""
@@ -225,7 +223,7 @@ class ObxValidationPage(BasePage):
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
             ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
-        self._table.setSortingEnabled(False)
+        self._table.setSortingEnabled(False)  # we control row order by seq; sorting would scatter cells
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -302,7 +300,7 @@ class ObxValidationPage(BasePage):
         label = paths[0] if len(paths) == 1 else f"{len(paths)} files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(
-            f"{Path(label).name if len(paths) == 1 else label}  —  "
+            f"{Path(label).name if len(paths) == 1 else label}  \u2014  "
             f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._reset_results()
@@ -321,11 +319,11 @@ class ObxValidationPage(BasePage):
         signals.finished.connect(self._on_results)
         signals.failed.connect(self._on_failed)
         signals.line_done.connect(self._on_line_done)
-        self._signals = signals
+        self._signals = signals  # keep a reference alive
         self._begin_live()
         site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-
+        
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
             self._currency,
@@ -351,7 +349,7 @@ class ObxValidationPage(BasePage):
         """Reset the results view so lines stream in one by one as they validate."""
         self._results = []
         self._live = {"lines": 0, "ok": 0, "mismatch": 0, "unresolved": 0}
-        self._table.setSortingEnabled(False)
+        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
         self._table.setRowCount(0)
         for key, label in (("lines", "Order lines"), ("ok", "Matched"),
                            ("mismatch", "Price mismatch"), ("unresolved", "Unresolved")):
@@ -387,7 +385,7 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(results))
         self._rebuild_btn.setEnabled(bool(results))
         self._render_table()
-        site_text = ", ".join(f"{cur}→site {s}" for cur, s in sites.items())
+        site_text = ", ".join(f"{cur}\u2192site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
             QMessageBox.information(
                 self, "OBX Validation",
@@ -407,6 +405,7 @@ class ObxValidationPage(BasePage):
             return
         paths = getattr(self, "_paths", [])
         svc = self._context.obx_validation_service
+        # One source file -> a single CSV, as before.
         if len(paths) <= 1:
             default = str(Path(self._source_path).with_suffix(".csv")) if self._source_path else ""
             path, _ = QFileDialog.getSaveFileName(
@@ -420,6 +419,7 @@ class ObxValidationPage(BasePage):
                 return
             QMessageBox.information(self, "OBX Validation", "Validation report exported successfully.")
             return
+        # Folder / multiple files -> one CSV per source OBX file.
         out_dir = QFileDialog.getExistingDirectory(
             self, "Choose a folder for the per-file CSV reports",
             str(Path(paths[0]).parent))
@@ -460,7 +460,7 @@ class ObxValidationPage(BasePage):
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
         rows = sorted(rows, key=lambda r: self._seq_key(r.seq))
-        self._table.setSortingEnabled(False)
+        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
         self._table.setRowCount(0)
         for r in rows:
             self._put_row(self._table.rowCount(), r)
