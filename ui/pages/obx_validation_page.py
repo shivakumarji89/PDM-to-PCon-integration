@@ -9,7 +9,6 @@ flagged. Self-contained and easily disconnectable - set
 from __future__ import annotations
 
 from pathlib import Path
-#from unittest import signals
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
@@ -40,7 +39,9 @@ class _ObxSignals(QObject):
 
 
 class _ObxWorker(QRunnable):
-    """Runs the SIF validation off the UI thread, driving a ProgressReporter."""
+    """Runs OBX validation off the UI thread with transient PDM recovery."""
+
+    _MAX_RECOVERY_ATTEMPTS = 3
 
     def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals):
         super().__init__()
@@ -51,27 +52,88 @@ class _ObxWorker(QRunnable):
         self._validation_date = validation_date
         self._reporter = reporter
         self._signals = signals
-        
-    def run(self) -> None:
-        try:
-            self._reporter.begin(max(len(self._lines), 1), title="Validate OBX",
-                                 subject=f"{len(self._lines)} order line(s)")
-            site, results = self._svc.validate(
-                self._currency,
-                self._lines,
-                site=self._site_id,
-                validation_date=self._validation_date,
-                progress=lambda done, total, text: self._reporter.advance(text),
-                stage=lambda text: self._reporter.note(text),
-                on_result=lambda r: self._signals.line_done.emit(r),
-            )
 
-        except Exception as exc:  # never crash the worker thread
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(results)} line(s)")
-            self._signals.finished.emit((site, results))
+    @staticmethod
+    def _is_connection_error(exc: Exception) -> bool:
+        """Return True only for errors that look like a broken DB/network connection."""
+        text = str(exc).lower()
+        markers = (
+            "connectionread",
+            "general network error",
+            "communication link failure",
+            "08s01",
+            "tcp provider",
+            "connection is broken",
+            "connection was closed",
+            "server has gone away",
+            "connection reset",
+            "connection aborted",
+        )
+        return any(marker in text for marker in markers)
+
+    def run(self) -> None:
+        completed: dict[int, object] = {}
+        pending = list(self._lines)
+        sites: dict = {}
+        recovery_attempts = 0
+        total = len(self._lines)
+
+        self._reporter.begin(
+            max(total, 1),
+            title="Validate OBX",
+            subject=f"{total} order line(s)",
+        )
+
+        def on_result(result) -> None:
+            """Keep completed results locally so a retry never re-emits them."""
+            key = getattr(result, "seq", None)
+            if key in completed:
+                return
+            completed[key] = result
+            self._signals.line_done.emit(result)
+
+        while pending:
+            try:
+                site, results = self._svc.validate(
+                    self._currency,
+                    pending,
+                    site=self._site_id,
+                    validation_date=self._validation_date,
+                    progress=lambda done, current_total, text: self._reporter.advance(text),
+                    stage=lambda text: self._reporter.note(text),
+                    on_result=on_result,
+                )
+                if site:
+                    sites.update(site)
+                for result in results:
+                    on_result(result)
+                pending = [line for line in pending if getattr(line, "seq", None) not in completed]
+                recovery_attempts = 0
+                if not pending:
+                    break
+            except Exception as exc:
+                if not self._is_connection_error(exc) or recovery_attempts >= self._MAX_RECOVERY_ATTEMPTS:
+                    self._reporter.finish(False, str(exc))
+                    self._signals.failed.emit(str(exc))
+                    return
+
+                recovery_attempts += 1
+                pending = [line for line in pending if getattr(line, "seq", None) not in completed]
+                self._reporter.note(
+                    f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/"
+                    f"{self._MAX_RECOVERY_ATTEMPTS})..."
+                )
+
+        results = sorted(completed.values(), key=lambda result: self._seq_key(getattr(result, "seq", 0)))
+        self._reporter.finish(True, f"{len(results)} line(s)")
+        self._signals.finished.emit((sites, results))
+
+    @staticmethod
+    def _seq_key(seq) -> int:
+        try:
+            return int(seq)
+        except (TypeError, ValueError):
+            return 0
 
 
 class ObxValidationPage(BasePage):
@@ -163,7 +225,7 @@ class ObxValidationPage(BasePage):
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
             ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
-        self._table.setSortingEnabled(False)  # we control row order by seq; sorting would scatter cells
+        self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -240,7 +302,7 @@ class ObxValidationPage(BasePage):
         label = paths[0] if len(paths) == 1 else f"{len(paths)} files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(
-            f"{Path(label).name if len(paths) == 1 else label}  \u2014  "
+            f"{Path(label).name if len(paths) == 1 else label}  —  "
             f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._reset_results()
@@ -259,11 +321,11 @@ class ObxValidationPage(BasePage):
         signals.finished.connect(self._on_results)
         signals.failed.connect(self._on_failed)
         signals.line_done.connect(self._on_line_done)
-        self._signals = signals  # keep a reference alive
+        self._signals = signals
         self._begin_live()
         site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-        
+
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
             self._currency,
@@ -289,7 +351,7 @@ class ObxValidationPage(BasePage):
         """Reset the results view so lines stream in one by one as they validate."""
         self._results = []
         self._live = {"lines": 0, "ok": 0, "mismatch": 0, "unresolved": 0}
-        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         for key, label in (("lines", "Order lines"), ("ok", "Matched"),
                            ("mismatch", "Price mismatch"), ("unresolved", "Unresolved")):
@@ -325,7 +387,7 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(results))
         self._rebuild_btn.setEnabled(bool(results))
         self._render_table()
-        site_text = ", ".join(f"{cur}\u2192site {s}" for cur, s in sites.items())
+        site_text = ", ".join(f"{cur}→site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
             QMessageBox.information(
                 self, "OBX Validation",
@@ -345,7 +407,6 @@ class ObxValidationPage(BasePage):
             return
         paths = getattr(self, "_paths", [])
         svc = self._context.obx_validation_service
-        # One source file -> a single CSV, as before.
         if len(paths) <= 1:
             default = str(Path(self._source_path).with_suffix(".csv")) if self._source_path else ""
             path, _ = QFileDialog.getSaveFileName(
@@ -359,7 +420,6 @@ class ObxValidationPage(BasePage):
                 return
             QMessageBox.information(self, "OBX Validation", "Validation report exported successfully.")
             return
-        # Folder / multiple files -> one CSV per source OBX file.
         out_dir = QFileDialog.getExistingDirectory(
             self, "Choose a folder for the per-file CSV reports",
             str(Path(paths[0]).parent))
@@ -400,7 +460,7 @@ class ObxValidationPage(BasePage):
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
         rows = sorted(rows, key=lambda r: self._seq_key(r.seq))
-        self._table.setSortingEnabled(False)  # global standardize_table() re-enables it; we order rows ourselves
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         for r in rows:
             self._put_row(self._table.rowCount(), r)
