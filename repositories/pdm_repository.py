@@ -1321,7 +1321,7 @@ class PDMRepository(BaseRepository):
             rows.extend(
                 self._execute(
                     query,
-                    (mydate, site_id, currency) + tuple(chunk),
+                    (mydate, site_id, site_id, currency) + tuple(chunk),
                     connection=connection,
                 )
             )
