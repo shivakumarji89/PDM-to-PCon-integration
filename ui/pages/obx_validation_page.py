@@ -236,8 +236,8 @@ class ObxValidationPage(BasePage):
         panel.setObjectName("obxProgressPanel")
         panel.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(theme.SPACE_2, theme.SPACE_2, theme.SPACE_2, theme.SPACE_2)
-        layout.setSpacing(theme.SPACE_1)
+        layout.setContentsMargins(theme.SPACE_1, theme.SPACE_1, theme.SPACE_1, theme.SPACE_1)
+        layout.setSpacing(0)
 
         header = QHBoxLayout()
         self._progress_state = QLabel("READY", panel)
@@ -290,13 +290,13 @@ class ObxValidationPage(BasePage):
         ]
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
-        grid.setVerticalSpacing(theme.SPACE_1)
+        grid.setVerticalSpacing(0)
         for index, (key, title) in enumerate(metrics):
             label = QLabel(f"{title}: -", panel)
             self._metrics[key] = label
             grid.addWidget(label, index // 6, index % 6)
         layout.addLayout(grid)
-        panel.setMaximumHeight(190)
+        panel.setMaximumHeight(165)
         return panel
 
     def _build_results(self) -> QWidget:
