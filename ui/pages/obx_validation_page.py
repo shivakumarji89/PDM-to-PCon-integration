@@ -1,7 +1,6 @@
 """OBX Validation workspace page."""
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
@@ -192,7 +191,6 @@ class ObxValidationPage(BasePage):
         self._duplicate_count = 0
         self._active_control: ValidationControl | None = None
         self._active_reporter = None
-        self._started_at = 0.0
         self._recovery_attempt = 0
         self.add_content(self._build_controls())
         self.add_content(self._build_progress_panel())
@@ -217,9 +215,13 @@ class ObxValidationPage(BasePage):
         self._pause_btn = QPushButton("Pause Validation", container)
         self._pause_btn.setEnabled(False)
         self._pause_btn.clicked.connect(self._on_pause_resume)
+        self._cancel_btn = QPushButton("Cancel Validation", container)
+        self._cancel_btn.setEnabled(False)
+        self._cancel_btn.clicked.connect(self._on_cancel)
         layout.addWidget(self._load_btn)
         layout.addWidget(self._launch_btn)
         layout.addWidget(self._pause_btn)
+        layout.addWidget(self._cancel_btn)
         layout.addWidget(QLabel("Validation date:", container))
         self._validation_date = QDateEdit(container)
         self._validation_date.setDisplayFormat("dd-MMM-yyyy")
@@ -368,6 +370,7 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
+        self._cancel_btn.setEnabled(False)
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
@@ -397,24 +400,23 @@ class ObxValidationPage(BasePage):
         if self._pending_lines:
             self._start_validation(self._pending_lines, fresh=False)
 
+    def _on_cancel(self) -> None:
+        control = self._active_control
+        if control is None:
+            return
+        control.cancel()
+        self._cancel_btn.setEnabled(False)
+        self._pause_btn.setEnabled(False)
+        self._progress_state.setText("CANCELLING")
+        self._current_status.setText("Status: Cancellation requested. Stopping the active SQL operation...")
+
     def _start_validation(self, lines: list, fresh: bool) -> None:
         from core.progress import ProgressReporter
 
-        monitor = self._progress_monitor()
-        if getattr(self, "_cancel_connection", None) is not None:
-            try:
-                monitor.cancel_requested.disconnect(self._cancel_connection)
-            except (RuntimeError, TypeError):
-                pass
         reporter = ProgressReporter(self)
         control = ValidationControl()
         self._active_control = control
         self._active_reporter = reporter
-        self._cancel_connection = control.cancel
-        monitor.cancel_requested.connect(self._cancel_connection)
-        monitor.bind(reporter)
-        monitor.show()
-        monitor.raise_()
         reporter.progress_changed.connect(self._on_progress_changed)
         reporter.elapsed_changed.connect(self._on_elapsed_changed)
         reporter.remaining_changed.connect(self._on_remaining_changed)
@@ -431,9 +433,9 @@ class ObxValidationPage(BasePage):
         self._is_paused = False
         self._pause_btn.setText("Pause Validation")
         self._pause_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
         self._progress_state.setText("VALIDATING")
-        self._started_at = time.perf_counter()
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
@@ -446,18 +448,11 @@ class ObxValidationPage(BasePage):
             control,
         ))
 
-    def _progress_monitor(self):
-        monitor = getattr(self, "_monitor", None)
-        if monitor is None:
-            from ui.dialogs.progress_dialog import ProgressDialog
-            monitor = ProgressDialog(self)
-            self._monitor = monitor
-        return monitor
-
     def _release_active_control(self) -> None:
         self._active_control = None
         self._active_reporter = None
         self._pause_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(False)
 
     def _on_progress_changed(self, percent: int) -> None:
         self._progress_bar.setValue(percent)
@@ -655,6 +650,7 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
+        self._cancel_btn.setEnabled(False)
 
     def _set_metric(self, key: str, value: str) -> None:
         label = self._metrics.get(key)
