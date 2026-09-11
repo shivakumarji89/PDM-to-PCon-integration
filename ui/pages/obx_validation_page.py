@@ -69,22 +69,11 @@ class _ObxWorker(QRunnable):
 
             text = str(current).lower()
             markers = (
-                "08001",  # SQL Server connection failure
-                "08s01",  # communication link failure
-                "connectionread",
-                "general network error",
-                "communication link failure",
-                "tcp provider",
-                "connection is broken",
-                "connection was closed",
-                "server has gone away",
-                "connection reset",
-                "connection aborted",
-                "network is unreachable",
-                "network path was not found",
-                "connection timeout",
-                "connect timeout",
-                "timed out",
+                "08001", "08s01", "connectionread", "general network error",
+                "communication link failure", "tcp provider", "connection is broken",
+                "connection was closed", "server has gone away", "connection reset",
+                "connection aborted", "network is unreachable", "network path was not found",
+                "connection timeout", "connect timeout", "timed out",
             )
 
             if any(marker in text for marker in markers):
@@ -145,7 +134,7 @@ class _ObxWorker(QRunnable):
                         f"PDM connection unavailable after {self._MAX_RECOVERY_ATTEMPTS} "
                         f"recovery attempts."
                     )
-                    self._reporter.finish(False, reason)
+                    self._reporter.pause(reason)
                     self._signals.paused.emit((sites, pending, reason))
                     return
 
@@ -275,40 +264,19 @@ class ObxValidationPage(BasePage):
     # -- actions --------------------------------------------------------
 
     def _on_load(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Load OBX file(s)",
-            "",
-            "OBX files (*.obx);;All files (*.*)"
-        )
+        paths, _ = QFileDialog.getOpenFileNames(self, "Load OBX file(s)", "", "OBX files (*.obx);;All files (*.*)")
         if paths:
             self._load_paths(paths)
 
     def _on_load_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Load all OBX files in folder"
-        )
-
+        folder = QFileDialog.getExistingDirectory(self, "Load all OBX files in folder")
         if not folder:
             return
-
         folder_path = Path(folder)
-
-        paths = sorted(
-            str(p)
-            for p in folder_path.iterdir()
-            if p.is_file() and p.suffix.lower() == ".obx"
-        )
-
+        paths = sorted(str(p) for p in folder_path.iterdir() if p.is_file() and p.suffix.lower() == ".obx")
         if not paths:
-            QMessageBox.information(
-                self,
-                "OBX Validation",
-                "No .obx files found in that folder."
-            )
+            QMessageBox.information(self, "OBX Validation", "No .obx files found in that folder.")
             return
-
         self._load_paths(paths)
 
     def _load_paths(self, paths: list[str]) -> None:
@@ -339,7 +307,7 @@ class ObxValidationPage(BasePage):
         label = paths[0] if len(paths) == 1 else f"{len(paths)} files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(
-            f"{Path(label).name if len(paths) == 1 else label}  \u2014  "
+            f"{Path(label).name if len(paths) == 1 else label}  —  "
             f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._resume_btn.setEnabled(False)
@@ -378,7 +346,6 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(False)
         site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
             self._currency,
@@ -461,11 +428,9 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(results))
         self._rebuild_btn.setEnabled(bool(results))
         self._render_table()
-        site_text = ", ".join(f"{cur}\u2192site {s}" for cur, s in sites.items())
+        site_text = ", ".join(f"{cur}→site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
-            QMessageBox.information(
-                self, "OBX Validation",
-                f"All {len(results)} line(s) match PDM ({site_text}).")
+            QMessageBox.information(self, "OBX Validation", f"All {len(results)} line(s) match PDM ({site_text}).")
 
     def _on_toggle_all(self, checked: bool) -> None:
         self._show_all = checked
@@ -483,8 +448,7 @@ class ObxValidationPage(BasePage):
         svc = self._context.obx_validation_service
         if len(paths) <= 1:
             default = str(Path(self._source_path).with_suffix(".csv")) if self._source_path else ""
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Export validation report", default, "CSV files (*.csv);;All files (*.*)")
+            path, _ = QFileDialog.getSaveFileName(self, "Export validation report", default, "CSV files (*.csv);;All files (*.*)")
             if not path:
                 return
             try:
@@ -494,17 +458,14 @@ class ObxValidationPage(BasePage):
                 return
             QMessageBox.information(self, "OBX Validation", "Validation report exported successfully.")
             return
-        out_dir = QFileDialog.getExistingDirectory(
-            self, "Choose a folder for the per-file CSV reports",
-            str(Path(paths[0]).parent))
+        out_dir = QFileDialog.getExistingDirectory(self, "Choose a folder for the per-file CSV reports", str(Path(paths[0]).parent))
         if not out_dir:
             return
         file_of_seq = getattr(self, "_file_of_seq", {})
         cur_of_path = getattr(self, "_currency_of_path", {})
         written, failed = 0, []
         for src in paths:
-            rows = sorted((r for r in self._results if file_of_seq.get(r.seq) == src),
-                          key=lambda r: r.seq)
+            rows = sorted((r for r in self._results if file_of_seq.get(r.seq) == src), key=lambda r: r.seq)
             if not rows:
                 continue
             target = str(Path(out_dir) / (Path(src).stem + ".csv"))
@@ -544,7 +505,6 @@ class ObxValidationPage(BasePage):
 
     @staticmethod
     def _seq_key(seq) -> int:
-        """Numeric sort key for the # column, tolerant of str/int seq values."""
         try:
             return int(seq)
         except (TypeError, ValueError):
@@ -571,8 +531,7 @@ class ObxValidationPage(BasePage):
         cells = [
             str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}",
             "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
-            r.source_date or "-",
-            r.result,
+            r.source_date or "-", r.result,
         ]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
