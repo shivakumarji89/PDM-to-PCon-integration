@@ -62,11 +62,11 @@ class WorkflowManager(QObject):
 
     # -- navigation rules --------------------------------------------------
     def enabled_steps(self) -> set[WorkflowStep]:
-        # Steps that work on the published-package repository (not the loaded
-        # product) stay reachable; the rest unlock once a product is loaded.
+        # Steps that work independently of the loaded product stay reachable.
         standalone = {
             WorkflowStep.MAINTENANCE,
             WorkflowStep.CET_SIF_VALIDATION,
+            WorkflowStep.OBX_VALIDATION,
             # Review is also a pre-load discovery workspace: an existing
             # repository series can be checked against PDM before a snapshot
             # exists, so it must not be locked behind Product loading.
