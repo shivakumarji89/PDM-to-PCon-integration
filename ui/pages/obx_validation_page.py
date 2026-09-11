@@ -5,24 +5,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QDateEdit,
-    QFileDialog,
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QMenu,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
+    QAbstractItemView, QDateEdit, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+    QHeaderView, QLabel, QMenu, QMessageBox, QProgressBar, QPushButton,
+    QSizePolicy, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.errors import PDMConnectionError
@@ -41,7 +26,6 @@ class _ObxSignals(QObject):
 
 class _ObxWorker(QRunnable):
     """Run OBX validation off the UI thread with recovery and checkpoints."""
-
     _MAX_RECOVERY_ATTEMPTS = 3
 
     def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals, control):
@@ -82,7 +66,6 @@ class _ObxWorker(QRunnable):
         sites: dict = {}
         recovery_attempts = 0
         total = len(self._lines)
-
         self._reporter.begin(max(total, 1), title="Validate OBX", subject=f"{total} order line(s)")
 
         def on_result(result) -> None:
@@ -97,14 +80,10 @@ class _ObxWorker(QRunnable):
             try:
                 self._control.checkpoint()
                 site, results = self._svc.validate(
-                    self._currency,
-                    pending,
-                    site=self._site_id,
-                    validation_date=self._validation_date,
-                    progress=None,
+                    self._currency, pending, site=self._site_id,
+                    validation_date=self._validation_date, progress=None,
                     stage=lambda text: self._reporter.note(text),
-                    on_result=on_result,
-                    operation_control=self._control,
+                    on_result=on_result, operation_control=self._control,
                 )
                 if site:
                     sites.update(site)
@@ -139,21 +118,15 @@ class _ObxWorker(QRunnable):
                     self._reporter.finish(False, str(exc))
                     self._signals.failed.emit(str(exc))
                     return
-
                 pending = [line for line in pending if getattr(line, "seq", None) not in completed]
                 if recovery_attempts >= self._MAX_RECOVERY_ATTEMPTS:
-                    reason = (
-                        f"PDM connection unavailable after {self._MAX_RECOVERY_ATTEMPTS} "
-                        f"recovery attempts."
-                    )
+                    reason = f"PDM connection unavailable after {self._MAX_RECOVERY_ATTEMPTS} recovery attempts."
                     self._reporter.pause(reason)
                     self._signals.paused.emit((sites, pending, reason))
                     return
-
                 recovery_attempts += 1
                 self._reporter.note(
-                    f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/"
-                    f"{self._MAX_RECOVERY_ATTEMPTS})..."
+                    f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/{self._MAX_RECOVERY_ATTEMPTS})..."
                 )
 
         results = sorted(completed.values(), key=lambda result: self._seq_key(getattr(result, "seq", 0)))
@@ -172,13 +145,7 @@ class ObxValidationPage(BasePage):
     """Validate a CET OBX file's prices against PDM."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
-        super().__init__(
-            title="OBX Validation",
-            description="Validate a CET OBX file's prices against PDM.",
-            parent=parent,
-            show_placeholder=False,
-            content_stretch=True,
-        )
+        super().__init__(title="OBX Validation", description="Validate a CET OBX file's prices against PDM.", parent=parent, show_placeholder=False, content_stretch=True)
         self._context = context
         self._currency = ""
         self._lines: list = []
@@ -212,7 +179,7 @@ class ObxValidationPage(BasePage):
         self._launch_btn = QPushButton("Launch Item Entry", container)
         self._launch_btn.setEnabled(False)
         self._launch_btn.clicked.connect(self._on_launch)
-        self._load_btn.setFixedWidth(self._launch_btn.sizeHint().width())
+        self._load_btn.setFixedSize(self._launch_btn.sizeHint())
         self._pause_btn = QPushButton("Pause Validation", container)
         self._pause_btn.setEnabled(False)
         self._pause_btn.clicked.connect(self._on_pause_resume)
@@ -229,6 +196,16 @@ class ObxValidationPage(BasePage):
         self._validation_date.setCalendarPopup(True)
         self._validation_date.setDate(QDate.currentDate())
         layout.addWidget(self._validation_date)
+        self._export_btn = QPushButton("Export to CSV...", container)
+        self._export_btn.setEnabled(False)
+        self._export_btn.clicked.connect(self._on_export)
+        layout.addWidget(self._export_btn)
+        self._toggle_btn = QPushButton("Show errors only", container)
+        self._toggle_btn.setCheckable(True)
+        self._toggle_btn.setChecked(True)
+        self._toggle_btn.toggled.connect(self._on_toggle_all)
+        self._toggle_btn.setEnabled(False)
+        layout.addWidget(self._toggle_btn)
         layout.addStretch(1)
         return container
 
@@ -237,28 +214,17 @@ class ObxValidationPage(BasePage):
         panel.setObjectName("obxProgressPanel")
         panel.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(theme.SPACE_1, theme.SPACE_1, theme.SPACE_1, theme.SPACE_1)
-        layout.setSpacing(0)
-
+        layout.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
+        layout.setSpacing(theme.SPACE_1)
         header = QHBoxLayout()
+        header.setContentsMargins(0, theme.SPACE_1, 0, theme.SPACE_1)
         self._progress_state = QLabel("READY", panel)
         self._progress_state.setStyleSheet("font-weight: 600;")
         self._file_label = QLabel("No OBX file loaded.", panel)
         self._file_label.setStyleSheet(f"color: {theme.MUTED};")
         header.addWidget(self._progress_state)
         header.addWidget(self._file_label, 1)
-        self._export_btn = QPushButton("Export to CSV...", panel)
-        self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._on_export)
-        header.addWidget(self._export_btn)
-        self._toggle_btn = QPushButton("Show errors only", panel)
-        self._toggle_btn.setCheckable(True)
-        self._toggle_btn.setChecked(True)
-        self._toggle_btn.toggled.connect(self._on_toggle_all)
-        self._toggle_btn.setEnabled(False)
-        header.addWidget(self._toggle_btn)
         layout.addLayout(header)
-
         progress_row = QHBoxLayout()
         self._progress_bar = QProgressBar(panel)
         self._progress_bar.setRange(0, 100)
@@ -270,7 +236,6 @@ class ObxValidationPage(BasePage):
         progress_row.addWidget(self._progress_bar, 1)
         progress_row.addWidget(self._progress_percent)
         layout.addLayout(progress_row)
-
         detail_row = QHBoxLayout()
         self._current_line = QLabel("Current line: -", panel)
         self._current_sku = QLabel("Current SKU: -", panel)
@@ -279,15 +244,12 @@ class ObxValidationPage(BasePage):
         detail_row.addWidget(self._current_sku, 1)
         detail_row.addWidget(self._current_status)
         layout.addLayout(detail_row)
-
         self._metrics: dict[str, QLabel] = {}
         metrics = [
-            ("completed", "Completed"), ("remaining", "Remaining"),
-            ("matched", "Matched"), ("mismatch", "Price mismatch"),
-            ("unresolved", "Unresolved"), ("skipped", "Skipped"),
-            ("duplicate", "Duplicate"), ("elapsed", "Elapsed"),
-            ("eta", "ETA"), ("speed", "Speed"),
-            ("site", "PDM site"), ("recovery", "Recovery"),
+            ("completed", "Completed"), ("remaining", "Remaining"), ("matched", "Matched"),
+            ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
+            ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
+            ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
         ]
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
@@ -297,7 +259,7 @@ class ObxValidationPage(BasePage):
             self._metrics[key] = label
             grid.addWidget(label, index // 6, index % 6)
         layout.addLayout(grid)
-        panel.setMaximumHeight(165)
+        panel.setMaximumHeight(175)
         return panel
 
     def _build_results(self) -> QWidget:
@@ -307,8 +269,7 @@ class ObxValidationPage(BasePage):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_1)
         self._table = QTableWidget(0, 8, container)
-        self._table.setHorizontalHeaderLabels(
-            ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
+        self._table.setHorizontalHeaderLabels(["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
         self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -366,8 +327,7 @@ class ObxValidationPage(BasePage):
         self._duplicate_count = svc.duplicate_count(lines)
         label = Path(loaded_paths[0]).name if len(loaded_paths) == 1 else f"{len(loaded_paths)} OBX files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
-        self._file_label.setText(
-            f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
+        self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
@@ -413,7 +373,6 @@ class ObxValidationPage(BasePage):
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
         from core.progress import ProgressReporter
-
         reporter = ProgressReporter(self)
         control = ValidationControl()
         self._active_control = control
@@ -438,16 +397,7 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(False)
         self._progress_state.setText("VALIDATING")
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-        QThreadPool.globalInstance().start(_ObxWorker(
-            self._context.obx_validation_service,
-            self._currency,
-            lines,
-            None,
-            validation_date,
-            reporter,
-            signals,
-            control,
-        ))
+        QThreadPool.globalInstance().start(_ObxWorker(self._context.obx_validation_service, self._currency, lines, None, validation_date, reporter, signals, control))
 
     def _release_active_control(self) -> None:
         self._active_control = None
@@ -706,11 +656,7 @@ class ObxValidationPage(BasePage):
 
     def _put_row(self, row: int, r) -> None:
         self._table.insertRow(row)
-        cells = [
-            str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}",
-            "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
-            r.source_date or "-", r.result,
-        ]
+        cells = [str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}", "-" if r.pdm_price is None else f"{r.pdm_price:.2f}", r.source_date or "-", r.result]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
             if col in (0, 3, 4, 5):
