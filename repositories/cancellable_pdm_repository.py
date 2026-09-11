@@ -19,7 +19,8 @@ class _TrackedCursor:
         self._owner._control.checkpoint()
         self._owner._set_active(self._cursor, self._connection)
         try:
-            return self._cursor.execute(*args, **kwargs)
+            self._cursor.execute(*args, **kwargs)
+            return self
         except Exception:
             self._owner._clear_active(self._cursor)
             raise
