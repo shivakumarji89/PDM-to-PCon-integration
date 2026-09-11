@@ -1,11 +1,4 @@
-"""OBX Validation workspace page.
-
-Standalone tool to validate a OBX order file against PDM: load
-one or more ``.obx`` files, click "Launch Item Entry", and every order line is
-re-priced against PDM (via the same UDFs PDM uses) so any price discrepancy is
-flagged. Self-contained and easily disconnectable - set
-``CET_SIF_VALIDATION_ENABLED = False`` in :mod:`core.workflow`.
-"""
+"""OBX Validation workspace page."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,24 +21,26 @@ from PySide6.QtWidgets import (
 )
 
 from core.errors import PDMConnectionError
+from core.validation_control import ValidationCancelled, ValidationControl, ValidationPaused
 from ui import theme
 from ui.components import SectionHeader, StatisticsGrid
 from ui.pages.base_page import BasePage
 
 
 class _ObxSignals(QObject):
-    finished = Signal(object)   # (site, results)
+    finished = Signal(object)
     failed = Signal(str)
-    paused = Signal(object)     # (sites, remaining_lines, reason)
-    line_done = Signal(object)  # a single SifResult, streamed as it completes
+    paused = Signal(object)
+    cancelled = Signal(str)
+    line_done = Signal(object)
 
 
 class _ObxWorker(QRunnable):
-    """Runs OBX validation off the UI thread with transient PDM recovery."""
+    """Run OBX validation off the UI thread with recovery and checkpoints."""
 
     _MAX_RECOVERY_ATTEMPTS = 3
 
-    def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals):
+    def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals, control):
         super().__init__()
         self._svc = svc
         self._currency = currency
@@ -54,19 +49,16 @@ class _ObxWorker(QRunnable):
         self._validation_date = validation_date
         self._reporter = reporter
         self._signals = signals
+        self._control = control
 
     @staticmethod
     def _is_connection_error(exc: Exception) -> bool:
-        """Return True for transient PDM/network connection failures only."""
         current = exc
         seen: set[int] = set()
-
         while current is not None and id(current) not in seen:
             seen.add(id(current))
-
             if isinstance(current, PDMConnectionError):
                 return True
-
             text = str(current).lower()
             markers = (
                 "08001", "08s01", "connectionread", "general network error",
@@ -75,14 +67,9 @@ class _ObxWorker(QRunnable):
                 "connection aborted", "network is unreachable", "network path was not found",
                 "connection timeout", "connect timeout", "timed out",
             )
-
             if any(marker in text for marker in markers):
                 return True
-
-            current = getattr(current, "__cause__", None) or getattr(
-                current, "__context__", None
-            )
-
+            current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
         return False
 
     def run(self) -> None:
@@ -92,27 +79,28 @@ class _ObxWorker(QRunnable):
         recovery_attempts = 0
         total = len(self._lines)
 
-        self._reporter.begin(max(total, 1), title="Validate OBX",
-                             subject=f"{total} order line(s)")
+        self._reporter.begin(max(total, 1), title="Validate OBX", subject=f"{total} order line(s)")
 
         def on_result(result) -> None:
-            """Keep completed results locally so a retry never re-emits them."""
             key = getattr(result, "seq", None)
             if key in completed:
                 return
             completed[key] = result
+            self._reporter.advance(f"Validated line {key}")
             self._signals.line_done.emit(result)
 
         while pending:
             try:
+                self._control.checkpoint()
                 site, results = self._svc.validate(
                     self._currency,
                     pending,
                     site=self._site_id,
                     validation_date=self._validation_date,
-                    progress=lambda done, current_total, text: self._reporter.advance(text),
+                    progress=None,
                     stage=lambda text: self._reporter.note(text),
                     on_result=on_result,
+                    operation_control=self._control,
                 )
                 if site:
                     sites.update(site)
@@ -122,7 +110,27 @@ class _ObxWorker(QRunnable):
                 recovery_attempts = 0
                 if not pending:
                     break
+            except ValidationPaused as exc:
+                reason = str(exc) or "Validation paused."
+                self._reporter.pause(reason)
+                pending = [line for line in pending if getattr(line, "seq", None) not in completed]
+                self._signals.paused.emit((sites, pending, reason))
+                return
+            except ValidationCancelled as exc:
+                self._reporter.finish(False, "Validation cancelled.")
+                self._signals.cancelled.emit(str(exc) or "Validation cancelled.")
+                return
             except Exception as exc:
+                if self._control.is_cancelled():
+                    self._reporter.finish(False, "Validation cancelled.")
+                    self._signals.cancelled.emit("Validation cancelled.")
+                    return
+                if self._control.is_paused():
+                    reason = "Validation paused."
+                    self._reporter.pause(reason)
+                    pending = [line for line in pending if getattr(line, "seq", None) not in completed]
+                    self._signals.paused.emit((sites, pending, reason))
+                    return
                 if not self._is_connection_error(exc):
                     self._reporter.finish(False, str(exc))
                     self._signals.failed.emit(str(exc))
@@ -175,10 +183,10 @@ class ObxValidationPage(BasePage):
         self._source_path = ""
         self._show_all = True
         self._is_paused = False
+        self._active_control: ValidationControl | None = None
+        self._active_reporter = None
         self.add_content(self._build_controls())
         self.add_content(self._build_results())
-
-    # -- construction ---------------------------------------------------
 
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
@@ -196,12 +204,16 @@ class ObxValidationPage(BasePage):
         self._launch_btn = QPushButton("Launch Item Entry", container)
         self._launch_btn.setEnabled(False)
         self._launch_btn.clicked.connect(self._on_launch)
+        self._pause_btn = QPushButton("Pause Validation", container)
+        self._pause_btn.setEnabled(False)
+        self._pause_btn.clicked.connect(self._on_pause)
         self._resume_btn = QPushButton("Resume Validation", container)
         self._resume_btn.setEnabled(False)
         self._resume_btn.clicked.connect(self._on_resume)
         row.addWidget(self._load_btn)
         row.addWidget(self._folder_btn)
         row.addWidget(self._launch_btn)
+        row.addWidget(self._pause_btn)
         row.addWidget(self._resume_btn)
         row.addWidget(QLabel("Validation date:", container))
         self._validation_date = QDateEdit(container)
@@ -240,14 +252,12 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setEnabled(False)
         head.addWidget(self._toggle_btn, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(head)
-
         self._grid = StatisticsGrid(columns=4, parent=container)
         self._grid.set_metric("lines", "Order lines", "-")
         self._grid.set_metric("ok", "Matched", "-")
         self._grid.set_metric("mismatch", "Price mismatch", "-")
         self._grid.set_metric("unresolved", "Unresolved", "-")
         layout.addWidget(self._grid)
-
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
             ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
@@ -260,8 +270,6 @@ class ObxValidationPage(BasePage):
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, 1)
         return container
-
-    # -- actions --------------------------------------------------------
 
     def _on_load(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(self, "Load OBX file(s)", "", "OBX files (*.obx);;All files (*.*)")
@@ -310,26 +318,44 @@ class ObxValidationPage(BasePage):
             f"{Path(label).name if len(paths) == 1 else label}  —  "
             f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
+        self._pause_btn.setEnabled(False)
         self._resume_btn.setEnabled(False)
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
 
     def _on_launch(self) -> None:
-        if not self._lines:
+        if self._lines:
+            self._start_validation(self._lines, fresh=True)
+
+    def _on_pause(self) -> None:
+        control = self._active_control
+        reporter = self._active_reporter
+        if control is None or reporter is None:
             return
-        self._start_validation(self._lines, fresh=True)
+        control.pause()
+        reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
+        self._pause_btn.setEnabled(False)
 
     def _on_resume(self) -> None:
-        if not self._pending_lines:
-            return
-        self._start_validation(self._pending_lines, fresh=False)
+        if self._pending_lines:
+            self._start_validation(self._pending_lines, fresh=False)
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
         from core.progress import ProgressReporter
 
-        reporter = ProgressReporter(self)
         monitor = self._progress_monitor()
+        if getattr(self, "_cancel_connection", None) is not None:
+            try:
+                monitor.cancel_requested.disconnect(self._cancel_connection)
+            except (RuntimeError, TypeError):
+                pass
+        reporter = ProgressReporter(self)
+        control = ValidationControl()
+        self._active_control = control
+        self._active_reporter = reporter
+        self._cancel_connection = control.cancel
+        monitor.cancel_requested.connect(self._cancel_connection)
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
@@ -337,23 +363,25 @@ class ObxValidationPage(BasePage):
         signals.finished.connect(self._on_results)
         signals.failed.connect(self._on_failed)
         signals.paused.connect(self._on_paused)
+        signals.cancelled.connect(self._on_cancelled)
         signals.line_done.connect(self._on_line_done)
         self._signals = signals
         if fresh:
             self._begin_live()
         self._is_paused = False
+        self._pause_btn.setEnabled(True)
         self._resume_btn.setEnabled(False)
         self._launch_btn.setEnabled(False)
-        site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
             self._currency,
             lines,
-            site_id,
+            None,
             validation_date,
             reporter,
             signals,
+            control,
         ))
 
     def _progress_monitor(self):
@@ -364,12 +392,27 @@ class ObxValidationPage(BasePage):
             self._monitor = monitor
         return monitor
 
+    def _release_active_control(self) -> None:
+        self._active_control = None
+        self._active_reporter = None
+        self._pause_btn.setEnabled(False)
+
     def _on_failed(self, message: str) -> None:
-        self._launch_btn.setEnabled(bool(self._lines) and not self._is_paused)
+        self._release_active_control()
+        self._launch_btn.setEnabled(bool(self._lines))
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
+
+    def _on_cancelled(self, message: str) -> None:
+        self._release_active_control()
+        self._pending_lines = []
+        self._is_paused = False
+        self._launch_btn.setEnabled(bool(self._lines))
+        self._resume_btn.setEnabled(False)
+        self._file_label.setText("Validation cancelled by user.")
 
     def _on_paused(self, payload) -> None:
         sites, remaining_lines, reason = payload
+        self._release_active_control()
         self._pending_lines = list(remaining_lines)
         self._is_paused = True
         self._launch_btn.setEnabled(False)
@@ -377,14 +420,12 @@ class ObxValidationPage(BasePage):
         completed = len(self._results)
         remaining = len(self._pending_lines)
         self._file_label.setText(
-            f"Validation paused — {completed} line(s) completed, "
-            f"{remaining} line(s) remaining. PDM connection unavailable.")
+            f"Validation paused — {completed} line(s) completed, {remaining} line(s) remaining. {reason}")
         self._grid.set_metric("lines", "Order lines", str(completed))
         self._export_btn.setEnabled(bool(self._results))
         self._rebuild_btn.setEnabled(bool(self._results))
 
     def _begin_live(self) -> None:
-        """Reset the results view so lines stream in one by one as they validate."""
         self._results = []
         self._pending_lines = []
         self._live = {"lines": 0, "ok": 0, "mismatch": 0, "unresolved": 0}
@@ -398,7 +439,6 @@ class ObxValidationPage(BasePage):
         self._rebuild_btn.setEnabled(True)
 
     def _on_line_done(self, r) -> None:
-        """A single line finished validating - append it live and bump counters."""
         self._results.append(r)
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
@@ -412,6 +452,7 @@ class ObxValidationPage(BasePage):
 
     def _on_results(self, payload) -> None:
         sites, results = payload
+        self._release_active_control()
         self._results = results
         self._pending_lines = []
         self._is_paused = False
@@ -438,7 +479,6 @@ class ObxValidationPage(BasePage):
         self._render_table()
 
     def _on_rebuild(self) -> None:
-        """Force a clean rebuild of the table from the validated data."""
         self._render_table()
 
     def _on_export(self) -> None:
@@ -479,8 +519,6 @@ class ObxValidationPage(BasePage):
             msg += "\n\nFailed:\n" + "\n".join(failed)
         QMessageBox.information(self, "OBX Validation", msg)
 
-    # -- rendering ------------------------------------------------------
-
     def _reset_results(self) -> None:
         self._results = []
         self._pending_lines = []
@@ -493,6 +531,7 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
         self._rebuild_btn.setEnabled(False)
+        self._pause_btn.setEnabled(False)
         self._resume_btn.setEnabled(False)
 
     def _render_table(self) -> None:
@@ -511,7 +550,6 @@ class ObxValidationPage(BasePage):
             return 0
 
     def _append_row(self, r) -> None:
-        """Insert a streamed result at its sorted # position so the table stays ascending."""
         seq = self._seq_key(r.seq)
         pos = self._table.rowCount()
         for i in range(self._table.rowCount()):
