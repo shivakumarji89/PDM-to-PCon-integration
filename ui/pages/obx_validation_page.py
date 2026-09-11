@@ -1,6 +1,7 @@
 """OBX Validation workspace page."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
@@ -8,11 +9,14 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QDateEdit,
     QFileDialog,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -25,7 +29,6 @@ from PySide6.QtWidgets import (
 from core.errors import PDMConnectionError
 from core.validation_control import ValidationCancelled, ValidationControl, ValidationPaused
 from ui import theme
-from ui.components import SectionHeader, StatisticsGrid
 from ui.pages.base_page import BasePage
 
 
@@ -189,18 +192,17 @@ class ObxValidationPage(BasePage):
         self._duplicate_count = 0
         self._active_control: ValidationControl | None = None
         self._active_reporter = None
+        self._started_at = 0.0
+        self._recovery_attempt = 0
         self.add_content(self._build_controls())
+        self.add_content(self._build_progress_panel())
         self.add_content(self._build_results())
 
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
-        layout = QVBoxLayout(container)
+        layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_2)
-        layout.addWidget(SectionHeader(
-            "Order file", "Load a CET OBX file, then launch item entry to validate every line against PDM."))
-        row = QHBoxLayout()
-        row.setSpacing(theme.SPACE_2)
         self._load_btn = QToolButton(container)
         self._load_btn.setText("Load OBX...")
         self._load_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -215,50 +217,92 @@ class ObxValidationPage(BasePage):
         self._pause_btn = QPushButton("Pause Validation", container)
         self._pause_btn.setEnabled(False)
         self._pause_btn.clicked.connect(self._on_pause_resume)
-        row.addWidget(self._load_btn)
-        row.addWidget(self._launch_btn)
-        row.addWidget(self._pause_btn)
-        row.addWidget(QLabel("Validation date:", container))
+        layout.addWidget(self._load_btn)
+        layout.addWidget(self._launch_btn)
+        layout.addWidget(self._pause_btn)
+        layout.addWidget(QLabel("Validation date:", container))
         self._validation_date = QDateEdit(container)
         self._validation_date.setDisplayFormat("dd-MMM-yyyy")
         self._validation_date.setCalendarPopup(True)
         self._validation_date.setDate(QDate.currentDate())
-        row.addWidget(self._validation_date)
-        row.addStretch(1)
-        layout.addLayout(row)
-        self._file_label = QLabel("No file loaded.", container)
-        self._file_label.setStyleSheet(f"color: {theme.MUTED};")
-        layout.addWidget(self._file_label)
+        layout.addWidget(self._validation_date)
+        layout.addStretch(1)
         return container
+
+    def _build_progress_panel(self) -> QWidget:
+        panel = QFrame(self)
+        panel.setObjectName("obxProgressPanel")
+        panel.setFrameShape(QFrame.Shape.StyledPanel)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(theme.SPACE_2, theme.SPACE_2, theme.SPACE_2, theme.SPACE_2)
+        layout.setSpacing(theme.SPACE_1)
+
+        header = QHBoxLayout()
+        self._progress_state = QLabel("READY", panel)
+        self._progress_state.setStyleSheet("font-weight: 600;")
+        self._file_label = QLabel("No OBX file loaded.", panel)
+        self._file_label.setStyleSheet(f"color: {theme.MUTED};")
+        header.addWidget(self._progress_state)
+        header.addWidget(self._file_label, 1)
+        self._export_btn = QPushButton("Export to CSV...", panel)
+        self._export_btn.setEnabled(False)
+        self._export_btn.clicked.connect(self._on_export)
+        header.addWidget(self._export_btn)
+        self._toggle_btn = QPushButton("Show errors only", panel)
+        self._toggle_btn.setCheckable(True)
+        self._toggle_btn.setChecked(True)
+        self._toggle_btn.toggled.connect(self._on_toggle_all)
+        self._toggle_btn.setEnabled(False)
+        header.addWidget(self._toggle_btn)
+        layout.addLayout(header)
+
+        progress_row = QHBoxLayout()
+        self._progress_bar = QProgressBar(panel)
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(False)
+        self._progress_percent = QLabel("0%", panel)
+        self._progress_percent.setMinimumWidth(42)
+        self._progress_percent.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        progress_row.addWidget(self._progress_bar, 1)
+        progress_row.addWidget(self._progress_percent)
+        layout.addLayout(progress_row)
+
+        detail_row = QHBoxLayout()
+        self._current_line = QLabel("Current line: -", panel)
+        self._current_sku = QLabel("Current SKU: -", panel)
+        self._current_status = QLabel("Status: -", panel)
+        detail_row.addWidget(self._current_line)
+        detail_row.addWidget(self._current_sku, 1)
+        detail_row.addWidget(self._current_status)
+        layout.addLayout(detail_row)
+
+        self._metrics: dict[str, QLabel] = {}
+        metrics = [
+            ("completed", "Completed"), ("remaining", "Remaining"),
+            ("matched", "Matched"), ("mismatch", "Price mismatch"),
+            ("unresolved", "Unresolved"), ("skipped", "Skipped"),
+            ("duplicate", "Duplicate"), ("elapsed", "Elapsed"),
+            ("eta", "ETA"), ("speed", "Speed"),
+            ("site", "PDM site"), ("recovery", "Recovery"),
+        ]
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(theme.SPACE_2)
+        grid.setVerticalSpacing(theme.SPACE_1)
+        for index, (key, title) in enumerate(metrics):
+            label = QLabel(f"{title}: -", panel)
+            self._metrics[key] = label
+            grid.addWidget(label, index // 6, index % 6)
+        layout.addLayout(grid)
+        panel.setMaximumHeight(190)
+        return panel
 
     def _build_results(self) -> QWidget:
         container = QWidget(self)
         container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SPACE_2)
-        head = QHBoxLayout()
-        head.addWidget(SectionHeader("Results", "Every order line is listed with its PDM result - VALID or the error comment."))
-        head.addStretch(1)
-        self._export_btn = QPushButton("Export to CSV...", container)
-        self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._on_export)
-        head.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignTop)
-        self._toggle_btn = QPushButton("Show errors only", container)
-        self._toggle_btn.setCheckable(True)
-        self._toggle_btn.setChecked(True)
-        self._toggle_btn.toggled.connect(self._on_toggle_all)
-        self._toggle_btn.setEnabled(False)
-        head.addWidget(self._toggle_btn, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(head)
-        self._grid = StatisticsGrid(columns=6, parent=container)
-        self._grid.set_metric("lines", "Order lines", "-")
-        self._grid.set_metric("ok", "Matched", "-")
-        self._grid.set_metric("mismatch", "Price mismatch", "-")
-        self._grid.set_metric("unresolved", "Unresolved", "-")
-        self._grid.set_metric("skipped", "Skipped", "-")
-        self._grid.set_metric("duplicate", "Duplicate", "-")
-        layout.addWidget(self._grid)
+        layout.setSpacing(theme.SPACE_1)
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
             ["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
@@ -317,11 +361,10 @@ class ObxValidationPage(BasePage):
         self._source_path = loaded_paths[0] if loaded_paths else ""
         self._skipped_count = skipped_count
         self._duplicate_count = svc.duplicate_count(lines)
-        label = paths[0] if len(paths) == 1 else f"{len(paths)} files"
+        label = Path(loaded_paths[0]).name if len(loaded_paths) == 1 else f"{len(loaded_paths)} OBX files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(
-            f"{Path(label).name if len(paths) == 1 else label}  —  "
-            f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
+            f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
@@ -348,10 +391,10 @@ class ObxValidationPage(BasePage):
         reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
         self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(False)
+        self._progress_state.setText("PAUSING")
 
     def _on_resume(self) -> None:
         if self._pending_lines:
-            self._pause_btn.setText("Pause Validation")
             self._start_validation(self._pending_lines, fresh=False)
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
@@ -372,6 +415,10 @@ class ObxValidationPage(BasePage):
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
+        reporter.progress_changed.connect(self._on_progress_changed)
+        reporter.elapsed_changed.connect(self._on_elapsed_changed)
+        reporter.remaining_changed.connect(self._on_remaining_changed)
+        reporter.step_changed.connect(self._on_progress_step)
         signals = _ObxSignals()
         signals.finished.connect(self._on_results)
         signals.failed.connect(self._on_failed)
@@ -385,6 +432,8 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setText("Pause Validation")
         self._pause_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
+        self._progress_state.setText("VALIDATING")
+        self._started_at = time.perf_counter()
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(
             self._context.obx_validation_service,
@@ -410,10 +459,35 @@ class ObxValidationPage(BasePage):
         self._active_reporter = None
         self._pause_btn.setEnabled(False)
 
+    def _on_progress_changed(self, percent: int) -> None:
+        self._progress_bar.setValue(percent)
+        self._progress_percent.setText(f"{percent}%")
+
+    def _on_elapsed_changed(self, seconds: int) -> None:
+        self._set_metric("elapsed", self._format_duration(seconds))
+        completed = len(self._results)
+        if seconds > 0 and completed:
+            self._set_metric("speed", f"{completed / seconds:.1f}/s")
+
+    def _on_remaining_changed(self, seconds: int) -> None:
+        self._set_metric("eta", self._format_duration(seconds) if seconds else "-")
+
+    def _on_progress_step(self, text: str) -> None:
+        if text.startswith("PDM connection lost.") and "attempt" in text:
+            try:
+                self._recovery_attempt = int(text.split("attempt ", 1)[1].split("/", 1)[0])
+            except (ValueError, IndexError):
+                pass
+            self._set_metric("recovery", f"{self._recovery_attempt}/3")
+        if text:
+            self._current_status.setText(f"Status: {text}")
+
     def _on_failed(self, message: str) -> None:
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
+        self._progress_state.setText("FAILED")
+        self._current_status.setText(f"Status: {message}")
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
 
     def _on_cancelled(self, message: str) -> None:
@@ -422,7 +496,8 @@ class ObxValidationPage(BasePage):
         self._is_paused = False
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
-        self._file_label.setText("Validation cancelled by user.")
+        self._progress_state.setText("CANCELLED")
+        self._current_status.setText("Status: Validation cancelled by user.")
 
     def _on_paused(self, payload) -> None:
         sites, remaining_lines, reason = payload
@@ -432,14 +507,14 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(False)
         self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(bool(self._pending_lines))
-        completed = len(self._results)
-        remaining = len(self._pending_lines)
-        self._file_label.setText(
-            f"Validation paused — {completed} line(s) completed, {remaining} line(s) remaining. {reason}")
-        self._grid.set_metric("lines", "Order lines", str(completed))
-        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
-        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
+        self._progress_state.setText("PAUSED")
+        self._current_status.setText(f"Status: {reason}")
+        self._set_metric("completed", str(len(self._results)))
+        self._set_metric("remaining", str(len(self._pending_lines)))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
         self._export_btn.setEnabled(bool(self._results))
+        self._set_site_metrics(sites)
 
     def _begin_live(self) -> None:
         self._results = []
@@ -447,11 +522,19 @@ class ObxValidationPage(BasePage):
         self._live = {"lines": 0, "ok": 0, "mismatch": 0, "unresolved": 0}
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
-        for key, label in (("lines", "Order lines"), ("ok", "Matched"),
-                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"),
-                           ("skipped", "Skipped"), ("duplicate", "Duplicate")):
-            value = self._skipped_count if key == "skipped" else self._duplicate_count if key == "duplicate" else 0
-            self._grid.set_metric(key, label, str(value))
+        self._progress_state.setText("READY")
+        self._progress_bar.setValue(0)
+        self._progress_percent.setText("0%")
+        self._current_line.setText("Current line: -")
+        self._current_sku.setText("Current SKU: -")
+        self._current_status.setText("Status: Ready to validate")
+        self._recovery_attempt = 0
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
+            self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
+        self._set_metric("remaining", str(len(self._lines)))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
+        self._set_metric("recovery", "0/3")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(False)
 
@@ -461,12 +544,17 @@ class ObxValidationPage(BasePage):
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
-        self._grid.set_metric("lines", "Order lines", str(self._live["lines"]))
-        self._grid.set_metric("ok", "Matched", str(self._live["ok"]))
-        self._grid.set_metric("mismatch", "Price mismatch", str(self._live["mismatch"]))
-        self._grid.set_metric("unresolved", "Unresolved", str(self._live["unresolved"]))
-        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
-        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
+        completed = self._live["lines"]
+        self._set_metric("completed", str(completed))
+        self._set_metric("remaining", str(max(0, len(self._lines) - completed)))
+        self._set_metric("matched", str(self._live["ok"]))
+        self._set_metric("mismatch", str(self._live["mismatch"]))
+        self._set_metric("unresolved", str(self._live["unresolved"]))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
+        self._current_line.setText(f"Current line: {r.seq}")
+        self._current_sku.setText(f"Current SKU: {r.sku or '-'}")
+        self._current_status.setText(f"Status: {r.result}")
         if self._show_all or r.status != "ok":
             self._append_row(r)
 
@@ -482,12 +570,20 @@ class ObxValidationPage(BasePage):
         ok = sum(1 for r in results if r.status == "ok")
         mism = sum(1 for r in results if r.status == "price_mismatch")
         unres = sum(1 for r in results if r.status == "unresolved")
-        self._grid.set_metric("lines", "Order lines", str(len(results)))
-        self._grid.set_metric("ok", "Matched", str(ok))
-        self._grid.set_metric("mismatch", "Price mismatch", str(mism))
-        self._grid.set_metric("unresolved", "Unresolved", str(unres))
-        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
-        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
+        self._set_metric("completed", str(len(results)))
+        self._set_metric("remaining", "0")
+        self._set_metric("matched", str(ok))
+        self._set_metric("mismatch", str(mism))
+        self._set_metric("unresolved", str(unres))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
+        self._set_metric("eta", "0:00")
+        self._set_metric("recovery", f"{self._recovery_attempt}/3")
+        self._set_site_metrics(sites)
+        self._progress_state.setText("COMPLETE")
+        self._progress_bar.setValue(100)
+        self._progress_percent.setText("100%")
+        self._current_status.setText("Status: Validation complete")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
         self._render_table()
@@ -543,16 +639,43 @@ class ObxValidationPage(BasePage):
         self._pending_lines = []
         self._is_paused = False
         self._table.setRowCount(0)
-        for key, label in (("lines", "Order lines"), ("ok", "Matched"),
-                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"),
-                           ("skipped", "Skipped"), ("duplicate", "Duplicate")):
-            value = self._skipped_count if key == "skipped" else self._duplicate_count if key == "duplicate" else "-"
-            self._grid.set_metric(key, label, str(value))
+        self._progress_state.setText("READY")
+        self._progress_bar.setValue(0)
+        self._progress_percent.setText("0%")
+        self._current_line.setText("Current line: -")
+        self._current_sku.setText("Current SKU: -")
+        self._current_status.setText("Status: Load an OBX file to begin")
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
+            self._set_metric(key, "-")
+        self._set_metric("remaining", str(len(self._lines)))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
         self._toggle_btn.setChecked(True)
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
+
+    def _set_metric(self, key: str, value: str) -> None:
+        label = self._metrics.get(key)
+        if label is not None:
+            title = label.text().split(":", 1)[0]
+            label.setText(f"{title}: {value}")
+
+    def _set_site_metrics(self, sites: dict) -> None:
+        if not sites:
+            self._set_metric("site", "-")
+            return
+        self._set_metric("site", ", ".join(f"{cur} / {site}" for cur, site in sites.items()))
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        seconds = max(0, int(seconds))
+        hours, rem = divmod(seconds, 3600)
+        minutes, seconds = divmod(rem, 60)
+        if hours:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes}:{seconds:02d}"
 
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
