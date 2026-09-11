@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import Event, RLock
 
-from core.errors import PDMValidationCancelled, PDMValidationPaused
+
+class ValidationPaused(Exception):
+    """Raised when validation was paused before the next PDM operation."""
+
+
+class ValidationCancelled(Exception):
+    """Raised when validation was cancelled by the user."""
 
 
 class ValidationControl:
@@ -12,7 +19,7 @@ class ValidationControl:
         self._paused = Event()
         self._cancelled = Event()
         self._lock = RLock()
-        self._cancel_handlers: list[callable] = []
+        self._cancel_handlers: list[Callable[[], None]] = []
 
     def pause(self) -> None:
         self._paused.set()
@@ -36,18 +43,18 @@ class ValidationControl:
     def is_cancelled(self) -> bool:
         return self._cancelled.is_set()
 
-    def register_cancel_handler(self, handler) -> None:
+    def register_cancel_handler(self, handler: Callable[[], None]) -> None:
         with self._lock:
             if handler not in self._cancel_handlers:
                 self._cancel_handlers.append(handler)
 
-    def unregister_cancel_handler(self, handler) -> None:
+    def unregister_cancel_handler(self, handler: Callable[[], None]) -> None:
         with self._lock:
             if handler in self._cancel_handlers:
                 self._cancel_handlers.remove(handler)
 
     def checkpoint(self) -> None:
         if self.is_cancelled():
-            raise PDMValidationCancelled("Validation cancelled by user.")
+            raise ValidationCancelled("Validation cancelled by user.")
         if self.is_paused():
-            raise PDMValidationPaused("Validation paused by user.")
+            raise ValidationPaused("Validation paused by user.")
