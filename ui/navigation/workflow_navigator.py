@@ -1,29 +1,14 @@
-"""Left panel workflow navigator.
-
-A manager-driven navigator: it renders the workflow steps with their current
-state (completed / current / ready / blocked), and provides navigation. All
-state is obtained from the :class:`~workflow.manager.WorkflowManager`; the
-navigator holds none of its own workflow state.
-"""
+"""Left panel workflow navigator."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QFont
-from PySide6.QtWidgets import (
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
-    QSizePolicy,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
 
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from workflow.state import WorkflowState
 
-# Map workflow states onto the shared design-system status vocabulary so the
-# navigator uses the same colours, glyphs and wording as the rest of the app.
 _STATE_STATUS = {
     WorkflowState.COMPLETED: "completed",
     WorkflowState.IN_PROGRESS: "current",
@@ -53,34 +38,22 @@ class WorkflowNavigator(QWidget):
         self._list = QListWidget(self)
         self._list.setObjectName("workflowList")
         self._list.setFrameShape(QListWidget.Shape.NoFrame)
-        # Show every workflow step at once: the list never scrolls, it grows to
-        # fit its rows and the surrounding panel absorbs any spare space.
-        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setUniformItemSizes(True)
-        self._list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         for item in WORKFLOW_ITEMS:
             list_item = QListWidgetItem(item.title, self._list)
             list_item.setData(Qt.ItemDataRole.UserRole, item.step)
             list_item.setToolTip(item.description)
         self._list.itemClicked.connect(self._on_item_clicked)
-        self._fit_list_height()
-        layout.addWidget(self._list)
-        layout.addStretch(1)
-
-    def _fit_list_height(self) -> None:
-        """Size the list to show all rows so it never needs a scrollbar."""
-        total = 2 * self._list.frameWidth()
-        for row in range(self._list.count()):
-            total += self._list.sizeHintForRow(row)
-        self._list.setFixedHeight(total)
+        layout.addWidget(self._list, 1)
 
     def set_manager(self, manager) -> None:
         self._manager = manager
         manager.state_changed.connect(self._render)
         self._render()
 
-    # -- user actions ------------------------------------------------------
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         if self._manager is None:
             return
@@ -88,7 +61,6 @@ class WorkflowNavigator(QWidget):
         if isinstance(step, WorkflowStep):
             self._manager.jump_to(step)
 
-    # -- rendering ---------------------------------------------------------
     def _render(self) -> None:
         if self._manager is None:
             return
@@ -100,7 +72,7 @@ class WorkflowNavigator(QWidget):
 
             status = theme.status_style(_STATE_STATUS[state])
             item.setText(f"{status.glyph}   {self._title(step)}")
-            item.setToolTip(f"{self._title(step)} \u2014 {status.label}")
+            item.setToolTip(f"{self._title(step)} - {status.label}")
             item.setForeground(QBrush(theme.status_color(_STATE_STATUS[state])))
             font = QFont(item.font())
             font.setBold(step == current)
@@ -113,8 +85,7 @@ class WorkflowNavigator(QWidget):
 
             if step == current:
                 self._list.setCurrentRow(row)
-
-        self._fit_list_height()
+                self._list.scrollToItem(item, QListWidget.ScrollHint.EnsureVisible)
 
     @staticmethod
     def _title(step: WorkflowStep) -> str:
