@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from services.base_service import BaseService
-from services.sif_validation_service import SifOption, SifValidationService
+from services.sif_validation_service import SifOption, SifResult, SifValidationService
 
 
 @dataclass
@@ -27,23 +27,12 @@ class ObxLine:
     plc: str = ""
     source_date: str = ""
 
-    # Temporary compatibility properties for the existing shared pricing flow.
-    # These can be removed when OBX -> PDM mapping has its own input contract.
     @property
     def _final_tokens(self) -> list[str]:
         return self.final_article.strip().split()
 
     @property
     def base(self) -> str:
-        """The PDM Item code: the first space-delimited token of the final
-        article - NOT necessarily the ``<artNr type='base'>`` value.
-
-        Most ranges have the two coincide (``NODLE140 OAK WSE`` -> base
-        ``NODLE140``), but some (e.g. Lino chairs) fold extra head attributes
-        into the item code with no separating space (``MI7E3`` + ``15AF`` ->
-        item ``MI7E315AF``), so the parsed base artNr alone does not resolve
-        in PDM.
-        """
         tokens = self._final_tokens
         return tokens[0] if tokens else self.base_article
 
@@ -57,28 +46,20 @@ class ObxLine:
 
     @property
     def options(self) -> list[SifOption]:
-        """Priced order codes for this configuration, in PDM option order.
-
-        Everything in the final article after the PDM item code (see
-        :attr:`base`) is a priced order code; the feature list also contains
-        derived, non-priced values that must not be charged.
-        """
         return [SifOption(code=code) for code in self._final_tokens[1:]]
 
     @property
     def sif_price(self) -> float:
-        """Source price used by the shared validation result."""
         return self.obx_price
 
 
 class ObxValidationService(BaseService):
     """Validate incoming OBX prices against PDM using shared pricing logic."""
 
-    _CALIBRATION_SAMPLE = 10  # lines priced per candidate site when resolving one
+    _CALIBRATION_SAMPLE = 10
 
     @staticmethod
     def _local_name(element: ET.Element) -> str:
-        """Return an XML tag name without an optional namespace."""
         return element.tag.rsplit("}", 1)[-1]
 
     @classmethod
@@ -99,35 +80,24 @@ class ObxValidationService(BaseService):
     @classmethod
     def _features(cls, article: ET.Element) -> dict[str, str]:
         values: dict[str, str] = {}
-
         for feature in cls._children(article, "feature"):
             name = (feature.get("name") or "").strip()
             value = (feature.get("value") or "").strip()
-
             if name and value:
                 values[name] = value
-
         return values
 
     @classmethod
     def _sale_price(cls, article: ET.Element) -> tuple[str, float]:
-        """Return the first itemPrice exactly like the legacy PDM OBX parser.
-
-        The reference implementation starts at the final article and reads the
-        first <itemPrice ...> element.  It does not prefer type="sale".
-        """
         prices = cls._children(article, "itemPrice")
         price = prices[0] if prices else None
-
         if price is None:
             return "", 0.0
-
         currency = (price.get("currency") or "").strip()
         try:
             value = float((price.get("value") or "0").replace(",", "."))
         except ValueError:
             value = 0.0
-
         return currency, value
 
     @classmethod
@@ -136,33 +106,25 @@ class ObxValidationService(BaseService):
         return (dates[0].get("value") or "").strip() if dates else ""
 
     def parse_obx(self, text: str) -> tuple[str, list[ObxLine]]:
-        """Parse configured OBX articles using the XML structure directly."""
         root = ET.fromstring(text)
         lines: list[ObxLine] = []
         file_currency = ""
-
         articles = [
-            element
-            for element in root.iter()
+            element for element in root.iter()
             if self._local_name(element) == "bskArticle"
         ]
 
-        for seq, article in enumerate(articles, start=1):
+        for article in articles:
             base_article = self._article_value(article, "base")
             final_article = self._article_value(article, "final")
-
-            # A final article is the minimum requirement for a validation line.
             if not final_article:
                 continue
-
             features = self._features(article)
             plc = features.pop("PLC", "")
             currency, obx_price = self._sale_price(article)
             source_date = self._price_date(article)
-
             if currency and not file_currency:
                 file_currency = currency
-
             lines.append(
                 ObxLine(
                     seq=len(lines) + 1,
@@ -176,12 +138,13 @@ class ObxValidationService(BaseService):
                     source_date=source_date,
                 )
             )
-
         return file_currency, lines
 
-    def _pricing_service(self) -> SifValidationService:
-        """Resolve the existing shared PDM pricing implementation."""
-        return self.context.sif_validation_service
+    def _pricing_service(self, operation_control=None) -> SifValidationService:
+        if operation_control is None:
+            return self.context.sif_validation_service
+        from services.cancellable_sif_validation_service import CancellableSifValidationService
+        return CancellableSifValidationService(self.context)
 
     @staticmethod
     def _candidate_sites(currency: str, repo, conn) -> list[int]:
@@ -193,39 +156,115 @@ class ObxValidationService(BaseService):
         return [int(r.SiteId) for r in rows]
 
     def _resolve_site(self, currency, lines, pricing, repo, conn, calibration_date) -> int | None:
-        """Resolve the OBX pricing site using the original PDM OBX rule.
-
-        The legacy validator sets both GBP and EUR OBX files to UK. Resolve the
-        SiteId by name from PDM; do not infer a site from DomCurrCode or from a
-        price-match calibration.
-        """
         return pricing.site_for_currency(currency, repo, conn, obx=True)
 
-    def validate(self, currency, lines, site=None, validation_date=None,
-                 progress=None, stage=None, on_result=None):
-        """Reuse the shared PDM pricing, resolving the OBX pricing site first."""
-        from repositories.pdm_repository import PDMRepository
+    @staticmethod
+    def _validation_key(line: ObxLine) -> tuple[str, str]:
+        """Identify one PDM pricing calculation independent of source price."""
+        return (
+            (line.currency or "").strip().upper(),
+            " ".join(line.final_article.strip().upper().split()),
+        )
 
-        pricing = self._pricing_service()
+    @staticmethod
+    def _result_for_line(result: SifResult, line: ObxLine) -> SifResult:
+        """Fan one PDM result back to a duplicate OBX source line.
+
+        PDM price is shared, but the source price, sequence, quantity and date
+        remain line-specific so duplicate rows are still independently reported.
+        """
+        status = result.status
+        message = result.message
+        if result.pdm_price is not None:
+            if abs(line.sif_price - result.pdm_price) <= 0.005:
+                status = "ok"
+                message = ""
+            else:
+                status = "price_mismatch"
+                message = (
+                    f"price mismatch: OBX [{line.sif_price:.2f}] does NOT match "
+                    f"PDM [{result.pdm_price:.2f}]"
+                )
+        return SifResult(
+            seq=line.seq,
+            sku=result.sku,
+            plc=line.plc,
+            qty=line.qty,
+            source_date=line.source_date,
+            sif_price=line.sif_price,
+            pdm_price=result.pdm_price,
+            status=status,
+            message=message,
+        )
+
+    def _deduplicate(self, lines: list[ObxLine]) -> tuple[list[ObxLine], dict[tuple[str, str], list[ObxLine]]]:
+        groups: dict[tuple[str, str], list[ObxLine]] = {}
+        unique: list[ObxLine] = []
+        for line in lines:
+            key = self._validation_key(line)
+            if key not in groups:
+                groups[key] = []
+                unique.append(line)
+            groups[key].append(line)
+        return unique, groups
+
+    def validate(self, currency, lines, site=None, validation_date=None,
+                 progress=None, stage=None, on_result=None, operation_control=None):
+        pricing = self._pricing_service(operation_control)
+        unique_lines, duplicate_groups = self._deduplicate(lines)
+        expanded_results: list[SifResult] = []
+
+        def handle_unique_result(result: SifResult) -> None:
+            key = self._validation_key(next(
+                line for line in unique_lines if line.seq == result.seq
+            ))
+            for line in duplicate_groups[key]:
+                mapped = self._result_for_line(result, line)
+                expanded_results.append(mapped)
+                if on_result is not None:
+                    on_result(mapped)
 
         if site is not None:
-            return pricing.validate(
-                currency, lines, site=site, obx=True, validation_date=validation_date,
-                progress=progress, stage=stage, on_result=on_result)
+            pricing.validate(
+                currency,
+                unique_lines,
+                site=site,
+                obx=True,
+                validation_date=validation_date,
+                progress=progress,
+                stage=stage,
+                on_result=handle_unique_result,
+                operation_control=operation_control,
+            ) if operation_control is not None else pricing.validate(
+                currency,
+                unique_lines,
+                site=site,
+                obx=True,
+                validation_date=validation_date,
+                progress=progress,
+                stage=stage,
+                on_result=handle_unique_result,
+            )
+            return {currency: site}, sorted(expanded_results, key=lambda r: r.seq)
 
-        repo = PDMRepository(self.context)
+        from repositories.cancellable_pdm_repository import CancellablePDMRepository
+        from repositories.pdm_repository import PDMRepository
+        repo = (
+            CancellablePDMRepository(self.context, operation_control)
+            if operation_control is not None
+            else PDMRepository(self.context)
+        )
         conn = repo.get_connection()
         try:
             mydate = validation_date or pricing._server_date(repo, conn)
-            groups: dict[str, list] = {}
-            for line in lines:
+            groups: dict[str, list[ObxLine]] = {}
+            for line in unique_lines:
                 groups.setdefault(line.currency or currency, []).append(line)
 
             sites: dict[str, int | None] = {}
-            results = []
             for cur, group in groups.items():
-                # Resolve the permanent pricing site using the OBX price date,
-                # then price that same site at the user-selected validation date.
+                if operation_control is not None:
+                    operation_control.checkpoint()
                 calibration_date = next(
                     (line.source_date for line in group if line.source_date),
                     mydate,
@@ -233,17 +272,25 @@ class ObxValidationService(BaseService):
                 resolved = self._resolve_site(
                     cur, group, pricing, repo, conn, calibration_date
                 )
-                group_sites, group_results = pricing.validate(
-                    cur, group, site=resolved, obx=True, validation_date=mydate,
-                    progress=progress, stage=stage, on_result=on_result)
-                sites.update(group_sites)
-                results.extend(group_results)
+                if operation_control is not None:
+                    pricing.validate(
+                        cur, group, site=resolved, obx=True, validation_date=mydate,
+                        progress=progress, stage=stage, on_result=handle_unique_result,
+                        operation_control=operation_control,
+                    )
+                else:
+                    _, group_results = pricing.validate(
+                        cur, group, site=resolved, obx=True, validation_date=mydate,
+                        progress=progress, stage=stage, on_result=handle_unique_result,
+                    )
+                    for result in group_results:
+                        if not any(r.seq == result.seq for r in expanded_results):
+                            handle_unique_result(result)
+                sites[cur] = resolved
         finally:
             conn.close()
 
-        results.sort(key=lambda r: r.seq)
-        return sites, results
+        return sites, sorted(expanded_results, key=lambda r: r.seq)
 
     def export_csv(self, path, currency, results) -> None:
-        """Reuse the existing report writer until OBX-specific reporting differs."""
         self._pricing_service().export_csv(path, currency, results, source_label="OBX")
