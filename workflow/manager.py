@@ -1,14 +1,7 @@
-"""Workflow manager.
-
-Owns navigation rules and drives the workflow session. It never performs
-engineering validation itself - readiness is always obtained from the hosted
-workspaces (which delegate to the existing services). It reacts to snapshot
-changes to keep progress, step readiness and session status up to date.
-"""
+"""Workflow manager."""
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
-
 from core.enums import WorkflowStep
 from core.workflow import WORKFLOW_ITEMS
 from workflow.host import WorkspaceHost
@@ -17,13 +10,8 @@ from workflow.state import WorkflowState
 
 _TITLES = {item.step: item.title for item in WORKFLOW_ITEMS}
 
-
 class WorkflowManager(QObject):
-    """Coordinates workflow navigation and session state."""
-
-    #: Emitted whenever workflow state (progress/readiness/status) changes.
     state_changed = Signal()
-    #: Emitted with the new current :class:`WorkflowStep` after navigation.
     step_changed = Signal(object)
 
     def __init__(self, context, host: WorkspaceHost, steps: list[WorkflowStep]) -> None:
@@ -63,6 +51,7 @@ class WorkflowManager(QObject):
         standalone = {
             WorkflowStep.MAINTENANCE,
             WorkflowStep.CET_SIF_VALIDATION,
+            WorkflowStep.OBX_VALIDATION,
             WorkflowStep.REVIEW,
         }
         always = {self._steps[0]} | (standalone & set(self._steps))
