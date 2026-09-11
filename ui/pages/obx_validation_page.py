@@ -212,6 +212,7 @@ class ObxValidationPage(BasePage):
         self._launch_btn = QPushButton("Launch Item Entry", container)
         self._launch_btn.setEnabled(False)
         self._launch_btn.clicked.connect(self._on_launch)
+        self._load_btn.setFixedWidth(self._launch_btn.sizeHint().width())
         self._pause_btn = QPushButton("Pause Validation", container)
         self._pause_btn.setEnabled(False)
         self._pause_btn.clicked.connect(self._on_pause_resume)
