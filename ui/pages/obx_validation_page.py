@@ -440,6 +440,7 @@ class ObxValidationPage(BasePage):
 
     def _on_line_done(self, r) -> None:
         self._results.append(r)
+        self._export_btn.setEnabled(True)
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
