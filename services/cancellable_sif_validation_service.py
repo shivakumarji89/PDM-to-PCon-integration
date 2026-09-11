@@ -72,3 +72,4 @@ class CancellableSifValidationService(SifValidationService):
             return sites, results
         finally:
             conn.close()
+            operation_control.unregister_cancel_handler(repo.cancel_active_operation)
