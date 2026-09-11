@@ -35,7 +35,6 @@ class WorkflowManager(QObject):
         self._last_product_id: str | None = None
         self.refresh()
 
-    # -- accessors ---------------------------------------------------------
     @property
     def session(self) -> WorkflowSession:
         return self._session
@@ -60,16 +59,10 @@ class WorkflowManager(QObject):
     def is_ready(self, step: WorkflowStep) -> bool:
         return self._host.is_ready(step)
 
-    # -- navigation rules --------------------------------------------------
     def enabled_steps(self) -> set[WorkflowStep]:
-        # Steps that work independently of the loaded product stay reachable.
         standalone = {
             WorkflowStep.MAINTENANCE,
             WorkflowStep.CET_SIF_VALIDATION,
-            WorkflowStep.OBX_VALIDATION,
-            # Review is also a pre-load discovery workspace: an existing
-            # repository series can be checked against PDM before a snapshot
-            # exists, so it must not be locked behind Product loading.
             WorkflowStep.REVIEW,
         }
         always = {self._steps[0]} | (standalone & set(self._steps))
@@ -81,8 +74,6 @@ class WorkflowManager(QObject):
         index = self._index(self.current_step())
         if index >= len(self._steps) - 1 or not self.is_ready(self.current_step()):
             return False
-        # A pre-load Review jump is allowed for discovery, but Continue must not
-        # bypass the normal product-load gate into later engineering steps.
         return self._steps[index + 1] in self.enabled_steps()
 
     def can_go_back(self) -> bool:
@@ -118,10 +109,7 @@ class WorkflowManager(QObject):
         self._session = WorkflowSession(current_step=first)
         self._set_current(first)
 
-    # -- state -------------------------------------------------------------
     def step_state(self, step: WorkflowStep) -> WorkflowState:
-        # Completion is derived from readiness, not from how the step was
-        # reached, so left-panel jumps and Continue produce identical ticks.
         if step not in self.enabled_steps():
             return WorkflowState.BLOCKED
         if self.is_ready(step):
@@ -131,7 +119,6 @@ class WorkflowManager(QObject):
         return WorkflowState.NOT_STARTED
 
     def progress(self) -> tuple[int, int]:
-        """Return (completed_count, total_steps)."""
         completed = sum(1 for step in self._steps if self.is_ready(step))
         return completed, len(self._steps)
 
@@ -146,7 +133,6 @@ class WorkflowManager(QObject):
             return f"Continue to {self.title(self._steps[index + 1])}."
         return "All steps ready - you can generate output."
 
-    # -- lifecycle ---------------------------------------------------------
     def _set_current(self, step: WorkflowStep) -> None:
         self._session.current_step = step
         self._host.activate(step)
@@ -154,16 +140,12 @@ class WorkflowManager(QObject):
         self.refresh()
 
     def refresh(self) -> None:
-        """Recompute session state from the snapshot and notify listeners."""
         snapshot = self._context.active_snapshot
         product = snapshot.product if snapshot else None
         product_id = product.id if product else None
-
-        # A new (or cleared) product starts a fresh workflow.
         if product_id != self._last_product_id:
             self._session.completed_steps.clear()
             self._last_product_id = product_id
-
         self._session.product = product
         self._session.snapshot = snapshot
         self._session.enabled_steps = self.enabled_steps()
