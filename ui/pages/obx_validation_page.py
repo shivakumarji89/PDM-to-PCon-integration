@@ -236,14 +236,6 @@ class ObxValidationPage(BasePage):
         progress_row.addWidget(self._progress_bar, 1)
         progress_row.addWidget(self._progress_percent)
         layout.addLayout(progress_row)
-        detail_row = QHBoxLayout()
-        self._current_line = QLabel("Current line: -", panel)
-        self._current_sku = QLabel("Current SKU: -", panel)
-        self._current_status = QLabel("Status: -", panel)
-        detail_row.addWidget(self._current_line)
-        detail_row.addWidget(self._current_sku, 1)
-        detail_row.addWidget(self._current_status)
-        layout.addLayout(detail_row)
         self._metrics: dict[str, QLabel] = {}
         metrics = [
             ("completed", "Completed"), ("remaining", "Remaining"), ("matched", "Matched"),
@@ -259,7 +251,7 @@ class ObxValidationPage(BasePage):
             self._metrics[key] = label
             grid.addWidget(label, index // 6, index % 6)
         layout.addLayout(grid)
-        panel.setMaximumHeight(175)
+        panel.setMaximumHeight(160)
         return panel
 
     def _build_results(self) -> QWidget:
@@ -369,7 +361,6 @@ class ObxValidationPage(BasePage):
         self._cancel_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._progress_state.setText("CANCELLING")
-        self._current_status.setText("Status: Cancellation requested. Stopping the active SQL operation...")
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
         from core.progress import ProgressReporter
@@ -425,15 +416,12 @@ class ObxValidationPage(BasePage):
             except (ValueError, IndexError):
                 pass
             self._set_metric("recovery", f"{self._recovery_attempt}/3")
-        if text:
-            self._current_status.setText(f"Status: {text}")
 
     def _on_failed(self, message: str) -> None:
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
         self._progress_state.setText("FAILED")
-        self._current_status.setText(f"Status: {message}")
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
 
     def _on_cancelled(self, message: str) -> None:
@@ -443,7 +431,6 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
         self._progress_state.setText("CANCELLED")
-        self._current_status.setText("Status: Validation cancelled by user.")
 
     def _on_paused(self, payload) -> None:
         sites, remaining_lines, reason = payload
@@ -454,7 +441,6 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(bool(self._pending_lines))
         self._progress_state.setText("PAUSED")
-        self._current_status.setText(f"Status: {reason}")
         self._set_metric("completed", str(len(self._results)))
         self._set_metric("remaining", str(len(self._pending_lines)))
         self._set_metric("skipped", str(self._skipped_count))
@@ -471,9 +457,6 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
-        self._current_line.setText("Current line: -")
-        self._current_sku.setText("Current SKU: -")
-        self._current_status.setText("Status: Ready to validate")
         self._recovery_attempt = 0
         for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
@@ -498,9 +481,6 @@ class ObxValidationPage(BasePage):
         self._set_metric("unresolved", str(self._live["unresolved"]))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._current_line.setText(f"Current line: {r.seq}")
-        self._current_sku.setText(f"Current SKU: {r.sku or '-'}")
-        self._current_status.setText(f"Status: {r.result}")
         if self._show_all or r.status != "ok":
             self._append_row(r)
 
@@ -529,7 +509,6 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
         self._progress_percent.setText("100%")
-        self._current_status.setText("Status: Validation complete")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
         self._render_table()
@@ -588,9 +567,6 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
-        self._current_line.setText("Current line: -")
-        self._current_sku.setText("Current SKU: -")
-        self._current_status.setText("Status: Load an OBX file to begin")
         for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
             self._set_metric(key, "-")
         self._set_metric("remaining", str(len(self._lines)))
