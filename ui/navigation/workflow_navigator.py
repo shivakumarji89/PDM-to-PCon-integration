@@ -1,10 +1,9 @@
 """Left panel workflow navigator.
 
 A manager-driven navigator: it renders the workflow steps with their current
-state (completed / current / ready / blocked), shows overall progress, and
-provides Continue / Back navigation. All state is obtained from the
-:class:`~workflow.manager.WorkflowManager`; the navigator holds none of its
-own workflow state.
+state (completed / current / ready / blocked), and provides navigation. All
+state is obtained from the :class:`~workflow.manager.WorkflowManager`; the
+navigator holds none of its own workflow state.
 """
 from __future__ import annotations
 
@@ -69,11 +68,6 @@ class WorkflowNavigator(QWidget):
         layout.addWidget(self._list)
         layout.addStretch(1)
 
-        self._progress = QLabel("", self)
-        self._progress.setObjectName("pageSubtitle")
-        self._progress.setWordWrap(True)
-        layout.addWidget(self._progress)
-
     def _fit_list_height(self) -> None:
         """Size the list to show all rows so it never needs a scrollbar."""
         total = 2 * self._list.frameWidth()
@@ -120,13 +114,6 @@ class WorkflowNavigator(QWidget):
             if step == current:
                 self._list.setCurrentRow(row)
 
-        completed, total = self._manager.progress()
-        index = self._manager.steps().index(current) + 1
-        self._progress.setText(
-            f"Progress: {completed}/{total} completed\n"
-            f"Step {index} of {total}: {self._title(current)}"
-        )
-        # Re-fit after styling/glyphs are applied so all rows stay visible.
         self._fit_list_height()
 
     @staticmethod
