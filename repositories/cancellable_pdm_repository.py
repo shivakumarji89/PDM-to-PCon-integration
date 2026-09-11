@@ -3,6 +3,7 @@ from __future__ import annotations
 from threading import RLock
 from typing import Any, Sequence
 
+from core.errors import PDMConnectionError, PDMQueryError
 from repositories.pdm_repository import PDMRepository
 
 
@@ -86,8 +87,30 @@ class CancellablePDMRepository(PDMRepository):
     def _execute(
         self, query: str, params: Sequence[Any], connection: Any = None
     ) -> list[Any]:
+        """Run a query with validation checkpoints and active-cursor tracking."""
         self._control.checkpoint()
-        return super()._execute(query, params, connection=connection)
+        owns_connection = connection is None
+        conn = self.get_connection() if owns_connection else connection
+        cursor = None
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchall()
+        except self._driver().Error as error:
+            raise PDMQueryError(f"PDM query failed: {error}") from error
+        except (PDMConnectionError, PDMQueryError):
+            raise
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if owns_connection:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _set_active(self, cursor, connection) -> None:
         with self._active_lock:
