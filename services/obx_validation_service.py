@@ -1,4 +1,4 @@
-"""OBX validation service.
+"""OBX Validation service.
 
 Parses incoming OBX files independently from the CET SIF workflow.
 OBX parsing is format-specific; PDM pricing is reused through the existing
@@ -109,6 +109,7 @@ class ObxValidationService(BaseService):
         root = ET.fromstring(text)
         lines: list[ObxLine] = []
         file_currency = ""
+        skipped = 0
         articles = [
             element for element in root.iter()
             if self._local_name(element) == "bskArticle"
@@ -118,6 +119,7 @@ class ObxValidationService(BaseService):
             base_article = self._article_value(article, "base")
             final_article = self._article_value(article, "final")
             if not final_article:
+                skipped += 1
                 continue
             features = self._features(article)
             plc = features.pop("PLC", "")
@@ -138,7 +140,24 @@ class ObxValidationService(BaseService):
                     source_date=source_date,
                 )
             )
+        self.last_parse_skipped_count = skipped
         return file_currency, lines
+
+    @staticmethod
+    def duplicate_count(lines: list[ObxLine]) -> int:
+        """Return the number of extra source lines sharing a validation key."""
+        seen: set[tuple[str, str]] = set()
+        duplicates = 0
+        for line in lines:
+            key = (
+                (line.currency or "").strip().upper(),
+                " ".join(line.final_article.strip().upper().split()),
+            )
+            if key in seen:
+                duplicates += 1
+            else:
+                seen.add(key)
+        return duplicates
 
     def _pricing_service(self, operation_control=None) -> SifValidationService:
         if operation_control is None:
