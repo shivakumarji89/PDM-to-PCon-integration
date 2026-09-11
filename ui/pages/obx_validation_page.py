@@ -11,11 +11,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -183,6 +185,8 @@ class ObxValidationPage(BasePage):
         self._source_path = ""
         self._show_all = True
         self._is_paused = False
+        self._skipped_count = 0
+        self._duplicate_count = 0
         self._active_control: ValidationControl | None = None
         self._active_reporter = None
         self.add_content(self._build_controls())
@@ -197,24 +201,23 @@ class ObxValidationPage(BasePage):
             "Order file", "Load a CET OBX file, then launch item entry to validate every line against PDM."))
         row = QHBoxLayout()
         row.setSpacing(theme.SPACE_2)
-        self._load_btn = QPushButton("Load OBX File...", container)
-        self._load_btn.clicked.connect(self._on_load)
-        self._folder_btn = QPushButton("Load Folder...", container)
-        self._folder_btn.clicked.connect(self._on_load_folder)
+        self._load_btn = QToolButton(container)
+        self._load_btn.setText("Load OBX...")
+        self._load_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._load_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        load_menu = QMenu(self._load_btn)
+        load_menu.addAction("Select file(s)...", self._on_load)
+        load_menu.addAction("Select folder...", self._on_load_folder)
+        self._load_btn.setMenu(load_menu)
         self._launch_btn = QPushButton("Launch Item Entry", container)
         self._launch_btn.setEnabled(False)
         self._launch_btn.clicked.connect(self._on_launch)
         self._pause_btn = QPushButton("Pause Validation", container)
         self._pause_btn.setEnabled(False)
-        self._pause_btn.clicked.connect(self._on_pause)
-        self._resume_btn = QPushButton("Resume Validation", container)
-        self._resume_btn.setEnabled(False)
-        self._resume_btn.clicked.connect(self._on_resume)
+        self._pause_btn.clicked.connect(self._on_pause_resume)
         row.addWidget(self._load_btn)
-        row.addWidget(self._folder_btn)
         row.addWidget(self._launch_btn)
         row.addWidget(self._pause_btn)
-        row.addWidget(self._resume_btn)
         row.addWidget(QLabel("Validation date:", container))
         self._validation_date = QDateEdit(container)
         self._validation_date.setDisplayFormat("dd-MMM-yyyy")
@@ -241,10 +244,6 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         head.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignTop)
-        self._rebuild_btn = QPushButton("Rebuild table", container)
-        self._rebuild_btn.setEnabled(False)
-        self._rebuild_btn.clicked.connect(self._on_rebuild)
-        head.addWidget(self._rebuild_btn, 0, Qt.AlignmentFlag.AlignTop)
         self._toggle_btn = QPushButton("Show errors only", container)
         self._toggle_btn.setCheckable(True)
         self._toggle_btn.setChecked(True)
@@ -252,11 +251,13 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setEnabled(False)
         head.addWidget(self._toggle_btn, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(head)
-        self._grid = StatisticsGrid(columns=4, parent=container)
+        self._grid = StatisticsGrid(columns=6, parent=container)
         self._grid.set_metric("lines", "Order lines", "-")
         self._grid.set_metric("ok", "Matched", "-")
         self._grid.set_metric("mismatch", "Price mismatch", "-")
         self._grid.set_metric("unresolved", "Unresolved", "-")
+        self._grid.set_metric("skipped", "Skipped", "-")
+        self._grid.set_metric("duplicate", "Duplicate", "-")
         layout.addWidget(self._grid)
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
@@ -290,6 +291,7 @@ class ObxValidationPage(BasePage):
     def _load_paths(self, paths: list[str]) -> None:
         svc = self._context.obx_validation_service
         currency, lines = "", []
+        skipped_count = 0
         self._file_of_seq: dict[int, str] = {}
         self._currency_of_path: dict[str, str] = {}
         loaded_paths: list[str] = []
@@ -300,6 +302,7 @@ class ObxValidationPage(BasePage):
                 QMessageBox.warning(self, "OBX Validation", f"Could not read {path}:\n{exc}")
                 continue
             cur, file_lines = svc.parse_obx(text)
+            skipped_count += getattr(svc, "last_parse_skipped_count", 0)
             if not currency:
                 currency = cur
             self._currency_of_path[path] = cur
@@ -312,6 +315,8 @@ class ObxValidationPage(BasePage):
         self._lines = lines
         self._paths = loaded_paths
         self._source_path = loaded_paths[0] if loaded_paths else ""
+        self._skipped_count = skipped_count
+        self._duplicate_count = svc.duplicate_count(lines)
         label = paths[0] if len(paths) == 1 else f"{len(paths)} files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(
@@ -319,7 +324,7 @@ class ObxValidationPage(BasePage):
             f"{len(lines)} line(s), currency {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
-        self._resume_btn.setEnabled(False)
+        self._pause_btn.setText("Pause Validation")
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
@@ -328,6 +333,12 @@ class ObxValidationPage(BasePage):
         if self._lines:
             self._start_validation(self._lines, fresh=True)
 
+    def _on_pause_resume(self) -> None:
+        if self._active_control is not None:
+            self._on_pause()
+        elif self._pending_lines:
+            self._on_resume()
+
     def _on_pause(self) -> None:
         control = self._active_control
         reporter = self._active_reporter
@@ -335,10 +346,12 @@ class ObxValidationPage(BasePage):
             return
         control.pause()
         reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
+        self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(False)
 
     def _on_resume(self) -> None:
         if self._pending_lines:
+            self._pause_btn.setText("Pause Validation")
             self._start_validation(self._pending_lines, fresh=False)
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
@@ -369,8 +382,8 @@ class ObxValidationPage(BasePage):
         if fresh:
             self._begin_live()
         self._is_paused = False
+        self._pause_btn.setText("Pause Validation")
         self._pause_btn.setEnabled(True)
-        self._resume_btn.setEnabled(False)
         self._launch_btn.setEnabled(False)
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(
@@ -399,6 +412,7 @@ class ObxValidationPage(BasePage):
 
     def _on_failed(self, message: str) -> None:
         self._release_active_control()
+        self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
 
@@ -406,8 +420,8 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pending_lines = []
         self._is_paused = False
+        self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
-        self._resume_btn.setEnabled(False)
         self._file_label.setText("Validation cancelled by user.")
 
     def _on_paused(self, payload) -> None:
@@ -416,14 +430,16 @@ class ObxValidationPage(BasePage):
         self._pending_lines = list(remaining_lines)
         self._is_paused = True
         self._launch_btn.setEnabled(False)
-        self._resume_btn.setEnabled(bool(self._pending_lines))
+        self._pause_btn.setText("Resume Validation")
+        self._pause_btn.setEnabled(bool(self._pending_lines))
         completed = len(self._results)
         remaining = len(self._pending_lines)
         self._file_label.setText(
             f"Validation paused — {completed} line(s) completed, {remaining} line(s) remaining. {reason}")
         self._grid.set_metric("lines", "Order lines", str(completed))
+        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
+        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
         self._export_btn.setEnabled(bool(self._results))
-        self._rebuild_btn.setEnabled(bool(self._results))
 
     def _begin_live(self) -> None:
         self._results = []
@@ -432,11 +448,12 @@ class ObxValidationPage(BasePage):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         for key, label in (("lines", "Order lines"), ("ok", "Matched"),
-                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved")):
-            self._grid.set_metric(key, label, "0")
+                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"),
+                           ("skipped", "Skipped"), ("duplicate", "Duplicate")):
+            value = self._skipped_count if key == "skipped" else self._duplicate_count if key == "duplicate" else 0
+            self._grid.set_metric(key, label, str(value))
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(False)
-        self._rebuild_btn.setEnabled(True)
 
     def _on_line_done(self, r) -> None:
         self._results.append(r)
@@ -448,17 +465,20 @@ class ObxValidationPage(BasePage):
         self._grid.set_metric("ok", "Matched", str(self._live["ok"]))
         self._grid.set_metric("mismatch", "Price mismatch", str(self._live["mismatch"]))
         self._grid.set_metric("unresolved", "Unresolved", str(self._live["unresolved"]))
+        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
+        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
         if self._show_all or r.status != "ok":
             self._append_row(r)
 
     def _on_results(self, payload) -> None:
         sites, results = payload
         self._release_active_control()
+        self._pause_btn.setText("Pause Validation")
         self._results = results
         self._pending_lines = []
         self._is_paused = False
         self._launch_btn.setEnabled(bool(self._lines))
-        self._resume_btn.setEnabled(False)
+        self._pause_btn.setEnabled(False)
         ok = sum(1 for r in results if r.status == "ok")
         mism = sum(1 for r in results if r.status == "price_mismatch")
         unres = sum(1 for r in results if r.status == "unresolved")
@@ -466,9 +486,10 @@ class ObxValidationPage(BasePage):
         self._grid.set_metric("ok", "Matched", str(ok))
         self._grid.set_metric("mismatch", "Price mismatch", str(mism))
         self._grid.set_metric("unresolved", "Unresolved", str(unres))
+        self._grid.set_metric("skipped", "Skipped", str(self._skipped_count))
+        self._grid.set_metric("duplicate", "Duplicate", str(self._duplicate_count))
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
-        self._rebuild_btn.setEnabled(bool(results))
         self._render_table()
         site_text = ", ".join(f"{cur}→site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
@@ -477,9 +498,6 @@ class ObxValidationPage(BasePage):
     def _on_toggle_all(self, checked: bool) -> None:
         self._show_all = checked
         self._toggle_btn.setText("Show errors only" if checked else "Show all lines")
-        self._render_table()
-
-    def _on_rebuild(self) -> None:
         self._render_table()
 
     def _on_export(self) -> None:
@@ -526,14 +544,15 @@ class ObxValidationPage(BasePage):
         self._is_paused = False
         self._table.setRowCount(0)
         for key, label in (("lines", "Order lines"), ("ok", "Matched"),
-                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved")):
-            self._grid.set_metric(key, label, "-")
+                           ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"),
+                           ("skipped", "Skipped"), ("duplicate", "Duplicate")):
+            value = self._skipped_count if key == "skipped" else self._duplicate_count if key == "duplicate" else "-"
+            self._grid.set_metric(key, label, str(value))
         self._toggle_btn.setChecked(True)
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
-        self._rebuild_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
-        self._resume_btn.setEnabled(False)
+        self._pause_btn.setText("Pause Validation")
 
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
