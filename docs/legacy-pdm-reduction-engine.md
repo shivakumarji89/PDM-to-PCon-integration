@@ -33,6 +33,55 @@ final article
    -> produce reduced representation
 ```
 
+## New legacy filter evidence — exact UI-to-filter contract
+
+The archived `ProductSelector` is the direct caller of the legacy product filter.
+For a normal range it invokes the SQL stored procedure:
+
+```text
+ProductsList(
+    @ProductRangeId,
+    @LanguageId,
+    @SelAttribValuesXml
+)
+```
+
+For a US range it invokes:
+
+```text
+USProductsList(
+    @productCategoryId,
+    @languageId,
+    @selAttribValuesXml
+)
+```
+
+The same selector then consumes `ProductId`, `short_desc`, `ImageFile`, and `OrderCode` from the procedure result. The non-US call also uses a 300-second command timeout. The archived source is `DPS/HermanMiller.EOS.UI/ProductSelector.cs`. fileciteturn252file0L2-L2
+
+The attribute-selection XML is constructed by `TemplateContainer.AttributeXml`. Its structure is:
+
+```xml
+<attributes>
+  <attribute attributeid="..." attributevalueid="..."/>
+  ...
+</attributes>
+```
+
+Only selectors with an actual `AttributeValueId` are emitted as active `<attribute>` elements; disabled selectors are represented separately as `DISABLED_attribute`. The container also maintains the selected attribute IDs/value IDs. fileciteturn255file0L2-L2
+
+`AttributeSelector` obtains its `OrderCodeFormatKey` from the database through `AttributeOrderCodeFormatKeyGet`, and its selected `OrderCodeValue` directly from `AttributeValue.OrderCodeValue`. Its refresh path obtains the attribute XML from the container and sends that selection state into the attribute-value filtering procedure. fileciteturn253file0L2-L2
+
+Therefore the legacy filter boundary is now precisely identified as:
+
+```text
+UI selector state
+    -> selected AttributeId + AttributeValueId XML
+    -> ProductsList / USProductsList
+    -> candidate ProductId + Product + OrderCode
+```
+
+This is more specific than merely saying that “PDM filters by properties.” The exact XML selection contract is known. The remaining unknown is the internal SQL implementation of the stored procedures, not the caller-side input contract.
+
 ## Rules recovered from legacy code
 
 ### 1. Product identity is part of the article
@@ -75,7 +124,11 @@ The legacy permutation path considers:
 - dependent attributes/options
 - physical versus functional attributes
 
-Therefore a mathematically possible character combination is not automatically a valid PDM configuration.
+Therefore a mathematically possible character combination is not automatically a valid PDM configuration. The permutation implementation explicitly rejects an incompatible selected value when it conflicts with `AttributeValueExclusions`, and it only uses catalogue-eligible attribute values with an `OrderCodeValue`. fileciteturn246file0L2-L2
+
+### 5. The product filter is selection-driven, not article-prefix-driven
+
+The archived selector does not derive a Product by slicing an article string. It sends the current selected attribute/value state to `ProductsList`/`USProductsList`. This is the business boundary that the new reduction engine must reproduce or call. fileciteturn252file0L2-L2
 
 ## Generic reduction algorithm to implement
 
@@ -178,4 +231,4 @@ Both directions must agree for representative products from multiple series, inc
 
 ## Current conclusion
 
-The generic business model is now clear enough to design the replacement, but production code should remain unchanged until the exact legacy filter semantics and item-level configuration path are recovered. The next implementation step is a read-only PDM compatibility layer that reproduces the legacy selection semantics and reports mismatches; it should be tested across product series before it replaces the current reduction service.
+The generic business model is now clear enough to design the replacement, and the legacy UI-to-stored-procedure filter boundary is now proven. Production code should remain unchanged until the exact stored-procedure filtering semantics and complete item-level configuration path are recovered. The next implementation step is a read-only PDM compatibility layer that reproduces the legacy selection semantics and reports mismatches; it should be tested across product series before it replaces the current reduction service.
