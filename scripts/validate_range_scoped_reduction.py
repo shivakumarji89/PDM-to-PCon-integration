@@ -1,13 +1,7 @@
 """Validate ProductRange-scoped reduction discovery without repeated ProductsList calls.
 
 Read-only diagnostic. It reproduces the legacy ProductsList membership rule
-in memory after loading Product/PAV data once:
-- candidates must belong to the same ProductRange;
-- every selected AttributeValueId must be present on the Product;
-- eligible Products are represented by the supplied dataset.
-
-This deliberately excludes values with OrderCodeValue because those dimensions
-belong to the post-dot/order-code side of the article.
+in memory after loading Product/PAV data once.
 """
 from __future__ import annotations
 
@@ -118,24 +112,7 @@ def maximal_prefix_groups(codes: dict[int, str], min_group: int):
     )
 
 
-def eligible_product_ids(products, dataset_ids, range_id):
-    # ProductsList's range/eligibility rule, restricted to the supplied dataset.
-    return {
-        pid for pid in dataset_ids
-        if pid in products
-        and products[pid]["range"] == range_id
-        and (products[pid]["new_product"] == 1 or any(True for _ in [pid]))
-    }
-
-
 def legacy_in_memory(products, pavs, dataset_ids, range_id, values):
-    """Return the supplied-dataset equivalent of dbo.ProductsList for values.
-
-    The legacy procedure requires every selected AttributeValueId to occur on
-    a Product in the requested ProductRange. Product status eligibility is
-    intentionally not guessed beyond the supplied candidate dataset; the 591
-    dataset is already the concrete validation population.
-    """
     candidates = {
         pid for pid in dataset_ids
         if pid in products and products[pid]["range"] == range_id
@@ -188,7 +165,7 @@ def main():
         exact_groups = []
         exact_by_prefix = {}
 
-        for prefix, group_ids in groups:
+        for _, prefix, group_ids in groups:
             common = set.intersection(*(functional.get(pid, set()) for pid in group_ids)) if group_ids else set()
             exact = []
             ordered = sorted(common)
@@ -203,7 +180,7 @@ def main():
             if exact:
                 exact_groups.append((prefix, group_ids, exact))
 
-        prefix_sets = [frozenset(group_ids) for _, group_ids in groups]
+        prefix_sets = [frozenset(group_ids) for _, _, group_ids in groups]
         overlap_counts = []
         for left, right in itertools.combinations(prefix_sets, 2):
             overlap = len(left & right)
@@ -224,7 +201,7 @@ def main():
                     "Count": len(group_ids),
                     "ExactFilters": [filter_signature(combo, value_info) for combo in exact_by_prefix[prefix]],
                 }
-                for prefix, group_ids in groups
+                for _, prefix, group_ids in groups
                 if exact_by_prefix[prefix]
             ],
         })
