@@ -162,6 +162,63 @@ def attribute_level_profile(product_ids: Set[int], by_product: Dict[int, Set[int
     return profile
 
 
+def make_group_candidate(
+    product_ids: Set[int],
+    by_product: Dict[int, Set[int]],
+    value_info: Dict[int, dict],
+    product_to_code: Dict[int, str],
+    product_to_description: Dict[int, str],
+    product_range_id: int,
+    filter_ids: Tuple[int, ...],
+) -> dict:
+    profile = attribute_level_profile(product_ids, by_product, value_info)
+    fixed = [value for attr in profile for value in attr["FixedValues"]]
+    variable = [value for attr in profile for value in attr["VariableValues"]]
+    # A Product group is a candidate reduction group only when it is a proper
+    # subset of the range. The filter is the proof of group membership; the
+    # reduction engine still needs to decide how article code is synthesized.
+    return {
+        "ProductRangeId": int(product_range_id),
+        "FilterAttributeValueIds": list(filter_ids),
+        "FilterValues": [value_info[v] for v in filter_ids],
+        "ProductIds": sorted(product_ids),
+        "ProductCount": len(product_ids),
+        "ProductCodes": sorted(product_to_code[p] for p in product_ids),
+        "Descriptions": sorted(set(product_to_description[p] for p in product_ids)),
+        "DistinctProductCount": len(product_ids),
+        "AttributeProfile": profile,
+        "FixedAttributeValues": fixed,
+        "VariableAttributeValues": variable,
+    }
+
+
+def compute_reduction_partition(
+    groups: List[dict],
+    all_product_ids: Set[int],
+) -> Tuple[List[dict], Set[int]]:
+    """Choose a deterministic non-overlapping partition from validated groups.
+
+    Groups are ordered by descending coverage and then by shortest filter. This
+    is an analysis policy only; it is intentionally separate from PDM filter
+    semantics, which remain the membership oracle.
+    """
+    selected: List[dict] = []
+    uncovered = set(all_product_ids)
+    ordered = sorted(
+        groups,
+        key=lambda g: (-g["ProductCount"], len(g["FilterAttributeValueIds"]), g["ProductIds"]),
+    )
+    for group in ordered:
+        group_ids = set(group["ProductIds"])
+        if not group_ids or not group_ids <= uncovered:
+            continue
+        selected.append(group)
+        uncovered -= group_ids
+        if not uncovered:
+            break
+    return selected, uncovered
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True)
@@ -191,6 +248,9 @@ def main() -> int:
             "DisplayOrdinal": int(row.DisplayOrdinal) if row.DisplayOrdinal is not None else None,
         }
 
+    product_to_code = {pid: products[pid]["Product"] for pid in products}
+    product_to_description = {pid: str(products[pid]["Product"]) for pid in products}
+
     exact_groups = []
     ranges = sorted({p["ProductRangeId"] for p in products.values() if p["ProductRangeId"] is not None})
     conn = repo.get_connection()
@@ -199,10 +259,7 @@ def main() -> int:
         for range_id in ranges:
             range_products = sorted(pid for pid, p in products.items() if p["ProductRangeId"] == range_id)
             counts = build_candidate_combinations(range_products, by_product, args.max_values)
-            candidates = [
-                (combo, ids) for combo, ids in counts.items()
-                if 1 < len(ids) < len(range_products)
-            ]
+            candidates = [(combo, ids) for combo, ids in counts.items() if 1 < len(ids) < len(range_products)]
             candidates = smallest_filters_per_support(candidates)
             candidates.sort(key=lambda item: (-len(item[1]), len(item[0]), item[0]))
             selected = candidates[:args.limit_per_range]
@@ -213,34 +270,19 @@ def main() -> int:
                 intended = set(observed)
                 exact = returned == intended
                 print(f"  validated {index}/{len(selected)}; support={len(intended)}; legacy={len(returned)}; exact={exact}", flush=True)
-                if not exact:
-                    continue
-
-                profile = attribute_level_profile(intended, by_product, value_info)
-                fixed = [
-                    value
-                    for attr in profile
-                    for value in attr["FixedValues"]
-                ]
-                variable = [
-                    value
-                    for attr in profile
-                    for value in attr["VariableValues"]
-                ]
-                exact_groups.append({
-                    "ProductRangeId": int(range_id),
-                    "FilterAttributeValueIds": list(combo),
-                    "FilterValues": [value_info[v] for v in combo],
-                    "ProductIds": sorted(intended),
-                    "ProductCount": len(intended),
-                    "AttributeProfile": profile,
-                    "FixedAttributeValues": fixed,
-                    "VariableAttributeValues": variable,
-                })
+                if exact:
+                    exact_groups.append(make_group_candidate(
+                        intended,
+                        by_product,
+                        value_info,
+                        product_to_code,
+                        product_to_description,
+                        int(range_id),
+                        tuple(combo),
+                    ))
     finally:
         conn.close()
 
-    # Unique groups are the actual Product sets. Keep the shortest validated filter for each set.
     unique_groups = {}
     for group in exact_groups:
         key = frozenset(group["ProductIds"])
@@ -250,11 +292,17 @@ def main() -> int:
         ):
             unique_groups[key] = group
 
-    size_distribution = defaultdict(int)
-    for group in unique_groups.values():
-        size_distribution[group["ProductCount"]] += 1
+    unique_group_list = list(unique_groups.values())
+    selected_groups, uncovered = compute_reduction_partition(unique_group_list, input_set)
 
-    uncovered = input_set - set().union(*(set(g["ProductIds"]) for g in unique_groups.values())) if unique_groups else input_set
+    size_distribution = defaultdict(int)
+    for group in unique_group_list:
+        size_distribution[group["ProductCount"]] += 1
+    selected_size_distribution = defaultdict(int)
+    for group in selected_groups:
+        selected_size_distribution[group["ProductCount"]] += 1
+
+    covered_by_selected = set().union(*(set(g["ProductIds"]) for g in selected_groups)) if selected_groups else set()
 
     report = {
         "input_product_count": len(input_ids),
@@ -265,11 +313,16 @@ def main() -> int:
         "max_candidate_filter_size": args.max_values,
         "support_patterns_validated_per_range": args.limit_per_range,
         "exact_filter_groups_found": len(exact_groups),
-        "unique_exact_product_groups_found": len(unique_groups),
+        "unique_exact_product_groups_found": len(unique_group_list),
         "unique_group_size_distribution": dict(sorted(size_distribution.items())),
-        "unique_exact_groups": list(unique_groups.values()),
+        "selected_non_overlapping_group_count": len(selected_groups),
+        "selected_non_overlapping_group_size_distribution": dict(sorted(selected_size_distribution.items())),
+        "products_covered_by_selected_groups": len(covered_by_selected),
+        "products_not_covered_by_selected_groups": len(uncovered),
+        "selected_groups": selected_groups,
+        "unique_exact_groups": unique_group_list,
         "uncovered_product_ids": sorted(uncovered),
-        "note": "ProductsList is used only as the legacy filter truth function. No article reduction is implemented here.",
+        "note": "ProductsList is used only as the legacy filter truth function. The selected partition is an analysis policy and is not yet the final article reduction algorithm.",
     }
     Path(args.output).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
 
@@ -277,10 +330,11 @@ def main() -> int:
     print(f"Resolved Products: {len(products)}")
     print(f"ProductAttributeValues rows: {len(pav_rows)}")
     print(f"Exact filter groups found: {len(exact_groups)}")
-    print(f"Unique exact Product groups found: {len(unique_groups)}")
+    print(f"Unique exact Product groups found: {len(unique_group_list)}")
     print(f"Unique group-size distribution: {dict(sorted(size_distribution.items()))}")
-    print(f"Products covered by discovered groups: {len(input_set - uncovered)}")
-    print(f"Products not covered by discovered groups: {len(uncovered)}")
+    print(f"Selected non-overlapping groups: {len(selected_groups)}")
+    print(f"Products covered by selected groups: {len(covered_by_selected)}")
+    print(f"Products not covered by selected groups: {len(uncovered)}")
     print(f"Report written: {args.output}")
     return 0
 
