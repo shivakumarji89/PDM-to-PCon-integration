@@ -108,22 +108,28 @@ def fetch_pavs(repo: PDMRepository, product_ids: List[int]) -> list:
     return rows
 
 
-def products_list(repo: PDMRepository, product_range_id: int, value_ids: Iterable[int]) -> Set[int]:
-    """Call the real legacy dbo.ProductsList through a fresh repository connection."""
+def products_list(
+    repo: PDMRepository,
+    product_range_id: int,
+    value_info: Dict[int, dict],
+    value_ids: Iterable[int],
+) -> Set[int]:
+    """Call the legacy dbo.ProductsList using ODBC EXEC syntax."""
     values = list(dict.fromkeys(int(v) for v in value_ids))
     if not values:
         return set()
 
     xml_values = "".join(
-        f'<attribute attributeid="0" attributevalueid="{value_id}" />'
-        for value_id in values
+        f'<attribute attributeid="{int(value_info[v]["AttributeId"])}" '
+        f'attributevalueid="{v}" />'
+        for v in values
     )
     xml = f"<attributes>{xml_values}</attributes>"
 
     conn = repo.get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("{{CALL dbo.ProductsList(?, ?, ?)}}", (product_range_id, 1, xml))
+        cursor.execute("EXEC dbo.ProductsList ?, ?, ?", (product_range_id, 1, xml))
         columns = [desc[0] for desc in cursor.description or ()]
         product_id_index = next(
             (i for i, name in enumerate(columns) if str(name).lower() == "productid"),
@@ -139,22 +145,11 @@ def products_list(repo: PDMRepository, product_range_id: int, value_ids: Iterabl
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True)
-    parser.add_argument(
-        "--max-values",
-        type=int,
-        default=3,
-        help="maximum candidate filter size; default 3",
-    )
-    parser.add_argument(
-        "--limit-per-range",
-        type=int,
-        default=500,
-        help="maximum candidate combinations validated per ProductRangeId",
-    )
-    parser.add_argument(
-        "--output",
-        default=".audit_tmp_591_candidate_filters.json",
-    )
+    parser.add_argument("--max-values", type=int, default=3,
+                        help="maximum candidate filter size; default 3")
+    parser.add_argument("--limit-per-range", type=int, default=500,
+                        help="maximum candidate combinations validated per ProductRangeId")
+    parser.add_argument("--output", default=".audit_tmp_591_candidate_filters.json")
     args = parser.parse_args()
 
     input_ids = read_product_ids(Path(args.input))
@@ -203,7 +198,7 @@ def main() -> int:
         )
 
         for combo, observed in candidates[: args.limit_per_range]:
-            returned = products_list(repo, int(range_id), combo)
+            returned = products_list(repo, int(range_id), value_info, combo)
             intended = set(observed)
             results.append(
                 {
