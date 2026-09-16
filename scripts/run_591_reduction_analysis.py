@@ -1,9 +1,13 @@
-"""Read-only live PDM analysis for an article list.
+"""Read-only live PDM analysis for the 591-product reduction dataset.
 
-This script does not write to PDM. It first verifies the input against the
-same Item-search semantics already used by PDMRepository, then resolves each
-input article to Product ids, loads ProductAttributeValues, and runs the
-current reduction engine.
+The input dataset is Product-level data: it contains ProductId, Product,
+Description and NewProduct. ProductId is therefore the authoritative key and
+is used directly; the Product column is a product code, not an Item article.
+
+This script does not write to PDM. It loads ProductRange/ProductAttributeValues
+for the supplied ProductIds, runs the experimental reduction engine, and
+validates every proposed group against the real legacy dbo.ProductsList
+procedure.
 """
 from __future__ import annotations
 
@@ -23,11 +27,10 @@ from services.engineering.legacy_pdm_reduction_engine import (  # noqa: E402
     products_from_pdm_rows,
 )
 
-
 CHUNK_SIZE = 100
 
 
-def read_article_numbers(path: Path, column: str) -> list[str]:
+def read_dataset(path: Path) -> list[dict[str, str]]:
     text = path.read_text(encoding="utf-8-sig")
     if not text.strip():
         return []
@@ -35,73 +38,69 @@ def read_article_numbers(path: Path, column: str) -> list[str]:
         dialect = csv.Sniffer().sniff(text[:8192], delimiters=",\t;|")
     except csv.Error:
         dialect = csv.excel_tab
-    rows = csv.DictReader(text.splitlines(), dialect=dialect)
-    if not rows.fieldnames or column not in rows.fieldnames:
-        raise ValueError(f"Input column {column!r} not found. Columns: {rows.fieldnames!r}")
-    result: list[str] = []
-    seen: set[str] = set()
-    for row in rows:
-        value = (row.get(column) or "").strip()
-        if value and value not in seen:
-            result.append(value)
-            seen.add(value)
-    return result
+    reader = csv.DictReader(text.splitlines(), dialect=dialect)
+    if not reader.fieldnames:
+        raise ValueError("Input file has no header row")
+    required = {"ProductId", "Product"}
+    missing = required - set(reader.fieldnames)
+    if missing:
+        raise ValueError(
+            f"Input file must contain {sorted(required)}; missing {sorted(missing)}. "
+            f"Columns: {reader.fieldnames!r}"
+        )
+    return [
+        {key: (value or "").strip() for key, value in row.items()}
+        for row in reader
+    ]
 
 
 def placeholders(count: int) -> str:
     return ", ".join("?" for _ in range(count))
 
 
-def fetch_article_rows(conn: Any, articles: list[str]) -> dict[str, list[Any]]:
-    """Resolve supplied values using the same SQL article-search shape as PDMRepository.
-
-    A value containing '.' is matched as an exact Item. A pre-dot value is
-    matched as Item LIKE '<value>.%'. This remains read-only.
-    """
-    found: dict[str, list[Any]] = {article: [] for article in articles}
-    for start in range(0, len(articles), CHUNK_SIZE):
-        chunk = articles[start : start + CHUNK_SIZE]
-        conditions: list[str] = []
-        params: list[str] = []
-        for article in chunk:
-            if "." in article:
-                conditions.append("i.Item = ?")
-                params.append(article)
-            else:
-                conditions.append("i.Item LIKE ?")
-                params.append(article + ".%")
-
+def fetch_product_rows(conn: Any, product_ids: list[int]) -> dict[int, Any]:
+    """Fetch one authoritative Product row for each supplied ProductId."""
+    found: dict[int, Any] = {}
+    for start in range(0, len(product_ids), CHUNK_SIZE):
+        chunk = product_ids[start : start + CHUNK_SIZE]
         sql = f"""
             SELECT
-                i.ItemId,
-                i.Item,
-                i.Status AS ItemStatus,
-                i.ProductId,
-                p.Product AS ProductCode,
+                p.ProductId,
+                p.Product,
                 p.Name AS ProductName,
                 p.ProductRangeId,
                 p.Status AS ProductStatus,
-                p.NewProduct
-            FROM Item i WITH (NOLOCK)
-            INNER JOIN Product p WITH (NOLOCK)
-                ON p.ProductId = i.ProductId
-            WHERE {' OR '.join(f'({condition})' for condition in conditions)}
-            ORDER BY i.Item
+                p.NewProduct,
+                pr.Name AS ProductRangeName
+            FROM Product p WITH (NOLOCK)
+            LEFT OUTER JOIN ProductRange pr WITH (NOLOCK)
+                ON pr.ProductRangeId = p.ProductRangeId
+            WHERE p.ProductId IN ({placeholders(len(chunk))})
         """
         cursor = conn.cursor()
-        cursor.execute(sql, tuple(params))
-        returned = cursor.fetchall()
-
-        for row in returned:
-            item = str(getattr(row, "Item"))
-            for article in chunk:
-                if "." in article:
-                    if item == article:
-                        found[article].append(row)
-                elif item.startswith(article + "."):
-                    found[article].append(row)
-
+        cursor.execute(sql, tuple(chunk))
+        for row in cursor.fetchall():
+            found[int(row.ProductId)] = row
     return found
+
+
+def fetch_active_item_counts(conn: Any, product_ids: list[int]) -> dict[int, int]:
+    """Count active Items per ProductId for legacy ProductsList eligibility."""
+    counts: dict[int, int] = {product_id: 0 for product_id in product_ids}
+    for start in range(0, len(product_ids), CHUNK_SIZE):
+        chunk = product_ids[start : start + CHUNK_SIZE]
+        sql = f"""
+            SELECT i.ProductId, COUNT(*) AS ActiveItemCount
+            FROM Item i WITH (NOLOCK)
+            WHERE i.ProductId IN ({placeholders(len(chunk))})
+              AND i.Status = 1
+            GROUP BY i.ProductId
+        """
+        cursor = conn.cursor()
+        cursor.execute(sql, tuple(chunk))
+        for row in cursor.fetchall():
+            counts[int(row.ProductId)] = int(row.ActiveItemCount)
+    return counts
 
 
 def fetch_pav_rows(conn: Any, product_ids: list[int]) -> list[Any]:
@@ -135,7 +134,11 @@ def fetch_pav_rows(conn: Any, product_ids: list[int]) -> list[Any]:
     return rows
 
 
-def products_list_filter(conn: Any, product_range_id: int, attribute_value_ids: list[int]) -> set[int]:
+def products_list_filter(
+    conn: Any,
+    product_range_id: int,
+    attribute_value_ids: list[int],
+) -> set[int]:
     """Execute the real legacy ProductsList procedure for validation."""
     xml_values = "".join(
         f'<attribute attributeid="0" attributevalueid="{int(value)}" />'
@@ -149,111 +152,90 @@ def products_list_filter(conn: Any, product_range_id: int, attribute_value_ids: 
         (i for i, name in enumerate(columns) if name.lower() == "productid"), None
     )
     if product_id_index is None:
-        raise RuntimeError(f"ProductsList did not return ProductId. Columns: {columns!r}")
+        raise RuntimeError(
+            f"ProductsList did not return ProductId. Columns: {columns!r}"
+        )
     return {int(row[product_id_index]) for row in cursor.fetchall()}
-
-
-def row_value(row: Any, name: str) -> Any:
-    return getattr(row, name)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, type=Path, help="CSV/TSV article list")
-    parser.add_argument("--article-column", default="Product", help="Input column containing article numbers")
-    parser.add_argument("--output", type=Path, default=Path(".audit_tmp_591_reduction_report.json"))
+    parser.add_argument("--input", required=True, type=Path, help="CSV/TSV Product dataset")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path(".audit_tmp_591_reduction_report.json"),
+    )
     parser.add_argument("--skip-legacy-proc-validation", action="store_true")
     args = parser.parse_args()
 
-    articles = read_article_numbers(args.input, args.article_column)
-    print(f"Input unique articles: {len(articles)}")
+    rows = read_dataset(args.input)
+    input_by_product_id: dict[int, dict[str, str]] = {}
+    for row in rows:
+        product_id_text = row.get("ProductId", "")
+        if not product_id_text:
+            continue
+        product_id = int(product_id_text)
+        input_by_product_id[product_id] = row
+
+    product_ids = sorted(input_by_product_id)
+    print(f"Input rows: {len(rows)}")
+    print(f"Input unique ProductIds: {len(product_ids)}")
+
+    if not product_ids:
+        raise SystemExit("No ProductId values were read from the input file.")
 
     ctx = ApplicationContext()
     repo = PDMRepository(ctx)
     conn = repo.get_connection()
     try:
-        by_article = fetch_article_rows(conn, articles)
+        product_rows = fetch_product_rows(conn, product_ids)
+        resolved_product_ids = sorted(set(product_ids) & set(product_rows))
+        missing_product_ids = sorted(set(product_ids) - set(product_rows))
+        print(f"Resolved ProductIds from PDM: {len(resolved_product_ids)}")
+        print(f"Missing ProductIds from PDM: {len(missing_product_ids)}")
 
-        exact_match_articles = [
-            article for article in articles if "." in article and by_article.get(article)
-        ]
-        prefix_match_articles = [
-            article for article in articles if "." not in article and by_article.get(article)
-        ]
-        missing = [article for article in articles if not by_article.get(article)]
+        active_item_counts = fetch_active_item_counts(conn, resolved_product_ids)
+        pav_rows = fetch_pav_rows(conn, resolved_product_ids)
+        print(f"ProductAttributeValues rows: {len(pav_rows)}")
 
-        product_candidates: dict[str, set[int]] = {
-            article: {int(row_value(row, "ProductId")) for row in rows}
-            for article, rows in by_article.items()
-        }
-        ambiguous = {
-            article: len(product_ids)
-            for article, product_ids in product_candidates.items()
-            if len(product_ids) > 1
-        }
-
-        resolved = []
-        for article in articles:
-            rows = by_article.get(article, [])
-            product_ids = product_candidates.get(article, set())
-            if len(product_ids) == 1:
-                product_id = next(iter(product_ids))
-                resolved.append(next(row for row in rows if int(row_value(row, "ProductId")) == product_id))
-
-        product_ids = sorted({int(row_value(row, "ProductId")) for row in resolved})
-        print(f"Resolved unique article rows: {len(resolved)}")
-        print(f"Exact full-article matches: {len(exact_match_articles)}")
-        print(f"Pre-dot prefix matches: {len(prefix_match_articles)}")
-        print(f"Missing articles: {len(missing)}")
-        print(f"Ambiguous article numbers: {len(ambiguous)}")
-        print(f"Unique Products represented: {len(product_ids)}")
-
-        if not articles:
-            print("No article values were read from the input file.")
-            return 1
-
-        if not resolved:
-            print("No Products resolved. Writing diagnostic samples to the report.")
-            report = {
-                "input": str(args.input),
-                "input_unique_articles": len(articles),
-                "sample_input_articles": articles[:20],
-                "missing_articles": missing,
-                "ambiguous_articles": ambiguous,
-                "resolved_unique_article_rows": 0,
-                "unique_products": 0,
-                "pav_rows": 0,
-                "engine_products": 0,
-                "selected_groups": [],
-                "uncovered_product_ids": [],
-                "legacy_products_list_validation": [],
-            }
-            args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
-            print(f"Report written: {args.output}")
-            return 0
-
-        pav_rows = fetch_pav_rows(conn, product_ids)
         pav_by_product: dict[int, list[Any]] = {}
-        for row in pav_rows:
-            pav_by_product.setdefault(int(row_value(row, "ProductId")), []).append(row)
+        for pav in pav_rows:
+            pav_by_product.setdefault(int(pav.ProductId), []).append(pav)
 
         engine_rows: list[dict[str, object]] = []
-        for product_id in product_ids:
-            article_row = next(r for r in resolved if int(row_value(r, "ProductId")) == product_id)
-            eligible = bool(
-                row_value(article_row, "ItemStatus") == 1
-                or row_value(article_row, "NewProduct") == 1
-            )
-            for pav in pav_by_product.get(product_id, []):
+        product_summary: list[dict[str, object]] = []
+        for product_id in resolved_product_ids:
+            product_row = product_rows[product_id]
+            input_row = input_by_product_id[product_id]
+            new_product = int(product_row.NewProduct or 0)
+            active_item_count = active_item_counts.get(product_id, 0)
+            eligible = active_item_count > 0 or new_product == 1
+            values = pav_by_product.get(product_id, [])
+            for pav in values:
                 engine_rows.append(
                     {
                         "ProductId": product_id,
-                        "Product": str(row_value(article_row, "ProductCode")),
-                        "ProductRangeId": int(row_value(article_row, "ProductRangeId")),
-                        "AttributeValueId": int(row_value(pav, "AttributeValueId")),
+                        "Product": str(product_row.Product),
+                        "ProductRangeId": int(product_row.ProductRangeId),
+                        "AttributeValueId": int(pav.AttributeValueId),
                         "Eligible": eligible,
                     }
                 )
+            product_summary.append(
+                {
+                    "ProductId": product_id,
+                    "InputProduct": input_row.get("Product", ""),
+                    "PDMProduct": str(product_row.Product),
+                    "Description": input_row.get("Description", ""),
+                    "ProductRangeId": int(product_row.ProductRangeId),
+                    "ProductRangeName": str(product_row.ProductRangeName or ""),
+                    "ActiveItemCount": active_item_count,
+                    "NewProduct": new_product,
+                    "Eligible": eligible,
+                    "AttributeValueCount": len(values),
+                }
+            )
 
         products = products_from_pdm_rows(engine_rows)
         analysis = LegacyPDMReductionEngine().analyze(products)
@@ -263,7 +245,7 @@ def main() -> int:
 
         legacy_validation: list[dict[str, object]] = []
         if not args.skip_legacy_proc_validation:
-            by_product = {p.product_id: p for p in products}
+            by_product = {product.product_id: product for product in products}
             for group in analysis.groups:
                 seed_id = group.product_ids[0]
                 seed = by_product[seed_id]
@@ -289,13 +271,11 @@ def main() -> int:
 
         report = {
             "input": str(args.input),
-            "input_unique_articles": len(articles),
-            "sample_input_articles": articles[:20],
-            "missing_articles": missing,
-            "ambiguous_articles": ambiguous,
-            "resolved_unique_article_rows": len(resolved),
-            "unique_products": len(product_ids),
-            "pav_rows": len(pav_rows),
+            "input_rows": len(rows),
+            "input_unique_product_ids": len(product_ids),
+            "resolved_product_ids": len(resolved_product_ids),
+            "missing_product_ids": missing_product_ids,
+            "product_attribute_value_rows": len(pav_rows),
             "engine_products": len(products),
             "selected_groups": [
                 {
@@ -307,16 +287,20 @@ def main() -> int:
             ],
             "uncovered_product_ids": list(analysis.uncovered_product_ids),
             "legacy_products_list_validation": legacy_validation,
+            "product_summary": product_summary,
         }
-
         args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"Report written: {args.output}")
 
         if legacy_validation:
             passed = sum(1 for item in legacy_validation if item["products_list_match"])
-            print(f"Legacy ProductsList validation: {passed}/{len(legacy_validation)} groups matched")
+            print(
+                f"Legacy ProductsList validation: {passed}/{len(legacy_validation)} groups matched"
+            )
             if passed != len(legacy_validation):
-                print("WARNING: one or more proposed groups differ from the real ProductsList result.")
+                print(
+                    "WARNING: one or more proposed groups differ from the real ProductsList result."
+                )
                 return 2
         return 0
     finally:
