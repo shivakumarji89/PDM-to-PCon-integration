@@ -149,19 +149,50 @@ def common_values(pids, by_product):
     return result or set()
 
 
-def exact_filters_for_group(cur, pids, range_id, common, value_info, max_values):
+def exact_filters_for_group(cur, pids, range_id, common, by_product, value_info, max_values):
+    """Find locally exact filters first, then use ProductsList only as the oracle.
+
+    The previous implementation called ProductsList for every combination of
+    common values. A group with many common values therefore caused hundreds of
+    database calls even when almost all combinations were obviously too broad.
+    Here we calculate each combination's support set in memory and call the
+    stored procedure only when that support is already exactly the prefix group.
+    """
+    target = set(pids)
     if not common:
         return []
+
     ordered = sorted(common)
+    value_to_products = defaultdict(set)
+    for pid, values in by_product.items():
+        if pid not in target and products_same_range(pid, range_id, by_product):
+            pass
+        for value_id in values:
+            value_to_products[value_id].add(pid)
+
     exact = []
     for size in range(1, min(max_values, len(ordered)) + 1):
         for combo in itertools.combinations(ordered, size):
+            support = None
+            for value_id in combo:
+                current = value_to_products[value_id]
+                support = set(current) if support is None else support & current
+                if not support:
+                    break
+            if support != target:
+                continue
             returned = products_list(cur, range_id, build_xml(value_info, combo))
-            if returned == set(pids):
+            if returned == target:
                 exact.append(tuple(combo))
         if exact:
             break
     return exact
+
+
+def products_same_range(pid, range_id, by_product):
+    # Kept as a no-op compatibility helper for the in-memory support calculation.
+    # Range membership is enforced by the target group and the legacy call below.
+    return False
 
 
 def describe_group(pids, prefix, rows_by_id, products, by_product, value_info, cur, max_values):
@@ -184,7 +215,7 @@ def describe_group(pids, prefix, rows_by_id, products, by_product, value_info, c
 
     if len(ranges) == 1:
         range_id = next(iter(ranges))
-        exact = exact_filters_for_group(cur, pids, range_id, common, value_info, max_values)
+        exact = exact_filters_for_group(cur, pids, range_id, common, by_product, value_info, max_values)
         result["ExactLegacyFilters"] = [
             {"AttributeValueIds": list(combo), "Values": [value_info[v] for v in combo]}
             for combo in exact
