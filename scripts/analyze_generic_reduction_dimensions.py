@@ -1,14 +1,4 @@
-"""Read-only generic analysis of functional vs order-code PDM dimensions.
-
-This intentionally does not implement reduction. It is designed to test the
-same discovery logic against any supplied ProductId dataset, without knowing
-series, catalogue, category, article prefixes, or business-specific names.
-
-A PDM attribute/value is classified as order-code when OrderCodeValue is
-non-empty. Such dimensions are reported separately because they belong to the
-existing after-dot article generation. Functional dimensions are analyzed for
-pre-dot family discovery and validated with the legacy ProductsList procedure.
-"""
+"""Read-only generic analysis of functional vs order-code PDM dimensions."""
 from __future__ import annotations
 
 import argparse
@@ -20,7 +10,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from core.application_context import ApplicationContext
 from repositories.pdm_repository import PDMRepository
 
@@ -57,8 +46,9 @@ def fetch_products(repo, ids):
             chunk = ids[i:i + CHUNK]
             cur = conn.cursor()
             cur.execute(
-                f"SELECT ProductId, Product, ProductRangeId, ProductCodeId, Status, NewProduct, IsSuperProduct "
-                f"FROM Product WITH (NOLOCK) WHERE ProductId IN ({ph(len(chunk))})", tuple(chunk))
+                f"SELECT ProductId, Product, ProductRangeId, ProductCodeId, Status, NewProduct, IsSuperProduct FROM Product WITH (NOLOCK) WHERE ProductId IN ({ph(len(chunk))})",
+                tuple(chunk),
+            )
             for r in cur.fetchall():
                 found[int(r.ProductId)] = {
                     "Product": str(r.Product),
@@ -89,7 +79,9 @@ def fetch_pavs(repo, ids):
                     INNER JOIN AttributeValue av WITH (NOLOCK) ON pav.AttributeValueId = av.AttributeValueId
                     INNER JOIN Attribute a WITH (NOLOCK) ON av.AttributeId = a.AttributeId
                     WHERE pav.ProductId IN ({ph(len(chunk))}) AND av.Status = 1
-                    ORDER BY pav.ProductId, a.DisplayOrder, av.DisplayOrdinal""", tuple(chunk))
+                    ORDER BY pav.ProductId, a.DisplayOrder, av.DisplayOrdinal""",
+                tuple(chunk),
+            )
             rows.extend(cur.fetchall())
     finally:
         conn.close()
@@ -123,7 +115,35 @@ def prefix_groups(codes, min_group):
     by_set = defaultdict(list)
     for item in candidates:
         by_set[frozenset(item[2])].append(item)
-    return sorted((max(items, key=lambda x: (x[0], x[1])) for items in by_set.values()), key=lambda x: (-len(x[2]), x[0], x[1]))
+    return sorted(
+        (max(items, key=lambda x: (x[0], x[1])) for items in by_set.values()),
+        key=lambda x: (-len(x[2]), x[0], x[1]),
+    )
+
+
+def exact_filters_for_group(cur, pids, products, functional, value_info, max_filter_values):
+    ranges = Counter(products[pid]["ProductRangeId"] for pid in pids if pid in products)
+    if len(ranges) != 1:
+        return ranges, set(), []
+    common = None
+    for pid in pids:
+        vals = functional.get(pid, set())
+        common = set(vals) if common is None else common & vals
+    common = common or set()
+    exact = []
+    ordered = sorted(common)
+    for size in range(1, min(max_filter_values, len(ordered)) + 1):
+        for combo in itertools.combinations(ordered, size):
+            returned = products_list(cur, next(iter(ranges)), value_info, combo)
+            if returned == set(pids):
+                exact.append(combo)
+        if exact:
+            break
+    return ranges, common, exact
+
+
+def serial_values(value_info, ids):
+    return [value_info[v] for v in sorted(ids)]
 
 
 def main():
@@ -166,40 +186,41 @@ def main():
     try:
         cur = conn.cursor()
         for n, (_, prefix, pids) in enumerate(groups, 1):
-            ranges = Counter(products[pid]["ProductRangeId"] for pid in pids if pid in products)
-            common = None
-            for pid in pids:
-                vals = functional.get(pid, set())
-                common = set(vals) if common is None else common & vals
-            common = common or set()
-            exact = []
-            if len(ranges) == 1 and common:
-                range_id = next(iter(ranges))
-                ordered = sorted(common)
-                for size in range(1, min(args.max_filter_values, len(ordered)) + 1):
-                    for combo in itertools.combinations(ordered, size):
-                        returned = products_list(cur, range_id, value_info, combo)
-                        if returned == set(pids):
-                            exact.append(combo)
-                    if exact:
-                        break
-            varying_functional = set().union(*(functional.get(pid, set()) for pid in pids)) - common if pids else set()
+            ranges, common, exact = exact_filters_for_group(
+                cur, pids, products, functional, value_info, args.max_filter_values
+            )
+            varying = set().union(*(functional.get(pid, set()) for pid in pids)) - common if pids else set()
+            exact_details = [{"AttributeValueIds": list(c), "Values": serial_values(value_info, c)} for c in exact]
             results.append({
                 "Prefix": prefix,
                 "PrefixLength": len(prefix),
                 "ProductCount": len(pids),
                 "ProductIds": pids,
                 "ProductRanges": dict(ranges),
-                "CommonFunctionalValues": [value_info[v] for v in sorted(common)],
-                "VariableFunctionalValues": [value_info[v] for v in sorted(varying_functional)],
-                "OrderCodeValuesPresent": sorted({v for pid in pids for v in order_code.get(pid, set())}),
-                "ExactLegacyFunctionalFilters": [list(c) for c in exact],
+                "CommonFunctionalValues": serial_values(value_info, common),
+                "VariableFunctionalValues": serial_values(value_info, varying),
+                "OrderCodeValuesPresent": serial_values(value_info, {v for pid in pids for v in order_code.get(pid, set())}),
+                "ExactLegacyFunctionalFilters": exact_details,
             })
             print(f"Analyzed {n}/{len(groups)}: {prefix} ({len(pids)}) exact_functional_filters={len(exact)}", flush=True)
     finally:
         conn.close()
 
     exact = [r for r in results if r["ExactLegacyFunctionalFilters"]]
+    filter_to_prefixes = defaultdict(set)
+    prefix_to_filters = {}
+    for r in exact:
+        keys = []
+        for f in r["ExactLegacyFunctionalFilters"]:
+            key = tuple(f["AttributeValueIds"])
+            keys.append(key)
+            filter_to_prefixes[key].add(r["Prefix"])
+        prefix_to_filters[r["Prefix"]] = keys
+    collisions = [
+        {"AttributeValueIds": list(k), "Prefixes": sorted(v)}
+        for k, v in filter_to_prefixes.items() if len(v) > 1
+    ]
+
     report = {
         "input_product_count": len(ids),
         "resolved_product_count": len(products),
@@ -208,8 +229,11 @@ def main():
         "order_code_pav_rows": sum(1 for r in pavs if classification[int(r.AttributeValueId)] == "order_code"),
         "maximal_prefix_groups": len(results),
         "groups_with_exact_legacy_functional_filter": len(exact),
+        "prefixes_with_multiple_exact_filters": sum(1 for v in prefix_to_filters.values() if len(v) > 1),
+        "filters_shared_by_multiple_prefixes": len(collisions),
+        "shared_filter_collisions": collisions,
         "groups": results,
-        "note": "Generic discovery only. Prefix is an observed candidate family boundary; OrderCodeValue classification is used to exclude after-dot dimensions; ProductsList is the legacy membership validator. No production reduction is performed.",
+        "note": "Generic discovery only. Prefix is a candidate family boundary; OrderCodeValue excludes after-dot dimensions; ProductsList is the legacy membership validator. No production reduction is performed.",
     }
     Path(args.output).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print(f"Input ProductIds: {len(ids)}")
@@ -217,6 +241,11 @@ def main():
     print(f"PAV rows: {len(pavs)}; functional={report['functional_pav_rows']}; order_code={report['order_code_pav_rows']}")
     print(f"Maximal prefix groups: {len(results)}")
     print(f"Groups with exact legacy functional filter: {len(exact)}")
+    print(f"Prefixes with multiple exact filters: {report['prefixes_with_multiple_exact_filters']}")
+    print(f"Filters shared by multiple prefixes: {report['filters_shared_by_multiple_prefixes']}")
+    if collisions:
+        for c in collisions:
+            print(f"SHARED FILTER {c['AttributeValueIds']} -> {c['Prefixes']}")
     print(f"Report written: {args.output}")
 
 
