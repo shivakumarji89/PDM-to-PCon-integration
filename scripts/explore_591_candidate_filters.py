@@ -115,6 +115,38 @@ def build_candidate_combinations(range_products: List[int], by_product: Dict[int
     return counts
 
 
+def smallest_filters_per_support(
+    candidates: Iterable[Tuple[Tuple[int, ...], Set[int]]]
+) -> List[Tuple[Tuple[int, ...], Set[int]]]:
+    """Keep the shortest filters for each identical observed support set."""
+    best: Dict[frozenset, Tuple[Tuple[int, ...], Set[int]]] = {}
+    for combo, ids in candidates:
+        key = frozenset(ids)
+        current = best.get(key)
+        if current is None or (len(combo), combo) < (len(current[0]), current[0]):
+            best[key] = (combo, ids)
+    return list(best.values())
+
+
+def support_key(ids: Iterable[int]) -> frozenset:
+    return frozenset(ids)
+
+
+def filter_minus_common(
+    product_ids: Set[int],
+    by_product: Dict[int, Set[int]],
+) -> Tuple[Set[int], Dict[int, int]]:
+    """Return attribute-value IDs common to every Product and their frequencies."""
+    common: Set[int] | None = None
+    frequencies: Dict[int, int] = defaultdict(int)
+    for pid in product_ids:
+        values = by_product.get(pid, set())
+        for value in values:
+            frequencies[value] += 1
+        common = set(values) if common is None else common & values
+    return common or set(), dict(frequencies)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True)
@@ -154,27 +186,11 @@ def main() -> int:
         cur = conn.cursor()
         for range_id in ranges:
             range_products = sorted(pid for pid, p in products.items() if p["ProductRangeId"] == range_id)
-            range_set = set(range_products)
             counts = build_candidate_combinations(range_products, by_product, args.max_values)
-
-            candidates = [
-                (combo, ids) for combo, ids in counts.items()
-                if 1 < len(ids) < len(range_products)
-            ]
+            candidates = [(combo, ids) for combo, ids in counts.items() if 1 < len(ids) < len(range_products)]
+            candidates = smallest_filters_per_support(candidates)
             candidates.sort(key=lambda item: (-len(item[1]), len(item[0]), item[0]))
-
-            # For each observed support set, validate the shortest candidate first.
-            # This avoids spending calls on supersets once we have an exact filter.
-            groups_by_support: Dict[frozenset, List[Tuple[Tuple[int, ...], Set[int]]]] = defaultdict(list)
-            for combo, ids in candidates:
-                groups_by_support[frozenset(ids)].append((combo, ids))
-
-            selected = []
-            for support, group_candidates in groups_by_support.items():
-                group_candidates.sort(key=lambda item: (len(item[0]), item[0]))
-                selected.append(group_candidates[0])
-            selected.sort(key=lambda item: (-len(item[1]), len(item[0]), item[0]))
-            selected = selected[: args.limit_per_range]
+            selected = candidates[: args.limit_per_range]
 
             print(f"Range {range_id}: {len(range_products)} input products; {len(selected)} support patterns to validate", flush=True)
 
@@ -195,17 +211,39 @@ def main() -> int:
                     "DatasetOnlyProductIds": sorted(intended - returned),
                     "ExactDatasetGroupWithinInput": exact and returned.issubset(input_set),
                 }
-                report_results.append(item)
                 if exact:
+                    common, frequencies = filter_minus_common(intended, by_product)
+                    variable = sorted(v for v, frequency in frequencies.items() if frequency < len(intended))
+                    item["CommonAttributeValueIds"] = sorted(common)
+                    item["CommonValues"] = [value_info[v] for v in sorted(common)]
+                    item["VariableAttributeValueIds"] = variable
+                    item["VariableValues"] = [value_info[v] for v in variable]
+                    item["VariableValueCounts"] = {str(v): frequencies[v] for v in variable}
                     exact_groups.append(item)
+                report_results.append(item)
                 print(f"  validated {index}/{len(selected)}; support={len(intended)}; legacy={len(returned)}; exact={exact}", flush=True)
     finally:
         conn.close()
 
-    # Summaries useful for deriving a reduction engine.
     support_counts = defaultdict(int)
     for result in exact_groups:
         support_counts[result["ObservedDatasetSupportCount"]] += 1
+
+    # De-duplicate exact groups by Product support. This is the actual set of
+    # groups that the validation discovered, independent of how many filters
+    # happen to reproduce each group.
+    unique_groups: Dict[frozenset, dict] = {}
+    for result in exact_groups:
+        key = support_key(result["ObservedDatasetSupportProductIds"])
+        current = unique_groups.get(key)
+        if current is None or (len(result["AttributeValueIds"]), result["AttributeValueIds"]) < (
+            len(current["AttributeValueIds"]), current["AttributeValueIds"]
+        ):
+            unique_groups[key] = result
+
+    unique_support_counts = defaultdict(int)
+    for result in unique_groups.values():
+        unique_support_counts[result["ObservedDatasetSupportCount"]] += 1
 
     report = {
         "input_product_count": len(input_ids),
@@ -216,8 +254,11 @@ def main() -> int:
         "max_candidate_filter_size": args.max_values,
         "support_patterns_validated_per_range": args.limit_per_range,
         "candidate_support_patterns_validated": len(report_results),
-        "exact_candidates": len(exact_groups),
-        "exact_group_size_distribution": dict(sorted(support_counts.items())),
+        "exact_filter_groups_found": len(exact_groups),
+        "unique_exact_product_groups_found": len(unique_groups),
+        "exact_filter_group_size_distribution": dict(sorted(support_counts.items())),
+        "unique_exact_product_group_size_distribution": dict(sorted(unique_support_counts.items())),
+        "unique_exact_groups": list(unique_groups.values()),
         "exact_groups": exact_groups,
         "results": report_results,
         "note": "ProductsList is used only as the legacy filter truth function. This report does not implement article reduction.",
@@ -229,7 +270,8 @@ def main() -> int:
     print(f"ProductAttributeValues rows: {len(pav_rows)}")
     print(f"Support patterns validated: {len(report_results)}")
     print(f"Exact filter groups found: {len(exact_groups)}")
-    print(f"Exact group-size distribution: {dict(sorted(support_counts.items()))}")
+    print(f"Unique exact Product groups found: {len(unique_groups)}")
+    print(f"Unique group-size distribution: {dict(sorted(unique_support_counts.items()))}")
     print(f"Report written: {args.output}")
     return 0
 
