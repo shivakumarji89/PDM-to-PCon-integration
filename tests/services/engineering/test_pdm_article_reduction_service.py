@@ -8,11 +8,9 @@ from services.engineering.pdm_article_reduction_service import PDMArticleReducti
 
 
 def _snapshot(products):
-    """Build the smallest snapshot needed by the reduction service.
-
-    products: iterable of (product_id, code, functional_value_ids, range_name)
-    """
+    """Build the smallest snapshot needed by the reduction service."""
     snapshot = Snapshot()
+    products = list(products)
     snapshot.properties = [
         Property(
             id="functional",
@@ -33,18 +31,16 @@ def _snapshot(products):
         ),
     ]
     snapshot.articles = [
-        Article(
-            id=f"item-{pid}",
-            product_id=pid,
-            code=f"{code}.TAIL",
-        )
+        Article(id=f"item-{pid}", product_id=pid, code=f"{code}.TAIL")
         for pid, code, _values, _range in products
     ]
     snapshot.product_property_value_ids = {
         pid: list(values) + ["SIZE"]
         for pid, _code, values, _range in products
     }
-    snapshot.product_range = {pid: range_name for pid, _code, _values, range_name in products}
+    snapshot.product_range = {
+        pid: range_name for pid, _code, _values, range_name in products
+    }
     return snapshot
 
 
@@ -77,8 +73,26 @@ def test_order_code_values_are_not_used_as_reduction_filters():
 
     result = PDMArticleReductionService(None).discover(snapshot)
 
-    assert {g.base_article for g in result.groups} == {"ABCA", "ABCB"} or not result.groups
+    assert any(
+        g.base_article == "ABC"
+        and set(g.product_ids) == {"1", "2"}
+        and g.filter_attribute_value_ids == ("A",)
+        for g in result.groups
+    )
     assert all("SIZE" not in g.filter_attribute_value_ids for g in result.groups)
+
+
+def test_range_scope_prevents_cross_range_reduction():
+    products = [
+        ("1", "ABCA", {"A"}, "Range-1"),
+        ("2", "ABCB", {"A"}, "Range-2"),
+    ]
+    snapshot = _snapshot(products)
+
+    result = PDMArticleReductionService(None).discover(snapshot)
+
+    assert result.groups == ()
+    assert set(result.uncovered_product_ids) == {"1", "2"}
 
 
 def test_apply_changes_only_member_reduced_article():
@@ -99,5 +113,7 @@ def test_apply_changes_only_member_reduced_article():
     result = PDMArticleReductionService(None).apply(snapshot)
 
     assert len(result.groups) == 1
-    assert [m.reduced_article for m in snapshot.engineering.families[0].members] == ["RY3XA", "RY3XA"]
+    assert [m.reduced_article for m in snapshot.engineering.families[0].members] == [
+        "RY3XA", "RY3XA"
+    ]
     assert [a.code for a in snapshot.articles] == ["RY3XAA.TAIL", "RY3XAB.TAIL"]
