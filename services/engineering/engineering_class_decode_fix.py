@@ -75,9 +75,12 @@ def _decode_with_product_fallback(self, snapshot):
     original_apv = snapshot.article_property_value_ids
     try:
         snapshot.article_property_value_ids = merged
-        decoded = _ORIGINAL_DECODE(self, snapshot)
-        if decoded:
-            return decoded
+        # The legacy decoder can legitimately return a partial result here:
+        # article-level properties may decode while a product-level fallback
+        # property remains unresolved because of its positional layout. Do not
+        # return early on a non-empty result; recover the fallback-only
+        # properties below and merge them into the valid legacy result.
+        decoded = _ORIGINAL_DECODE(self, snapshot) or {}
 
         # The completed signature can still be ambiguous to the legacy
         # positional decoder when the product-level property is the only source
@@ -107,17 +110,23 @@ def _decode_with_product_fallback(self, snapshot):
 
         recovered: dict[str, dict[str, str]] = {}
         for pid, value_groups in by_value.items():
-            if len(value_groups) < 2:
+            len_groups = [aids for aids in value_groups.values() if aids]
+            if len(value_groups) < 2 or len(len_groups) != len(value_groups):
                 continue
+
             positions_by_value: dict[str, list[int]] = {}
             widths: set[int] = set()
             for vid, aids in value_groups.items():
-                if not aids:
-                    continue
-                sample = heads[aids[0]]
+                sample = heads.get(aids[0], "")
+                if not sample:
+                    break
                 candidate_positions: list[int] = []
                 for i in range(len(sample)):
-                    chars = {heads[aid][i] for aid in aids if i < len(heads[aid])}
+                    chars = {
+                        heads[aid][i]
+                        for aid in aids
+                        if i < len(heads.get(aid, ""))
+                    }
                     if len(chars) == 1:
                         candidate_positions.append(i)
                 runs: list[tuple[int, int]] = []
@@ -154,8 +163,6 @@ def _decode_with_product_fallback(self, snapshot):
                 if all(codes.values()) and len(set(codes.values())) == len(codes):
                     recovered[pid] = codes
 
-        if decoded is None:
-            decoded = {}
         for pid, codes in recovered.items():
             decoded.setdefault(pid, {}).update(codes)
         return decoded
