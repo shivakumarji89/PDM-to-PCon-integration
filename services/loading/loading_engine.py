@@ -66,7 +66,6 @@ class _BuiltProduct:
 class LoadingEngine:
     """Runs the complete bulk loading pipeline for any selection type."""
 
-    #: The ordered pipeline stages (drives progress percentage).
     _STAGES: tuple[str, ...] = (
         "Resolve Selection Context",
         "Load Product Information",
@@ -82,7 +81,6 @@ class LoadingEngine:
     def __init__(self, context: "ApplicationContext") -> None:
         self._context = context
 
-    # -- public entry point ------------------------------------------------
     def load(self, request: LoadRequest) -> LoadResult:
         """Execute the full bulk pipeline for ``request`` and return a result."""
         activity = self._context.activity_service.start_activity(
@@ -124,21 +122,17 @@ class LoadingEngine:
                 product_ids=product_ids,
                 activity_id=activity.id,
             )
-        except Exception as error:  # defensive: report and never leak partials
+        except Exception as error:
             activity.fail(str(error))
             return LoadResult(ok=False, message=str(error), activity_id=activity.id)
         finally:
             if connection is not None:
                 connection.close()
 
-    # -- pipeline stages ---------------------------------------------------
     def _resolve_selection_context(
         self, request: LoadRequest, activity: "ActivityHandle"
     ) -> tuple[list[str], dict[str, Any]]:
         self._begin_stage(activity, 0, "Resolving selection context")
-        # Selection-type-specific resolution is the ONLY branch in the pipeline.
-        # It yields the product ids AND their catalogue context so downstream
-        # bulk queries produce results identical to the existing loader.
         if request.products:
             product_ids = [p.id for p in request.products]
             catalogue_by_product = {
@@ -236,7 +230,6 @@ class LoadingEngine:
             product = Product(id=pid)
             info_row = indexes.info.get(pid)
             if info_row is not None:
-                # Reuse the proven single-product mapping (no duplication).
                 pdm._apply_product_info(product, [info_row])
                 product.code = (info_row.ProductCode or "").strip()
 
@@ -268,20 +261,27 @@ class LoadingEngine:
         activity: "ActivityHandle",
     ) -> Snapshot:
         self._begin_stage(activity, 7, "Building snapshot")
-        # The engine builds a fresh snapshot and merges every product's mapped
-        # data into the flat collections (append-only). It does NOT touch the
-        # shared SnapshotManager, so existing loaders are unaffected.
         snapshot = Snapshot()
         if built:
             first = built[0].product
             snapshot.product = first
             snapshot.id = first.id
         for entry in built:
+            product_id = str(entry.product.id or "")
             snapshot.articles.extend(entry.articles)
             snapshot.properties.extend(entry.properties)
             snapshot.property_values.extend(entry.property_values)
             snapshot.options.extend(entry.options)
             snapshot.option_values.extend(entry.option_values)
+
+            # Preserve the product-level PDM links already fetched by this load.
+            # The reduction service consumes these indexes; rebuilding them later
+            # would duplicate the existing attribute query/service path.
+            snapshot.product_property_value_ids[product_id] = [
+                str(value.id) for value in entry.property_values if value.id is not None
+            ]
+            snapshot.product_range[product_id] = str(entry.product.range_name or "")
+
         snapshot.metadata = SnapshotMetadata(
             source="LoadingEngine",
             product_code=request.label or (request.selection_id or ""),
@@ -293,22 +293,15 @@ class LoadingEngine:
     ) -> None:
         self._begin_stage(activity, 8, "Initializing engineering")
         self._context.engineering_initialization_service.initialize(snapshot)
-        # Structural-trait classifier (post-load, read-only): tag the snapshot
-        # with its ProductProfile so downstream workflows pick the right approach.
         self._context.product_profile_service.classify(snapshot)
-        # Background relationship engine: derive the explicit Article/Property/
-        # Value relationship maps from the freshly initialized engineering graph.
-        # This runs on the engine's worker thread, so the workflow never waits.
         self._context.engineering_relationship_service.rebuild(snapshot)
 
-    # -- helpers -----------------------------------------------------------
     def _repository(self):
         return self._context.pdm_service.repository
 
     def _begin_stage(
         self, activity: "ActivityHandle", index: int, operation: str
     ) -> None:
-        """Report the current stage, operation and (stage-based) percentage."""
         activity.update_step(
             operation,
             stage_name=self._STAGES[index],
