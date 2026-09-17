@@ -59,6 +59,9 @@ from services.engineering.engineering_assignment_service import (
 from services.engineering.engineering_reduction_service import (
     EngineeringReductionService,
 )
+from services.engineering.pdm_article_reduction_service import (
+    PDMArticleReductionService,
+)
 from services.engineering.engineering_text_service import (
     EngineeringTextService,
 )
@@ -147,6 +150,7 @@ class ApplicationContext:
             EngineeringPropertyService: EngineeringPropertyService,
             EngineeringAssignmentService: EngineeringAssignmentService,
             EngineeringReductionService: EngineeringReductionService,
+            PDMArticleReductionService: PDMArticleReductionService,
             EngineeringTextService: EngineeringTextService,
             EngineeringRelationService: EngineeringRelationService,
             EngineeringArtbaseService: EngineeringArtbaseService,
@@ -359,6 +363,10 @@ class ApplicationContext:
     @property
     def engineering_reduction_service(self) -> EngineeringReductionService:
         return self.get_service(EngineeringReductionService)
+
+    @property
+    def pdm_article_reduction_service(self) -> PDMArticleReductionService:
+        return self.get_service(PDMArticleReductionService)
 
     @property
     def engineering_relationship_service(self) -> EngineeringRelationshipService:

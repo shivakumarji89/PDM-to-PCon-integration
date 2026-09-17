@@ -1,327 +1,303 @@
-"""Read-only PDM article reduction based on legacy ProductsList membership."""
+"""PDM-driven article reduction.
+
+This service is the production-side implementation of the reduction model proved
+against the legacy PDM ProductSelector filter.  It intentionally works from the
+already loaded :class:`Snapshot` instead of opening another PDM connection.
+
+The algorithm has two separate concerns:
+
+1. **Legacy filter semantics** - a candidate filter is the intersection of the
+   products carrying its selected AttributeValueIds, scoped to the same product
+   range.  This is the same AND-by-AttributeValueId rule used by ProductsList.
+2. **Reduction policy** - a product-code prefix is accepted as a reduction group
+   only when a functional-only PDM filter can reproduce exactly that prefix's
+   product set.  The prefix becomes the reduced pre-dot article.
+
+Only the pre-dot portion of an article is considered here.  The existing
+post-dot article/configuration pipeline is deliberately untouched.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Iterable
 
-from repositories.legacy_pdm_compat_repository import LegacyPDMCompatRepository
+from models.snapshot import Snapshot
 from services.base_service import BaseService
-from services.engineering.legacy_pdm_reduction_service import (
-    LegacyPDMReductionService,
-    PDMSelection,
-)
 
 
 @dataclass(frozen=True)
-class PDMAttributeValue:
-    """One ProductAttributeValues row with enough metadata to classify it."""
+class PDMReductionGroup:
+    """One validated reduced pre-dot article family."""
 
-    attribute_value_id: str
-    attribute_id: str = ""
-    attribute_name: str = ""
-    value_name: str = ""
-    order_code_value: str = ""
-
-
-@dataclass(frozen=True)
-class PDMProductRecord:
-    """Minimal Product record consumed by the reduction algorithm."""
-
-    product_id: str
-    product: str
-    product_range_id: Any
-    eligible: bool = True
-    attribute_values: tuple[PDMAttributeValue, ...] = ()
-
-
-@dataclass(frozen=True)
-class PDMFilterValidation:
-    valid: bool
-    returned_product_ids: tuple[str, ...] = ()
-    reason: str = ""
-
-
-@dataclass(frozen=True)
-class PDMEquivalentFilter:
-    prefix: str
-    attribute_value_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class PDMArticleReductionCandidate:
-    product_range_id: Any
-    base: str
+    base_article: str
     product_ids: tuple[str, ...]
     filter_attribute_value_ids: tuple[str, ...]
-    filter_attributes: tuple[PDMSelection, ...]
-    validation: PDMFilterValidation
-    ambiguous_equivalent_filters: tuple[PDMEquivalentFilter, ...] = ()
+    product_range: str = ""
+
+
+@dataclass(frozen=True)
+class PDMReductionResult:
+    """Read-only result of PDM-driven reduction discovery."""
+
+    groups: tuple[PDMReductionGroup, ...] = ()
+    uncovered_product_ids: tuple[str, ...] = ()
 
 
 class PDMArticleReductionService(BaseService):
-    """Discover validated pre-dot article groups without mutating engineering data."""
+    """Discover and apply PDM-validated pre-dot article reductions."""
 
-    def __init__(
-        self,
-        context: Any = None,
-        repository: LegacyPDMCompatRepository | None = None,
-    ) -> None:
-        if context is not None:
-            super().__init__(context)
-        else:
-            self.context = None
-        self.repository = repository
+    def discover(self, snapshot: Snapshot | None) -> PDMReductionResult:
+        """Discover exact prefix/filter groups from an already loaded snapshot.
 
-    @staticmethod
-    def _value(record: Any, name: str, default: Any = None) -> Any:
-        if isinstance(record, Mapping):
-            return record.get(name, default)
-        return getattr(record, name, default)
+        A group is accepted only when its product-code prefix can be reproduced
+        exactly by a conjunction of functional PDM AttributeValueIds.  Functional
+        values are identified by the legacy PDM rule: ``AttributeType == 0`` and
+        an empty ``OrderCodeValue``.  Dimension/order-code values are therefore
+        excluded from reduction and remain part of the existing article tail.
 
-    @classmethod
-    def _attribute_values(cls, record: Any) -> tuple[PDMAttributeValue, ...]:
-        rows = cls._value(record, "attribute_values", None)
-        if rows is None:
-            rows = cls._value(record, "functional_attributes", None)
-        if rows is None:
-            rows = cls._value(record, "product_attribute_values", None)
-        if rows is None:
-            rows = cls._value(record, "ProductAttributeValues", None)
-        if rows is None:
-            ids = cls._value(record, "product_attribute_value_ids", None)
-            if ids is None:
-                ids = cls._value(record, "ProductAttributeValueIds", ())
-            rows = (PDMAttributeValue(str(value)) for value in (ids or ()))
-        result: list[PDMAttributeValue] = []
-        for row in rows:
-            if isinstance(row, PDMAttributeValue):
-                result.append(row)
-                continue
-            value_id = cls._value(row, "attribute_value_id", None)
-            if value_id is None:
-                value_id = cls._value(row, "AttributeValueId", None)
-            if value_id is None:
-                value_id = cls._value(row, "id", None)
-            if value_id is None:
-                continue
-            result.append(
-                PDMAttributeValue(
-                    attribute_value_id=str(value_id),
-                    attribute_id=str(cls._value(row, "attribute_id", cls._value(row, "AttributeId", "")) or ""),
-                    attribute_name=str(cls._value(row, "attribute_name", cls._value(row, "AttributeName", "")) or ""),
-                    value_name=str(cls._value(row, "value_name", cls._value(row, "ValueName", "")) or ""),
-                    order_code_value=str(cls._value(row, "order_code_value", cls._value(row, "OrderCodeValue", "")) or ""),
-                )
-            )
-        return tuple(result)
+        No PDM query is performed here.  ``snapshot.product_property_value_ids``
+        is the product-level PAV source already populated by LoadingEngine.
+        """
+        if snapshot is None or not snapshot.articles:
+            return PDMReductionResult()
 
-    @classmethod
-    def _normalise_product(cls, record: Any) -> PDMProductRecord:
-        product_id = cls._value(record, "product_id", cls._value(record, "ProductId"))
-        product = cls._value(record, "product", cls._value(record, "Product", ""))
-        range_id = cls._value(record, "product_range_id", cls._value(record, "ProductRangeId"))
-        eligible = cls._value(record, "eligible", cls._value(record, "Eligibility", True))
-        if isinstance(eligible, str):
-            eligible = eligible.strip().lower() not in {"", "0", "false", "no", "n"}
-        return PDMProductRecord(
-            product_id=str(product_id),
-            product=str(product or ""),
-            product_range_id=range_id,
-            eligible=bool(eligible),
-            attribute_values=cls._attribute_values(record),
-        )
-
-    @staticmethod
-    def _prefixes(products: Iterable[PDMProductRecord]) -> dict[str, tuple[PDMProductRecord, ...]]:
-        grouped: dict[str, list[PDMProductRecord]] = {}
-        for product in products:
-            code = product.product.split(".", 1)[0]
-            for length in range(1, len(code)):
-                grouped.setdefault(code[:length], []).append(product)
-        return {prefix: tuple(rows) for prefix, rows in grouped.items()}
-
-    @classmethod
-    def _meaningful_prefixes(
-        cls, products: Iterable[PDMProductRecord]
-    ) -> tuple[tuple[str, tuple[PDMProductRecord, ...]], ...]:
-        """Keep the longest strict prefix for each multi-product ID set."""
-        by_ids: dict[frozenset[str], tuple[str, tuple[PDMProductRecord, ...]]] = {}
-        for prefix, prefix_products in cls._prefixes(products).items():
-            product_ids = frozenset(product.product_id for product in prefix_products)
-            if len(product_ids) < 2:
-                continue
-            current = by_ids.get(product_ids)
-            if current is None or len(prefix) > len(current[0]):
-                by_ids[product_ids] = (prefix, prefix_products)
-        return tuple(sorted(by_ids.values(), key=lambda item: item[0]))
-
-    @staticmethod
-    def _functional_values(
-        products: tuple[PDMProductRecord, ...],
-    ) -> tuple[PDMAttributeValue, ...]:
-        if not products:
-            return ()
-        common = {
-            value.attribute_value_id
-            for value in products[0].attribute_values
-            if not value.order_code_value.strip()
+        value_is_functional = self._functional_value_ids(snapshot)
+        product_values = self._product_functional_values(snapshot, value_is_functional)
+        product_codes = self._product_pre_dot_codes(snapshot)
+        range_by_product = {
+            str(pid): str(name or "")
+            for pid, name in (getattr(snapshot, "product_range", {}) or {}).items()
         }
-        by_id = {value.attribute_value_id: value for value in products[0].attribute_values}
-        for product in products[1:]:
-            common &= {
-                value.attribute_value_id
-                for value in product.attribute_values
-                if not value.order_code_value.strip()
-            }
-            for value in product.attribute_values:
-                by_id.setdefault(value.attribute_value_id, value)
-        return tuple(by_id[value_id] for value_id in sorted(common))
+
+        products = {
+            pid
+            for pid in product_codes
+            if product_values.get(pid)
+        }
+        if len(products) < 2:
+            return PDMReductionResult(uncovered_product_ids=tuple(sorted(products)))
+
+        postings = self._posting_index(product_values)
+        prefix_groups = self._prefix_groups(product_codes, products)
+
+        candidates: list[PDMReductionGroup] = []
+        for prefix, prefix_products in prefix_groups:
+            if len(prefix_products) < 2:
+                continue
+            ranges = {range_by_product.get(pid, "") for pid in prefix_products}
+            # A legacy ProductsList filter is range-scoped.  A prefix spanning
+            # multiple known ranges cannot be validated as one legacy group.
+            if len(ranges) != 1:
+                continue
+            range_name = next(iter(ranges))
+
+            common = self._common_values(prefix_products, product_values)
+            selected = self._find_exact_filter(
+                prefix_products,
+                products,
+                common,
+                postings,
+                range_by_product,
+                range_name,
+            )
+            if selected is None:
+                continue
+            candidates.append(
+                PDMReductionGroup(
+                    base_article=prefix,
+                    product_ids=tuple(sorted(prefix_products)),
+                    filter_attribute_value_ids=tuple(sorted(selected)),
+                    product_range=range_name,
+                )
+            )
+
+        # Prefer the broadest validated families first.  This is a reduction
+        # policy, not a claim about legacy PDM behavior: legacy PDM only defines
+        # the filter result, not how a new reduced catalogue chooses overlapping
+        # families.
+        candidates.sort(
+            key=lambda group: (
+                -len(group.product_ids),
+                len(group.base_article),
+                group.product_range,
+                group.base_article,
+            )
+        )
+        selected_groups: list[PDMReductionGroup] = []
+        covered: set[str] = set()
+        for group in candidates:
+            ids = set(group.product_ids)
+            if covered & ids:
+                continue
+            selected_groups.append(group)
+            covered.update(ids)
+
+        uncovered = tuple(sorted(products - covered))
+        return PDMReductionResult(
+            groups=tuple(selected_groups),
+            uncovered_product_ids=uncovered,
+        )
+
+    def apply(self, snapshot: Snapshot | None) -> PDMReductionResult:
+        """Apply validated reduced pre-dot articles to engineering members.
+
+        Only ``MemberArticle.reduced_article`` is changed.  The source
+        ``Article.code`` and its post-dot configuration are never changed.
+        Existing reductions are cleared first so the operation is idempotent.
+        """
+        result = self.discover(snapshot)
+        if snapshot is None or snapshot.engineering is None:
+            return result
+
+        base_by_product = {
+            pid: group.base_article
+            for group in result.groups
+            for pid in group.product_ids
+        }
+        article_product = {
+            str(article.id): str(article.product_id or "")
+            for article in snapshot.articles
+        }
+        for family in snapshot.engineering.families:
+            for member in family.members:
+                product_id = article_product.get(str(member.article_id), "")
+                member.reduced_article = base_by_product.get(product_id, "")
+        return result
 
     @staticmethod
-    def _selection(value: PDMAttributeValue) -> PDMSelection:
-        return PDMSelection(
-            attribute_id=value.attribute_id,
-            attribute_value_id=value.attribute_value_id,
-            attribute_name=value.attribute_name,
-            value_name=value.value_name,
-            order_code_value=value.order_code_value,
-        )
+    def _functional_value_ids(snapshot: Snapshot) -> set[str]:
+        """Return AttributeValue ids that are functional for reduction."""
+        result: set[str] = set()
+        for prop in snapshot.properties:
+            if prop.attribute_type != 0:
+                continue
+            for value in prop.values:
+                if not (value.code or "").strip():
+                    result.add(str(value.id))
+        return result
 
-    def _validate(
-        self,
-        range_id: Any,
-        selections: tuple[PDMSelection, ...],
-        expected_ids: frozenset[str],
-        *,
-        language_id: Any,
-        us_data: bool,
-        product_category_id: Any,
-    ) -> PDMFilterValidation:
-        if self.repository is None:
-            return PDMFilterValidation(False, reason="A legacy repository is required.")
-        scope = product_category_id if us_data else range_id
-        if us_data and product_category_id is None:
-            return PDMFilterValidation(False, reason="USProductsList requires ProductCategoryId.")
-        rows = self.repository.fetch_legacy_filtered_products(
-            scope,
-            language_id,
-            LegacyPDMReductionService.build_attribute_xml(selections),
-            us_data=us_data,
-        )
-        returned = tuple(sorted({str(self._value(row, "ProductId")) for row in rows if self._value(row, "ProductId") is not None}))
-        valid = frozenset(returned) == expected_ids
-        return PDMFilterValidation(
-            valid,
-            returned,
-            "" if valid else "ProductsList ProductId set differs from the prefix set.",
-        )
-
-    def _equivalent_single_value_filters(
-        self,
-        range_id: Any,
-        values: tuple[PDMAttributeValue, ...],
-        expected_ids: frozenset[str],
-        *,
-        language_id: Any,
-        us_data: bool,
-        product_category_id: Any,
-    ) -> tuple[PDMEquivalentFilter, ...]:
-        """Check only singleton subsets to expose cheap filter ambiguity."""
-        if len(values) < 2:
-            return ()
-        equivalent: list[PDMEquivalentFilter] = []
-        for value in values:
-            selection = self._selection(value)
-            validation = self._validate(
-                range_id,
-                (selection,),
-                expected_ids,
-                language_id=language_id,
-                us_data=us_data,
-                product_category_id=product_category_id,
+    @classmethod
+    def _product_functional_values(
+        cls,
+        snapshot: Snapshot,
+        functional_value_ids: set[str],
+    ) -> dict[str, frozenset[str]]:
+        source = getattr(snapshot, "product_property_value_ids", {}) or {}
+        return {
+            str(product_id): frozenset(
+                str(value_id)
+                for value_id in value_ids
+                if str(value_id) in functional_value_ids
             )
-            if validation.valid:
-                equivalent.append(
-                    PDMEquivalentFilter(
-                        prefix="",
-                        attribute_value_ids=(value.attribute_value_id,),
-                    )
-                )
-        return tuple(equivalent)
+            for product_id, value_ids in source.items()
+        }
 
-    def discover(
-        self,
-        products: Iterable[Any],
-        *,
-        language_id: Any = 1,
-        us_data: bool = False,
-        product_category_id: Any = None,
-    ) -> tuple[PDMArticleReductionCandidate, ...]:
-        """Return only prefixes whose common functional filter exactly validates."""
-        records = [self._normalise_product(product) for product in products]
-        by_range: dict[Any, list[PDMProductRecord]] = {}
-        for product in records:
-            if product.product_range_id is not None:
-                by_range.setdefault(product.product_range_id, []).append(product)
+    @staticmethod
+    def _product_pre_dot_codes(snapshot: Snapshot) -> dict[str, str]:
+        """Return one pre-dot Product/Item code per product.
 
-        candidates: list[PDMArticleReductionCandidate] = []
-        for range_id, range_products in by_range.items():
-            for prefix, prefix_products in self._meaningful_prefixes(
-                product for product in range_products if product.eligible
-            ):
-                product_ids = frozenset(product.product_id for product in prefix_products)
-                values = self._functional_values(prefix_products)
-                selections = tuple(self._selection(value) for value in values)
-                validation = self._validate(
-                    range_id,
-                    selections,
-                    product_ids,
-                    language_id=language_id,
-                    us_data=us_data,
-                    product_category_id=product_category_id,
-                )
-                if validation.valid:
-                    singleton_equivalents = self._equivalent_single_value_filters(
-                        range_id,
-                        values,
-                        product_ids,
-                        language_id=language_id,
-                        us_data=us_data,
-                        product_category_id=product_category_id,
-                    )
-                    candidates.append(
-                        PDMArticleReductionCandidate(
-                            product_range_id=range_id,
-                            base=prefix,
-                            product_ids=tuple(sorted(product_ids)),
-                            filter_attribute_value_ids=tuple(value.attribute_value_id for value in values),
-                            filter_attributes=selections,
-                            validation=validation,
-                            ambiguous_equivalent_filters=singleton_equivalents,
-                        )
-                    )
+        The source article is the already loaded Item article.  Only its prefix
+        before the first ``.`` is read; everything after the dot is ignored.
+        """
+        result: dict[str, str] = {}
+        for article in snapshot.articles:
+            product_id = str(article.product_id or "")
+            if not product_id or product_id in result:
+                continue
+            code = (article.code or "").strip()
+            if not code:
+                continue
+            result[product_id] = code.split(".", 1)[0]
+        return result
 
-        by_ids: dict[tuple[Any, tuple[str, ...]], list[PDMArticleReductionCandidate]] = {}
-        for candidate in candidates:
-            key = (candidate.product_range_id, candidate.product_ids)
-            by_ids.setdefault(key, []).append(candidate)
-        enriched: list[PDMArticleReductionCandidate] = []
-        for candidate in candidates:
-            equivalent = tuple(
-                PDMEquivalentFilter(other.base, other.filter_attribute_value_ids)
-                for other in by_ids[(candidate.product_range_id, candidate.product_ids)]
-                if other.base != candidate.base
-                or other.filter_attribute_value_ids != candidate.filter_attribute_value_ids
-            )
-            enriched.append(
-                PDMArticleReductionCandidate(
-                    product_range_id=candidate.product_range_id,
-                    base=candidate.base,
-                    product_ids=candidate.product_ids,
-                    filter_attribute_value_ids=candidate.filter_attribute_value_ids,
-                    filter_attributes=candidate.filter_attributes,
-                    validation=candidate.validation,
-                        ambiguous_equivalent_filters=equivalent + candidate.ambiguous_equivalent_filters,
-                )
-            )
-        return tuple(enriched)
+    @staticmethod
+    def _posting_index(
+        product_values: dict[str, frozenset[str]],
+    ) -> dict[str, set[str]]:
+        postings: dict[str, set[str]] = {}
+        for product_id, values in product_values.items():
+            for value_id in values:
+                postings.setdefault(value_id, set()).add(product_id)
+        return postings
+
+    @staticmethod
+    def _prefix_groups(
+        product_codes: dict[str, str],
+        products: set[str],
+    ) -> list[tuple[str, set[str]]]:
+        groups: dict[str, set[str]] = {}
+        for product_id in products:
+            code = product_codes.get(product_id, "")
+            # A full product code is not a reduction.  We need a shorter common
+            # pre-dot base so at least one variable/configuration character is
+            # actually removed.
+            for length in range(1, len(code)):
+                prefix = code[:length]
+                groups.setdefault(prefix, set()).add(product_id)
+        return [
+            (prefix, ids)
+            for prefix, ids in groups.items()
+            if len(ids) >= 2
+        ]
+
+    @staticmethod
+    def _common_values(
+        product_ids: Iterable[str],
+        product_values: dict[str, frozenset[str]],
+    ) -> set[str]:
+        ids = list(product_ids)
+        if not ids:
+            return set()
+        common = set(product_values.get(ids[0], ()))
+        for product_id in ids[1:]:
+            common &= set(product_values.get(product_id, ()))
+            if not common:
+                break
+        return common
+
+    @classmethod
+    def _find_exact_filter(
+        cls,
+        target: set[str],
+        products: set[str],
+        common_values: set[str],
+        postings: dict[str, set[str]],
+        range_by_product: dict[str, str],
+        range_name: str,
+    ) -> set[str] | None:
+        """Find a functional value conjunction whose result is exactly target.
+
+        Start with the eligible products in the target's range.  Every candidate
+        value is known to occur on every target product, so intersecting its
+        posting set can never remove a target member.  If an exact legacy filter
+        exists, repeatedly adding any common value that shrinks the current set
+        will eventually reach the target.
+        """
+        scoped = {
+            product_id
+            for product_id in products
+            if range_by_product.get(product_id, "") == range_name
+        }
+        current = set(scoped)
+        selected: set[str] = set()
+        # Smaller postings first usually reaches the target with fewer values and
+        # keeps the generated filter compact.  The result is deterministic.
+        ordered_values = sorted(
+            common_values,
+            key=lambda value_id: (len(postings.get(value_id, set())), value_id),
+        )
+        while current != target:
+            best_value = None
+            best_next = current
+            for value_id in ordered_values:
+                if value_id in selected:
+                    continue
+                next_set = current & postings.get(value_id, set())
+                if target.issubset(next_set) and len(next_set) < len(best_next):
+                    best_value = value_id
+                    best_next = next_set
+            if best_value is None:
+                return None
+            selected.add(best_value)
+            current = best_next
+        return selected

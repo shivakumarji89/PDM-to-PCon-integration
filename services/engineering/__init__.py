@@ -1,5 +1,9 @@
 """Engineering services package.
 
-Pure engineering-domain services that operate on an already-populated Snapshot.
-They never access PDM, the UI, or signals.
+Engineering-domain services operate on an already-populated Snapshot. The
+PDM reduction bridge is loaded here so the existing ArticleSet workflow can
+consume validated PDM reduction lengths without moving PDM access into the
+engineering reduction engine itself.
 """
+
+from services.engineering import pdm_reduction_integration  # noqa: F401,E402
