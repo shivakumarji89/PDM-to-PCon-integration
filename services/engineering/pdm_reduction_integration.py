@@ -22,10 +22,11 @@ def _materialize_with_pdm_base(self, snapshot):
     if snapshot is None or not article_sets:
         return article_sets
 
-    try:
-        result = self.context.pdm_article_reduction_service.discover(snapshot)
-    except Exception:
-        return article_sets
+    # Do not silently fall back to the legacy base-length calculation. If the
+    # PDM reduction service is unavailable or fails, that is an integration
+    # failure that must remain visible instead of producing a plausible but
+    # potentially incorrect ArticleSet result.
+    result = self.context.pdm_article_reduction_service.discover(snapshot)
 
     base_by_product: dict[str, str] = {
         str(product_id): group.base_article
