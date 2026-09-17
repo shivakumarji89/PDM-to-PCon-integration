@@ -15,6 +15,38 @@ from services.engineering.engineering_class_service import EngineeringClassServi
 _ORIGINAL_DECODE = EngineeringClassService._decode_config_codes_by_value_id
 
 
+def _add_unresolved_slice_hints(self, snapshot, config_props):
+    """Expose an Ignore choice even when a config property has no decodable span.
+
+    The core decoder only creates ``_slice_hints`` for properties that it can
+    position in the article head. That made an unresolved configuration property
+    impossible to keep in the base from Class Creation because the UI only shows
+    the Ignore checkbox when a hint exists. An unresolved property is still a
+    legitimate user decision: it can be left in the base instead of pretending
+    that a missing code was decoded.
+    """
+    hints = dict(getattr(self, "_slice_hints", {}) or {})
+    overrides = getattr(snapshot, "config_ignore_overrides", None) or {}
+    layout = getattr(self, "_position_layout", {}) or {}
+    for prop in config_props:
+        pid = str(prop.id)
+        if pid in hints:
+            continue
+        entry = layout.get(pid, {})
+        hints[pid] = {
+            "overlaps": "",
+            "auto_ignore": False,
+            "ignored": bool(overrides.get(pid, False)),
+            "has_dependent_options": bool(
+                getattr(prop, "has_dependent_options", False)
+            ),
+            "width": int(entry.get("width", 0) or 0),
+            "position": entry.get("position"),
+            "unresolved": True,
+        }
+    self._slice_hints = hints
+
+
 def _decode_with_product_fallback(self, snapshot):
     if snapshot is None:
         return _ORIGINAL_DECODE(self, snapshot)
@@ -22,7 +54,14 @@ def _decode_with_product_fallback(self, snapshot):
     apv = snapshot.article_property_value_ids or {}
     ppv = snapshot.product_property_value_ids or {}
     if not apv or not ppv:
-        return _ORIGINAL_DECODE(self, snapshot)
+        decoded = _ORIGINAL_DECODE(self, snapshot)
+        config_props = [
+            p for p in snapshot.properties
+            if p.values and not any((v.code or "").strip() for v in p.values)
+        ]
+        if config_props:
+            _add_unresolved_slice_hints(self, snapshot, config_props)
+        return decoded
 
     config_props = [
         p for p in snapshot.properties
@@ -70,7 +109,9 @@ def _decode_with_product_fallback(self, snapshot):
         merged[aid] = merged_values
 
     if not changed:
-        return _ORIGINAL_DECODE(self, snapshot)
+        decoded = _ORIGINAL_DECODE(self, snapshot)
+        _add_unresolved_slice_hints(self, snapshot, config_props)
+        return decoded
 
     original_apv = snapshot.article_property_value_ids
     try:
@@ -165,6 +206,7 @@ def _decode_with_product_fallback(self, snapshot):
 
         for pid, codes in recovered.items():
             decoded.setdefault(pid, {}).update(codes)
+        _add_unresolved_slice_hints(self, snapshot, config_props)
         return decoded
     finally:
         snapshot.article_property_value_ids = original_apv
