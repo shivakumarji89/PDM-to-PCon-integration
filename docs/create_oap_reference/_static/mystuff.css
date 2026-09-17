@@ -1,0 +1,27 @@
+.em-new
+{
+    color: red;
+    font-weight: bold;
+}
+.change-breaking
+{
+    color: red;
+    font-weight: bold;
+}
+.highlight .n
+{
+    color: black;
+}
+
+table.create-oap-idlist-table tbody td,
+table.create-oap-version-history tbody td
+{
+    vertical-align: top !important;
+}
+
+.create-oap-force-wrap {
+    white-space: wrap;
+}
+.wy-nav-content {
+	max-width: 1000px !important
+}

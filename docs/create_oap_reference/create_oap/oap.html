@@ -1,0 +1,1387 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OAP &mdash; Create OAP  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/mystuff.css?v=45b9e57b" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7f41d439"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="IdObjects" href="idobjects.html" />
+    <link rel="prev" title="Config_oap" href="config_oap.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Create OAP
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../first_steps/first_steps.html">First steps</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_01.html">Minimal config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_01.html#generating-oap-tables">Generating oap-tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_02.html">The OAP-type</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_02.html#link-oap-type-via-ocd-articles">Link OAP-type via OCD articles</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_02.html#link-oap-type-via-metatypes">Link OAP-type via metatypes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_03.html">Interactors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_04.html">Actions, objects and method calls</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#actions">Actions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#objects">Objects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#methodcalls">MethodCalls</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../examples/01_using_articles.html">Adding interactors to plain articles</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/02_using_metatypes.html">Adding interactors to Metatype-articles</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/04_manual_ia.html">Creating interactors manually</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/16_propedit.html">Customizing a PropEdit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/08_siblings.html">Creating new scene objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/08_siblings.html#creating-a-new-object-by-an-article-number">Creating a new object by an article number</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/08_siblings.html#creating-a-new-object-by-a-metatype">Creating a new object by a metatype</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/08_siblings.html#use-metatype-info-for-filtering">Use metatype info for filtering</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/08_siblings.html#sorting-the-items-in-an-actionlist">Sorting the items in an actionlist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/08_siblings.html#conclusion">Conclusion</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/18_choicelists.html">Choicelists</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/18_choicelists.html#list">List</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/18_choicelists.html#tiles">Tiles</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/18_choicelists.html#list-with-images">List with images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/18_choicelists.html#list-with-custom-sized-images">List with custom sized images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/18_choicelists.html#cascading-choicelists">Cascading choicelists</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/05_handle_texts.html">Handling texts</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/05_handle_texts.html#fully-defined-translations">Fully defined translations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/05_handle_texts.html#using-a-fallback-language">Using a fallback language</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/06_handle_images.html">Handling images</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/07_methodcalls.html">MethodCalls</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/07_methodcalls.html#defining-a-methodcall-context">Defining a methodcall context</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/07_methodcalls.html#functions">Functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/07_methodcalls.html#actions">Actions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/17_message.html">Displaying a message</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/11_objects.html">OAP-objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/11_objects.html#predefined-objects">Predefined objects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/11_objects.html#custom-objects">Custom objects</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/10_reusing_existing_objects.html">Reusing existing script-objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/10_reusing_existing_objects.html#interactors-with-different-symbols">Interactors with different symbols</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/10_reusing_existing_objects.html#avoiding-alreadyaddedexceptions">Avoiding AlreadyAddedExceptions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/12_make3d.html">3D-interactors</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/12_make3d.html#multiple-view-angles">Multiple view angles</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/14_show_media.html">Show media</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/15_dimchange.html">DimChange</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/13_split.html">Include external classes</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../create_oap.html">Full specification</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="config_oap.html">Config_oap</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="config_oap.html#attributes-that-can-must-be-set">Attributes that can/must be set</a></li>
+<li class="toctree-l3"><a class="reference internal" href="config_oap.html#availabale-objects-and-types">Availabale objects and types</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">OAP</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#create_oap.create_oap.OAP"><code class="docutils literal notranslate"><span class="pre">OAP</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.default_objects"><code class="docutils literal notranslate"><span class="pre">OAP.default_objects</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.oap_man"><code class="docutils literal notranslate"><span class="pre">OAP.oap_man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.oap_series"><code class="docutils literal notranslate"><span class="pre">OAP.oap_series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.requires_create_oap"><code class="docutils literal notranslate"><span class="pre">OAP.requires_create_oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.methodcall_actions"><code class="docutils literal notranslate"><span class="pre">OAP.methodcall_actions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.read_texts_from_file"><code class="docutils literal notranslate"><span class="pre">OAP.read_texts_from_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.build_ebase"><code class="docutils literal notranslate"><span class="pre">OAP.build_ebase()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#creating-interactors">Creating interactors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_interactor_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_interactor_choicelist"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_choicelist()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_interactor_delete"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_delete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_interactor_message_static"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_message_static()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_interactor_message_dynamic"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_message_dynamic()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#creating-actions">Creating actions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_choicelist"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_choicelist()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_createobj"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_createobj()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_delete"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_delete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_dimchange"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_dimchange()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_message"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_message()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_no_action"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_no_action()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_propchange_set_editability"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_editability()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_propchange_set_value"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_value()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_propchange_set_visibility"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_visibility()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_action_show_media"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_show_media()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#creating-other-objects">Creating other objects</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_symboldisplay"><code class="docutils literal notranslate"><span class="pre">OAP.create_symboldisplay()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_methodcall"><code class="docutils literal notranslate"><span class="pre">OAP.create_methodcall()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_message_from_text"><code class="docutils literal notranslate"><span class="pre">OAP.create_message_from_text()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.create_message_from_action"><code class="docutils literal notranslate"><span class="pre">OAP.create_message_from_action()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#texts-and-images">Texts and Images</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.get_or_create_text"><code class="docutils literal notranslate"><span class="pre">OAP.get_or_create_text()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.get_or_create_image_set"><code class="docutils literal notranslate"><span class="pre">OAP.get_or_create_image_set()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.get_available_languages"><code class="docutils literal notranslate"><span class="pre">OAP.get_available_languages()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.get_languages_from_dsr"><code class="docutils literal notranslate"><span class="pre">OAP.get_languages_from_dsr()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.set_available_languages"><code class="docutils literal notranslate"><span class="pre">OAP.set_available_languages()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.add_available_language"><code class="docutils literal notranslate"><span class="pre">OAP.add_available_language()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.get_language_update_modes"><code class="docutils literal notranslate"><span class="pre">OAP.get_language_update_modes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.set_language_update_modes"><code class="docutils literal notranslate"><span class="pre">OAP.set_language_update_modes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.OAP.set_language_update_mode"><code class="docutils literal notranslate"><span class="pre">OAP.set_language_update_mode()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#mapping">Mapping</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#create_oap.create_oap.Article2Type"><code class="docutils literal notranslate"><span class="pre">Article2Type</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.oap"><code class="docutils literal notranslate"><span class="pre">Article2Type.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.man"><code class="docutils literal notranslate"><span class="pre">Article2Type.man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.series"><code class="docutils literal notranslate"><span class="pre">Article2Type.series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.artno"><code class="docutils literal notranslate"><span class="pre">Article2Type.artno</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.var_type"><code class="docutils literal notranslate"><span class="pre">Article2Type.var_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.Article2Type.variant"><code class="docutils literal notranslate"><span class="pre">Article2Type.variant</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type"><code class="docutils literal notranslate"><span class="pre">MetaType2Type</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.oap"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.man"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.series"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.mt_name"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.mt_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.var_type"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.var_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.variant"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.variant</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.prop_var_code"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.prop_var_code</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.MetaType2Type.mt"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.mt</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#symbols">Symbols</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#create_oap.create_oap.Symbol"><code class="docutils literal notranslate"><span class="pre">Symbol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.oap"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.interactor"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.interactor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.hidden_mode"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.hidden_mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.offset"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.offset</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.direction"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.direction</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.view_angle"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.view_angle</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.orientation_x"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.orientation_x</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.adjust_view_angle"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.adjust_view_angle()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay.make_3d"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.make_3d()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="idobjects.html">IdObjects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/easy_access.html">Easy access dictionaries for IdObjects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/action.html">Actions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action"><code class="docutils literal notranslate"><span class="pre">Action</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ActionChoice"><code class="docutils literal notranslate"><span class="pre">Action_ActionChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_CreateObject"><code class="docutils literal notranslate"><span class="pre">Action_CreateObject</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DeleteObj"><code class="docutils literal notranslate"><span class="pre">Action_DeleteObj</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DimChange"><code class="docutils literal notranslate"><span class="pre">Action_DimChange</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange"><code class="docutils literal notranslate"><span class="pre">Action_PropChange</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropEdit"><code class="docutils literal notranslate"><span class="pre">Action_PropEdit</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_SelectObj"><code class="docutils literal notranslate"><span class="pre">Action_SelectObj</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ShowMedia"><code class="docutils literal notranslate"><span class="pre">Action_ShowMedia</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_Message"><code class="docutils literal notranslate"><span class="pre">Action_Message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_MethodCall"><code class="docutils literal notranslate"><span class="pre">Action_MethodCall</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_NoAction"><code class="docutils literal notranslate"><span class="pre">Action_NoAction</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/actionchoice.html">ActionChoices</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionChoice"><code class="docutils literal notranslate"><span class="pre">ActionChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/actionchoice.html#actionlist">ActionList</a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/actionchoice.html#actionlistitem">ActionListItem</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/createobj.html">CreateObj</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/createobj.html#create_oap.create_oap.CreateObj"><code class="docutils literal notranslate"><span class="pre">CreateObj</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/dimchange.html">DimChangeSet</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/dimchange.html#create_oap.create_oap.DimChangeSet"><code class="docutils literal notranslate"><span class="pre">DimChangeSet</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/dimchange.html#create_oap.create_oap.DimChangeEntry"><code class="docutils literal notranslate"><span class="pre">DimChangeEntry</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/extmedia.html">ExtMedia</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/extmedia.html#create_oap.create_oap.ExtMedia"><code class="docutils literal notranslate"><span class="pre">ExtMedia</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/idobject.html">IdObject</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/idobject.html#create_oap.create_oap.IdObject"><code class="docutils literal notranslate"><span class="pre">IdObject</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/imageset.html">ImageSet</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/imageset.html#create_oap.create_oap.ImageSet"><code class="docutils literal notranslate"><span class="pre">ImageSet</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/interactor.html">Interactor</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor"><code class="docutils literal notranslate"><span class="pre">Interactor</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/message.html">Message</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/message.html#create_oap.create_oap.Message"><code class="docutils literal notranslate"><span class="pre">Message</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/methodcall.html">MethodCall</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/methodcall.html#create_oap.create_oap.MethodCall"><code class="docutils literal notranslate"><span class="pre">MethodCall</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/numtripel.html">NumTripel</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/numtripel.html#create_oap.create_oap.NumTripel"><code class="docutils literal notranslate"><span class="pre">NumTripel</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/object.html">Object</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object"><code class="docutils literal notranslate"><span class="pre">Object</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/object.html#object-methodcall">Object_MethodCall</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object_MethodCall"><code class="docutils literal notranslate"><span class="pre">Object_MethodCall</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/propchange.html">PropChange</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/propchange.html#create_oap.create_oap.PropChange"><code class="docutils literal notranslate"><span class="pre">PropChange</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/propedit.html">PropEdit</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/propedit.html#create_oap.create_oap.PropEdit"><code class="docutils literal notranslate"><span class="pre">PropEdit</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/propedit.html#create_oap.create_oap.PropEditProp"><code class="docutils literal notranslate"><span class="pre">PropEditProp</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/propedit.html#create_oap.create_oap.PropEditClass"><code class="docutils literal notranslate"><span class="pre">PropEditClass</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/text.html">Text</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/text.html#create_oap.create_oap.Text"><code class="docutils literal notranslate"><span class="pre">Text</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="idobjects/type.html">Type</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="idobjects/type.html#create_oap.create_oap.Type"><code class="docutils literal notranslate"><span class="pre">Type</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="mcc.html">MethodCallContext</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="mcc.html#create_oap.create_oap.OapMethodCallContext"><code class="docutils literal notranslate"><span class="pre">OapMethodCallContext</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="enums.html">Enums</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="enums/actionchoiceviewtype.html">ActionChoiceViewType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/actionchoiceviewtype.html#create_oap.create_oap.ActionChoiceViewType"><code class="docutils literal notranslate"><span class="pre">ActionChoiceViewType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/actiontype.html">ActionType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/actiontype.html#create_oap.create_oap.ActionType"><code class="docutils literal notranslate"><span class="pre">ActionType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/artspecmode.html">ArtSpecMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/artspecmode.html#create_oap.create_oap.ArtSpecMode"><code class="docutils literal notranslate"><span class="pre">ArtSpecMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/attachareageotype.html">AttachAreaGeoType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/attachareageotype.html#create_oap.create_oap.AttachAreaGeoType"><code class="docutils literal notranslate"><span class="pre">AttachAreaGeoType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/dimchangedimension.html">DimChangeDimension</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/dimchangedimension.html#create_oap.create_oap.DimChangeDimension"><code class="docutils literal notranslate"><span class="pre">DimChangeDimension</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/extmediatype.html">ExtMediaType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/extmediatype.html#create_oap.create_oap.ExtMediaType"><code class="docutils literal notranslate"><span class="pre">ExtMediaType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/imagesize.html">ImageSize</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/imagesize.html#create_oap.create_oap.ImageSize"><code class="docutils literal notranslate"><span class="pre">ImageSize</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/languageupdatemode.html">LanguageUpdateMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode"><code class="docutils literal notranslate"><span class="pre">LanguageUpdateMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/messagetype.html">MessageType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/messagetype.html#create_oap.create_oap.MessageType"><code class="docutils literal notranslate"><span class="pre">MessageType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/methodcalltype.html">MethodCallType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/methodcalltype.html#create_oap.create_oap.MethodCallType"><code class="docutils literal notranslate"><span class="pre">MethodCallType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/objectcategory.html">ObjectCategory</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/objectcategory.html#create_oap.create_oap.ObjectCategory"><code class="docutils literal notranslate"><span class="pre">ObjectCategory</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/offsettype.html">OffsetType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/offsettype.html#create_oap.create_oap.OffsetType"><code class="docutils literal notranslate"><span class="pre">OffsetType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/polylinerastertype.html">PolyLineRasterType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/polylinerastertype.html#create_oap.create_oap.PolyLineRasterType"><code class="docutils literal notranslate"><span class="pre">PolyLineRasterType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/posrotmode.html">PosRotMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/posrotmode.html#create_oap.create_oap.PosRotMode"><code class="docutils literal notranslate"><span class="pre">PosRotMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/propchangetype.html">PropChangeType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/propchangetype.html#create_oap.create_oap.PropChangeType"><code class="docutils literal notranslate"><span class="pre">PropChangeType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/staterestriction.html">StateRestriction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/staterestriction.html#create_oap.create_oap.StateRestriction"><code class="docutils literal notranslate"><span class="pre">StateRestriction</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/symboldirection.html">SymbolDirection</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/symboldirection.html#create_oap.create_oap.SymbolDirection"><code class="docutils literal notranslate"><span class="pre">SymbolDirection</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/symbolorientation.html">SymbolOrientation</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/symbolorientation.html#create_oap.create_oap.SymbolOrientation"><code class="docutils literal notranslate"><span class="pre">SymbolOrientation</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/symbolsize.html">SymbolSize</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize"><code class="docutils literal notranslate"><span class="pre">SymbolSize</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/symboltype.html">SymbolType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/symboltype.html#create_oap.create_oap.SymbolType"><code class="docutils literal notranslate"><span class="pre">SymbolType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="enums/varcodetype.html">VarCodeType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="enums/varcodetype.html#create_oap.create_oap.VarCodeType"><code class="docutils literal notranslate"><span class="pre">VarCodeType</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../version_history.html">Version history</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Create OAP</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../create_oap.html">Full specification</a></li>
+      <li class="breadcrumb-item active">OAP</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="oap">
+<h1>OAP<a class="headerlink" href="#oap" title="Link to this heading"></a></h1>
+<p>The OAP-object is the main part of <code class="code docutils literal notranslate"><span class="pre">create_oap</span></code> it provides a lot of helper and convenience methods to
+create interactors, action, messages, texts and all the IdObjects.
+An instance of OAP is automatically provided by <code class="code docutils literal notranslate"><span class="pre">create_oap</span></code>, so usually there is no need to create it manually.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">create_oap.create_oap.</span></span><span class="sig-name descname"><span class="pre">OAP</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_man</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Construct a new ‘OAP’ object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_man</strong> (<a class="reference external" href="../egr_mti_core/egr_mti_core/01_datamanager.html#egr_mti_core.datamanager.DataManager" title="(in egr_mti_core v0.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataManager</span></code></a>) – A DataManager holding information about the entire manufacturer.</p></li>
+<li><p><strong>config_path</strong> (<em>str</em>) – The path to the config_oap.py file</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.default_objects">
+<span class="sig-name descname"><span class="pre">default_objects</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span></em><a class="headerlink" href="#create_oap.create_oap.OAP.default_objects" title="Link to this definition"></a></dt>
+<dd><p>mapping of all default objects (e.g. self and parent)</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.oap_man">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">oap_man</span></span><a class="headerlink" href="#create_oap.create_oap.OAP.oap_man" title="Link to this definition"></a></dt>
+<dd><p>Manfuacturer for OAP-tables</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.oap_series">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">oap_series</span></span><a class="headerlink" href="#create_oap.create_oap.OAP.oap_series" title="Link to this definition"></a></dt>
+<dd><p>Series for OAP-tables</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.requires_create_oap">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">requires_create_oap</span></span><a class="headerlink" href="#create_oap.create_oap.OAP.requires_create_oap" title="Link to this definition"></a></dt>
+<dd><p>The create_oap version required for this script.</p>
+<p>See <a class="reference internal" href="../version_history.html#version-history"><span class="std std-ref">Version history</span></a> for an overview of changes for particular versions.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.methodcall_actions">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">methodcall_actions</span></span><a class="headerlink" href="#create_oap.create_oap.OAP.methodcall_actions" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of all methodcall actions (subset of all oap.actions)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.read_texts_from_file">
+<span class="sig-name descname"><span class="pre">read_texts_from_file</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.read_texts_from_file" title="Link to this definition"></a></dt>
+<dd><p>Read oap_text.csv and return existing translations as a dict of dicts with 
+{text-id: {lang: translation}}. If necessary the “__unused__”-prefix is removed.</p>
+<p>This method is called automatically.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.build_ebase">
+<span class="sig-name descname"><span class="pre">build_ebase</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.build_ebase" title="Link to this definition"></a></dt>
+<dd><p>Creates the oap.ebase file. To be called after oap-tables were successfully generated.</p>
+</dd></dl>
+
+</dd></dl>
+
+<p>The following sections provide a slight overview over these functions.</p>
+<section id="creating-interactors">
+<span id="oap-creating-interactors"></span><h2>Creating interactors<a class="headerlink" href="#creating-interactors" title="Link to this heading"></a></h2>
+<p>There is a set of convenience methods to create interactors. In a lot of cases these methods are
+sufficient to create a simple interactor.</p>
+<p>Every interactor has a <strong>name</strong>. It will be used to <strong>automatically</strong> create an <strong>ID</strong> according
+to the OAP-styleguide. The ID can be accessed via the property <strong>id</strong>. (e.g. my_interactor.id)</p>
+<dl class="py method" id="oap-create-interactor-propedit">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_interactor_propedit">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_interactor_propedit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolType.Edit</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolSize.small</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_restriction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">StateRestriction.None_</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_interactor_propedit" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a> with an included <a class="reference internal" href="idobjects/propedit.html#create_oap.create_oap.PropEdit" title="create_oap.create_oap.PropEdit"><code class="xref py py-class docutils literal notranslate"><span class="pre">PropEdit</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor, the accompanying 
+action and propedit</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – The name of the Text object that should be used as the dialog title. 
+A text object with this name will be implicitly created if it does 
+not already exist.</p></li>
+<li><p><strong>properties</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – list of property keys (e.g. [“Width”,”Depth”])</p></li>
+<li><p><strong>propclasses</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – list of property class keys (e.g. [“Dimensions”])</p></li>
+<li><p><strong>object</strong> (<a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object" title="create_oap.create_oap.Object"><em>Object</em></a>) – opt. OAP-object providing the properties/classes (default: default_objects[“self”])</p></li>
+<li><p><strong>symbol_type</strong> (<a class="reference internal" href="enums/symboltype.html#create_oap.create_oap.SymbolType" title="create_oap.create_oap.SymbolType"><em>SymbolType</em></a>) – opt. interactor symbol (default: SymbolType.Edit)</p></li>
+<li><p><strong>symbol_size</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – opt. interactor size (default: SymbolSize.small)</p></li>
+<li><p><strong>state_restriction</strong> (<a class="reference internal" href="enums/staterestriction.html#create_oap.create_oap.StateRestriction" title="create_oap.create_oap.StateRestriction"><em>StateRestriction</em></a>) – opt. global state restriction (default: StateRestriction.None_)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p>The following code fragment creates a propedit interactor with two properties (“MyProp1” and “MyProp2”).
+<strong>MyHeader</strong> is the title to be displayed.
+<strong>MyProp1</strong> and <strong>MyProp2</strong> are the properties to be shown when clicking on the interactor.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_propedit</span><span class="p">(</span><span class="s2">&quot;MyProps&quot;</span><span class="p">,</span> <span class="s2">&quot;MyHeader&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;MyProp1&quot;</span><span class="p">,</span> <span class="s2">&quot;MyProp2&quot;</span><span class="p">],</span> <span class="p">[])</span>
+</pre></div>
+</div>
+<dl class="py method" id="oap-create-interactor-choicelist">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_interactor_choicelist">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_interactor_choicelist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolType.Add</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolSize.large</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_interactor_choicelist" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a> with an included <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionChoice" title="create_oap.create_oap.ActionChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionChoice</span></code></a> and <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionList" title="create_oap.create_oap.ActionList"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionList</span></code></a>.
+The <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionList" title="create_oap.create_oap.ActionList"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionList</span></code></a> is available to be filled with <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action" title="create_oap.create_oap.Action"><code class="xref py py-class docutils literal notranslate"><span class="pre">Actions</span></code></a> 
+via <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionList.add_item" title="create_oap.create_oap.ActionList.add_item"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_item()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor, the accompanying actionchoice, 
+actionlist and action, created.</p></li>
+<li><p><strong>symbol_type</strong> (<a class="reference internal" href="enums/symboltype.html#create_oap.create_oap.SymbolType" title="create_oap.create_oap.SymbolType"><em>SymbolType</em></a>) – opt. interactor symbol (default: SymbolType.Add)</p></li>
+<li><p><strong>symbol_size</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – opt. interactor size (default: SymbolSize.large)</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – The name of the Text object that should be used as the dialog title. 
+A text object with this name will be implicitly created if it does 
+not already exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p>The following code fragment creates a choicelist interactor and adds actions to
+it’s implicitly created <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionList" title="create_oap.create_oap.ActionList"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionList</span></code></a>. As the code demonstrates the actionlist can
+be accessed by calling <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor.get_actionlist" title="create_oap.create_oap.Interactor.get_actionlist"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_actionlist</span></code></a> on the
+returned interactor, passing the same name as was given to <code class="code docutils literal notranslate"><span class="pre">create_interactor_choicelist</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="c1"># create interactor</span>
+<span class="linenos"> 2</span><span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_choicelist</span><span class="p">(</span><span class="s2">&quot;Colors&quot;</span><span class="p">)</span>
+<span class="linenos"> 3</span>
+<span class="linenos"> 4</span><span class="c1"># variable to hold the actionlist</span>
+<span class="linenos"> 5</span><span class="n">ac_l</span> <span class="o">=</span> <span class="n">ia</span><span class="o">.</span><span class="n">get_actionlist</span><span class="p">(</span><span class="s2">&quot;Colors&quot;</span><span class="p">)</span>
+<span class="linenos"> 6</span>
+<span class="linenos"> 7</span><span class="c1"># create action to set a value at a property</span>
+<span class="linenos"> 8</span><span class="n">action_color_blue</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_action_propchange_set_value</span><span class="p">(</span><span class="s2">&quot;Color_Blue&quot;</span><span class="p">,</span> <span class="s2">&quot;Color&quot;</span><span class="p">,</span> <span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;Blue&quot;</span><span class="p">))</span>
+<span class="linenos"> 9</span><span class="c1"># add this action to the actionlist</span>
+<span class="linenos">10</span><span class="n">ac_l</span><span class="o">.</span><span class="n">add_item</span><span class="p">(</span><span class="n">action_color_blue</span><span class="p">,</span> <span class="n">oap</span><span class="o">.</span><span class="n">get_or_create_text</span><span class="p">(</span><span class="s2">&quot;Blue&quot;</span><span class="p">))</span>
+<span class="linenos">11</span>
+<span class="linenos">12</span><span class="c1"># create action to set a value at a property</span>
+<span class="linenos">13</span><span class="n">action_color_green</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_action_propchange_set_value</span><span class="p">(</span><span class="s2">&quot;Color_Green&quot;</span><span class="p">,</span> <span class="s2">&quot;Color&quot;</span><span class="p">,</span> <span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;Green&quot;</span><span class="p">))</span>
+<span class="linenos">14</span><span class="c1"># add this action to the actionlist</span>
+<span class="linenos">15</span><span class="n">ac_l</span><span class="o">.</span><span class="n">add_item</span><span class="p">(</span><span class="n">action_color_green</span><span class="p">,</span> <span class="n">oap</span><span class="o">.</span><span class="n">get_or_create_text</span><span class="p">(</span><span class="s2">&quot;Green&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+<dl class="py method" id="oap-create-interactor-delete">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_interactor_delete">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_interactor_delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_type=SymbolType.Delete</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_size=SymbolSize.large</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_interactor_delete" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a> that deletes given object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor and the accompanying action.</p></li>
+<li><p><strong>symbol_type</strong> (<a class="reference internal" href="enums/symboltype.html#create_oap.create_oap.SymbolType" title="create_oap.create_oap.SymbolType"><em>SymbolType</em></a>) – opt. interactor symbol (default: SymbolType.Delete)</p></li>
+<li><p><strong>symbol_size</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – opt. interactor size (default: SymbolSize.large)</p></li>
+<li><p><strong>object</strong> (<em>opt. Object</em>) – object to be deleted. If None, the selected object will be deleted. (default: None)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<p>This convenience method deletes an object. By default this object is the selected element.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_delete</span><span class="p">(</span><span class="s2">&quot;DelArticle&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If a different object shall be deleteted, e.g. an element of the planning group while the planning group
+itself is selected, the object can be passed to the method.
+If you have a method that returns the required object you can use this to create an object accessible
+by OAP.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create an object by making an action that calls a method of</span>
+<span class="c1"># the planning group</span>
+<span class="n">last</span> <span class="o">=</span> <span class="n">Object_MethodCall</span><span class="p">(</span><span class="n">oap</span><span class="p">,</span> <span class="s2">&quot;last&quot;</span><span class="p">,</span> <span class="n">xOiJointPlGroup</span><span class="o">.</span><span class="n">lastObj</span><span class="o">.</span><span class="n">action</span><span class="p">())</span>
+<span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_delete</span><span class="p">(</span><span class="s2">&quot;DelArticle&quot;</span><span class="p">,</span> <span class="n">object_</span> <span class="o">=</span> <span class="n">last</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method" id="oap-create-interactor-message-static">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_interactor_message_static">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_interactor_message_static</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_name</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolSize.medium</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_interactor_message_static" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a> displaying a message with a static text. This interactor always 
+shows an Attention-symbol.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor and the accompanying action.</p></li>
+<li><p><strong>text_name</strong> (<em>str</em>) – The text to be displayed.
+A text object with this name will be implicitly created if it does 
+not yet exist.</p></li>
+<li><p><strong>symbol_size</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – opt. interactor size (default: SymbolSize.medium)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_message_static</span><span class="p">(</span><span class="s2">&quot;Name&quot;</span><span class="p">,</span> <span class="s2">&quot;msg_Text&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method" id="oap-create-interactor-message-dynamic">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_interactor_message_dynamic">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_interactor_message_dynamic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolSize.medium</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_interactor_message_dynamic" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a> displaying a text returned by the method of given action. 
+This interactor always shows an Attention-symbol. The return value of given action has to 
+be a string, otherwise the action-id is displayed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor and the accompanying action.</p></li>
+<li><p><strong>action</strong> (<a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_MethodCall" title="create_oap.create_oap.Action_MethodCall"><em>Action_MethodCall</em></a>) – An action returning the text to be shown in the message.</p></li>
+<li><p><strong>symbol_size</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – opt. interactor size (default: SymbolSize.medium)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interactor</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ia</span> <span class="o">=</span> <span class="n">oap</span><span class="o">.</span><span class="n">create_interactor_message_dynamic</span><span class="p">(</span><span class="s2">&quot;Name&quot;</span><span class="p">,</span> <span class="n">MyClass</span><span class="o">.</span><span class="n">getDynamicMessageText</span><span class="o">.</span><span class="n">action</span><span class="p">())</span>
+</pre></div>
+</div>
+</section>
+<section id="creating-actions">
+<span id="oap-creating-actions"></span><h2>Creating actions<a class="headerlink" href="#creating-actions" title="Link to this heading"></a></h2>
+<p>Just like for interactors, there are a lot of convenience methods to create actions. Each one of
+these actions might be added directly to an interactor or into an actionlist.</p>
+<p>Every action has a <strong>name</strong>. It will be used to create an <strong>ID</strong> <strong>automatically</strong> according to
+the OAP-styleguide. The ID can be accessed via the property <strong>id</strong>. (e.g. my_interactor.id)</p>
+<dl class="py method" id="oap-create-action-choicelist">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_choicelist">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_choicelist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_choicelist" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ActionChoice" title="create_oap.create_oap.Action_ActionChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> along with 
+an accompanying <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionChoice" title="create_oap.create_oap.ActionChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionChoice</span></code></a> and its <a class="reference internal" href="idobjects/actionchoice.html#create_oap.create_oap.ActionList" title="create_oap.create_oap.ActionList"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActionList</span></code></a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action, the actionchoice and actionlist.</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – The name of the Text object that should be used as the choicelist title. 
+A text object with this name will be implicitly created if it does 
+not already exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ActionChoice" title="create_oap.create_oap.Action_ActionChoice"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_ActionChoice</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-createobj">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_createobj">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_createobj</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parent=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_createobj" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_CreateObject" title="create_oap.create_oap.Action_CreateObject"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> 
+that creates an object (article).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>parent</strong> (<a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object" title="create_oap.create_oap.Object"><em>Object</em></a>) – The OAP-Object that the newly created object shall be a child 
+of (default: default_objects[“self”])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_CreateObject" title="create_oap.create_oap.Action_CreateObject"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_CreateObject</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-delete">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_delete">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_delete" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DeleteObj" title="create_oap.create_oap.Action_DeleteObj"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> 
+that deletes given object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>object</strong> (<em>opt. Object</em>) – object to be deleted (default: selected object)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DeleteObj" title="create_oap.create_oap.Action_DeleteObj"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_DeleteObj</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-dimchange">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_dimchange">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_dimchange</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dimension</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplier</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">separate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">third_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">condition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_dimchange" title="Link to this definition"></a></dt>
+<dd><p>Creates an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DimChange" title="create_oap.create_oap.Action_DimChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to 
+interactively change dimensions along with a corresponding 
+<a class="reference internal" href="idobjects/dimchange.html#create_oap.create_oap.DimChangeSet" title="create_oap.create_oap.DimChangeSet"><code class="xref py py-class docutils literal notranslate"><span class="pre">DimChangeSet</span></code></a> and 
+<a class="reference internal" href="idobjects/dimchange.html#create_oap.create_oap.DimChangeEntry" title="create_oap.create_oap.DimChangeEntry"><code class="xref py py-class docutils literal notranslate"><span class="pre">DimChangeEntry</span></code></a>.</p>
+<p>The DimChangeSet is available via the dimchangeset property of the returned action 
+and can be used to add further dimensions (<a class="reference internal" href="idobjects/dimchange.html#create_oap.create_oap.DimChangeSet.add_dimchange_entry" title="create_oap.create_oap.DimChangeSet.add_dimchange_entry"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_dimchange_entry</span></code></a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action, dimchangeset and dimchangeentry.</p></li>
+<li><p><strong>dimension</strong> (<a class="reference internal" href="enums/dimchangedimension.html#create_oap.create_oap.DimChangeDimension" title="create_oap.create_oap.DimChangeDimension"><em>DimChangeDimension</em></a>) – Dimension to be changed</p></li>
+<li><p><strong>prop</strong> (<em>str</em>) – key of the property that determines this dimension</p></li>
+<li><p><strong>multiplier</strong> (<em>float</em>) – a factor the property value needs to be multiplied with in order to convert it to meters</p></li>
+<li><p><strong>precision</strong> (<em>float</em>) – precision of the value in meters</p></li>
+<li><p><strong>separate</strong> (<em>str</em>) – change this dimension separately (should be a string containing an OAP-Expression that 
+will evaluate to a boolean)</p></li>
+<li><p><strong>third_dim</strong> (<em>str</em>) – if multiple dimensions can be changed simultaneously but the application does not support 
+this, mark this dimension to be changed separately (only needed in case of ambiguity, 
+should be a string containing an OAP-Expression that will evaluate to a boolean)</p></li>
+<li><p><strong>condition</strong> (<em>str</em>) – (opt.) a condition (should be a string containing an OAP-Expression that will evaluate to a boolean)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_DimChange" title="create_oap.create_oap.Action_DimChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_DimChange</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-message">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_message">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_message" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_Message" title="create_oap.create_oap.Action_Message"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> displaying a message.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>message</strong> (<a class="reference internal" href="idobjects/message.html#create_oap.create_oap.Message" title="create_oap.create_oap.Message"><em>Message</em></a>) – The message to be displayed</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_Message" title="create_oap.create_oap.Action_Message"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_Message</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-no-action">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_no_action">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_no_action</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_no_action" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_NoAction" title="create_oap.create_oap.Action_NoAction"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> that does nothing 
+(useful as placeholder during development).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_NoAction" title="create_oap.create_oap.Action_NoAction"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_NoAction</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-propchange-set">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_propchange_set_editability">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_propchange_set_editability</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_propchange_set_editability" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to modify 
+editability of a property.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>prop</strong> (<em>str</em>) – property key (e.g. “Color”)</p></li>
+<li><p><strong>value</strong> (<em>int</em>) – 0-not editable, 1-editable</p></li>
+<li><p><strong>object</strong> (<a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object" title="create_oap.create_oap.Object"><em>Object</em></a>) – opt. the object providing the property (default: default_objects[“self”])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_PropChange</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_propchange_set_value">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_propchange_set_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_propchange_set_value" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to set 
+the value of a property.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>prop</strong> (<em>str</em>) – property key (e.g. “Color”)</p></li>
+<li><p><strong>value</strong> (<em>numeric</em><em> | </em><em>OfmlSymbol</em><em> | </em><em>None</em>) – value to be set</p></li>
+<li><p><strong>object</strong> (<a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object" title="create_oap.create_oap.Object"><em>Object</em></a>) – opt. the object providing the property (default: default_objects[“self”])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_PropChange</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_propchange_set_visibility">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_propchange_set_visibility</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_propchange_set_visibility" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to modify 
+visibility of a property.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>prop</strong> (<em>str</em>) – property key (e.g. “Color”)</p></li>
+<li><p><strong>value</strong> (<em>int</em>) – 0-not visible, 1-visible</p></li>
+<li><p><strong>object</strong> (<a class="reference internal" href="idobjects/object.html#create_oap.create_oap.Object" title="create_oap.create_oap.Object"><em>Object</em></a>) – opt. the object providing the property (default: default_objects[“self”])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropChange" title="create_oap.create_oap.Action_PropChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_PropChange</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-propedit">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_propedit">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_propedit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_restriction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">StateRestriction.None_</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_propedit" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropEdit" title="create_oap.create_oap.Action_PropEdit"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to show a 
+property editor with given properties/property classes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for this interactor</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – The name of the Text object that should be used as the dialog title. 
+A text object with this name will be implicitly created if it does 
+not already exist.</p></li>
+<li><p><strong>properties</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – list of property keys (e.g. [“Width”,”Depth”])</p></li>
+<li><p><strong>propclasses</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – list of property class keys (e.g. [“Dimensions”])</p></li>
+<li><p><strong>state_restriction</strong> (<a class="reference internal" href="enums/staterestriction.html#create_oap.create_oap.StateRestriction" title="create_oap.create_oap.StateRestriction"><em>StateRestriction</em></a>) – global state_restriction for all given properties and classes</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_PropEdit" title="create_oap.create_oap.Action_PropEdit"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_PropEdit</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-action-show-media">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_action_show_media">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_action_show_media</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ext_media_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ext_media_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">language</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_action_show_media" title="Link to this definition"></a></dt>
+<dd><p>Create an <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ShowMedia" title="create_oap.create_oap.Action_ShowMedia"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action</span></code></a> to show external medias.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the action</p></li>
+<li><p><strong>ext_media_type</strong> (<a class="reference internal" href="enums/extmediatype.html#create_oap.create_oap.ExtMediaType" title="create_oap.create_oap.ExtMediaType"><em>ExtMediaType</em></a>) – type of external media to be displayed</p></li>
+<li><p><strong>ext_media_id</strong> (<em>str</em>) – in case of YouTube the YouTube-ID</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_ShowMedia" title="create_oap.create_oap.Action_ShowMedia"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_ShowMedia</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="creating-other-objects">
+<span id="oap-creating-other-objects"></span><h2>Creating other objects<a class="headerlink" href="#creating-other-objects" title="Link to this heading"></a></h2>
+<dl class="py method" id="oap-create-propedit">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_propedit">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_propedit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">classes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_restriction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">StateRestriction.None_</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_propedit" title="Link to this definition"></a></dt>
+<dd><p>Create a propedit with given title, properties and propclasses</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the propedit</p></li>
+<li><p><strong>title</strong> (<em>str</em>) – The name of the Text object that should be used as the dialog title. 
+A text object with this name will be implicitly created if it does 
+not already exist.</p></li>
+<li><p><strong>properties</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – keys of the properties (e.g. [“Width”,”Depth”])</p></li>
+<li><p><strong>classes</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – keys of property classes (e.g. [“Dimensions”])</p></li>
+<li><p><strong>state_restriction</strong> (<a class="reference internal" href="enums/staterestriction.html#create_oap.create_oap.StateRestriction" title="create_oap.create_oap.StateRestriction"><em>StateRestriction</em></a>) – global StateRestriction for all properties and classes</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/propedit.html#create_oap.create_oap.PropEdit" title="create_oap.create_oap.PropEdit"><code class="xref py py-class docutils literal notranslate"><span class="pre">PropEdit</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_symboldisplay">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_symboldisplay</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interactor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_symboldisplay" title="Link to this definition"></a></dt>
+<dd><p>Create a symboldisplay.</p>
+<p>Interactors automatically create (their first) symbol display by calling 
+<a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor.set_position" title="create_oap.create_oap.Interactor.set_position"><code class="xref py py-meth docutils literal notranslate"><span class="pre">set_position()</span></code></a> or <a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor.set_position_expr" title="create_oap.create_oap.Interactor.set_position_expr"><code class="xref py py-meth docutils literal notranslate"><span class="pre">set_position_expr()</span></code></a> 
+on them.</p>
+<p>Use this to add additional ones.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>interactor</strong> (<a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><em>Interactor</em></a>) – interactor using this symboldisplay</p></li>
+<li><p><strong>offset</strong> (<em>Numtripel</em><em> | </em><em>str</em>) – The position of the interactor. This can be either a numtripel 
+or a string evaluating to a vector with a size of 3 e.g. from a methodcall.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#create_oap.create_oap.SymbolDisplay" title="create_oap.create_oap.SymbolDisplay"><code class="xref py py-class docutils literal notranslate"><span class="pre">SymbolDisplay</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_methodcall">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_methodcall</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fully_qualified_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">object_=&lt;object</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type_=MethodCallType.Instance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_methodcall" title="Link to this definition"></a></dt>
+<dd><p>Create a <a class="reference internal" href="idobjects/methodcall.html#create_oap.create_oap.MethodCall" title="create_oap.create_oap.MethodCall"><code class="xref py py-class docutils literal notranslate"><span class="pre">MethodCall</span></code></a> and return resulting <a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_MethodCall" title="create_oap.create_oap.Action_MethodCall"><code class="xref py py-class docutils literal notranslate"><span class="pre">Action_MethodCall</span></code></a>.</p>
+<p>There is rarely any reason to call this manually.
+Use OapMethodCallContext instead!</p>
+</dd></dl>
+
+<dl class="py method" id="oap-create-message-from-text">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_message_from_text">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_message_from_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_message_from_text" title="Link to this definition"></a></dt>
+<dd><p>Create a message with given name and text</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the message</p></li>
+<li><p><strong>text</strong> (<a class="reference internal" href="idobjects/text.html#create_oap.create_oap.Text" title="create_oap.create_oap.Text"><em>Text</em></a>) – text to be displayed</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/message.html#create_oap.create_oap.Message" title="create_oap.create_oap.Message"><code class="xref py py-class docutils literal notranslate"><span class="pre">Message</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-create-message-from-action">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.create_message_from_action">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">create_message_from_action</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.create_message_from_action" title="Link to this definition"></a></dt>
+<dd><p>Create a message with given name where the text is defined via a MethodCall action.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used in oap-tables for the message</p></li>
+<li><p><strong>action</strong> (<a class="reference internal" href="idobjects/action.html#create_oap.create_oap.Action_MethodCall" title="create_oap.create_oap.Action_MethodCall"><em>Action_MethodCall</em></a>) – A MethodCall-action where the called method returns the text 
+that is to be shown in the message.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/message.html#create_oap.create_oap.Message" title="create_oap.create_oap.Message"><code class="xref py py-class docutils literal notranslate"><span class="pre">Message</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="texts-and-images">
+<span id="oap-creating-texts-images"></span><h2>Texts and Images<a class="headerlink" href="#texts-and-images" title="Link to this heading"></a></h2>
+<dl class="py method" id="oap-get-or-create-text">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.get_or_create_text">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">get_or_create_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.get_or_create_text" title="Link to this definition"></a></dt>
+<dd><p>Creates a <a class="reference internal" href="idobjects/text.html#create_oap.create_oap.Text" title="create_oap.create_oap.Text"><code class="xref py py-class docutils literal notranslate"><span class="pre">Text</span></code></a> with given name. 
+If a text with this name already exists, the existing text is returned unmodified.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> (<em>str</em>) – The name to be used to generate an ID for the Text</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/text.html#create_oap.create_oap.Text" title="create_oap.create_oap.Text"><code class="xref py py-class docutils literal notranslate"><span class="pre">Text</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method" id="oap-get-or-create-image-set">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.get_or_create_image_set">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">get_or_create_image_set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dprs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(1,</span> <span class="pre">2)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">langs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'png'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.get_or_create_image_set" title="Link to this definition"></a></dt>
+<dd><p>Creates an <a class="reference internal" href="idobjects/imageset.html#create_oap.create_oap.ImageSet" title="create_oap.create_oap.ImageSet"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSet</span></code></a> with given name, for given size, dpr and language in given format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name to be used to generate an ID for the ImageSet</p></li>
+<li><p><strong>size</strong> (<a class="reference internal" href="enums/imagesize.html#create_oap.create_oap.ImageSize" title="create_oap.create_oap.ImageSize"><em>ImageSize</em></a>) – size of the image (e.g. ImageSize.tile_small)</p></li>
+<li><p><strong>dprs</strong> (<em>tuple</em><em>(</em><em>int</em><em>,</em><em>int</em><em>)</em>) – opt. device pixel ratio (default: (1,2))</p></li>
+<li><p><strong>langs</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – <p>e.g. [“de”,”en”]</p>
+<ul>
+<li><p>If a list of languages is used, a separate subdirectory for each language 
+will be created and each language gets its own image.</p></li>
+<li><p>If langs is None, all languages use the same image, which is located in 
+subdirectory “default”.</p></li>
+<li><p>(default: None)</p></li>
+</ul>
+</p></li>
+<li><p><strong>format</strong> (<em>str</em>) – format of the image file (default: “png”)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="idobjects/imageset.html#create_oap.create_oap.ImageSet" title="create_oap.create_oap.ImageSet"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSet</span></code></a></p>
+</dd>
+</dl>
+<ul class="simple">
+<li><p>If an image with the required resolution already exists, no new image will be created.</p></li>
+<li><p>If no image exists, an image with a higher resolution will be scaled down.</p></li>
+<li><p>If no higher resolution image exists, an image of given format filled with white will be 
+created.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.get_available_languages">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">get_available_languages</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.get_available_languages" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>set of languages supported by the OAP</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.get_languages_from_dsr">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">get_languages_from_dsr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">man</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">series</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.get_languages_from_dsr" title="Link to this definition"></a></dt>
+<dd><p>Returns list of languages provided by the DSR of man and series</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>man</strong> (<em>str</em>) – opt. manufacturer (default: oap_man)</p></li>
+<li><p><strong>series</strong> (<em>str</em>) – opt. series (default: oap_series)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A set of languages.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.set_available_languages">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">set_available_languages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">langs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">language_update_mode=&lt;LanguageUpdateMode.Full:</span> <span class="pre">3&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.set_available_languages" title="Link to this definition"></a></dt>
+<dd><p>Sets languages to be supported by the OAP with the given <a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><code class="xref py py-class docutils literal notranslate"><span class="pre">LanguageUpdateMode</span></code></a>.
+For setting varying text configurations use <a class="reference internal" href="#create_oap.create_oap.OAP.set_language_update_modes" title="create_oap.create_oap.OAP.set_language_update_modes"><code class="xref py py-meth docutils literal notranslate"><span class="pre">set_language_update_modes()</span></code></a> 
+or add languages separately with <a class="reference internal" href="#create_oap.create_oap.OAP.add_available_language" title="create_oap.create_oap.OAP.add_available_language"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_available_language()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>langs</strong> (<em>list</em><em>(</em><em>str</em><em>)</em>) – set required languages (e.g. [“en”,”de”])</p></li>
+<li><p><strong>language_update_mode</strong> (<a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><em>LanguageUpdateMode</em></a>) – opt. update mode to be used for all languages in langs 
+(default: <a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><code class="xref py py-class docutils literal notranslate"><span class="pre">LanguageUpdateMode.Full</span></code></a>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.add_available_language">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">add_available_language</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lang</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">language_update_mode=&lt;LanguageUpdateMode.Full:</span> <span class="pre">3&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.add_available_language" title="Link to this definition"></a></dt>
+<dd><p>Extends the list of languages by “lang”.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lang</strong> (<em>str</em>) – The language (e.g. “en”)</p></li>
+<li><p><strong>language_update_mode</strong> (<a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><em>LanguageUpdateMode</em></a>) – opt. language update mode for this specific language (default: LanguageUpdateMode.Full)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.get_language_update_modes">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">get_language_update_modes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.get_language_update_modes" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dictionary of languages supported by the OAP with language as key                  and <a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><code class="xref py py-class docutils literal notranslate"><span class="pre">LanguageUpdateMode</span></code></a> as value.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.set_language_update_modes">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">set_language_update_modes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">language_update_modes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.set_language_update_modes" title="Link to this definition"></a></dt>
+<dd><p>Set languages to be supported by OAP including their <a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><code class="xref py py-class docutils literal notranslate"><span class="pre">LanguageUpdateMode</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>language_update_modes</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><em>LanguageUpdateMode</em></a><em>]</em>) – a dictionary of languages to be supported by the OAP 
+with language as key and the desired LanguageUpdateMode 
+as value.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.OAP.set_language_update_mode">
+<span class="sig-prename descclassname"><span class="pre">OAP.</span></span><span class="sig-name descname"><span class="pre">set_language_update_mode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lang</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">language_update_mode</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.OAP.set_language_update_mode" title="Link to this definition"></a></dt>
+<dd><p>Set update mode for a specific language.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lang</strong> (<em>str</em>) – language</p></li>
+<li><p><strong>language_update_mode</strong> (<a class="reference internal" href="enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode" title="create_oap.create_oap.LanguageUpdateMode"><em>LanguageUpdateMode</em></a>) – language update mode for this language</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+<section id="mapping">
+<span id="oap-mapping"></span><h1>Mapping<a class="headerlink" href="#mapping" title="Link to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">create_oap.create_oap.</span></span><span class="sig-name descname"><span class="pre">Article2Type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">oap</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">oap_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">man</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">artno</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.Article2Type" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Not to be created directly.
+Use <a class="reference internal" href="idobjects/type.html#create_oap.create_oap.Type.add_article" title="create_oap.create_oap.Type.add_article"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_article</span></code></a> or <a class="reference internal" href="idobjects/type.html#create_oap.create_oap.Type.add_articles_by_oam" title="create_oap.create_oap.Type.add_articles_by_oam"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_articles_by_oam</span></code></a> instead.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.oap">
+<span class="sig-name descname"><span class="pre">oap</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#create_oap.create_oap.OAP" title="create_oap.create_oap.OAP"><span class="pre">OAP</span></a></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.oap" title="Link to this definition"></a></dt>
+<dd><p>oap instance</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.man">
+<span class="sig-name descname"><span class="pre">man</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.man" title="Link to this definition"></a></dt>
+<dd><p>manufacturer</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.series">
+<span class="sig-name descname"><span class="pre">series</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.series" title="Link to this definition"></a></dt>
+<dd><p>series</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.artno">
+<span class="sig-name descname"><span class="pre">artno</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.artno" title="Link to this definition"></a></dt>
+<dd><p>article code</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.var_type">
+<span class="sig-name descname"><span class="pre">var_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="enums/varcodetype.html#create_oap.create_oap.VarCodeType" title="create_oap.create_oap.VarCodeType"><span class="pre">VarCodeType</span></a></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.var_type" title="Link to this definition"></a></dt>
+<dd><p>type of variant code</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.Article2Type.variant">
+<span class="sig-name descname"><span class="pre">variant</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.Article2Type.variant" title="Link to this definition"></a></dt>
+<dd><p>variant code</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">create_oap.create_oap.</span></span><span class="sig-name descname"><span class="pre">MetaType2Type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">oap</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">oap_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">man</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mt_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.MetaType2Type" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Not to be created directly.
+Use <a class="reference internal" href="idobjects/type.html#create_oap.create_oap.Type.add_metatype" title="create_oap.create_oap.Type.add_metatype"><code class="xref py py-meth docutils literal notranslate"><span class="pre">add_metatype</span></code></a> instead.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.oap">
+<span class="sig-name descname"><span class="pre">oap</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#create_oap.create_oap.OAP" title="create_oap.create_oap.OAP"><span class="pre">OAP</span></a></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.oap" title="Link to this definition"></a></dt>
+<dd><p>oap instance</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.man">
+<span class="sig-name descname"><span class="pre">man</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.man" title="Link to this definition"></a></dt>
+<dd><p>manufacturer</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.series">
+<span class="sig-name descname"><span class="pre">series</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.series" title="Link to this definition"></a></dt>
+<dd><p>series</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.mt_name">
+<span class="sig-name descname"><span class="pre">mt_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.mt_name" title="Link to this definition"></a></dt>
+<dd><p>metatype-ID</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.var_type">
+<span class="sig-name descname"><span class="pre">var_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="enums/varcodetype.html#create_oap.create_oap.VarCodeType" title="create_oap.create_oap.VarCodeType"><span class="pre">VarCodeType</span></a></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.var_type" title="Link to this definition"></a></dt>
+<dd><p>type of variant code</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.variant">
+<span class="sig-name descname"><span class="pre">variant</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.variant" title="Link to this definition"></a></dt>
+<dd><p>variant code</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.prop_var_code">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">prop_var_code</span></span><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.prop_var_code" title="Link to this definition"></a></dt>
+<dd><p>deprecated</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="create_oap.create_oap.MetaType2Type.mt">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mt</span></span><a class="headerlink" href="#create_oap.create_oap.MetaType2Type.mt" title="Link to this definition"></a></dt>
+<dd><p>Instance of the connected <a class="reference external" href="../egr_mti_core/egr_mti_core/03_mt.html#egr_mti_core.mt.Metatype" title="(in egr_mti_core v0.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Metatype</span></code></a>-object</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="symbols">
+<span id="oap-creating-symbols"></span><h1>Symbols<a class="headerlink" href="#symbols" title="Link to this heading"></a></h1>
+<p>Symbols are the representation of an OAP interactor. This can be e.g. <a class="reference internal" href="../_images/Add.png"><img alt="plus" src="../_images/Add.png" style="width: 19.0px; height: 19.0px;" /></a>, <a class="reference internal" href="../_images/Edit.png"><img alt="edit" src="../_images/Edit.png" style="width: 19.0px; height: 19.0px;" /></a> an arrow or another image.
+The look of these images is standardized on every application (pCon.box, pCon.planner, …) to ensure a
+familiar Look&amp;Feel. Each Symbol defines type, position and size. Every interactor needs a symbol to be
+displayable, hence each <code class="code docutils literal notranslate"><span class="pre">create_interactor_*</span></code> method creates a symbol by default. (Of course the used symbol
+can be modified if needed.)</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Do not mistake Symbols in <code class="code docutils literal notranslate"><span class="pre">create_oap</span></code> with Symbols in the mt module. Although they both are named
+equally, they are used in different contexts. In order to avoid confusion Symbols for metatypes are
+renamed OfmlSymbol when being used in <code class="code docutils literal notranslate"><span class="pre">create_oap</span></code>.</p>
+<ul class="simple">
+<li><p>OfmlSymbol means the OFML type Symbol “&#64;foo” with a value accessible via <code class="code docutils literal notranslate"><span class="pre">.value</span></code></p></li>
+<li><p>Symbol means an OAP-Symbol with a position, a size and a type</p></li>
+</ul>
+</div>
+<dl class="py class">
+<dt class="sig sig-object py" id="create_oap.create_oap.Symbol">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">create_oap.create_oap.</span></span><span class="sig-name descname"><span class="pre">Symbol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symboltype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbolsize</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.Symbol" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Symbol for an Interactor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>symboltype</strong> (<a class="reference internal" href="enums/symboltype.html#create_oap.create_oap.SymbolType" title="create_oap.create_oap.SymbolType"><em>SymbolType</em></a>) – type of the interactor-symbol (see: <a class="reference internal" href="enums/symboltype.html#enums-symboltype"><span class="std std-ref">here</span></a> for an overview of available symbol types)</p></li>
+<li><p><strong>symbolsize</strong> (<a class="reference internal" href="enums/symbolsize.html#create_oap.create_oap.SymbolSize" title="create_oap.create_oap.SymbolSize"><em>SymbolSize</em></a>) – size of the interactor-symbol</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#create_oap.create_oap.Symbol" title="create_oap.create_oap.Symbol"><code class="xref py py-class docutils literal notranslate"><span class="pre">Symbol</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">create_oap.create_oap.</span></span><span class="sig-name descname"><span class="pre">SymbolDisplay</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">oap</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interactor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Not to be called manually! Use <a class="reference internal" href="#create_oap.create_oap.OAP.create_symboldisplay" title="create_oap.create_oap.OAP.create_symboldisplay"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_symboldisplay</span></code></a> instead!</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>oap</strong> (<a class="reference internal" href="#create_oap.create_oap.OAP" title="create_oap.create_oap.OAP"><em>OAP</em></a>) – oap-instance</p></li>
+<li><p><strong>interactor</strong> (<a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><em>Interactor</em></a>) – The interactor using this Symbol.</p></li>
+<li><p><strong>offset</strong> (<em>Numtripel</em><em> | </em><em>str</em><em> | </em><em>None</em>) – The position of the interactor. This can be either a numtripel 
+or a string evaluating to a vector with a size of 3 e.g. from a methodcall.
+If you do NOT pass offset in constructor, attributes offset and offset_type 
+MUST be set afterwards.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.oap">
+<span class="sig-name descname"><span class="pre">oap</span></span><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.oap" title="Link to this definition"></a></dt>
+<dd><p>oap-object</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.interactor">
+<span class="sig-name descname"><span class="pre">interactor</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="idobjects/interactor.html#create_oap.create_oap.Interactor" title="create_oap.create_oap.Interactor"><span class="pre">Interactor</span></a></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.interactor" title="Link to this definition"></a></dt>
+<dd><p>interactor using this symboldisplay</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.hidden_mode">
+<span class="sig-name descname"><span class="pre">hidden_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.hidden_mode" title="Link to this definition"></a></dt>
+<dd><p>can the interactor be hidden by geometry</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.offset">
+<span class="sig-name descname"><span class="pre">offset</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="idobjects/numtripel.html#create_oap.create_oap.NumTripel" title="create_oap.create_oap.NumTripel"><span class="pre">NumTripel</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.offset" title="Link to this definition"></a></dt>
+<dd><p>offset of the symbol (depending on offset_type either NumTripel or str)</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.direction">
+<span class="sig-name descname"><span class="pre">direction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="enums/symboldirection.html#create_oap.create_oap.SymbolDirection" title="create_oap.create_oap.SymbolDirection"><span class="pre">SymbolDirection</span></a></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.direction" title="Link to this definition"></a></dt>
+<dd><p>orientation of the symbol</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.view_angle">
+<span class="sig-name descname"><span class="pre">view_angle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.view_angle" title="Link to this definition"></a></dt>
+<dd><p>Opening angle of the visibility range in degrees (0…360)</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.orientation_x">
+<span class="sig-name descname"><span class="pre">orientation_x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="enums/symbolorientation.html#create_oap.create_oap.SymbolOrientation" title="create_oap.create_oap.SymbolOrientation"><span class="pre">SymbolOrientation</span></a></em><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.orientation_x" title="Link to this definition"></a></dt>
+<dd><p>Orientation of x-axis for 3d symbols</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.adjust_view_angle">
+<span class="sig-name descname"><span class="pre">adjust_view_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolDirection.TopView</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view_angle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'360'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.adjust_view_angle" title="Link to this definition"></a></dt>
+<dd><p>Show interactor only while within viewing range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>direction</strong> (<a class="reference internal" href="enums/symboldirection.html#create_oap.create_oap.SymbolDirection" title="create_oap.create_oap.SymbolDirection"><em>SymbolDirection</em></a>) – defining “front” of the symbol (default: SymbolDirection.TopView)</p></li>
+<li><p><strong>view_angle</strong> (<em>str</em>) – OAP expression evaluating to a numeric value representing the angle 
+at which this interactor is visible (default = “360”)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="create_oap.create_oap.SymbolDisplay.make_3d">
+<span class="sig-name descname"><span class="pre">make_3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolDirection.TopView</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view_angle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'360'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orientation_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SymbolOrientation.X</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#create_oap.create_oap.SymbolDisplay.make_3d" title="Link to this definition"></a></dt>
+<dd><p>Use 3-dimensional interactors. 3-dimensional interactors adapt their angle and position 
+according to the users viewing angle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>direction</strong> (<a class="reference internal" href="enums/symboldirection.html#create_oap.create_oap.SymbolDirection" title="create_oap.create_oap.SymbolDirection"><em>SymbolDirection</em></a>) – orientation of the symbol (default: SymbolDirection.TopView)</p></li>
+<li><p><strong>view_angle</strong> (<em>str</em>) – OAP expression evaluating to a numeric value representing the opening 
+angle of the visibility range in degrees (default = “360”)</p></li>
+<li><p><strong>orientation_x</strong> (<a class="reference internal" href="enums/symbolorientation.html#create_oap.create_oap.SymbolOrientation" title="create_oap.create_oap.SymbolOrientation"><em>SymbolOrientation</em></a>) – Orientation of x-axis for 3d symbols</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="config_oap.html" class="btn btn-neutral float-left" title="Config_oap" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="idobjects.html" class="btn btn-neutral float-right" title="IdObjects" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, EasternGraphics.</p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

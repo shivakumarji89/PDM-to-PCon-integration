@@ -1,0 +1,626 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MethodCalls &mdash; Create OAP  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/mystuff.css?v=45b9e57b" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=7f41d439"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Displaying a message" href="17_message.html" />
+    <link rel="prev" title="Handling images" href="06_handle_images.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Create OAP
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../first_steps/first_steps.html">First steps</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_01.html">Minimal config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_01.html#generating-oap-tables">Generating oap-tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_02.html">The OAP-type</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_02.html#link-oap-type-via-ocd-articles">Link OAP-type via OCD articles</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_02.html#link-oap-type-via-metatypes">Link OAP-type via metatypes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_03.html">Interactors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../first_steps/step_04.html">Actions, objects and method calls</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#actions">Actions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#objects">Objects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../first_steps/step_04.html#methodcalls">MethodCalls</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../examples.html">Examples</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="01_using_articles.html">Adding interactors to plain articles</a></li>
+<li class="toctree-l2"><a class="reference internal" href="02_using_metatypes.html">Adding interactors to Metatype-articles</a></li>
+<li class="toctree-l2"><a class="reference internal" href="04_manual_ia.html">Creating interactors manually</a></li>
+<li class="toctree-l2"><a class="reference internal" href="16_propedit.html">Customizing a PropEdit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="08_siblings.html">Creating new scene objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="08_siblings.html#creating-a-new-object-by-an-article-number">Creating a new object by an article number</a></li>
+<li class="toctree-l3"><a class="reference internal" href="08_siblings.html#creating-a-new-object-by-a-metatype">Creating a new object by a metatype</a></li>
+<li class="toctree-l3"><a class="reference internal" href="08_siblings.html#use-metatype-info-for-filtering">Use metatype info for filtering</a></li>
+<li class="toctree-l3"><a class="reference internal" href="08_siblings.html#sorting-the-items-in-an-actionlist">Sorting the items in an actionlist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="08_siblings.html#conclusion">Conclusion</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="18_choicelists.html">Choicelists</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="18_choicelists.html#list">List</a></li>
+<li class="toctree-l3"><a class="reference internal" href="18_choicelists.html#tiles">Tiles</a></li>
+<li class="toctree-l3"><a class="reference internal" href="18_choicelists.html#list-with-images">List with images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="18_choicelists.html#list-with-custom-sized-images">List with custom sized images</a></li>
+<li class="toctree-l3"><a class="reference internal" href="18_choicelists.html#cascading-choicelists">Cascading choicelists</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="05_handle_texts.html">Handling texts</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="05_handle_texts.html#fully-defined-translations">Fully defined translations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="05_handle_texts.html#using-a-fallback-language">Using a fallback language</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="06_handle_images.html">Handling images</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">MethodCalls</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#defining-a-methodcall-context">Defining a methodcall context</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#functions">Functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#actions">Actions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="17_message.html">Displaying a message</a></li>
+<li class="toctree-l2"><a class="reference internal" href="11_objects.html">OAP-objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="11_objects.html#predefined-objects">Predefined objects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="11_objects.html#custom-objects">Custom objects</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="10_reusing_existing_objects.html">Reusing existing script-objects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="10_reusing_existing_objects.html#interactors-with-different-symbols">Interactors with different symbols</a></li>
+<li class="toctree-l3"><a class="reference internal" href="10_reusing_existing_objects.html#avoiding-alreadyaddedexceptions">Avoiding AlreadyAddedExceptions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="12_make3d.html">3D-interactors</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="12_make3d.html#multiple-view-angles">Multiple view angles</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="14_show_media.html">Show media</a></li>
+<li class="toctree-l2"><a class="reference internal" href="15_dimchange.html">DimChange</a></li>
+<li class="toctree-l2"><a class="reference internal" href="13_split.html">Include external classes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../create_oap.html">Full specification</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/config_oap.html">Config_oap</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/config_oap.html#attributes-that-can-must-be-set">Attributes that can/must be set</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/config_oap.html#availabale-objects-and-types">Availabale objects and types</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/oap.html">OAP</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP"><code class="docutils literal notranslate"><span class="pre">OAP</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.default_objects"><code class="docutils literal notranslate"><span class="pre">OAP.default_objects</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.oap_man"><code class="docutils literal notranslate"><span class="pre">OAP.oap_man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.oap_series"><code class="docutils literal notranslate"><span class="pre">OAP.oap_series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.requires_create_oap"><code class="docutils literal notranslate"><span class="pre">OAP.requires_create_oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.methodcall_actions"><code class="docutils literal notranslate"><span class="pre">OAP.methodcall_actions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.read_texts_from_file"><code class="docutils literal notranslate"><span class="pre">OAP.read_texts_from_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.build_ebase"><code class="docutils literal notranslate"><span class="pre">OAP.build_ebase()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#creating-interactors">Creating interactors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_interactor_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_interactor_choicelist"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_choicelist()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_interactor_delete"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_delete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_interactor_message_static"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_message_static()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_interactor_message_dynamic"><code class="docutils literal notranslate"><span class="pre">OAP.create_interactor_message_dynamic()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#creating-actions">Creating actions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_choicelist"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_choicelist()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_createobj"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_createobj()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_delete"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_delete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_dimchange"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_dimchange()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_message"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_message()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_no_action"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_no_action()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_propchange_set_editability"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_editability()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_propchange_set_value"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_value()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_propchange_set_visibility"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propchange_set_visibility()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_action_show_media"><code class="docutils literal notranslate"><span class="pre">OAP.create_action_show_media()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#creating-other-objects">Creating other objects</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_propedit"><code class="docutils literal notranslate"><span class="pre">OAP.create_propedit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_symboldisplay"><code class="docutils literal notranslate"><span class="pre">OAP.create_symboldisplay()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_methodcall"><code class="docutils literal notranslate"><span class="pre">OAP.create_methodcall()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_message_from_text"><code class="docutils literal notranslate"><span class="pre">OAP.create_message_from_text()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.create_message_from_action"><code class="docutils literal notranslate"><span class="pre">OAP.create_message_from_action()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#texts-and-images">Texts and Images</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.get_or_create_text"><code class="docutils literal notranslate"><span class="pre">OAP.get_or_create_text()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.get_or_create_image_set"><code class="docutils literal notranslate"><span class="pre">OAP.get_or_create_image_set()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.get_available_languages"><code class="docutils literal notranslate"><span class="pre">OAP.get_available_languages()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.get_languages_from_dsr"><code class="docutils literal notranslate"><span class="pre">OAP.get_languages_from_dsr()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.set_available_languages"><code class="docutils literal notranslate"><span class="pre">OAP.set_available_languages()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.add_available_language"><code class="docutils literal notranslate"><span class="pre">OAP.add_available_language()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.get_language_update_modes"><code class="docutils literal notranslate"><span class="pre">OAP.get_language_update_modes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.set_language_update_modes"><code class="docutils literal notranslate"><span class="pre">OAP.set_language_update_modes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.OAP.set_language_update_mode"><code class="docutils literal notranslate"><span class="pre">OAP.set_language_update_mode()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/oap.html#mapping">Mapping</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type"><code class="docutils literal notranslate"><span class="pre">Article2Type</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.oap"><code class="docutils literal notranslate"><span class="pre">Article2Type.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.man"><code class="docutils literal notranslate"><span class="pre">Article2Type.man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.series"><code class="docutils literal notranslate"><span class="pre">Article2Type.series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.artno"><code class="docutils literal notranslate"><span class="pre">Article2Type.artno</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.var_type"><code class="docutils literal notranslate"><span class="pre">Article2Type.var_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Article2Type.variant"><code class="docutils literal notranslate"><span class="pre">Article2Type.variant</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type"><code class="docutils literal notranslate"><span class="pre">MetaType2Type</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.oap"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.man"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.man</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.series"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.series</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.mt_name"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.mt_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.var_type"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.var_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.variant"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.variant</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.prop_var_code"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.prop_var_code</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.MetaType2Type.mt"><code class="docutils literal notranslate"><span class="pre">MetaType2Type.mt</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/oap.html#symbols">Symbols</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.Symbol"><code class="docutils literal notranslate"><span class="pre">Symbol</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.oap"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.oap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.interactor"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.interactor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.hidden_mode"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.hidden_mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.offset"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.offset</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.direction"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.direction</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.view_angle"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.view_angle</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.orientation_x"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.orientation_x</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.adjust_view_angle"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.adjust_view_angle()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/oap.html#create_oap.create_oap.SymbolDisplay.make_3d"><code class="docutils literal notranslate"><span class="pre">SymbolDisplay.make_3d()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/idobjects.html">IdObjects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/easy_access.html">Easy access dictionaries for IdObjects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/action.html">Actions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action"><code class="docutils literal notranslate"><span class="pre">Action</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_ActionChoice"><code class="docutils literal notranslate"><span class="pre">Action_ActionChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_CreateObject"><code class="docutils literal notranslate"><span class="pre">Action_CreateObject</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_DeleteObj"><code class="docutils literal notranslate"><span class="pre">Action_DeleteObj</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_DimChange"><code class="docutils literal notranslate"><span class="pre">Action_DimChange</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_PropChange"><code class="docutils literal notranslate"><span class="pre">Action_PropChange</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_PropEdit"><code class="docutils literal notranslate"><span class="pre">Action_PropEdit</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_SelectObj"><code class="docutils literal notranslate"><span class="pre">Action_SelectObj</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_ShowMedia"><code class="docutils literal notranslate"><span class="pre">Action_ShowMedia</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_Message"><code class="docutils literal notranslate"><span class="pre">Action_Message</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_MethodCall"><code class="docutils literal notranslate"><span class="pre">Action_MethodCall</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/action.html#create_oap.create_oap.Action_NoAction"><code class="docutils literal notranslate"><span class="pre">Action_NoAction</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/actionchoice.html">ActionChoices</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/actionchoice.html#create_oap.create_oap.ActionChoice"><code class="docutils literal notranslate"><span class="pre">ActionChoice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/actionchoice.html#actionlist">ActionList</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/actionchoice.html#actionlistitem">ActionListItem</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/createobj.html">CreateObj</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/createobj.html#create_oap.create_oap.CreateObj"><code class="docutils literal notranslate"><span class="pre">CreateObj</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/dimchange.html">DimChangeSet</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/dimchange.html#create_oap.create_oap.DimChangeSet"><code class="docutils literal notranslate"><span class="pre">DimChangeSet</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/dimchange.html#create_oap.create_oap.DimChangeEntry"><code class="docutils literal notranslate"><span class="pre">DimChangeEntry</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/extmedia.html">ExtMedia</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/extmedia.html#create_oap.create_oap.ExtMedia"><code class="docutils literal notranslate"><span class="pre">ExtMedia</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/idobject.html">IdObject</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/idobject.html#create_oap.create_oap.IdObject"><code class="docutils literal notranslate"><span class="pre">IdObject</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/imageset.html">ImageSet</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/imageset.html#create_oap.create_oap.ImageSet"><code class="docutils literal notranslate"><span class="pre">ImageSet</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/interactor.html">Interactor</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/interactor.html#create_oap.create_oap.Interactor"><code class="docutils literal notranslate"><span class="pre">Interactor</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/message.html">Message</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/message.html#create_oap.create_oap.Message"><code class="docutils literal notranslate"><span class="pre">Message</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/methodcall.html">MethodCall</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/methodcall.html#create_oap.create_oap.MethodCall"><code class="docutils literal notranslate"><span class="pre">MethodCall</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/numtripel.html">NumTripel</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/numtripel.html#create_oap.create_oap.NumTripel"><code class="docutils literal notranslate"><span class="pre">NumTripel</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/object.html">Object</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/object.html#create_oap.create_oap.Object"><code class="docutils literal notranslate"><span class="pre">Object</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/object.html#object-methodcall">Object_MethodCall</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/object.html#create_oap.create_oap.Object_MethodCall"><code class="docutils literal notranslate"><span class="pre">Object_MethodCall</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/propchange.html">PropChange</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/propchange.html#create_oap.create_oap.PropChange"><code class="docutils literal notranslate"><span class="pre">PropChange</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/propedit.html">PropEdit</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/propedit.html#create_oap.create_oap.PropEdit"><code class="docutils literal notranslate"><span class="pre">PropEdit</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/propedit.html#create_oap.create_oap.PropEditProp"><code class="docutils literal notranslate"><span class="pre">PropEditProp</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/propedit.html#create_oap.create_oap.PropEditClass"><code class="docutils literal notranslate"><span class="pre">PropEditClass</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/text.html">Text</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/text.html#create_oap.create_oap.Text"><code class="docutils literal notranslate"><span class="pre">Text</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/idobjects/type.html">Type</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/idobjects/type.html#create_oap.create_oap.Type"><code class="docutils literal notranslate"><span class="pre">Type</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/mcc.html">MethodCallContext</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/mcc.html#create_oap.create_oap.OapMethodCallContext"><code class="docutils literal notranslate"><span class="pre">OapMethodCallContext</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../create_oap/enums.html">Enums</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/actionchoiceviewtype.html">ActionChoiceViewType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/actionchoiceviewtype.html#create_oap.create_oap.ActionChoiceViewType"><code class="docutils literal notranslate"><span class="pre">ActionChoiceViewType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/actiontype.html">ActionType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/actiontype.html#create_oap.create_oap.ActionType"><code class="docutils literal notranslate"><span class="pre">ActionType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/artspecmode.html">ArtSpecMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/artspecmode.html#create_oap.create_oap.ArtSpecMode"><code class="docutils literal notranslate"><span class="pre">ArtSpecMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/attachareageotype.html">AttachAreaGeoType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/attachareageotype.html#create_oap.create_oap.AttachAreaGeoType"><code class="docutils literal notranslate"><span class="pre">AttachAreaGeoType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/dimchangedimension.html">DimChangeDimension</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/dimchangedimension.html#create_oap.create_oap.DimChangeDimension"><code class="docutils literal notranslate"><span class="pre">DimChangeDimension</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/extmediatype.html">ExtMediaType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/extmediatype.html#create_oap.create_oap.ExtMediaType"><code class="docutils literal notranslate"><span class="pre">ExtMediaType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/imagesize.html">ImageSize</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/imagesize.html#create_oap.create_oap.ImageSize"><code class="docutils literal notranslate"><span class="pre">ImageSize</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/languageupdatemode.html">LanguageUpdateMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/languageupdatemode.html#create_oap.create_oap.LanguageUpdateMode"><code class="docutils literal notranslate"><span class="pre">LanguageUpdateMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/messagetype.html">MessageType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/messagetype.html#create_oap.create_oap.MessageType"><code class="docutils literal notranslate"><span class="pre">MessageType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/methodcalltype.html">MethodCallType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/methodcalltype.html#create_oap.create_oap.MethodCallType"><code class="docutils literal notranslate"><span class="pre">MethodCallType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/objectcategory.html">ObjectCategory</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/objectcategory.html#create_oap.create_oap.ObjectCategory"><code class="docutils literal notranslate"><span class="pre">ObjectCategory</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/offsettype.html">OffsetType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/offsettype.html#create_oap.create_oap.OffsetType"><code class="docutils literal notranslate"><span class="pre">OffsetType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/polylinerastertype.html">PolyLineRasterType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/polylinerastertype.html#create_oap.create_oap.PolyLineRasterType"><code class="docutils literal notranslate"><span class="pre">PolyLineRasterType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/posrotmode.html">PosRotMode</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/posrotmode.html#create_oap.create_oap.PosRotMode"><code class="docutils literal notranslate"><span class="pre">PosRotMode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/propchangetype.html">PropChangeType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/propchangetype.html#create_oap.create_oap.PropChangeType"><code class="docutils literal notranslate"><span class="pre">PropChangeType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/staterestriction.html">StateRestriction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/staterestriction.html#create_oap.create_oap.StateRestriction"><code class="docutils literal notranslate"><span class="pre">StateRestriction</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/symboldirection.html">SymbolDirection</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/symboldirection.html#create_oap.create_oap.SymbolDirection"><code class="docutils literal notranslate"><span class="pre">SymbolDirection</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/symbolorientation.html">SymbolOrientation</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/symbolorientation.html#create_oap.create_oap.SymbolOrientation"><code class="docutils literal notranslate"><span class="pre">SymbolOrientation</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/symbolsize.html">SymbolSize</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/symbolsize.html#create_oap.create_oap.SymbolSize"><code class="docutils literal notranslate"><span class="pre">SymbolSize</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/symboltype.html">SymbolType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/symboltype.html#create_oap.create_oap.SymbolType"><code class="docutils literal notranslate"><span class="pre">SymbolType</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_oap/enums/varcodetype.html">VarCodeType</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../create_oap/enums/varcodetype.html#create_oap.create_oap.VarCodeType"><code class="docutils literal notranslate"><span class="pre">VarCodeType</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../version_history.html">Version history</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Create OAP</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../examples.html">Examples</a></li>
+      <li class="breadcrumb-item active">MethodCalls</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="methodcalls">
+<span id="examples-methodcalls"></span><h1>MethodCalls<a class="headerlink" href="#methodcalls" title="Link to this heading"></a></h1>
+<p>MethodCalls are a quite powerful tool. They are used to trigger OFML-functions via <strong>OAP</strong>, thus enabling
+you to add very specific behavior to your OAP, expanding the limits of standard OCD or even MetaType’s behavior.</p>
+<p>A MethodCall needs to “know” the class (or interface) which provides the programmed function (directly or
+via inheritance) and which (oap)object is the target of the methodcall.
+The combination of target class (or interface) and target object is encapsulated in a <a class="reference internal" href="../create_oap/mcc.html#mcc"><span class="std std-ref">MethodCallContext</span></a> and
+allows convenient creation of MethodCalls for this particular class+object combination.</p>
+<section id="defining-a-methodcall-context">
+<h2>Defining a methodcall context<a class="headerlink" href="#defining-a-methodcall-context" title="Link to this heading"></a></h2>
+<p>In order to use an OFML-method in oap-tables, the required class has to be known by
+the script. This has to be done exactly <strong>once</strong> for each class (and object).
+Just store the context to a variable and use this variable when calling your method.</p>
+<p>It is recommended to store MethodCallContexts in global variables to allow script-wide
+access.</p>
+<p>The 4 arguments are:</p>
+<ol class="arabic simple">
+<li><p>The Oap instance (this should always be the oap instance provided by <code class="code docutils literal notranslate"><span class="pre">create_oap</span></code> itself).</p></li>
+<li><p>fully qualified class name as string</p></li>
+<li><p>the object the method should be called upon (either a <a class="reference internal" href="11_objects.html#objects-defaultobjects"><span class="std std-ref">predefined</span></a>
+or a <a class="reference internal" href="11_objects.html#objects-objects"><span class="std std-ref">custom</span></a> object)</p></li>
+<li><p>basename is used for creating the methodcall-ID in our oap-tables and if not specified will use
+the classname. If there are multiple MethodCallContexts referencing the same class but with different
+objects, the basename is required to distinguish these methodcalls one from another.</p></li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The script generates a new methodcall-id whenever the method is called with different arguments
+and reuses an existing id whenever the method is called with the same arguments multiple times.
+This methodcall-id is created with the <code class="code docutils literal notranslate"><span class="pre">basename</span></code>. This means <code class="code docutils literal notranslate"><span class="pre">basenames</span></code> have to
+be unique to ensure the created methodcall-ID is unique!</p>
+</div>
+<div class="highlight-python notranslate" id="mcc-definition"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="c1"># MethodCallContext for a function of GoMetaType</span>
+<span class="linenos"> 2</span><span class="n">GoMetaType</span> <span class="o">=</span> <span class="n">OapMethodCallContext</span><span class="p">(</span>
+<span class="linenos"> 3</span>    <span class="n">oap</span><span class="p">,</span>
+<span class="linenos"> 4</span>    <span class="s2">&quot;::ofml::go::GoMetaType&quot;</span><span class="p">,</span>
+<span class="linenos"> 5</span>    <span class="n">oap</span><span class="o">.</span><span class="n">default_objects</span><span class="p">[</span><span class="s2">&quot;self&quot;</span><span class="p">],</span>
+<span class="linenos"> 6</span><span class="p">)</span>
+<span class="linenos"> 7</span>
+<span class="linenos"> 8</span><span class="c1"># MethodCallContext for a function of MyPlanningGroup</span>
+<span class="linenos"> 9</span><span class="c1"># if the selected object is the planning group itself</span>
+<span class="linenos">10</span><span class="n">MyPlanningGroup</span> <span class="o">=</span> <span class="n">OapMethodCallContext</span><span class="p">(</span>
+<span class="linenos">11</span>    <span class="n">oap</span><span class="p">,</span>
+<span class="linenos">12</span>    <span class="s2">&quot;::man::series::MyPlanningGroup&quot;</span><span class="p">,</span>
+<span class="linenos">13</span>    <span class="n">oap</span><span class="o">.</span><span class="n">default_objects</span><span class="p">[</span><span class="s2">&quot;self&quot;</span><span class="p">],</span>
+<span class="linenos">14</span>    <span class="n">basename</span> <span class="o">=</span> <span class="s2">&quot;MyPlanningGroup&quot;</span><span class="p">,</span> <span class="c1"># basename optional</span>
+<span class="linenos">15</span><span class="p">)</span>
+<span class="linenos">16</span>
+<span class="linenos">17</span><span class="c1"># MethodCallContext for a function of MyPlanningGroup</span>
+<span class="linenos">18</span><span class="c1"># if the selected object is a direct child of the planning group</span>
+<span class="linenos">19</span><span class="c1"># and therefore has to be called upon the father</span>
+<span class="linenos">20</span><span class="n">getPlanningGroup</span> <span class="o">=</span> <span class="n">OapMethodCallContext</span><span class="p">(</span>
+<span class="linenos">21</span>    <span class="n">oap</span><span class="p">,</span>
+<span class="linenos">22</span>    <span class="s2">&quot;::man::series::MyPlanningGroup&quot;</span><span class="p">,</span>
+<span class="linenos">23</span>    <span class="n">oap</span><span class="o">.</span><span class="n">default_objects</span><span class="p">[</span><span class="s2">&quot;father&quot;</span><span class="p">],</span>
+<span class="hll"><span class="linenos">24</span>    <span class="n">basename</span> <span class="o">=</span> <span class="s2">&quot;getPlanningGroup&quot;</span><span class="p">,</span> <span class="c1"># basename NOT optional, since line</span>
+</span><span class="linenos">25</span>                                   <span class="c1"># is the 2nd time we reference</span>
+<span class="linenos">26</span>                                   <span class="c1"># MyPlanningGroup!</span>
+<span class="linenos">27</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition hint">
+<p class="admonition-title">Hint</p>
+<p>Naming context variables similar to your class, results in methodcall
+looking very “familiar”.</p>
+</div>
+</section>
+<section id="functions">
+<span id="methodcalls-functions"></span><h2>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h2>
+<p>MethodCalls can be used within oap expressions, for example to define a visibility rule for
+an interactor.</p>
+<p>Simply append the method’s name to the classname with the <code class="code docutils literal notranslate"><span class="pre">.</span></code> operator.
+Arguments can be given within the brackets. The optional argument <code class="code docutils literal notranslate"><span class="pre">type_</span></code> defines whether the
+function is of the class or the instance (default <a class="reference internal" href="../create_oap/enums/methodcalltype.html#enums-methodcalltype"><span class="std std-ref">MethodCallType.Instance</span></a>).</p>
+<p>This returns a string suitable for an oap expression.</p>
+<p>According to the MethodCallContexts defined <a class="reference internal" href="#mcc-definition"><span class="std std-ref">above</span></a> the following examples call
+getWidth upon different objects.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># getWidth called upon the selected object</span>
+<span class="n">ia</span><span class="o">.</span><span class="n">condition</span> <span class="o">=</span> <span class="n">MyPlanningGroup</span><span class="o">.</span><span class="n">getWidth</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot; &gt; 800&quot;</span>
+
+<span class="c1"># getWidth called upon the father of the selected object</span>
+<span class="n">ia</span><span class="o">.</span><span class="n">condition</span> <span class="o">=</span> <span class="n">getPlanningGroup</span><span class="o">.</span><span class="n">getWidth</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot; &gt; 800&quot;</span>
+</pre></div>
+</div>
+<p>If the function requires arguments put them between the brackets:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># method with no arguments</span>
+<span class="n">GoMetaType</span><span class="o">.</span><span class="n">getWidth</span><span class="p">()</span>
+
+<span class="c1"># method with a single argument (@Width)</span>
+<span class="n">GoMetaType</span><span class="o">.</span><span class="n">getPropValue</span><span class="p">(</span><span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;Width&quot;</span><span class="p">))</span>
+
+<span class="c1"># static function with 2 arguments (@Arg1, int = 400)</span>
+<span class="n">GoMetaType</span><span class="o">.</span><span class="n">myStaticFunc</span><span class="p">(</span><span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;Arg1&quot;</span><span class="p">),</span> <span class="mi">400</span><span class="p">,</span> <span class="n">type_</span> <span class="o">=</span> <span class="n">MethodCallType</span><span class="o">.</span><span class="n">Class</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="actions">
+<span id="methodcalls-actions"></span><h2>Actions<a class="headerlink" href="#actions" title="Link to this heading"></a></h2>
+<p>If instead of a methodcall for use in an oap expression a real action is required, you may use
+the same syntax.  Just attach <code class="code docutils literal notranslate"><span class="pre">.action</span></code> to the end of your method’s name.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># action for a method with no arguments</span>
+<span class="n">ac</span> <span class="o">=</span> <span class="n">MyClass</span><span class="o">.</span><span class="n">doSomething</span><span class="o">.</span><span class="n">action</span><span class="p">()</span>
+
+<span class="c1"># action for a method with 2 arguments (@MyProp, @MyValue)</span>
+<span class="n">ac</span> <span class="o">=</span> <span class="n">GoMetaType</span><span class="o">.</span><span class="n">setPropValue</span><span class="o">.</span><span class="n">action</span><span class="p">(</span><span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;MyProp&quot;</span><span class="p">),</span> <span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;MyValue&quot;</span><span class="p">))</span>
+
+<span class="c1"># action for a static function with 1 argument (@Arg1)</span>
+<span class="n">ac</span> <span class="o">=</span> <span class="n">MyClass</span><span class="o">.</span><span class="n">myStaticFunc</span><span class="o">.</span><span class="n">action</span><span class="p">(</span><span class="n">OfmlSymbol</span><span class="p">(</span><span class="s2">&quot;Arg1&quot;</span><span class="p">),</span> <span class="n">type_</span> <span class="o">=</span> <span class="n">MethodCallType</span><span class="o">.</span><span class="n">Class</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Leading underscores are reserved for internal use, therefore method names <strong>must
+not</strong> start with “_”.</p>
+</div>
+<div class="admonition hint" id="ofml2python">
+<p class="admonition-title">Hint</p>
+<p>OFML/OAP offers some types that do not exist in Python. Please use the
+following equivalents:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head" colspan="2"><p>OFML / OAP</p></th>
+<th class="head" colspan="2"><p>Python</p></th>
+</tr>
+<tr class="row-even"><th class="head"><p>Type</p></th>
+<th class="head"><p>value</p></th>
+<th class="head"><p>type</p></th>
+<th class="head"><p>value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-odd"><td><p>Int</p></td>
+<td><p>1</p></td>
+<td><p>int</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>Float</p></td>
+<td><p>3.1415</p></td>
+<td><p>float</p></td>
+<td><p>3.1415</p></td>
+</tr>
+<tr class="row-odd"><td><p>String</p></td>
+<td><p>“test”</p></td>
+<td><p>str</p></td>
+<td><p>“test”</p></td>
+</tr>
+<tr class="row-even"><td><p>Symbol</p></td>
+<td><p>&#64;SymbolName</p></td>
+<td><p>OfmlSymbol</p></td>
+<td><p>OfmlSymbol(“SymbolName”)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Null</p></td>
+<td><p>NULL</p></td>
+<td><p>NoneType</p></td>
+<td><p>None</p></td>
+</tr>
+<tr class="row-even"><td><p>Placeholder</p></td>
+<td><p>$SELF</p></td>
+<td><p>Placeholder</p></td>
+<td><p>Placeholder(“SELF”)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Sequence</p></td>
+<td><p>[1,2,3]</p></td>
+<td><p>list</p></td>
+<td><p>[1,2,3]</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="06_handle_images.html" class="btn btn-neutral float-left" title="Handling images" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="17_message.html" class="btn btn-neutral float-right" title="Displaying a message" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, EasternGraphics.</p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
