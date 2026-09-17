@@ -47,17 +47,7 @@ class PDMArticleReductionService(BaseService):
     """Discover and apply PDM-validated pre-dot article reductions."""
 
     def discover(self, snapshot: Snapshot | None) -> PDMReductionResult:
-        """Discover exact prefix/filter groups from an already loaded snapshot.
-
-        A group is accepted only when its product-code prefix can be reproduced
-        exactly by a conjunction of functional PDM AttributeValueIds. Functional
-        values are identified by the legacy PDM rule: ``AttributeType == 0`` and
-        an empty ``OrderCodeValue``. Dimension/order-code values are therefore
-        excluded from reduction and remain part of the existing article tail.
-
-        No PDM query is performed here. ``snapshot.product_property_value_ids``
-        is the product-level PAV source already populated by LoadingEngine.
-        """
+        """Discover exact prefix/filter groups from an already loaded snapshot."""
         if snapshot is None or not snapshot.articles:
             return PDMReductionResult()
 
@@ -69,56 +59,50 @@ class PDMArticleReductionService(BaseService):
             for pid, name in (getattr(snapshot, "product_range", {}) or {}).items()
         }
 
-        products = {
-            pid
-            for pid in product_codes
-            if product_values.get(pid)
-        }
+        products = {pid for pid in product_codes if product_values.get(pid)}
         if len(products) < 2:
             return PDMReductionResult(uncovered_product_ids=tuple(sorted(products)))
 
-        prefix_groups = self._prefix_groups(product_codes, products)
-
         candidates: list[PDMReductionGroup] = []
-        for prefix, prefix_products in prefix_groups:
-            if len(prefix_products) < 2:
-                continue
+        for prefix, prefix_products in self._prefix_groups(product_codes, products):
             ranges = {range_by_product.get(pid, "") for pid in prefix_products}
-            if len(ranges) != 1:
+            if len(prefix_products) < 2 or len(ranges) != 1:
                 continue
             range_name = next(iter(ranges))
-
             common = self._common_values(prefix_products, product_values)
             selected = self._find_exact_filter(
-                prefix_products,
-                products,
-                common,
-                product_values,
-                range_by_product,
-                range_name,
+                prefix_products, products, common, product_values,
+                range_by_product, range_name,
             )
-            if selected is None:
-                continue
-            candidates.append(
-                PDMReductionGroup(
+            if selected is not None:
+                candidates.append(PDMReductionGroup(
                     base_article=prefix,
                     product_ids=tuple(sorted(prefix_products)),
                     filter_attribute_value_ids=tuple(sorted(selected)),
                     product_range=range_name,
-                )
-            )
+                ))
 
-        # Broadest validated families first. This is the reduction policy for
-        # overlapping nested prefixes; legacy PDM itself only defines filter
-        # membership and does not choose a reduced-base hierarchy.
-        candidates.sort(
-            key=lambda group: (
-                -len(group.product_ids),
-                len(group.base_article),
-                group.product_range,
-                group.base_article,
-            )
-        )
+        # If several prefixes describe the same ProductId set, keep the most
+        # specific (longest) prefix. This prevents an ancestor such as "AB"
+        # from hiding the more useful exact family "ABC". Different product sets
+        # remain separate and are resolved by specificity before overlap.
+        by_product_set: dict[tuple[str, ...], PDMReductionGroup] = {}
+        for group in candidates:
+            key = group.product_ids
+            previous = by_product_set.get(key)
+            if previous is None or len(group.base_article) > len(previous.base_article):
+                by_product_set[key] = group
+        candidates = list(by_product_set.values())
+
+        # More-specific validated families get first claim on their products.
+        # Parent families can still be used when they do not overlap a selected
+        # child family. Legacy PDM defines membership, not this reduction hierarchy.
+        candidates.sort(key=lambda group: (
+            -len(group.base_article),
+            -len(group.product_ids),
+            group.product_range,
+            group.base_article,
+        ))
         selected_groups: list[PDMReductionGroup] = []
         covered: set[str] = set()
         for group in candidates:
@@ -128,19 +112,13 @@ class PDMArticleReductionService(BaseService):
             selected_groups.append(group)
             covered.update(ids)
 
-        uncovered = tuple(sorted(products - covered))
         return PDMReductionResult(
             groups=tuple(selected_groups),
-            uncovered_product_ids=uncovered,
+            uncovered_product_ids=tuple(sorted(products - covered)),
         )
 
     def apply(self, snapshot: Snapshot | None) -> PDMReductionResult:
-        """Apply validated reduced pre-dot articles to engineering members.
-
-        Only ``MemberArticle.reduced_article`` is changed. The source
-        ``Article.code`` and its post-dot configuration are never changed.
-        Existing reductions are cleared first so the operation is idempotent.
-        """
+        """Apply validated reduced pre-dot articles to engineering members."""
         result = self.discover(snapshot)
         if snapshot is None or snapshot.engineering is None:
             return result
@@ -162,7 +140,6 @@ class PDMArticleReductionService(BaseService):
 
     @staticmethod
     def _functional_value_ids(snapshot: Snapshot) -> set[str]:
-        """Return AttributeValue ids that are functional for reduction."""
         result: set[str] = set()
         for prop in snapshot.properties:
             if prop.attribute_type != 0:
@@ -174,15 +151,12 @@ class PDMArticleReductionService(BaseService):
 
     @classmethod
     def _product_functional_values(
-        cls,
-        snapshot: Snapshot,
-        functional_value_ids: set[str],
+        cls, snapshot: Snapshot, functional_value_ids: set[str]
     ) -> dict[str, frozenset[str]]:
         source = getattr(snapshot, "product_property_value_ids", {}) or {}
         return {
             str(product_id): frozenset(
-                str(value_id)
-                for value_id in value_ids
+                str(value_id) for value_id in value_ids
                 if str(value_id) in functional_value_ids
             )
             for product_id, value_ids in source.items()
@@ -190,39 +164,28 @@ class PDMArticleReductionService(BaseService):
 
     @staticmethod
     def _product_pre_dot_codes(snapshot: Snapshot) -> dict[str, str]:
-        """Return one pre-dot Product/Item code per product."""
         result: dict[str, str] = {}
         for article in snapshot.articles:
             product_id = str(article.product_id or "")
             if not product_id or product_id in result:
                 continue
             code = (article.code or "").strip()
-            if not code:
-                continue
-            result[product_id] = code.split(".", 1)[0]
+            if code:
+                result[product_id] = code.split(".", 1)[0]
         return result
 
     @staticmethod
-    def _prefix_groups(
-        product_codes: dict[str, str],
-        products: set[str],
-    ) -> list[tuple[str, set[str]]]:
+    def _prefix_groups(product_codes: dict[str, str], products: set[str]):
         groups: dict[str, set[str]] = {}
         for product_id in products:
             code = product_codes.get(product_id, "")
             for length in range(1, len(code)):
-                prefix = code[:length]
-                groups.setdefault(prefix, set()).add(product_id)
-        return [
-            (prefix, ids)
-            for prefix, ids in groups.items()
-            if len(ids) >= 2
-        ]
+                groups.setdefault(code[:length], set()).add(product_id)
+        return [(prefix, ids) for prefix, ids in groups.items() if len(ids) >= 2]
 
     @staticmethod
     def _common_values(
-        product_ids: Iterable[str],
-        product_values: dict[str, frozenset[str]],
+        product_ids: Iterable[str], product_values: dict[str, frozenset[str]]
     ) -> set[str]:
         ids = list(product_ids)
         if not ids:
@@ -236,34 +199,21 @@ class PDMArticleReductionService(BaseService):
 
     @classmethod
     def _find_exact_filter(
-        cls,
-        target: set[str],
-        products: set[str],
-        common_values: set[str],
+        cls, target: set[str], products: set[str], common_values: set[str],
         product_values: dict[str, frozenset[str]],
-        range_by_product: dict[str, str],
-        range_name: str,
+        range_by_product: dict[str, str], range_name: str,
     ) -> set[str] | None:
-        """Return an exact functional filter, or ``None``.
-
-        All selected values must be present on every target product. Therefore
-        the strongest possible conjunction is the complete intersection of
-        target-common functional values. If that strongest filter still returns
-        products outside the target, every weaker subset also returns those
-        products. Consequently the full intersection gives a complete exactness
-        test without brute-force subset enumeration or a greedy search.
-        """
+        # Every valid selected value is common to the target. Therefore the full
+        # target intersection is the strongest possible conjunction. If it still
+        # returns a superset, no subset can be exact.
         scoped = {
-            product_id
-            for product_id in products
+            product_id for product_id in products
             if range_by_product.get(product_id, "") == range_name
         }
         current = set(scoped)
-        selected = set(common_values)
-        for value_id in selected:
+        for value_id in common_values:
             current = {
-                product_id
-                for product_id in current
+                product_id for product_id in current
                 if value_id in product_values.get(product_id, ())
             }
-        return selected if current == target else None
+        return set(common_values) if current == target else None
