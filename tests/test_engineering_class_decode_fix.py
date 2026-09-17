@@ -84,3 +84,47 @@ def test_partial_legacy_decode_does_not_hide_product_level_property(monkeypatch)
 
     assert result["A"] == {"A1": "X", "A2": "Y"}
     assert result["B"] == {"B1": "M", "B2": "N"}
+
+
+def test_unresolved_config_property_still_gets_ignore_hint():
+    prop = Property(
+        id="C",
+        name="Property C",
+        attribute_type=0,
+        values=[
+            PropertyValue(id="C1", property_id="C"),
+            PropertyValue(id="C2", property_id="C"),
+        ],
+    )
+    snapshot = Snapshot()
+    snapshot.properties = [prop]
+    snapshot.articles = [
+        Article(id="1", product_id="P1", code="XMAA.tail"),
+        Article(id="2", product_id="P2", code="XMBA.tail"),
+        Article(id="3", product_id="P3", code="XNAC.tail"),
+        Article(id="4", product_id="P4", code="XNDC.tail"),
+    ]
+    snapshot.article_property_value_ids = {
+        "1": ["C1"],
+        "2": ["C1"],
+        "3": ["C2"],
+        "4": ["C2"],
+    }
+    snapshot.product_property_value_ids = {
+        "P1": ["C1"],
+        "P2": ["C1"],
+        "P3": ["C2"],
+        "P4": ["C2"],
+    }
+
+    result = EngineeringClassService(None).decode_config_codes_by_value_id(snapshot)
+
+    assert "C" not in result
+    hints = EngineeringClassService._slice_hints
+    # The service stores the hint on the instance; exercise the public helper
+    # as Class Creation does and verify the unresolved property is offered.
+    service = EngineeringClassService(None)
+    service.decode_config_codes_by_value_id(snapshot)
+    hints = service.config_slice_hints(snapshot)
+    assert hints["C"]["unresolved"] is True
+    assert hints["C"]["ignored"] is False
