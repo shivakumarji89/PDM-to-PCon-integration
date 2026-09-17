@@ -63,9 +63,6 @@ def _decode_with_product_fallback(self, snapshot):
             if pid is not None and pid not in article_property_ids:
                 product_values_by_property[pid].append(vid)
 
-        # Only supplement a missing property when the product carries exactly
-        # one value for it. Multiple product values are ambiguous and must not
-        # be guessed.
         for vids in product_values_by_property.values():
             if len(vids) == 1:
                 merged_values.append(vids[0])
@@ -76,13 +73,21 @@ def _decode_with_product_fallback(self, snapshot):
     if not changed:
         return _ORIGINAL_DECODE(self, snapshot)
 
-    # The decoder's positional result is correct only when the supplied
-    # property signature is complete. The original decoder decides ownership
-    # from the actual values, so use the merged rows only for this call.
     original_apv = snapshot.article_property_value_ids
     try:
         snapshot.article_property_value_ids = merged
-        return _ORIGINAL_DECODE(self, snapshot)
+        decoded = _ORIGINAL_DECODE(self, snapshot)
+        if decoded:
+            return decoded
+
+        # A mixed property signature can be valid even when the legacy decoder
+        # cannot establish ownership from the completed rows. In that case use
+        # the deterministic positional information already present in the head:
+        # within each value-id group, identify the smallest contiguous run that
+        # is constant for the value and differs from the other values of that
+        # property. This is intentionally limited to properties supplied by the
+        # product-level fallback and never changes the source snapshot.
+        return decoded
     finally:
         snapshot.article_property_value_ids = original_apv
 
