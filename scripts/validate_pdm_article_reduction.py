@@ -1,24 +1,28 @@
-"""Read-only validation of PDM article reduction against ProductsList.
+"""Validate the production Snapshot reduction against legacy ProductsList.
 
 Example:
     python scripts/validate_pdm_article_reduction.py --input dataset.csv
+
+This script is read-only. It loads the complete eligible Product population for
+all ProductRanges referenced by the input, builds the same Snapshot indexes used
+by the production reduction service, and independently checks every discovered
+reduction group with legacy ProductsList.
 """
 from __future__ import annotations
 
 import argparse
 import sys
-import time
 from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.application_context import ApplicationContext  # noqa: E402
+from models.article import Article  # noqa: E402
+from models.property import Property  # noqa: E402
+from models.property_value import PropertyValue  # noqa: E402
+from models.snapshot import Snapshot  # noqa: E402
 from repositories.legacy_pdm_compat_repository import LegacyPDMCompatRepository  # noqa: E402
-from services.engineering.pdm_article_reduction_service import (  # noqa: E402
-    PDMArticleReductionService,
-    PDMAttributeValue,
-)
+from services.engineering.pdm_article_reduction_service import PDMArticleReductionService  # noqa: E402
 from scripts.run_591_reduction_analysis import (  # noqa: E402
     fetch_active_item_counts,
     fetch_pav_rows,
@@ -28,199 +32,137 @@ from scripts.run_591_reduction_analysis import (  # noqa: E402
 
 
 def fetch_range_product_rows(connection, range_ids):
-    """Load the complete Product population for the selected ranges."""
     if not range_ids:
         return {}
     placeholders = ", ".join("?" for _ in range_ids)
     cursor = connection.cursor()
     cursor.execute(
-        f"""
-        SELECT p.ProductId, p.Product, p.ProductRangeId, p.NewProduct
-        FROM Product p WITH (NOLOCK)
-        WHERE p.ProductRangeId IN ({placeholders})
-        """,
+        f"""SELECT p.ProductId, p.Product, p.ProductRangeId, p.NewProduct
+            FROM Product p WITH (NOLOCK)
+            WHERE p.ProductRangeId IN ({placeholders})""",
         tuple(range_ids),
     )
     return {int(row.ProductId): row for row in cursor.fetchall()}
 
 
-class DiagnosticLegacyRepository:
-    """Delegate PDM access while reporting legacy filter-call progress."""
+def build_snapshot(product_rows, pav_rows):
+    snapshot = Snapshot()
+    values_by_product = {}
+    functional_properties = {}
 
-    def __init__(self, repository):
-        self.repository = repository
-        self.validation_count = 0
-        self.started_at = time.perf_counter()
-        self.current_prefix = "?"
-
-    def fetch_legacy_filtered_products(
-        self, product_range_id, language_id, attribute_xml, *, us_data=False
-    ):
-        rows = self.repository.fetch_legacy_filtered_products(
-            product_range_id,
-            language_id,
-            attribute_xml,
-            us_data=us_data,
-        )
-        self.validation_count += 1
-        if self.validation_count % 10 == 0:
-            elapsed = time.perf_counter() - self.started_at
-            print(
-                "Legacy ProductsList validations: "
-                f"{self.validation_count}; elapsed seconds: {elapsed:.2f}; "
-                f"candidate prefix: {self.current_prefix}",
-                flush=True,
+    for row in pav_rows:
+        pid = int(row.ProductId)
+        values_by_product.setdefault(pid, []).append(str(row.AttributeValueId))
+        if int(row.AttributeType or 0) == 0 and not str(row.OrderCodeValue or "").strip():
+            aid = str(row.AttributeId)
+            value_id = str(row.AttributeValueId)
+            value = PropertyValue(
+                id=value_id,
+                property_id=aid,
+                code="",
+                name=str(row.AttributeValueName or ""),
             )
-        return rows
+            functional_properties.setdefault(aid, {})[value_id] = value
 
-    def __getattr__(self, name):
-        return getattr(self.repository, name)
+    snapshot.properties = [
+        Property(
+            id=aid,
+            name=str(aid),
+            attribute_type=0,
+            values=list(values.values()),
+        )
+        for aid, values in functional_properties.items()
+    ]
+    snapshot.product_property_value_ids = values_by_product
+    snapshot.product_range = {
+        str(pid): str(row.ProductRangeId or "")
+        for pid, row in product_rows.items()
+    }
+    snapshot.articles = [
+        Article(
+            id=str(pid),
+            product_id=str(pid),
+            code=str(row.Product or "").strip().rstrip("."),
+        )
+        for pid, row in product_rows.items()
+    ]
+    return snapshot
 
 
-class DiagnosticPDMArticleReductionService(PDMArticleReductionService):
-    """Add prefix labels to diagnostics without changing reduction behavior."""
-
-    def __init__(self, context, repository, prefix_by_product_ids):
-        super().__init__(context, repository)
-        self.prefix_by_product_ids = prefix_by_product_ids
-
-    def _validate(
-        self,
+def products_list_ids(repository, range_id, value_ids, language_id=1):
+    if not value_ids:
+        xml = None
+    else:
+        body = "".join(
+            f'<attribute attributeid="0" attributevalueid="{value_id}" />'
+            for value_id in sorted(value_ids)
+        )
+        xml = f"<attributes>{body}</attributes>"
+    rows = repository.fetch_legacy_filtered_products(
         range_id,
-        selections,
-        expected_ids,
-        *,
         language_id,
-        us_data,
-        product_category_id,
-    ):
-        self.repository.current_prefix = self.prefix_by_product_ids.get(
-            (range_id, expected_ids), "?"
-        )
-        return super()._validate(
-            range_id,
-            selections,
-            expected_ids,
-            language_id=language_id,
-            us_data=us_data,
-            product_category_id=product_category_id,
-        )
-
-
-def announce(stage, started_at):
-    elapsed = time.perf_counter() - started_at
-    print(f"{stage}: complete; elapsed seconds: {elapsed:.2f}", flush=True)
+        xml,
+        us_data=False,
+    )
+    return {str(getattr(row, "ProductId", row[0] if not hasattr(row, "ProductId") else row.ProductId)) for row in rows}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
     args = parser.parse_args()
-    stage_started = time.perf_counter()
-    print("1. Loading the selected 591 ProductIds...", flush=True)
+
     source_rows = read_dataset(args.input)
-    product_ids = sorted({int(row["ProductId"]) for row in source_rows if row.get("ProductId")})
-    if not product_ids:
+    selected_ids = {int(row["ProductId"]) for row in source_rows if row.get("ProductId")}
+    if not selected_ids:
         raise SystemExit("No ProductId values found.")
-    announce(f"1. Loading the selected 591 ProductIds ({len(product_ids)} IDs)", stage_started)
 
     context = ApplicationContext()
-    pdm = context.pdm_service.repository
-    connection = pdm.get_connection()
+    repository = context.pdm_service.repository
+    connection = repository.get_connection()
     try:
-        stage_started = time.perf_counter()
-        print("2. Discovering ProductRangeIds...", flush=True)
-        selected_rows = fetch_product_rows(connection, product_ids)
-        range_ids = sorted(
-            {int(row.ProductRangeId) for row in selected_rows.values() if row.ProductRangeId is not None}
-        )
-        announce(f"2. Discovering ProductRangeIds ({len(range_ids)} ranges)", stage_started)
-
-        stage_started = time.perf_counter()
-        print("3. Loading the complete Product population for those ranges...", flush=True)
-        product_rows = fetch_range_product_rows(connection, range_ids)
-        announce(f"3. Loading the complete Product population ({len(product_rows)} products)", stage_started)
-
-        stage_started = time.perf_counter()
-        print("4. Applying legacy eligibility...", flush=True)
-        active_item_counts = fetch_active_item_counts(connection, sorted(product_rows))
-        eligible_ids = sorted(
-            product_id
-            for product_id, row in product_rows.items()
-            if active_item_counts.get(product_id, 0) > 0 or int(row.NewProduct or 0) == 1
-        )
-        product_rows = {product_id: product_rows[product_id] for product_id in eligible_ids}
-        announce(f"4. Applying legacy eligibility ({len(eligible_ids)} eligible products)", stage_started)
-
-        stage_started = time.perf_counter()
-        print("5. Loading ProductAttributeValues...", flush=True)
-        pav_rows = fetch_pav_rows(connection, eligible_ids)
-        announce(f"5. Loading ProductAttributeValues ({len(pav_rows)} rows)", stage_started)
+        selected_rows = fetch_product_rows(connection, sorted(selected_ids))
+        range_ids = sorted({int(r.ProductRangeId) for r in selected_rows.values() if r.ProductRangeId is not None})
+        all_rows = fetch_range_product_rows(connection, range_ids)
+        active_counts = fetch_active_item_counts(connection, sorted(all_rows))
+        eligible_rows = {
+            pid: row for pid, row in all_rows.items()
+            if active_counts.get(pid, 0) > 0 or int(row.NewProduct or 0) == 1
+        }
+        pav_rows = fetch_pav_rows(connection, sorted(eligible_rows))
     finally:
         connection.close()
 
-    stage_started = time.perf_counter()
-    print("6. Creating PDMProductRecord inputs...", flush=True)
-    values_by_product = {}
-    for row in pav_rows:
-        values_by_product.setdefault(int(row.ProductId), []).append(
-            PDMAttributeValue(
-                str(row.AttributeValueId),
-                str(row.AttributeId),
-                str(row.AttributeName or ""),
-                str(row.AttributeValueName or ""),
-                str(row.OrderCodeValue or ""),
-            )
-        )
-    products = [
-        SimpleNamespace(
-            ProductId=product_id,
-            Product=product_row.Product,
-            ProductRangeId=product_row.ProductRangeId,
-            eligible=True,
-            attribute_values=tuple(values_by_product.get(product_id, ())),
-        )
-        for product_id, product_row in product_rows.items()
-    ]
-    announce(f"6. Creating PDMProductRecord inputs ({len(products)} records)", stage_started)
+    snapshot = build_snapshot(eligible_rows, pav_rows)
+    service = PDMArticleReductionService(context)
+    result = service.discover(snapshot)
 
-    prefix_by_product_ids = {}
-    range_products = {}
-    for product in products:
-        range_products.setdefault(product.ProductRangeId, []).append(
-            service_product := PDMArticleReductionService._normalise_product(product)
-        )
-    for range_id, range_rows in range_products.items():
-        for prefix, prefix_rows in PDMArticleReductionService._meaningful_prefixes(range_rows):
-            prefix_by_product_ids[(range_id, frozenset(row.product_id for row in prefix_rows))] = prefix
+    legacy = LegacyPDMCompatRepository(context)
+    mismatches = []
+    validated = 0
+    for group in result.groups:
+        expected = {str(pid) for pid in group.product_ids}
+        actual = products_list_ids(legacy, group.product_range, group.filter_attribute_value_ids)
+        if actual == expected:
+            validated += 1
+        else:
+            mismatches.append((group.base_article, expected, actual))
 
-    diagnostic_repository = DiagnosticLegacyRepository(
-        LegacyPDMCompatRepository(context)
-    )
-    service = DiagnosticPDMArticleReductionService(
-        context,
-        diagnostic_repository,
-        prefix_by_product_ids,
-    )
-    stage_started = time.perf_counter()
-    print("7. Starting PDMArticleReductionService.discover()...", flush=True)
-    candidates = service.discover(products)
-    announce(
-        "7. PDMArticleReductionService.discover() "
-        f"({diagnostic_repository.validation_count} validations)",
-        stage_started,
-    )
-    ambiguous = [candidate for candidate in candidates if candidate.ambiguous_equivalent_filters]
-    covered = {product_id for candidate in candidates for product_id in candidate.product_ids}
-    uncovered = sorted(str(product_id) for product_id in product_ids if str(product_id) not in covered)
-    print(f"Candidate groups: {len(candidates)}")
-    print(f"Validated groups: {sum(candidate.validation.valid for candidate in candidates)}")
-    print(f"Uncovered ProductIds: {len(uncovered)}")
-    print(f"Ambiguous groups: {len(ambiguous)}")
-    for candidate in candidates:
-        print(f"{candidate.product_range_id} {candidate.base}: {candidate.product_ids} filter={candidate.filter_attribute_value_ids}")
-    if uncovered:
-        print("Uncovered:", ", ".join(uncovered))
+    selected_covered = {
+        str(pid) for group in result.groups for pid in group.product_ids
+    }
+    input_covered = selected_ids & {int(pid) for pid in selected_covered}
+    print(f"Input ProductIds: {len(selected_ids)}")
+    print(f"Complete eligible range population: {len(eligible_rows)}")
+    print(f"Production reduction groups: {len(result.groups)}")
+    print(f"Legacy ProductsList validations passed: {validated}")
+    print(f"Legacy mismatches: {len(mismatches)}")
+    print(f"Input ProductIds covered by reductions: {len(input_covered)}")
+    print(f"Input ProductIds not covered: {len(selected_ids - input_covered)}")
+    if mismatches:
+        for base, expected, actual in mismatches[:20]:
+            print(f"MISMATCH {base}: expected={len(expected)} actual={len(actual)}")
+        return 2
     return 0
 
 
