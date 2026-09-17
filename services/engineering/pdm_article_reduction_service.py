@@ -50,12 +50,12 @@ class PDMArticleReductionService(BaseService):
         """Discover exact prefix/filter groups from an already loaded snapshot.
 
         A group is accepted only when its product-code prefix can be reproduced
-        exactly by a conjunction of functional PDM AttributeValueIds.  Functional
+        exactly by a conjunction of functional PDM AttributeValueIds. Functional
         values are identified by the legacy PDM rule: ``AttributeType == 0`` and
-        an empty ``OrderCodeValue``.  Dimension/order-code values are therefore
+        an empty ``OrderCodeValue``. Dimension/order-code values are therefore
         excluded from reduction and remain part of the existing article tail.
 
-        No PDM query is performed here.  ``snapshot.product_property_value_ids``
+        No PDM query is performed here. ``snapshot.product_property_value_ids``
         is the product-level PAV source already populated by LoadingEngine.
         """
         if snapshot is None or not snapshot.articles:
@@ -77,7 +77,6 @@ class PDMArticleReductionService(BaseService):
         if len(products) < 2:
             return PDMReductionResult(uncovered_product_ids=tuple(sorted(products)))
 
-        postings = self._posting_index(product_values)
         prefix_groups = self._prefix_groups(product_codes, products)
 
         candidates: list[PDMReductionGroup] = []
@@ -85,8 +84,6 @@ class PDMArticleReductionService(BaseService):
             if len(prefix_products) < 2:
                 continue
             ranges = {range_by_product.get(pid, "") for pid in prefix_products}
-            # A legacy ProductsList filter is range-scoped.  A prefix spanning
-            # multiple known ranges cannot be validated as one legacy group.
             if len(ranges) != 1:
                 continue
             range_name = next(iter(ranges))
@@ -96,7 +93,7 @@ class PDMArticleReductionService(BaseService):
                 prefix_products,
                 products,
                 common,
-                postings,
+                product_values,
                 range_by_product,
                 range_name,
             )
@@ -111,10 +108,9 @@ class PDMArticleReductionService(BaseService):
                 )
             )
 
-        # Prefer the broadest validated families first.  This is a reduction
-        # policy, not a claim about legacy PDM behavior: legacy PDM only defines
-        # the filter result, not how a new reduced catalogue chooses overlapping
-        # families.
+        # Broadest validated families first. This is the reduction policy for
+        # overlapping nested prefixes; legacy PDM itself only defines filter
+        # membership and does not choose a reduced-base hierarchy.
         candidates.sort(
             key=lambda group: (
                 -len(group.product_ids),
@@ -141,7 +137,7 @@ class PDMArticleReductionService(BaseService):
     def apply(self, snapshot: Snapshot | None) -> PDMReductionResult:
         """Apply validated reduced pre-dot articles to engineering members.
 
-        Only ``MemberArticle.reduced_article`` is changed.  The source
+        Only ``MemberArticle.reduced_article`` is changed. The source
         ``Article.code`` and its post-dot configuration are never changed.
         Existing reductions are cleared first so the operation is idempotent.
         """
@@ -194,11 +190,7 @@ class PDMArticleReductionService(BaseService):
 
     @staticmethod
     def _product_pre_dot_codes(snapshot: Snapshot) -> dict[str, str]:
-        """Return one pre-dot Product/Item code per product.
-
-        The source article is the already loaded Item article.  Only its prefix
-        before the first ``.`` is read; everything after the dot is ignored.
-        """
+        """Return one pre-dot Product/Item code per product."""
         result: dict[str, str] = {}
         for article in snapshot.articles:
             product_id = str(article.product_id or "")
@@ -211,16 +203,6 @@ class PDMArticleReductionService(BaseService):
         return result
 
     @staticmethod
-    def _posting_index(
-        product_values: dict[str, frozenset[str]],
-    ) -> dict[str, set[str]]:
-        postings: dict[str, set[str]] = {}
-        for product_id, values in product_values.items():
-            for value_id in values:
-                postings.setdefault(value_id, set()).add(product_id)
-        return postings
-
-    @staticmethod
     def _prefix_groups(
         product_codes: dict[str, str],
         products: set[str],
@@ -228,9 +210,6 @@ class PDMArticleReductionService(BaseService):
         groups: dict[str, set[str]] = {}
         for product_id in products:
             code = product_codes.get(product_id, "")
-            # A full product code is not a reduction.  We need a shorter common
-            # pre-dot base so at least one variable/configuration character is
-            # actually removed.
             for length in range(1, len(code)):
                 prefix = code[:length]
                 groups.setdefault(prefix, set()).add(product_id)
@@ -261,17 +240,18 @@ class PDMArticleReductionService(BaseService):
         target: set[str],
         products: set[str],
         common_values: set[str],
-        postings: dict[str, set[str]],
+        product_values: dict[str, frozenset[str]],
         range_by_product: dict[str, str],
         range_name: str,
     ) -> set[str] | None:
-        """Find a functional value conjunction whose result is exactly target.
+        """Return an exact functional filter, or ``None``.
 
-        Start with the eligible products in the target's range.  Every candidate
-        value is known to occur on every target product, so intersecting its
-        posting set can never remove a target member.  If an exact legacy filter
-        exists, repeatedly adding any common value that shrinks the current set
-        will eventually reach the target.
+        All selected values must be present on every target product. Therefore
+        the strongest possible conjunction is the complete intersection of
+        target-common functional values. If that strongest filter still returns
+        products outside the target, every weaker subset also returns those
+        products. Consequently the full intersection gives a complete exactness
+        test without brute-force subset enumeration or a greedy search.
         """
         scoped = {
             product_id
@@ -279,25 +259,11 @@ class PDMArticleReductionService(BaseService):
             if range_by_product.get(product_id, "") == range_name
         }
         current = set(scoped)
-        selected: set[str] = set()
-        # Smaller postings first usually reaches the target with fewer values and
-        # keeps the generated filter compact.  The result is deterministic.
-        ordered_values = sorted(
-            common_values,
-            key=lambda value_id: (len(postings.get(value_id, set())), value_id),
-        )
-        while current != target:
-            best_value = None
-            best_next = current
-            for value_id in ordered_values:
-                if value_id in selected:
-                    continue
-                next_set = current & postings.get(value_id, set())
-                if target.issubset(next_set) and len(next_set) < len(best_next):
-                    best_value = value_id
-                    best_next = next_set
-            if best_value is None:
-                return None
-            selected.add(best_value)
-            current = best_next
-        return selected
+        selected = set(common_values)
+        for value_id in selected:
+            current = {
+                product_id
+                for product_id in current
+                if value_id in product_values.get(product_id, ())
+            }
+        return selected if current == target else None
