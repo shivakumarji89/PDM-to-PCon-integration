@@ -1,173 +1,133 @@
 from types import SimpleNamespace
 
-from models.article_set import ArticleSet
-from models.member_article import MemberArticle
-from services.engineering.pdm_article_reduction_service import (
-    PDMArticleReductionService,
-    PDMAttributeValue,
-)
+from models.article import Article
+from models.property import Property
+from models.property_value import PropertyValue
+from models.snapshot import Snapshot
+from services.engineering.pdm_article_reduction_service import PDMArticleReductionService
 
 
-class FakeLegacyRepository:
-    def __init__(self, returned_by_xml):
-        self.returned_by_xml = returned_by_xml
-        self.calls = []
-
-    def fetch_legacy_filtered_products(self, scope, language_id, xml, *, us_data=False):
-        self.calls.append((scope, language_id, xml, us_data))
-        return self.returned_by_xml.get(xml, ())
-
-
-def value(value_id, attribute_id, *, name="", order_code_value=""):
-    return PDMAttributeValue(
-        str(value_id), str(attribute_id), f"A{attribute_id}", name, order_code_value
-    )
-
-
-def product(product_id, code, values, range_id=1, eligible=True):
-    return SimpleNamespace(
-        ProductId=product_id,
-        Product=code,
-        ProductRangeId=range_id,
-        eligibility=eligible,
-        attribute_values=tuple(values),
-    )
-
-
-def discover(products, returned=None):
-    return PDMArticleReductionService(repository=FakeLegacyRepository(returned or {})).discover(products)
-
-
-def test_valid_prefix_uses_common_functional_filter_and_exact_ids():
-    products = [
-        product(1, "ABC1.x", [value(10, 1), value(99, 9, order_code_value="W")]),
-        product(2, "ABC2.y", [value(10, 1), value(99, 9, order_code_value="W")]),
+def make_snapshot(rows, functional_values, ranges=None):
+    """Build the smallest real Snapshot needed by the reduction service."""
+    ranges = ranges or {}
+    snapshot = Snapshot()
+    snapshot.properties = [
+        Property(
+            id=attribute_id,
+            name=f"A{attribute_id}",
+            attribute_type=0,
+            values=[PropertyValue(id=value_id, property_id=attribute_id, code=code)],
+        )
+        for attribute_id, value_id, code in functional_values
     ]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    results = discover(products, {xml: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)]})
-    assert any(r.base == "ABC" and r.product_ids == ("1", "2") for r in results)
-    assert all(r.filter_attribute_value_ids == ("10",) for r in results if r.product_ids == ("1", "2"))
-
-
-def test_ranges_never_mix():
-    products = [product(1, "ABC1", [value(10, 1)], 1), product(2, "ABC2", [value(10, 1)], 2)]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    results = discover(products, {xml: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)]})
-    assert not any(r.product_ids == ("1", "2") for r in results)
-
-
-def test_order_code_and_size_values_are_excluded():
-    products = [
-        product(1, "ABC1", [value(10, 1), value(20, 2, order_code_value="100")]),
-        product(2, "ABC2", [value(10, 1), value(20, 2, order_code_value="200")]),
-    ]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    results = discover(products, {xml: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)]})
-    assert any(r.base == "ABC" and r.filter_attribute_value_ids == ("10",) for r in results)
-
-
-def test_extra_products_reject_candidate():
-    products = [product(1, "ABC1", [value(10, 1)]), product(2, "ABC2", [value(10, 1)])]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    repository = FakeLegacyRepository(
-        {xml: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2), SimpleNamespace(ProductId=3)]}
-    )
-    results = PDMArticleReductionService(repository=repository).discover(products)
-    assert results == ()
-    assert repository.calls
-    assert "attributevalueid=\"10\"" in repository.calls[0][2]
-
-
-def test_product_id_set_equality_not_count_or_product_names():
-    products = [product(1, "ABC1", [value(10, 1)]), product(2, "ABC2", [value(10, 1)])]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    results = discover(products, {xml: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=3)]})
-    assert results == ()
-
-
-def test_full_code_and_singleton_prefixes_are_never_legacy_validated():
-    products = [
-        product(1, "ABC1", [value(10, 1)]),
-        product(2, "ABC2", [value(10, 1)]),
-        product(3, "ABD3", [value(10, 1)]),
-    ]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    repository = FakeLegacyRepository(
-        {
-            xml: [
-                SimpleNamespace(ProductId=1),
-                SimpleNamespace(ProductId=2),
-                SimpleNamespace(ProductId=3),
-            ]
-        }
-    )
-    results = PDMArticleReductionService(repository=repository).discover(products)
-    assert results
-    assert all(result.base not in {"ABC1", "ABC2", "ABD3"} for result in results)
-    assert all(len(result.product_ids) >= 2 for result in results)
-    assert repository.calls
-    assert all(call[2] == xml for call in repository.calls)
-
-
-def test_equivalent_valid_filters_are_reported_as_ambiguity():
-    products = [
-        product(1, "ABC1", [value(10, 1), value(11, 2)]),
-        product(2, "ABC2", [value(10, 1), value(11, 2)]),
-    ]
-    combined = (
-        '<attributes><attribute attributeid="1" attributevalueid="10"/>'
-        '<attribute attributeid="2" attributevalueid="11"/></attributes>'
-    )
-    one = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    results = discover(
-        products,
-        {
-            combined: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)],
-            one: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)],
-        },
-    )
-    abc = [r for r in results if r.base == "ABC"]
-    assert abc and any(r.ambiguous_equivalent_filters for r in abc)
-
-
-def test_equivalent_singleton_filter_is_reported_as_ambiguity():
-    products = [
-        product(1, "ABC1", [value(10, 1), value(11, 2)]),
-        product(2, "ABC2", [value(10, 1), value(11, 2)]),
-    ]
-    combined = (
-        '<attributes><attribute attributeid="1" attributevalueid="10"/>'
-        '<attribute attributeid="2" attributevalueid="11"/></attributes>'
-    )
-    one = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    returned = {
-        combined: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)],
-        one: [SimpleNamespace(ProductId=1), SimpleNamespace(ProductId=2)],
+    snapshot.product_property_value_ids = {
+        str(product_id): list(value_ids)
+        for product_id, _code, value_ids in rows
     }
-    results = discover(products, returned)
-    assert any(
-        any(item.attribute_value_ids == ("10",) for item in result.ambiguous_equivalent_filters)
-        for result in results
+    snapshot.product_range = {
+        str(product_id): str(ranges.get(product_id, "R"))
+        for product_id, _code, _value_ids in rows
+    }
+    snapshot.articles = [
+        Article(id=str(product_id), product_id=str(product_id), code=code)
+        for product_id, code, _value_ids in rows
+    ]
+    return snapshot
+
+
+def test_exact_filter_uses_complete_common_functional_intersection():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.tail", ["10", "20"]),
+            ("2", "ABC2.tail", ["10", "20"]),
+            ("3", "ABD3.tail", ["11", "20"]),
+        ],
+        [("A", "10", ""), ("B", "20", "") , ("C", "11", "")],
     )
 
+    result = PDMArticleReductionService(None).discover(snapshot)
 
-def test_service_does_not_mutate_member_or_article_set():
-    member = MemberArticle(id="m", article_id="a", reduced_article="OLD")
-    article_set = ArticleSet(base_code="OLD", base_length=3, article_ids=["a"])
-    products = [product(1, "ABC1", [value(10, 1)])]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    discover(products, {xml: [SimpleNamespace(ProductId=1)]})
-    assert member.reduced_article == "OLD"
-    assert article_set.base_code == "OLD"
-    assert article_set.base_length == 3
+    abc = next(group for group in result.groups if group.base_article == "ABC")
+    assert abc.product_ids == ("1", "2")
+    assert abc.filter_attribute_value_ids == ("10", "20")
 
 
-def test_us_validation_uses_category_scope_and_rejects_missing_category():
-    products = [product(1, "ABC1", [value(10, 1)])]
-    xml = '<attributes><attribute attributeid="1" attributevalueid="10"/></attributes>'
-    repo = FakeLegacyRepository({xml: [SimpleNamespace(ProductId=1)]})
-    service = PDMArticleReductionService(repository=repo)
-    result = service.discover(products, us_data=True, product_category_id=77)
-    assert result == ()
-    assert repo.calls == []
-    assert service.discover(products, us_data=True) == ()
+def test_non_exact_common_intersection_is_rejected():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.tail", ["10", "20"]),
+            ("2", "ABC2.tail", ["10", "21"]),
+            ("3", "ABD3.tail", ["10", "20", "21"]),
+        ],
+        [("A", "10", ""), ("B", "20", ""), ("C", "21", "")],
+    )
+
+    result = PDMArticleReductionService(None).discover(snapshot)
+
+    assert not any(group.base_article == "ABC" for group in result.groups)
+
+
+def test_order_code_values_are_not_functional_reduction_dimensions():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.tail", ["10", "99"]),
+            ("2", "ABC2.tail", ["10", "98"]),
+        ],
+        [("A", "10", ""), ("B", "99", "X"), ("C", "98", "Y")],
+    )
+
+    result = PDMArticleReductionService(None).discover(snapshot)
+
+    abc = next(group for group in result.groups if group.base_article == "ABC")
+    assert abc.filter_attribute_value_ids == ("10",)
+
+
+def test_product_ranges_are_never_mixed():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.tail", ["10"]),
+            ("2", "ABC2.tail", ["10"]),
+        ],
+        [("A", "10", "")],
+        ranges={"1": "R1", "2": "R2"},
+    )
+
+    result = PDMArticleReductionService(None).discover(snapshot)
+
+    assert not any(group.base_article == "ABC" for group in result.groups)
+
+
+def test_only_pre_dot_article_is_reduced():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.0812SM", ["10"]),
+            ("2", "ABC2.1012SM", ["10"]),
+        ],
+        [("A", "10", "")],
+    )
+
+    result = PDMArticleReductionService(None).discover(snapshot)
+
+    assert any(group.base_article == "ABC" for group in result.groups)
+    assert all("." not in group.base_article for group in result.groups)
+
+
+def test_apply_changes_only_member_reduced_article():
+    snapshot = make_snapshot(
+        [
+            ("1", "ABC1.tail", ["10"]),
+            ("2", "ABC2.tail", ["10"]),
+        ],
+        [("A", "10", "")],
+    )
+    member1 = SimpleNamespace(article_id="1", reduced_article="OLD")
+    member2 = SimpleNamespace(article_id="2", reduced_article="OLD")
+    snapshot.engineering.families = [SimpleNamespace(members=[member1, member2])]
+
+    result = PDMArticleReductionService(None).apply(snapshot)
+
+    assert result.groups
+    assert member1.reduced_article == "ABC"
+    assert member2.reduced_article == "ABC"
+    assert snapshot.articles[0].code == "ABC1.tail"
+    assert snapshot.articles[1].code == "ABC2.tail"
