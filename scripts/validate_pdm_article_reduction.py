@@ -49,13 +49,21 @@ def build_snapshot(product_rows, pav_rows):
     snapshot = Snapshot()
     values_by_product = {}
     functional_properties = {}
+    property_attributes = {}
 
     for row in pav_rows:
         pid = int(row.ProductId)
-        values_by_product.setdefault(pid, []).append(str(row.AttributeValueId))
-        if int(row.AttributeType or 0) == 0 and not str(row.OrderCodeValue or "").strip():
+        value_id = str(row.AttributeValueId)
+        values_by_product.setdefault(pid, []).append(value_id)
+
+        # fetch_pav_rows does not expose AttributeType directly. It already joins
+        # the attribute metadata, so infer the legacy functional dimension from
+        # the same fields available to the analysis helper: empty OrderCodeValue
+        # means the value does not contribute to the physical article code.
+        # Attribute ids are retained exactly as returned by PDM.
+        if not str(row.OrderCodeValue or "").strip():
             aid = str(row.AttributeId)
-            value_id = str(row.AttributeValueId)
+            property_attributes[aid] = True
             value = PropertyValue(
                 id=value_id,
                 property_id=aid,
@@ -104,7 +112,13 @@ def products_list_ids(repository, range_id, value_ids, language_id=1):
         xml,
         us_data=False,
     )
-    return {str(getattr(row, "ProductId", row[0] if not hasattr(row, "ProductId") else row.ProductId)) for row in rows}
+    result = set()
+    for row in rows:
+        if hasattr(row, "ProductId"):
+            result.add(str(row.ProductId))
+        else:
+            result.add(str(row[0]))
+    return result
 
 
 def main() -> int:
