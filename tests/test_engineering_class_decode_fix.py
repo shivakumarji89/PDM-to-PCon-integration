@@ -117,14 +117,10 @@ def test_unresolved_config_property_still_gets_ignore_hint():
         "P4": ["C2"],
     }
 
-    result = EngineeringClassService(None).decode_config_codes_by_value_id(snapshot)
+    service = EngineeringClassService(None)
+    result = service.decode_config_codes_by_value_id(snapshot)
 
     assert "C" not in result
-    hints = EngineeringClassService._slice_hints
-    # The service stores the hint on the instance; exercise the public helper
-    # as Class Creation does and verify the unresolved property is offered.
-    service = EngineeringClassService(None)
-    service.decode_config_codes_by_value_id(snapshot)
     hints = service.config_slice_hints(snapshot)
     assert hints["C"]["unresolved"] is True
     assert hints["C"]["ignored"] is False
