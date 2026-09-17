@@ -28,15 +28,22 @@ def make_snapshot():
     snapshot.properties = [prop_a, prop_b]
     snapshot.articles = [
         Article(id="1", product_id="P1", code="XM.tail"),
-        Article(id="2", product_id="P2", code="YN.tail"),
+        Article(id="2", product_id="P2", code="XN.tail"),
+        Article(id="3", product_id="P3", code="YM.tail"),
+        Article(id="4", product_id="P4", code="YN.tail"),
     ]
+    # A is available at article level, while B exists only in the product rows.
     snapshot.article_property_value_ids = {
         "1": ["A1"],
-        "2": ["A2"],
+        "2": ["A1"],
+        "3": ["A2"],
+        "4": ["A2"],
     }
     snapshot.product_property_value_ids = {
         "P1": ["A2", "B1"],
-        "P2": ["A1", "B2"],
+        "P2": ["A2", "B2"],
+        "P3": ["A1", "B1"],
+        "P4": ["A1", "B2"],
     }
     return snapshot
 
@@ -55,9 +62,7 @@ def test_article_level_property_wins_over_conflicting_product_value():
 
     result = EngineeringClassService(None).decode_config_codes_by_value_id(snapshot)
 
-    # Product P1 carries A2 and P2 carries A1, but their articles explicitly
-    # carry the opposite A values. The article-level value must remain
-    # authoritative while B is supplemented from the product row.
-    assert result["A"]["A1"] == "X"
-    assert result["A"]["A2"] == "Y"
+    # Product rows deliberately carry conflicting A values. The article-level
+    # A values remain authoritative while B is supplemented from product rows.
+    assert result["A"] == {"A1": "X", "A2": "Y"}
     assert result["B"] == {"B1": "M", "B2": "N"}
