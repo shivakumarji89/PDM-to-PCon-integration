@@ -3,6 +3,7 @@ from models.property import Property
 from models.property_value import PropertyValue
 from models.snapshot import Snapshot
 from services.engineering.engineering_class_service import EngineeringClassService
+import services.engineering.engineering_class_decode_fix as decode_fix
 
 
 def make_snapshot():
@@ -64,5 +65,22 @@ def test_article_level_property_wins_over_conflicting_product_value():
 
     # Product rows deliberately carry conflicting A values. The article-level
     # A values remain authoritative while B is supplemented from product rows.
+    assert result["A"] == {"A1": "X", "A2": "Y"}
+    assert result["B"] == {"B1": "M", "B2": "N"}
+
+
+def test_partial_legacy_decode_does_not_hide_product_level_property(monkeypatch):
+    snapshot = make_snapshot()
+
+    # Reproduce the real failure mode: the legacy decoder successfully resolves
+    # the article-level property A, but returns no B mapping even after the
+    # product-level values have been merged.
+    def partial_legacy_decode(_self, _snapshot):
+        return {"A": {"A1": "X", "A2": "Y"}}
+
+    monkeypatch.setattr(decode_fix, "_ORIGINAL_DECODE", partial_legacy_decode)
+
+    result = EngineeringClassService(None).decode_config_codes_by_value_id(snapshot)
+
     assert result["A"] == {"A1": "X", "A2": "Y"}
     assert result["B"] == {"B1": "M", "B2": "N"}
