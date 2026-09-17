@@ -67,7 +67,7 @@ def test_order_code_values_are_not_used_as_reduction_filters():
     products = [
         ("1", "ABCA", {"A"}, "Ratio"),
         ("2", "ABCB", {"A"}, "Ratio"),
-        ("3", "ABCC", {"B"}, "Ratio"),
+        ("3", "ABDC", {"B"}, "Ratio"),
     ]
     snapshot = _snapshot(products)
 
