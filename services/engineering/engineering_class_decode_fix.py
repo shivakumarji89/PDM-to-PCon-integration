@@ -76,6 +76,9 @@ def _decode_with_product_fallback(self, snapshot):
     if not changed:
         return _ORIGINAL_DECODE(self, snapshot)
 
+    # The decoder's positional result is correct only when the supplied
+    # property signature is complete. The original decoder decides ownership
+    # from the actual values, so use the merged rows only for this call.
     original_apv = snapshot.article_property_value_ids
     try:
         snapshot.article_property_value_ids = merged
