@@ -68,7 +68,7 @@ def build_snapshot(product_rows, pav_rows):
                 id=value_id,
                 property_id=aid,
                 code="",
-                name=str(row.AttributeValueName or ""),
+                value=str(row.AttributeValueName or ""),
             )
             functional_properties.setdefault(aid, {})[value_id] = value
 
