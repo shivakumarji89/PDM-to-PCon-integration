@@ -241,14 +241,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
-        back_btn = QPushButton("← Modules", container)
-        back_btn.setObjectName("backToModulesNavButton")
-        back_btn.setStyleSheet(secondary_button_qss("backToModulesNavButton"))
-        back_btn.clicked.connect(self._show_module_home)
-        layout.addWidget(back_btn)
-
-        monitor_btn = QPushButton("Check PDM Changes", container)
-        monitor_btn.setObjectName("pdmMonitorBtn")
+        monitor_btn = QPushButton("Check PDM Changes", container)        monitor_btn.setObjectName("pdmMonitorBtn")
         monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
         monitor_btn.clicked.connect(self._on_check_pdm_changes)
         layout.addWidget(monitor_btn)
@@ -332,6 +325,13 @@ class MainWindow(QMainWindow):
         footer_widget = QWidget(container)
         footer = QHBoxLayout(footer_widget)
         footer.setContentsMargins(0, 0, 0, 0)
+        self._modules_btn = QPushButton("\u2190 Modules", footer_widget)
+        self._modules_btn.setObjectName("backToModulesButton")
+        self._modules_btn.setToolTip("Return to the module selection")
+        self._modules_btn.setStyleSheet(secondary_button_qss("backToModulesButton"))
+        self._modules_btn.clicked.connect(self._show_module_home)
+        footer.addWidget(self._modules_btn)
+
         self._back_btn = QPushButton("\u2190 Back", footer_widget)
         self._back_btn.setObjectName("navBackButton")
         self._back_btn.setToolTip("Go to the previous workflow step")
@@ -497,8 +497,7 @@ class MainWindow(QMainWindow):
                     or project.selected_product.name
                     or "Product"
                 )
-                self._product_status.setText(label)
-            self.refresh_workspaces()
+                self._product_status.setText(label)            self.refresh_workspaces()
             if project.current_step is not None:
                 self._manager.jump_to(project.current_step)
         except Exception:  # noqa: BLE001 (silently skip if load fails)
@@ -747,8 +746,7 @@ class MainWindow(QMainWindow):
         written: list[str] = []
         constraints: list[str] = []
         for table in tables:
-            rows = service.to_csv_rows(table)
-            filename = f"{table.name}_tbl.csv"
+            rows = service.to_csv_rows(table)            filename = f"{table.name}_tbl.csv"
             (out / filename).write_text(
                 "\r\n".join(rows) + "\r\n", encoding="utf-8"
             )
@@ -998,103 +996,3 @@ class MainWindow(QMainWindow):
             [self._DEFAULT_ASSISTANT_WIDTH],
             Qt.Orientation.Horizontal,
         )
-
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        if not self._confirm_discard_if_modified():
-            event.ignore()
-            return
-        self._save_layout()
-        super().closeEvent(event)
-
-    def _on_step_changed(self, step: WorkflowStep) -> None:
-        title = self._manager.title(step)
-        if step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
-            self.statusBar().showMessage(
-                f"{title} - load a product on the Product page first"
-            )
-        else:
-            self.statusBar().showMessage(f"Ready - {title} workspace")
-
-    def _on_product_loaded(self, label: str) -> None:
-        self._product_status.setText(label)
-
-    def _on_snapshot_changed(self) -> None:
-        self.refresh_workspaces()
-
-    #: Workspaces that read the Snapshot's product data directly, refreshed as
-    #: soon as the snapshot is published (before Engineering Initialization).
-    _SNAPSHOT_DEPENDENT_STEPS: tuple[WorkflowStep, ...] = ()
-
-    #: Workspaces that consume ``snapshot.engineering`` and therefore only
-    #: become populated once background Engineering Initialization completes.
-    #: Class Creation groups by the reduction's ``article_sets`` (materialised by
-    #: Engineering Initialization), so it belongs here, not at snapshot-publish.
-    _ENGINEERING_DEPENDENT_STEPS = (
-        WorkflowStep.ARTICLES,
-        WorkflowStep.CLASS_CREATION,
-        WorkflowStep.TEXT,
-        WorkflowStep.RELATION,
-        WorkflowStep.PRICING,
-        WorkflowStep.PRICING_RELATION,
-        WorkflowStep.REVIEW,
-        WorkflowStep.ENGINEERING,
-    )
-
-    def _on_snapshot_published(self) -> None:
-        """Family load Stage A: the snapshot is published but Engineering
-        Initialization is still running. Refresh only the snapshot-dependent
-        workspaces; the engineering-dependent ones are refreshed once, later, by
-        :meth:`_on_engineering_ready`, so no workspace is rebuilt twice.
-        """
-        for step in self._SNAPSHOT_DEPENDENT_STEPS:
-            page = self._pages.get(step)
-            if page is not None and hasattr(page, "refresh"):
-                page.refresh()
-        self._manager.refresh()
-
-    def _on_engineering_ready(self) -> None:
-        """Background Engineering Initialization finished: refresh only the
-        engineering-dependent workspaces and update workflow readiness (which
-        enables Generate). Article/Property/Option workspaces are left untouched
-        so in-progress user edits are never disturbed.
-        """
-        for step in self._ENGINEERING_DEPENDENT_STEPS:
-            page = self._pages.get(step)
-            if page is not None and hasattr(page, "refresh"):
-                page.refresh()
-        self._manager.refresh()
-        self.statusBar().showMessage("Snapshot Ready")
-
-    def _on_load_complete(self) -> None:
-        """A load fully finished: do one final refresh of EVERY workspace so all
-        of them reflect the complete, settled snapshot."""
-        self.refresh_workspaces()
-
-    def log_activity(self, kind: str, message: str) -> None:
-        """Forward a detailed activity line to the Engineering Activity panel.
-
-        Public hook so long-running operations (Load Family, and future
-        Generate/Import/Export) can feed their progress-reporter activity events
-        into the shared Activity timeline.
-        """
-        self._assistant_panel.log_activity(kind, message)
-
-    def refresh_workspaces(self) -> None:
-        """Refresh all workspaces and the workflow state."""
-        for page in self._refreshable_pages:
-            page.refresh()
-        self._manager.refresh()
-
-    # -- UI standardisation ------------------------------------------------
-    def _apply_design_standards(self) -> None:
-        """Apply the shared design-system behaviours to every table and tree.
-
-        Done in one place so all workspaces get identical spreadsheet-style
-        tables and consistent explorer trees without any page implementing its
-        own behaviour. Each widget's own columns, selection mode and data are
-        left untouched.
-        """
-        for table in self.findChildren(QTableWidget):
-            standardize_table(table)
-        for tree in self.findChildren(QTreeWidget):
-            standardize_tree(tree)
