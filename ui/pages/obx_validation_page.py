@@ -301,7 +301,16 @@ class ObxValidationPage(BasePage):
             except OSError as exc:
                 QMessageBox.warning(self, "OBX Validation", f"Could not read {path}:\n{exc}")
                 continue
-            cur, file_lines = svc.parse_obx(text)
+            try:
+                cur, file_lines = svc.parse_obx(text)
+            except ValueError as exc:
+                QMessageBox.warning(
+                    self,
+                    "OBX Validation",
+                    f"Could not parse {Path(path).name}:\n{exc}\n\n"
+                    "The file appears incomplete or malformed XML.",
+                )
+                continue
             skipped_count += getattr(svc, "last_parse_skipped_count", 0)
             if not currency:
                 currency = cur
