@@ -363,6 +363,8 @@ class ObxValidationPage(BasePage):
             # Pause -> Resume can cancel the request before the next DB checkpoint.
             if self._pause_btn.text() == "Resume Validation":
                 control.resume()
+                if self._active_reporter is not None:
+                    self._active_reporter.start_timer()
                 self._pause_btn.setText("Pause Validation")
                 self._progress_state.setText("VALIDATING")
             else:
