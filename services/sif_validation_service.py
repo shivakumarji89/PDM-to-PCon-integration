@@ -12,14 +12,12 @@ the file's no-upcharge lines (the region site whose PDM base matches); effective
 date = server ``GetUTCDate()`` (the current price list, not the SIF date); fabric
 option codes matched to their PDM band by prefix (``1HA01`` -> ``1HA#``).
 
-OBX (pCon) is intentionally not handled yet - SIF (CET) only.
+OBX (pCon) uses a dedicated parser and shares the PDM repricing engine; this service remains the shared pricing implementation.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from tokenize import group
-
 from services.base_service import BaseService
 
 
