@@ -83,7 +83,9 @@ class PDMService(BaseService):
     _SNAPSHOT_CACHE_DIR = (
         Path(__file__).resolve().parents[1] / "cache" / "pdm_snapshots"
     )
-    _SNAPSHOT_SCHEMA_VERSION = 2
+    # Bumped to 3 because the family cache now preserves the source-link maps
+    # required by Class Creation configuration-code decoding.
+    _SNAPSHOT_SCHEMA_VERSION = 3
 
     def __init__(self, context) -> None:
         super().__init__(context)
