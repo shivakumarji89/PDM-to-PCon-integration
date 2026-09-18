@@ -108,6 +108,15 @@ class MainWindow(QMainWindow):
         self._show_module_home()
 
 
+    def _on_step_changed(self, step: WorkflowStep) -> None:
+        title = self._manager.title(step)
+        if step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
+            self.statusBar().showMessage(
+                f"{title} - load a product on the Product page first"
+            )
+        else:
+            self.statusBar().showMessage(f"Ready - {title} workspace")
+
     def _on_product_loaded(self, label: str) -> None:
         self._product_status.setText(label)
 
