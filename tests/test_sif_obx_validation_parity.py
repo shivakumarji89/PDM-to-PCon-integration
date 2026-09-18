@@ -176,7 +176,7 @@ def test_obx_option_group_matching_consumes_each_pdm_group_once():
     }
 
     assert SifValidationService._match_inc_groups(groups, ["RED", "RED"]) == 55.0
-\n
+
 def test_obx_recovers_completed_articles_from_truncated_export():
     service = ObxValidationService(None)
     xml = """
@@ -193,4 +193,10 @@ def test_obx_recovers_completed_articles_from_truncated_export():
       </bskArticle>
       <bskArticle itemType="BasketArticle">
         <artNr type="base">INCOMPLETE</artNr>
-    
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "GBP"
+    assert len(lines) == 2
+    assert [line.base for line in lines] == ["ABC", "DEF"]
+    assert [line.obx_price for line in lines] == [100.0, 200.0]
+    assert service.last_parse_recovered is True
