@@ -267,6 +267,7 @@ class ObxValidationService(BaseService):
         return SifResult(
             seq=line.seq,
             sku=result.sku,
+            currency=line.currency,
             plc=line.plc,
             qty=line.qty,
             source_date=line.source_date,
