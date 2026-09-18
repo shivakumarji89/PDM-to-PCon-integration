@@ -508,7 +508,7 @@ class SifValidationService(BaseService):
                 if progress:
                     progress(done[0], total, line.base)
                 results.append(SifResult(
-                    seq=line.seq, sku=self._sku(line), qty=line.qty, source_date=line.source_date, sif_price=line.sif_price,
+                    seq=line.seq, sku=self._sku(line), currency=currency, qty=line.qty, source_date=line.source_date, sif_price=line.sif_price,
                     status="unresolved", message=f"no PDM pricing site resolves currency {currency}"
                     ))
                 if on_result:
