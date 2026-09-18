@@ -22,6 +22,7 @@ class _ObxSignals(QObject):
     failed = Signal(str)
     paused = Signal(object)
     cancelled = Signal(str)
+    recovery = Signal(object)
     line_done = Signal(object)
 
 
@@ -126,9 +127,9 @@ class _ObxWorker(QRunnable):
                     self._signals.paused.emit((sites, pending, reason))
                     return
                 recovery_attempts += 1
-                self._reporter.note(
-                    f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/{self._MAX_RECOVERY_ATTEMPTS})..."
-                )
+                message = f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/{self._MAX_RECOVERY_ATTEMPTS})..."
+                self._reporter.note(message)
+                self._signals.recovery.emit((recovery_attempts, self._MAX_RECOVERY_ATTEMPTS, message))
 
         results = sorted(completed.values(), key=lambda result: self._seq_key(getattr(result, "seq", 0)))
         self._reporter.finish(True, f"{len(results)} line(s)")
@@ -354,9 +355,20 @@ class ObxValidationPage(BasePage):
             self._start_validation(self._lines, fresh=True)
 
     def _on_pause_resume(self) -> None:
-        if self._active_control is not None:
-            self._on_pause()
-        elif self._pending_lines:
+        control = self._active_control
+        if control is not None:
+            if control.is_paused():
+                return
+            # Toggle a pending pause request. This keeps the same button usable:
+            # Pause -> Resume can cancel the request before the next DB checkpoint.
+            if self._pause_btn.text() == "Resume Validation":
+                control.resume()
+                self._pause_btn.setText("Pause Validation")
+                self._progress_state.setText("VALIDATING")
+            else:
+                self._on_pause()
+            return
+        if self._pending_lines:
             self._on_resume()
 
     def _on_pause(self) -> None:
@@ -365,9 +377,10 @@ class ObxValidationPage(BasePage):
         if control is None or reporter is None:
             return
         control.pause()
+        reporter.stop_timer()
         reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
         self._pause_btn.setText("Resume Validation")
-        self._pause_btn.setEnabled(False)
+        self._pause_btn.setEnabled(True)
         self._progress_state.setText("PAUSING")
 
     def _on_resume(self) -> None:
@@ -379,6 +392,8 @@ class ObxValidationPage(BasePage):
         if control is None:
             return
         control.cancel()
+        if self._active_reporter is not None:
+            self._active_reporter.stop_timer()
         self._cancel_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._progress_state.setText("CANCELLING")
@@ -398,6 +413,7 @@ class ObxValidationPage(BasePage):
         signals.failed.connect(self._on_failed)
         signals.paused.connect(self._on_paused)
         signals.cancelled.connect(self._on_cancelled)
+        signals.recovery.connect(self._on_recovery)
         signals.line_done.connect(self._on_line_done)
         self._signals = signals
         if fresh:
@@ -437,6 +453,12 @@ class ObxValidationPage(BasePage):
             except (ValueError, IndexError):
                 pass
             self._set_metric("recovery", f"{self._recovery_attempt}/3")
+
+    def _on_recovery(self, payload) -> None:
+        attempt, maximum, message = payload
+        self._recovery_attempt = attempt
+        self._set_metric("recovery", f"{attempt}/{maximum}")
+        QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
         self._release_active_control()
