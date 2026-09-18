@@ -498,7 +498,8 @@ class MainWindow(QMainWindow):
                     or project.selected_product.name
                     or "Product"
                 )
-                self._product_status.setText(label)            self.refresh_workspaces()
+                self._product_status.setText(label)
+            self.refresh_workspaces()
             if project.current_step is not None:
                 self._manager.jump_to(project.current_step)
         except Exception:  # noqa: BLE001 (silently skip if load fails)
@@ -747,7 +748,8 @@ class MainWindow(QMainWindow):
         written: list[str] = []
         constraints: list[str] = []
         for table in tables:
-            rows = service.to_csv_rows(table)            filename = f"{table.name}_tbl.csv"
+            rows = service.to_csv_rows(table)
+            filename = f"{table.name}_tbl.csv"
             (out / filename).write_text(
                 "\r\n".join(rows) + "\r\n", encoding="utf-8"
             )
