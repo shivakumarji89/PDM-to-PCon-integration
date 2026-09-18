@@ -1,4 +1,4 @@
-"""Maintenance workspace page - a launcher for the post-publish tools.
+"""Bulk Update workspace page - a launcher for post-publish tools.
 
 Each tool opens in its own pop-up so the page stays clear for at-a-glance
 repository statistics. Tools: **Bulk Price Update** (price-list roll-over),
@@ -34,11 +34,11 @@ _DEFAULT_REPOS = [
 
 
 class MaintenancePage(BasePage):
-    """Launch the post-publish maintenance tools; each runs in a pop-up."""
+    """Launch bulk post-publish update tools; each runs in a pop-up."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
-            title="Maintenance",
+            title="Bulk Update",
             description="Post-publish tools for the published-package repository.",
             parent=parent,
             show_placeholder=False,
@@ -57,7 +57,7 @@ class MaintenancePage(BasePage):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_2)
         layout.addWidget(SectionHeader(
-            "Tools", "Run maintenance across the published-package repository."))
+            "Bulk Update Tools", "Run bulk updates across the published-package repository."))
 
         row = QHBoxLayout()
         row.setSpacing(theme.SPACE_2)
