@@ -241,7 +241,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
-        monitor_btn = QPushButton("Check PDM Changes", container)        monitor_btn.setObjectName("pdmMonitorBtn")
+        monitor_btn = QPushButton("Check PDM Changes", container)
+        monitor_btn.setObjectName("pdmMonitorBtn")
         monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
         monitor_btn.clicked.connect(self._on_check_pdm_changes)
         layout.addWidget(monitor_btn)
