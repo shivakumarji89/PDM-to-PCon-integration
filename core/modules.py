@@ -84,9 +84,17 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     ),
     # Product is the common entry workflow for every module. It establishes
     # the active product/session before module-specific work begins.
+    # Development and Maintenance use the same engineering workflow.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
-        WorkflowStep.MAINTENANCE,
+        WorkflowStep.ARTICLES,
+        WorkflowStep.CLASS_CREATION,
+        WorkflowStep.TEXT,
+        WorkflowStep.RELATION,
+        WorkflowStep.PRICING,
+        WorkflowStep.PRICING_RELATION,
+        WorkflowStep.REVIEW,
+        WorkflowStep.ENGINEERING,
     ),
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
