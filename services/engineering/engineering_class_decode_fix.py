@@ -60,18 +60,12 @@ def _decode_with_product_fallback(self, snapshot):
     ppv = snapshot.product_property_value_ids or {}
     if not apv or not ppv:
         decoded = _ORIGINAL_DECODE(self, snapshot)
-        config_props = [
-            p for p in snapshot.properties
-            if p.values and not any((v.code or "").strip() for v in p.values)
-        ]
+        config_props = _config_props(snapshot)
         if config_props:
             _add_unresolved_slice_hints(self, snapshot, config_props)
         return decoded
 
-    config_props = [
-        p for p in snapshot.properties
-        if p.values and not any((v.code or "").strip() for v in p.values)
-    ]
+    config_props = _config_props(snapshot)
     if not config_props:
         return _ORIGINAL_DECODE(self, snapshot)
 
@@ -217,4 +211,37 @@ def _decode_with_product_fallback(self, snapshot):
         snapshot.article_property_value_ids = original_apv
 
 
+def _resolve_with_mixed_properties(self, snapshot):
+    result = _ORIGINAL_RESOLVE(self, snapshot)
+    if snapshot is None:
+        return result
+    ignore = getattr(snapshot, "config_ignore_overrides", None) or {}
+    overrides = getattr(snapshot, "config_code_overrides", None) or {}
+    stored_all = getattr(snapshot, "config_value_codes", None) or {}
+    decoded_all = self.decode_config_codes_by_value_id(snapshot) or {}
+    for prop in _config_props(snapshot):
+        pid = str(prop.id)
+        if ignore.get(pid) is True:
+            continue
+        ov = overrides.get(pid, {})
+        stored = stored_all.get(pid, {})
+        decoded = decoded_all.get(pid, {})
+        merged = {}
+        for value in prop.values:
+            vid = str(value.id)
+            if ov.get(vid):
+                merged[vid] = ov[vid]
+            elif (value.code or "").strip():
+                merged[vid] = value.code.strip()
+            elif stored.get(vid):
+                merged[vid] = stored[vid]
+            elif decoded.get(vid):
+                merged[vid] = decoded[vid]
+        if merged:
+            result[pid] = merged
+    return result
+
+
 EngineeringClassService._decode_config_codes_by_value_id = _decode_with_product_fallback
+EngineeringClassService._decode_config_codes_by_value_id = _decode_with_product_fallback
+EngineeringClassService.resolve_config_codes = _resolve_with_mixed_properties
