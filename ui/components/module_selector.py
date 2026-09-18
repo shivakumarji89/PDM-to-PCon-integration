@@ -6,7 +6,7 @@ later map each module to its own workflow.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget
 
 from core.modules import MODULE_ITEMS, WorkbenchModule
@@ -37,7 +37,7 @@ class ModuleSelector(QWidget):
             self._combo.setItemData(
                 self._combo.count() - 1,
                 item.description,
-                role=3,  # Qt.ToolTipRole; avoids importing Qt only for the enum.
+                role=Qt.ItemDataRole.ToolTipRole,
             )
 
         self._combo.currentIndexChanged.connect(self._on_changed)
