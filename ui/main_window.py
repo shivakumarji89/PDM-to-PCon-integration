@@ -551,6 +551,13 @@ class MainWindow(QMainWindow):
         if path:
             QSettings().setValue("lastProjectPath", path)
 
+    def _apply_design_standards(self) -> None:
+        """Apply shared table and tree UI standards after all pages are built."""
+        for table in self.findChildren(QTableWidget):
+            standardize_table(table)
+        for tree in self.findChildren(QTreeWidget):
+            standardize_tree(tree)
+
     def _try_auto_open_last_project(self) -> None:
         """Attempt to open the last opened project on app startup.
 
