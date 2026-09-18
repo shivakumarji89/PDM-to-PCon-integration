@@ -36,7 +36,8 @@ class CancellableSifValidationService(SifValidationService):
         conn = repo.get_connection()
         try:
             server_date = self._server_date(repo, conn)
-            mydate = self._normalise_pricing_date(validation_date or server_date)
+            # Keep the cancellable path on the same pricing-date contract as SifValidationService.validate().
+            mydate = validation_date or server_date
             groups: dict[str, list] = {}
             for line in lines:
                 groups.setdefault(line.currency or currency, []).append(line)
