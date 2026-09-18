@@ -267,6 +267,7 @@ class MainWindow(QMainWindow):
         self._module_placeholder.hide()
         self._assistant_dock.hide()
         self._activity_dock.hide()
+        self._toggle_navigator_action.setEnabled(True)
 
         if not steps:
             self._left_panel.hide()
@@ -293,6 +294,8 @@ class MainWindow(QMainWindow):
         self._nav_footer.hide()
         self._assistant_dock.hide()
         self._activity_dock.hide()
+        self._toggle_navigator_action.setEnabled(False)
+        self._toggle_navigator_action.setChecked(False)
         self._module_placeholder.hide()
         self._module_home.show()
         self._stack.setCurrentWidget(self._module_home)
