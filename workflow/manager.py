@@ -43,6 +43,26 @@ class WorkflowManager(QObject):
     def steps(self) -> list[WorkflowStep]:
         return list(self._steps)
 
+    def set_steps(self, steps: list[WorkflowStep]) -> bool:
+        """Switch the active workflow set while preserving the shared manager.
+
+        The module layer owns which existing workflows are visible. The
+        manager continues to own navigation/readiness for that selected set.
+        An empty set is allowed for modules whose workflows are not implemented
+        yet; the current workflow is then left unchanged until a real set is
+        selected.
+        """
+        if not steps:
+            return False
+        if steps == self._steps:
+            return True
+        self._steps = list(steps)
+        self._session = WorkflowSession(current_step=self._steps[0])
+        self._last_product_id = None
+        self.refresh()
+        self._set_current(self._steps[0])
+        return True
+
     def current_step(self) -> WorkflowStep:
         return self._session.current_step
 
