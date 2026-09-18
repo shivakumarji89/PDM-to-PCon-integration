@@ -381,6 +381,7 @@ class MainWindow(QMainWindow):
         """Center workspace: the active page plus the shared Back / Continue
         navigation footer that drives the workflow for whichever page is shown."""
         from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout
+        from ui.components._styles import secondary_button_qss
 
         container = QWidget()
         container.setObjectName("centerPanel")
