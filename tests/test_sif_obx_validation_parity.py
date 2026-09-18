@@ -1,0 +1,88 @@
+from services.obx_validation_service import ObxValidationService
+from services.sif_validation_service import SifValidationService
+
+
+def test_obx_uses_sale_price_with_pd_1():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle basketId="1" itemType="BasketArticle">
+        <artNr type="base">ABC</artNr>
+        <artNr type="final">ABC RED</artNr>
+        <itemPrice type="purchase" currency="EUR" value="80"/>
+        <itemPrice type="sale" pd="0" currency="EUR" value="90"/>
+        <itemPrice type="sale" pd="1" currency="EUR" value="100"/>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "EUR"
+    assert len(lines) == 1
+    assert lines[0].obx_price == 100.0
+    assert lines[0].currency == "EUR"
+
+
+def test_obx_ignores_partial_planning_articles():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle basketId="partial" itemType="BasketPartialPlanning">
+        <artNr type="base">PARTIAL</artNr>
+        <artNr type="final">PARTIAL RED</artNr>
+        <itemPrice type="sale" pd="1" currency="EUR" value="999"/>
+      </bskArticle>
+      <bskArticle basketId="main" itemType="BasketArticle">
+        <artNr type="base">MAIN</artNr>
+        <artNr type="final">MAIN BLUE</artNr>
+        <itemPrice type="sale" pd="1" currency="EUR" value="100"/>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "EUR"
+    assert len(lines) == 1
+    assert lines[0].base == "MAIN"
+    assert lines[0].obx_price == 100.0
+    assert lines[0].seq == 1
+
+
+def test_obx_parent_does_not_inherit_child_price():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle basketId="parent" itemType="BasketAggregate">
+        <artNr type="base">PARENT</artNr>
+        <artNr type="final">PARENT BASE</artNr>
+        <itemPrice type="sale" pd="1" currency="EUR" value="100"/>
+        <bskArticle basketId="child" itemType="BasketArticle">
+          <artNr type="base">CHILD</artNr>
+          <artNr type="final">CHILD RED</artNr>
+          <itemPrice type="sale" pd="1" currency="EUR" value="25"/>
+        </bskArticle>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "EUR"
+    assert [line.base for line in lines] == ["PARENT", "CHILD"]
+    assert [line.obx_price for line in lines] == [100.0, 25.0]
+
+
+def test_sif_prefers_specific_prefix_band():
+    inc = {
+        "1H#": (10.0, 1, 1),
+        "1HA#": (25.0, 1, 1),
+    }
+
+    assert SifValidationService._match_inc(inc, "1HA01") == 25.0
+
+
+def test_sif_uses_two_character_prefix_when_no_three_character_band():
+    inc = {
+        "1H#": (10.0, 1, 1),
+    }
+
+    assert SifValidationService._match_inc(inc, "1HA01") == 10.0
