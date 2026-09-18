@@ -83,6 +83,10 @@ class OcdExportResult:
     error: str | None = None
     # Read-only rows prepared by the same pipeline used by Export MDB.
     preview_rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    program_code: str = ""
+    series_id: str = ""
+    package_id: Any = None
+    comgroup_id: Any = None
 
 
 class OcdExportService(BaseService):
@@ -197,7 +201,12 @@ class OcdExportService(BaseService):
         comgroup_id = pkg[0]["com_ComGroupID"]
         protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
         product = snapshot.product
+        program_code = XocdExportService.program_key(product)
         series_id = XocdExportService.series_id(product)
+        result.program_code = program_code
+        result.series_id = series_id
+        result.package_id = package_id
+        result.comgroup_id = comgroup_id
         price_lists = self._price_lists_by_currency(template)
         sequence = self._build(
             snapshot, package_id, comgroup_id, series_id, protos, price_lists, result
