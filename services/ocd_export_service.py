@@ -83,10 +83,13 @@ class OcdExportResult:
     error: str | None = None
     # Read-only rows prepared by the same pipeline used by Export MDB.
     preview_rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    retained_rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     program_code: str = ""
     series_id: str = ""
     package_id: Any = None
     comgroup_id: Any = None
+    manufacturer_id: str = ""
+    registry_overrides: dict[str, int] = field(default_factory=dict)
 
 
 class OcdExportService(BaseService):
@@ -143,6 +146,10 @@ class OcdExportService(BaseService):
         product = snapshot.product
         program_code = XocdExportService.program_key(product)
         series_id = XocdExportService.series_id(product)
+        result.program_code = program_code
+        result.series_id = series_id
+        result.package_id = package_id
+        result.comgroup_id = comgroup_id
         label = product.range_name or product.name or program_code
 
         price_lists = self._price_lists_by_currency(mdb)
@@ -175,11 +182,16 @@ class OcdExportService(BaseService):
     def preview(
         self, snapshot: Snapshot, template_kind: str | None = None
     ) -> OcdExportResult:
-        """Build the exact MDB rows without creating or modifying an MDB file.
+        """Build the final MDB data used by Export MDB without writing a file.
 
-        This reuses the same template/prototype preparation and _build pipeline
-        as export, so Review inspects the same data that Export MDB will write.
+        The real Export MDB flow first applies the central CAD base-length
+        registry, then copies a category template, retains its manufacturer /
+        lookup / price-list infrastructure, updates Package + ComGroup metadata,
+        and replaces the product tables. Review must therefore inspect all of
+        those inputs/results, not only the generated product rows.
         """
+        import copy
+
         result = OcdExportResult()
         if snapshot.product is None:
             result.error = "No product loaded."
@@ -191,31 +203,100 @@ class OcdExportService(BaseService):
             result.error = f"Template not found for '{kind}': {template}"
             return result
 
+        # Match the actual Export MDB pre-processing without mutating the live
+        # Review snapshot.
+        preview_snapshot = copy.deepcopy(snapshot)
+        registry_path = self.context.price_update_service.registry_path()
+        result.registry_overrides = (
+            self.context.price_update_service.snapshot_base_length_overrides(
+                preview_snapshot, registry_path
+            )
+        )
+        preview_snapshot.base_length_overrides = dict(result.registry_overrides)
+
         pkg = self.context.mdb_service.read_table(
-            template, "SELECT com_PackageID, com_ComGroupID FROM tCOMd_Package"
+            template, "SELECT * FROM tCOMd_Package"
+        )
+        groups = self.context.mdb_service.read_table(
+            template, "SELECT * FROM tCOMd_ComGroup"
         )
         if not pkg:
             result.error = "Template tCOMd_Package is empty."
             return result
-        package_id = pkg[0]["com_PackageID"]
-        comgroup_id = pkg[0]["com_ComGroupID"]
-        protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
-        product = snapshot.product
-        program_code = XocdExportService.program_key(product)
-        series_id = XocdExportService.series_id(product)
+
+        package_id = pkg[0].get("com_PackageID")
+        comgroup_id = pkg[0].get("com_ComGroupID")
+        program_code = XocdExportService.program_key(preview_snapshot.product)
+        series_id = XocdExportService.series_id(preview_snapshot.product)
+        label = (
+            preview_snapshot.product.range_name
+            or preview_snapshot.product.name
+            or program_code
+        )
         result.program_code = program_code
         result.series_id = series_id
         result.package_id = package_id
         result.comgroup_id = comgroup_id
+
+        # These are retained by Export MDB and updated rather than regenerated.
+        final_pkg = dict(pkg[0])
+        final_pkg.update({
+            "reg_ProgramCode": program_code,
+            "reg_ProgramLabel": label,
+        })
+        final_group = dict(groups[0]) if groups else {}
+        final_group.update({
+            "com_ComGroupCode": series_id,
+            "com_ComGroupLabel": label,
+        })
+
+        # Manufacturer information is retained from the template. Keep both
+        # the table row and any package/group/article manufacturer reference
+        # visible in Review.
+        manufacturer_rows = self._safe_template_table(template, "tCOMd_Manufacturer")
+        result.manufacturer_id = str(
+            final_group.get("com_ManufacturerID")
+            or final_pkg.get("com_ManufacturerID")
+            or "HM"
+        )
+
+        retained = {
+            "tCOMd_ComGroup": [final_group] if final_group else [],
+            "tCOMd_Package": [final_pkg],
+            "tCOMd_Manufacturer": manufacturer_rows,
+        }
+        for table in (
+            "tCOMd_DistributionRegion",
+            "tCOMd_OfmlType",
+            "tCOMd_PriceList2",
+            "tCOMd_DistributionRegionPriceList",
+        ):
+            rows = self._safe_template_table(template, table)
+            if rows:
+                retained[table] = rows
+        result.retained_rows = retained
+
+        protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
         price_lists = self._price_lists_by_currency(template)
         sequence = self._build(
-            snapshot, package_id, comgroup_id, series_id, protos, price_lists, result
+            preview_snapshot, package_id, comgroup_id, series_id,
+            protos, price_lists, result
         )
         result.template = kind
         result.mdb_path = str(template)
         result.preview_rows = {table: rows for table, rows in sequence if rows}
         result.ok = result.error is None
         return result
+
+    def _safe_template_table(
+        self, mdb: Path, table: str
+    ) -> list[dict[str, Any]]:
+        """Read retained template infrastructure for Review; a missing optional
+        table must not prevent MDB generation or Review."""
+        try:
+            return self.context.mdb_service.read_table(mdb, f"SELECT * FROM [{table}]")
+        except Exception:
+            return []
 
     # -- Template selection ---------------------------------------------
 
