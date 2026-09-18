@@ -86,3 +86,61 @@ def test_sif_uses_two_character_prefix_when_no_three_character_band():
     }
 
     assert SifValidationService._match_inc(inc, "1HA01") == 10.0
+
+
+def test_obx_does_not_fallback_to_purchase_or_pd0_when_sale_pd1_is_missing():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">ABC</artNr>
+        <artNr type="final">ABC RED</artNr>
+        <itemPrice type="purchase" currency="EUR" value="80"/>
+        <itemPrice type="sale" pd="0" currency="EUR" value="90"/>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == ""
+    assert len(lines) == 1
+    assert lines[0].currency == ""
+    assert lines[0].obx_price == 0.0
+
+
+def test_obx_non_finite_sale_price_is_not_accepted():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">ABC</artNr>
+        <artNr type="final">ABC RED</artNr>
+        <itemPrice type="sale" pd="1" currency="EUR" value="NaN"/>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "EUR"
+    assert len(lines) == 1
+    assert lines[0].obx_price == 0.0
+
+
+def test_sif_price_is_base_plus_explicit_option_line_amounts():
+    service = SifValidationService(None)
+    sif = """
+    PZ=EUR
+    PN=ABC
+    PL=100.00
+    SP=999.00
+    ON=RED
+    OL=12.50
+    ON=BLUE
+    OL=7.50
+    SL=END OF FILE
+    """
+    currency, lines = service.parse_sif(sif)
+
+    assert currency == "EUR"
+    assert len(lines) == 1
+    assert lines[0].sif_price == 120.0
