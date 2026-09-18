@@ -255,7 +255,6 @@ class OcdExportService(BaseService):
         # Manufacturer information is retained from the template. Keep both
         # the table row and any package/group/article manufacturer reference
         # visible in Review.
-        manufacturer_rows = self._safe_template_table(template, "tCOMd_Manufacturer")
         result.manufacturer_id = str(
             final_group.get("com_ManufacturerID")
             or final_pkg.get("com_ManufacturerID")
