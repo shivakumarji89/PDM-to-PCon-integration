@@ -262,29 +262,32 @@ class OcdExportService(BaseService):
             or "HM"
         )
 
-        retained = {
-            "tCOMd_ComGroup": [final_group] if final_group else [],
-            "tCOMd_Package": [final_pkg],
-            "tCOMd_Manufacturer": manufacturer_rows,
-            "Generation CAD Base-Length Registry": [
-                {
-                    "Program": program_code,
-                    "Item": item,
-                    "AppliedBaseLength": length,
-                    "Registry": str(registry_path),
-                }
-                for item, length in sorted(result.registry_overrides.items())
-            ],
-        }
-        for table in (
-            "tCOMd_DistributionRegion",
-            "tCOMd_OfmlType",
-            "tCOMd_PriceList2",
-            "tCOMd_DistributionRegionPriceList",
-        ):
-            rows = self._safe_template_table(template, table)
+        # Export MDB copies the whole template, so every user table not in
+        # _PRODUCT_TABLES survives into the final database. Discover those tables
+        # instead of maintaining a hand-written allow-list that can silently miss
+        # manufacturer, lookup, or future template infrastructure.
+        retained: dict[str, list[dict[str, Any]]] = {}
+        for table in self._template_table_names(template):
+            if table in _PRODUCT_TABLES:
+                continue
+            if table == "tCOMd_ComGroup":
+                rows = [final_group] if final_group else []
+            elif table == "tCOMd_Package":
+                rows = [final_pkg]
+            else:
+                rows = self._safe_template_table(template, table)
             if rows:
                 retained[table] = rows
+
+        retained["Generation CAD Base-Length Registry"] = [
+            {
+                "Program": program_code,
+                "Item": item,
+                "AppliedBaseLength": length,
+                "Registry": str(registry_path),
+            }
+            for item, length in sorted(result.registry_overrides.items())
+        ]
         result.retained_rows = retained
 
         protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
@@ -298,6 +301,35 @@ class OcdExportService(BaseService):
         result.preview_rows = {table: rows for table, rows in sequence if rows}
         result.ok = result.error is None
         return result
+
+    def _template_table_names(self, mdb: Path) -> list[str]:
+        """Return every user table physically retained by the copied MDB template.
+
+        Access exposes user tables through MSysObjects. If that metadata query is
+        unavailable, fall back to the known OCD infrastructure tables so Review
+        still exposes the important retained package data.
+        """
+        try:
+            rows = self.context.mdb_service.read_table(
+                mdb,
+                "SELECT Name FROM MSysObjects "
+                "WHERE Type = 1 AND Flags = 0 ORDER BY Name",
+            )
+            names = [str(row.get("Name") or "") for row in rows]
+            if names:
+                return names
+        except Exception:
+            pass
+
+        return [
+            "tCOMd_ComGroup",
+            "tCOMd_Package",
+            "tCOMd_Manufacturer",
+            "tCOMd_DistributionRegion",
+            "tCOMd_OfmlType",
+            "tCOMd_PriceList2",
+            "tCOMd_DistributionRegionPriceList",
+        ]
 
     def _safe_template_table(
         self, mdb: Path, table: str
