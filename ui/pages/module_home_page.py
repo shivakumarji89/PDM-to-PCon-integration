@@ -1,16 +1,30 @@
 """Level-1 module home for MK Product Workbench."""
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from core.modules import MODULE_ITEMS, WorkbenchModule
 from ui import theme
-from ui.components._styles import card_qss, primary_button_qss
+from ui.components._styles import card_qss, label_color_qss, primary_button_qss
 
 
 class ModuleHomePage(QWidget):
-    """Landing screen that exposes only the top-level workbench modules."""
+    """Landing screen that exposes the top-level workbench modules.
+
+    The module cards intentionally reuse the same visual structure as the
+    workflow/tool cards used inside the existing workspaces: heading + action
+    on the top row and supporting description below.
+    """
 
     module_selected = Signal(object)
 
@@ -19,56 +33,86 @@ class ModuleHomePage(QWidget):
         self.setObjectName("moduleHomePage")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.SPACE_6, theme.SPACE_6, theme.SPACE_6, theme.SPACE_6)
-        layout.setSpacing(theme.SPACE_2)
+        layout.setContentsMargins(
+            theme.SPACE_6,
+            theme.SPACE_6,
+            theme.SPACE_6,
+            theme.SPACE_6,
+        )
+        layout.setSpacing(theme.SECTION_SPACING)
 
         title = QLabel("MK Product Workbench", self)
-        title.setFont(theme.font("app_title"))
-        title.setObjectName("moduleHomeTitle")
+        title.setObjectName("pageTitle")
+        title.setFont(theme.font("workspace_title"))
         layout.addWidget(title)
 
-        subtitle = QLabel("Select a module to continue", self)
+        subtitle = QLabel("Select a module to continue.", self)
+        subtitle.setObjectName("pageSubtitle")
         subtitle.setFont(theme.font("subtitle"))
-        subtitle.setObjectName("moduleHomeSubtitle")
         layout.addWidget(subtitle)
-        layout.addSpacing(theme.SPACE_4)
+
+        divider = QFrame(self)
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setObjectName("pageDivider")
+        layout.addWidget(divider)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(theme.SPACE_4)
-        grid.setVerticalSpacing(theme.SPACE_4)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(theme.SPACE_2)
+        grid.setVerticalSpacing(theme.SPACE_2)
 
         for index, item in enumerate(MODULE_ITEMS):
-            card = QFrame(self)
-            card.setObjectName("moduleCard")
-            card.setStyleSheet(card_qss("moduleCard"))
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(theme.SPACE_5, theme.SPACE_5, theme.SPACE_5, theme.SPACE_5)
-            card_layout.setSpacing(theme.SPACE_2)
-
-            button = QPushButton(item.title, card)
-            button.setObjectName("moduleCardButton")
-            button.setMinimumHeight(52)
-            button.setFont(theme.font("card_title"))
-            button.setStyleSheet(primary_button_qss("moduleCardButton"))
-            button.clicked.connect(
-                lambda checked=False, module=item.module: self.module_selected.emit(module)
-            )
-            card_layout.addWidget(button)
-
-            description = QLabel(item.description, card)
-            description.setObjectName("moduleCardDescription")
-            description.setWordWrap(True)
-            description.setFont(theme.font("subtitle"))
-            card_layout.addWidget(description)
-            card_layout.addStretch(1)
-
-            row, column = divmod(index, 2)
-            grid.addWidget(card, row, column)
+            grid.addWidget(self._module_card(item.module, item.title, item.description), index // 2, index % 2)
 
         layout.addLayout(grid)
         layout.addStretch(1)
 
-        hint = QLabel("The selected module opens its existing workflow tools.", self)
-        hint.setObjectName("moduleHomeHint")
-        hint.setFont(theme.font("helper"))
-        layout.addWidget(hint)
+    def _module_card(
+        self,
+        module: WorkbenchModule,
+        title: str,
+        description: str,
+    ) -> QWidget:
+        """Build a module card using the same pattern as workspace tool cards."""
+        card = QFrame(self)
+        card.setObjectName("moduleCard")
+        card.setStyleSheet(card_qss("moduleCard"))
+        card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.MinimumExpanding,
+        )
+
+        inner = QVBoxLayout(card)
+        inner.setContentsMargins(
+            theme.SPACE_3,
+            theme.SPACE_3,
+            theme.SPACE_3,
+            theme.SPACE_3,
+        )
+        inner.setSpacing(theme.SPACE_1)
+
+        heading = QLabel(title, card)
+        heading.setFont(theme.font("section_header"))
+        heading.setStyleSheet(label_color_qss(theme.INK))
+
+        button = QPushButton("Open", card)
+        button.setObjectName(f"moduleCardButton_{module.value}")
+        button.setStyleSheet(primary_button_qss(button.objectName()))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(
+            lambda checked=False, selected=module: self.module_selected.emit(selected)
+        )
+
+        top = QHBoxLayout()
+        top.setSpacing(theme.SPACE_2)
+        top.addWidget(heading, 1)
+        top.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
+        inner.addLayout(top)
+
+        caption = QLabel(description, card)
+        caption.setFont(theme.font("helper"))
+        caption.setStyleSheet(label_color_qss(theme.MUTED))
+        caption.setWordWrap(True)
+        inner.addWidget(caption)
+
+        return card
