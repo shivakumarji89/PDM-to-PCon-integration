@@ -359,9 +359,10 @@ class ReviewPage(BasePage):
         self._readiness.setText("READY" if review.ready else "NOT READY")
         self._errors.setText("\n".join(review.errors) if review.errors else "None")
 
-        # MDB preview uses the same generation pipeline as Export MDB. Keep it
-        # explicit via the button so opening Review does not repeatedly query the
-        # Access template while other validation is being refreshed.
+        # MDB preview uses the same generation pipeline as Export MDB.
+        # Refresh it with the Review refresh so the backend-generated data is
+        # actually visible when the Review page is opened.
+        self._refresh_mdb_preview()
         # Export readiness: OCD/XOCD identifier + text problems (pre-export).
         findings = scan_snapshot(self._context.active_snapshot)
         errors, warns = summarise(findings)
