@@ -127,6 +127,14 @@ class ObxValidationService(BaseService):
                 if cls._local_name(element) == "bskArticle"
             ], False
         except ET.ParseError as original_error:
+            # Recovery is intended for a truncated export, not arbitrary XML
+            # corruption. Only EOF-style parser errors are eligible for tail
+            # recovery; structural errors in the middle of the document remain
+            # hard failures.
+            error_text = str(original_error).lower()
+            if "no element found" not in error_text and "unclosed token" not in error_text:
+                raise
+
             parser = ET.XMLPullParser(events=("end",))
             try:
                 parser.feed(text)
