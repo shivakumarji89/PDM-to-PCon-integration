@@ -22,7 +22,10 @@ from services.mdb_service import MDBService
 from services.xocd_export_service import XocdExportService
 from services.ocd_export_service import OcdExportService
 from services.price_update_service import PriceUpdateService
-from services.version_update_service import VersionUpdateService
+from services.version_update_service import VersionUpdateService, RepositoryContextService
+from services.repository_connection_service import RepositoryConnectionService
+from services.category_context_service import CategoryContextService
+from services.workspace_article_service import WorkspaceArticleService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
 from services.obx_validation_service import ObxValidationService
 from services.pip_service import PipService
@@ -139,6 +142,10 @@ class ApplicationContext:
             ProjectService: ProjectService,
             SnapshotService: SnapshotService,
             PDMService: PDMService,
+            RepositoryContextService: RepositoryContextService,
+            RepositoryConnectionService: RepositoryConnectionService,
+            CategoryContextService: CategoryContextService,
+            WorkspaceArticleService: WorkspaceArticleService,
             MDBService: MDBService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
@@ -322,6 +329,26 @@ class ApplicationContext:
     @property
     def version_update_service(self) -> VersionUpdateService:
         return self.get_service(VersionUpdateService)
+
+    @property
+    def repository_context_service(self) -> RepositoryContextService:
+        """Shared traceable context for the selected existing repository series."""
+        return self.get_service(RepositoryContextService)
+
+    @property
+    def repository_connection_service(self) -> RepositoryConnectionService:
+        """Persistent registry of established repository ↔ PDM relationships."""
+        return self.get_service(RepositoryConnectionService)
+
+    @property
+    def category_context_service(self) -> CategoryContextService:
+        """Shared Seating/Tables category context across workflows."""
+        return self.get_service(CategoryContextService)
+
+    @property
+    def workspace_article_service(self) -> WorkspaceArticleService:
+        """Direct existing-work article loader from the repository OCD."""
+        return self.get_service(WorkspaceArticleService)
 
     @property
     def sif_validation_service(self) -> SifValidationService:
