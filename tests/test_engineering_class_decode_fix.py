@@ -86,6 +86,41 @@ def test_partial_legacy_decode_does_not_hide_product_level_property(monkeypatch)
     assert result["B"] == {"B1": "M", "B2": "N"}
 
 
+def test_product_level_fallback_does_not_mix_different_head_structures(monkeypatch):
+    prop_b = Property(
+        id="B",
+        name="Property B",
+        attribute_type=0,
+        values=[
+            PropertyValue(id="B1", property_id="B"),
+            PropertyValue(id="B2", property_id="B"),
+        ],
+    )
+    snapshot = Snapshot()
+    snapshot.properties = [prop_b]
+    snapshot.articles = [
+        Article(id="1", product_id="P1", code="XMA.tail"),
+        Article(id="2", product_id="P2", code="XMB.tail"),
+        Article(id="3", product_id="P3", code="XMAQ.tail"),
+        Article(id="4", product_id="P4", code="XMBQ.tail"),
+    ]
+    snapshot.article_property_value_ids = {
+        "1": [], "2": [], "3": [], "4": [],
+    }
+    snapshot.product_property_value_ids = {
+        "P1": ["B1"], "P2": ["B2"], "P3": ["B1"], "P4": ["B2"],
+    }
+
+    # Force the compatibility fallback to handle B itself; the real legacy
+    # decoder is intentionally bypassed so this test isolates the fallback rule.
+    monkeypatch.setattr(decode_fix, "_ORIGINAL_DECODE", lambda _self, _snapshot: {})
+
+    result = EngineeringClassService(None).decode_config_codes_by_value_id(snapshot)
+
+    # Length-3 and length-4 heads must never be combined into one inference.
+    assert "B" not in result
+
+
 def test_unresolved_config_property_still_gets_ignore_hint():
     prop = Property(
         id="C",
