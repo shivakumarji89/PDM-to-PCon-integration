@@ -425,6 +425,7 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setEnabled(True)
         self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
+        self._export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(self._context.obx_validation_service, self._currency, lines, None, validation_date, reporter, signals, control))
@@ -567,42 +568,56 @@ class ObxValidationPage(BasePage):
         self._render_table()
 
     def _on_export(self) -> None:
-        if not self._results:
+        """Export the results accumulated so far beside the source OBX file(s).
+
+        Export is intentionally available while validation is running. In that
+        case the CSV contains the results completed at the moment Export is
+        clicked; clicking Export again overwrites the same CSV with the latest
+        accumulated results.
+        """
+        results = list(self._results)
+        if not results:
             return
         paths = getattr(self, "_paths", [])
+        if not paths:
+            return
+
         svc = self._context.obx_validation_service
-        if len(paths) <= 1:
-            default = str(Path(self._source_path).with_suffix(".csv")) if self._source_path else ""
-            path, _ = QFileDialog.getSaveFileName(self, "Export validation report", default, "CSV files (*.csv);;All files (*.*)")
-            if not path:
-                return
-            try:
-                svc.export_csv(path, self._currency, self._results)
-            except OSError as exc:
-                QMessageBox.warning(self, "OBX Validation", f"Could not write CSV:\n{exc}")
-                return
-            QMessageBox.information(self, "OBX Validation", "Validation report exported successfully.")
-            return
-        out_dir = QFileDialog.getExistingDirectory(self, "Choose a folder for the per-file CSV reports", str(Path(paths[0]).parent))
-        if not out_dir:
-            return
         file_of_seq = getattr(self, "_file_of_seq", {})
         cur_of_path = getattr(self, "_currency_of_path", {})
         written, failed = 0, []
+
         for src in paths:
-            rows = sorted((r for r in self._results if file_of_seq.get(r.seq) == src), key=lambda r: r.seq)
+            rows = sorted(
+                (r for r in results if file_of_seq.get(r.seq) == src),
+                key=lambda r: r.seq,
+            )
             if not rows:
                 continue
-            target = str(Path(out_dir) / (Path(src).stem + ".csv"))
+            target = Path(src).with_suffix(".csv")
             try:
-                svc.export_csv(target, cur_of_path.get(src, self._currency), rows)
+                svc.export_csv(
+                    str(target),
+                    cur_of_path.get(src, self._currency),
+                    rows,
+                )
                 written += 1
             except OSError as exc:
                 failed.append(f"{Path(src).name}: {exc}")
-        msg = f"Exported {written} per-file report(s) to:\n{out_dir}"
+
         if failed:
-            msg += "\n\nFailed:\n" + "\n".join(failed)
-        QMessageBox.information(self, "OBX Validation", msg)
+            QMessageBox.warning(
+                self,
+                "OBX Validation",
+                f"Exported {written} report(s). Failed:\n" + "\n".join(failed),
+            )
+        else:
+            state = "current results" if self._active_control is not None else "validation report"
+            QMessageBox.information(
+                self,
+                "OBX Validation",
+                f"Exported {written} {state} beside the source OBX file(s).",
+            )
 
     def _reset_results(self) -> None:
         self._results = []
