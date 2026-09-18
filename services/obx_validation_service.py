@@ -204,15 +204,22 @@ class ObxValidationService(BaseService):
         return file_currency, lines
 
     @staticmethod
-    def duplicate_count(lines: list[ObxLine]) -> int:
-        """Return the number of extra source lines sharing a validation key."""
-        seen: set[tuple[str, str]] = set()
+    def _duplicate_key(line: ObxLine) -> str:
+        """Identify an OBX duplicate by article number, regardless of currency."""
+        return " ".join(line.final_article.strip().upper().split())
+
+    @classmethod
+    def duplicate_count(cls, lines: list[ObxLine]) -> int:
+        """Return extra source rows for repeated article numbers.
+
+        Currency is intentionally ignored here. The same article can occur in
+        multiple OBX currencies and is still the same article for duplicate
+        reporting.
+        """
+        seen: set[str] = set()
         duplicates = 0
         for line in lines:
-            key = (
-                (line.currency or "").strip().upper(),
-                " ".join(line.final_article.strip().upper().split()),
-            )
+            key = cls._duplicate_key(line)
             if key in seen:
                 duplicates += 1
             else:
@@ -239,10 +246,15 @@ class ObxValidationService(BaseService):
 
     @staticmethod
     def _validation_key(line: ObxLine) -> tuple[str, str]:
-        """Identify one PDM pricing calculation independent of source price."""
+        """Identify one PDM pricing calculation.
+
+        Currency remains part of the calculation key because PDM pricing is
+        currency-specific. This is separate from duplicate reporting, where
+        currency is intentionally ignored.
+        """
         return (
             (line.currency or "").strip().upper(),
-            " ".join(line.final_article.strip().upper().split()),
+            ObxValidationService._duplicate_key(line),
         )
 
     @staticmethod
