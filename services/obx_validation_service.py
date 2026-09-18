@@ -6,6 +6,7 @@ workflow; PDM pricing is reused through the shared PDM pricing implementation.
 """
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -145,7 +146,9 @@ class ObxValidationService(BaseService):
         currency = (price.get("currency") or "").strip()
         try:
             value = float((price.get("value") or "0").replace(",", "."))
-        except ValueError:
+            if not math.isfinite(value):
+                value = 0.0
+        except (TypeError, ValueError):
             value = 0.0
 
         return currency, value
