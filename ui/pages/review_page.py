@@ -245,7 +245,18 @@ class ReviewPage(BasePage):
             f"across {len(result.table_counts)} MDB tables. Read-only; nothing written."
         )
 
-        for selector, table in self._backend_tables.values():
+        package_selector, package_table = self._backend_tables["Package / Manufacturer"]
+        package_selector.blockSignals(True)
+        package_selector.clear()
+        package_selector.addItems(list(result.retained_rows))
+        package_selector.blockSignals(False)
+        if package_selector.count():
+            package_selector.setCurrentIndex(0)
+            self._show_backend_table(package_selector.currentText(), package_table)
+
+        for tab_name, (selector, table) in self._backend_tables.items():
+            if tab_name == "Package / Manufacturer":
+                continue
             name = selector.currentText()
             self._show_backend_table(name, table)
 
