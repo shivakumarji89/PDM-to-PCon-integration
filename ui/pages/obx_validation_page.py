@@ -296,6 +296,7 @@ class ObxValidationPage(BasePage):
         self._file_of_seq: dict[int, str] = {}
         self._currency_of_path: dict[str, str] = {}
         loaded_paths: list[str] = []
+        recovered_files: list[str] = []
         for path in paths:
             try:
                 text = Path(path).read_text(encoding="utf-8", errors="ignore")
@@ -308,11 +309,13 @@ class ObxValidationPage(BasePage):
                 QMessageBox.warning(
                     self,
                     "OBX Validation",
-                    f"Could not parse {Path(path).name}:\\n{exc}\\n\\n"
+                    f"Could not parse {Path(path).name}:\n{exc}\n\n"
                     "The file appears incomplete or malformed XML.",
                 )
                 continue
             skipped_count += getattr(svc, "last_parse_skipped_count", 0)
+            if getattr(svc, "last_parse_recovered", False):
+                recovered_files.append(Path(path).name)
             if not currency:
                 currency = cur
             self._currency_of_path[path] = cur
@@ -327,6 +330,14 @@ class ObxValidationPage(BasePage):
         self._source_path = loaded_paths[0] if loaded_paths else ""
         self._skipped_count = skipped_count
         self._duplicate_count = svc.duplicate_count(lines)
+        if recovered_files:
+            QMessageBox.warning(
+                self,
+                "OBX Validation",
+                "Recovered all completed OBX articles from the following file(s):\n\n"
+                + "\n".join(recovered_files)
+                + "\n\nThe incomplete trailing portion was not loaded.",
+            )
         label = Path(loaded_paths[0]).name if len(loaded_paths) == 1 else f"{len(loaded_paths)} OBX files"
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
