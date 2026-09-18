@@ -1,4 +1,5 @@
-from core.modules import MODULE_ITEMS, WorkbenchModule, module_title
+from core.enums import WorkflowStep
+from core.modules import MODULE_ITEMS, WorkbenchModule, module_title, module_workflows
 
 
 def test_top_level_modules_are_defined_in_order():
@@ -17,10 +18,6 @@ def test_module_titles():
     assert module_title(WorkbenchModule.QA_VALIDATION) == "QA Validation"
     assert module_title(WorkbenchModule.METATYPE) == "Metatype"
     assert module_title(WorkbenchModule.OAP) == "OAP"
-
-
-from core.modules import module_workflows
-from core.enums import WorkflowStep
 
 
 def test_module_workflow_mapping_uses_existing_workflows():
