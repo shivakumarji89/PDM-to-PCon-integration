@@ -110,15 +110,49 @@ class ObxValidationService(BaseService):
         dates = cls._children(article, "priceDate")
         return (dates[0].get("value") or "").strip() if dates else ""
 
+    @classmethod
+    def _completed_articles(cls, text: str) -> tuple[list[ET.Element], bool]:
+        """Return completed OBX articles, recovering them from a truncated file.
+
+        CET/pCon can leave an OBX document incomplete at the end of a large
+        export. A strict ET.fromstring rejects the whole document in that
+        case even though earlier bskArticle elements are complete and
+        usable. XMLPullParser lets us retain those completed elements while
+        discarding only the unfinished tail.
+        """
+        try:
+            root = ET.fromstring(text)
+            return [
+                element for element in root.iter()
+                if cls._local_name(element) == "bskArticle"
+            ], False
+        except ET.ParseError as original_error:
+            parser = ET.XMLPullParser(events=("end",))
+            try:
+                parser.feed(text)
+                parser.close()
+            except ET.ParseError:
+                pass
+
+            articles: list[ET.Element] = []
+            try:
+                for _, element in parser.read_events():
+                    if cls._local_name(element) == "bskArticle":
+                        articles.append(element)
+            except ET.ParseError:
+                # XMLPullParser may surface the same malformed tail while
+                # draining events. Events already collected remain valid.
+                pass
+
+            if not articles:
+                raise original_error
+            return articles, True
+
     def parse_obx(self, text: str) -> tuple[str, list[ObxLine]]:
-        root = ET.fromstring(text)
+        articles, recovered = self._completed_articles(text)
         lines: list[ObxLine] = []
         file_currency = ""
         skipped = 0
-        articles = [
-            element for element in root.iter()
-            if self._local_name(element) == "bskArticle"
-        ]
 
         for article in articles:
             item_type = (article.get("itemType") or "").strip().lower()
@@ -149,6 +183,7 @@ class ObxValidationService(BaseService):
                 )
             )
         self.last_parse_skipped_count = skipped
+        self.last_parse_recovered = recovered
         return file_currency, lines
 
     @staticmethod
