@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
