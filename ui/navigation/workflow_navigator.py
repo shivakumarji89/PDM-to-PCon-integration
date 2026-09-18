@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.workflow import WORKFLOW_ITEMS, WorkflowStep
+from core.workflow import WORKFLOW_ITEMS, WorkflowItem, WorkflowStep
 from ui import theme
 from workflow.state import WorkflowState
 
@@ -60,10 +60,8 @@ class WorkflowNavigator(QWidget):
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setUniformItemSizes(True)
         self._list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        for item in WORKFLOW_ITEMS:
-            list_item = QListWidgetItem(item.title, self._list)
-            list_item.setData(Qt.ItemDataRole.UserRole, item.step)
-            list_item.setToolTip(item.description)
+        self._workflow_items: tuple[WorkflowItem, ...] = ()
+        self._item_by_step: dict[WorkflowStep, WorkflowItem] = {}
         self._list.itemClicked.connect(self._on_item_clicked)
         self._fit_list_height()
         layout.addWidget(self._list)
@@ -84,6 +82,20 @@ class WorkflowNavigator(QWidget):
     def set_manager(self, manager) -> None:
         self._manager = manager
         manager.state_changed.connect(self._render)
+        self.set_workflow_items(tuple(
+            item for item in WORKFLOW_ITEMS if item.step in manager.steps()
+        ))
+
+    def set_workflow_items(self, items: tuple[WorkflowItem, ...]) -> None:
+        """Replace the visible workflow list for the active module."""
+        self._workflow_items = tuple(items)
+        self._item_by_step = {item.step: item for item in self._workflow_items}
+        self._list.clear()
+        for item in self._workflow_items:
+            list_item = QListWidgetItem(item.title, self._list)
+            list_item.setData(Qt.ItemDataRole.UserRole, item.step)
+            list_item.setToolTip(item.description)
+        self._fit_list_height()
         self._render()
 
     # -- user actions ------------------------------------------------------
@@ -129,9 +141,8 @@ class WorkflowNavigator(QWidget):
         # Re-fit after styling/glyphs are applied so all rows stay visible.
         self._fit_list_height()
 
-    @staticmethod
-    def _title(step: WorkflowStep) -> str:
-        for item in WORKFLOW_ITEMS:
-            if item.step == step:
-                return item.title
+    def _title(self, step: WorkflowStep) -> str:
+        item = self._item_by_step.get(step)
+        if item is not None:
+            return item.title
         return step.name.title()
