@@ -143,6 +143,17 @@ class ProgressReporter(QObject):
         """Stop live elapsed/progress ticking without ending the operation."""
         self._timer.stop()
 
+    def start_timer(self) -> None:
+        """Resume live elapsed/progress ticking for an active operation."""
+        if not self._finished:
+            self._timer.start()
+
+    def pause(self, message: str = "") -> None:
+        """Pause live progress reporting without marking the operation finished."""
+        self.stop_timer()
+        if message:
+            self.step_changed.emit(message)
+
     def finish(self, success: bool = True, message: str = "") -> None:
         """End the operation: force 100%, stop the timer, emit ``finished``."""
         if self._finished:
