@@ -30,6 +30,8 @@ from core.application_context import ApplicationContext
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
+from ui.components.module_selector import ModuleSelector
+from core.modules import WorkbenchModule, module_title
 from ui.pages.articles_page import ArticlesPage
 from ui.pages.base_page import BasePage
 from ui.pages.class_creation_page import ClassCreationPage
@@ -70,6 +72,8 @@ class MainWindow(QMainWindow):
 
         self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
+        self._module_selector = ModuleSelector(self)
+        self._active_module = self._module_selector.current_module()
         self._stack = QStackedWidget(self)
 
         self._build_pages()
@@ -229,6 +233,10 @@ class MainWindow(QMainWindow):
         self._database_selector.currentTextChanged.connect(self._on_database_changed)
         layout.addWidget(self._database_selector)
 
+        layout.addSpacing(4)
+        self._module_selector.module_changed.connect(self._on_module_changed)
+        layout.addWidget(self._module_selector)
+
         monitor_btn = QPushButton("Check PDM Changes", container)
         monitor_btn.setObjectName("pdmMonitorBtn")
         monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
@@ -238,6 +246,19 @@ class MainWindow(QMainWindow):
         layout.addSpacing(theme.SECTION_SPACING)
         layout.addWidget(self._navigator, 1)
         return container
+
+    def _on_module_changed(self, module: WorkbenchModule) -> None:
+        """Store the selected top-level module.
+
+        Module selection is intentionally independent from workflow navigation
+        at this stage. The selected module is surfaced in the status bar; the
+        module-to-workflow mapping will be introduced after the module shell is
+        established.
+        """
+        self._active_module = module
+        self.statusBar().showMessage(
+            f"Module: {module_title(module)}", 4000
+        )
 
     def _on_database_changed(self, name: str) -> None:
         """Switch the active PDM database and re-sync the product hierarchy."""
