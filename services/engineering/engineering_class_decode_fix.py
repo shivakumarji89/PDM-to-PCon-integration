@@ -13,6 +13,11 @@ from services.engineering.engineering_class_service import EngineeringClassServi
 
 
 _ORIGINAL_DECODE = EngineeringClassService._decode_config_codes_by_value_id
+_ORIGINAL_RESOLVE = EngineeringClassService.resolve_config_codes
+
+
+def _config_props(snapshot):
+    return [p for p in snapshot.properties if p.values and len(p.values) >= 2 and any(not (v.code or "").strip() for v in p.values)]
 
 
 def _add_unresolved_slice_hints(self, snapshot, config_props):
