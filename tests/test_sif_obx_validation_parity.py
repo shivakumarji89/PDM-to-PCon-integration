@@ -176,3 +176,21 @@ def test_obx_option_group_matching_consumes_each_pdm_group_once():
     }
 
     assert SifValidationService._match_inc_groups(groups, ["RED", "RED"]) == 55.0
+\n
+def test_obx_recovers_completed_articles_from_truncated_export():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">ABC</artNr>
+        <artNr type="final">ABC RED</artNr>
+        <itemPrice type="sale" pd="1" currency="GBP" value="100"/>
+      </bskArticle>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">DEF</artNr>
+        <artNr type="final">DEF BLUE</artNr>
+        <itemPrice type="sale" pd="1" currency="GBP" value="200"/>
+      </bskArticle>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">INCOMPLETE</artNr>
+    
