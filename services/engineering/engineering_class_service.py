@@ -894,6 +894,7 @@ class EngineeringClassService(BaseService):
         if snapshot is None:
             return []
         resolved = self.resolve_config_codes(snapshot)
+        ignored = getattr(snapshot, "config_ignore_overrides", None) or {}
         unresolved = []
         for prop in snapshot.properties:
             values = getattr(prop, "values", [])
@@ -901,6 +902,8 @@ class EngineeringClassService(BaseService):
                 continue
             if not getattr(prop, "has_dependent_options", False):
                 continue  # non-dependency (identity/metatype): not a config code
+            if ignored.get(str(prop.id), False):
+                continue  # user chose to keep this property in the base
             if any((v.code or "").strip() for v in values):
                 continue  # coded / partially-coded: not a pure config attribute
             rmap = resolved.get(str(prop.id), {})
