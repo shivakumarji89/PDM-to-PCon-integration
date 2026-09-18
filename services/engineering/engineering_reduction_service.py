@@ -223,16 +223,13 @@ class EngineeringReductionService(BaseService):
     def classify_by_properties(
         self, snapshot: Snapshot | None
     ) -> tuple[PropertyClass, ...]:
-        """Classify articles by the SET of properties (attributes) they carry.
+        """Classify articles by the property IDs actually carried by each PDM Item.
 
-        Each article inherits its product's property set: the signature is the
-        set of ``(attribute name, dependency flag)`` on the article's product
-        (from PDM ``ProductAttributeValues`` via
-        ``snapshot.product_property_value_ids``). Articles whose products share
-        an identical property set land in the same :class:`PropertyClass`; a
-        different set (more, fewer or different attributes) forms a separate
-        class - so a back-to-back desk and a single desk are classified apart.
-        Read-only; largest first.
+        PDM has two levels of attribute assignment:
+        ProductAttributeValues is the product-level fallback, while
+        BaseAttributeValues is the concrete Item-level selection. The Item-level
+        rows are authoritative for reduction because variants such as single
+        versus back-to-back can carry different property sides.
         """
         if snapshot is None:
             return ()
@@ -241,18 +238,44 @@ class EngineeringReductionService(BaseService):
             entry = (str(prop.name), int(bool(prop.has_dependent_options)))
             for value in prop.values:
                 value_prop[str(value.id)] = entry
+
         product_values = getattr(snapshot, "product_property_value_ids", {}) or {}
-        signature_by_product: dict[str, tuple] = {}
-        for product_id, value_ids in product_values.items():
-            signature_by_product[str(product_id)] = tuple(
-                sorted({value_prop[str(vid)] for vid in value_ids if str(vid) in value_prop})
-            )
+        article_values = getattr(snapshot, "article_property_value_ids", {}) or {}
+
         groups: dict[tuple, list[str]] = {}
         for article in snapshot.articles:
             article_id = str(getattr(article, "id", "") or "")
             product_id = str(getattr(article, "product_id", "") or "")
-            signature = signature_by_product.get(product_id, ())
+
+            # BaseAttributeValues is the PDM Item truth. Only use the product
+            # assignment as fallback for an attribute that is absent at Item
+            # level; never union both blindly.
+            selected_ids = [str(v) for v in article_values.get(article_id, [])]
+            product_ids = [str(v) for v in product_values.get(product_id, [])]
+
+            by_attribute: dict[str, tuple[str, int]] = {}
+            for value_id in product_ids:
+                entry = value_prop.get(value_id)
+                if entry is not None:
+                    by_attribute.setdefault(value_id, entry)
+            # Collapse product values to one property signature first.
+            product_signature = {
+                value_prop[v] for v in product_ids if v in value_prop
+            }
+            for value_id in selected_ids:
+                entry = value_prop.get(value_id)
+                if entry is not None:
+                    # Replace the product-level value for the same property
+                    # with the concrete Item-level value.
+                    prop_name = entry[0]
+                    for key in tuple(by_attribute):
+                        if by_attribute[key][0] == prop_name:
+                            by_attribute.pop(key, None)
+                    by_attribute[value_id] = entry
+
+            signature = tuple(sorted(set(by_attribute.values()) if selected_ids else product_signature))
             groups.setdefault(signature, []).append(article_id)
+
         classes = [
             PropertyClass(
                 signature=signature,
@@ -393,31 +416,52 @@ class EngineeringReductionService(BaseService):
         for pc in classes:
             article_ids = [str(a) for a in pc.article_ids]
             properties = self._set_attributes(
-                article_ids, product_of, product_props, prop_value
+                article_ids,
+                product_of,
+                product_props,
+                prop_value,
+                article_value_ids=getattr(snapshot, "article_property_value_ids", {}) or {},
             )
             options = self._set_attributes(
                 article_ids, product_of, product_options, option_value
             )
-            # Base length: if any head config property has a decoded head
-            # position, $BAN ends at the earliest one (head codes + tail are
-            # stripped together). Otherwise fall back to the tail-only rule
-            # (full code length minus the coded tail widths).
-            head_positions = [
-                head_layout[str(a.id)]["position"]
-                for a in properties
-                if str(a.id) in head_layout
-                and head_layout[str(a.id)].get("width", 0)
+            # PDM getArticlePrefixLength is authoritative for the fixed
+            # article prefix. Use the per-Item value when available; do not infer
+            # the base by character heuristics when PDM already supplied it.
+            pdm_prefixes = [
+                int(getattr(snapshot, "article_prefix_length", {}).get(a, 0) or 0)
+                for a in article_ids
+                if a in getattr(snapshot, "article_prefix_length", {})
             ]
-            if head_positions:
-                base_length = max(min(head_positions), 0)
+            override_lengths = [
+                int(getattr(snapshot, "base_length_overrides", {}).get(code_of.get(a, ""), 0) or 0)
+                for a in article_ids
+                if code_of.get(a, "") in getattr(snapshot, "base_length_overrides", {})
+            ]
+            if override_lengths:
+                base_length = min(override_lengths)
+            elif pdm_prefixes:
+                # A class is one PDM property structure. If PDM supplied multiple
+                # item prefix lengths, the common fixed prefix is the shortest
+                # authoritative prefix rather than an invented slice width.
+                base_length = min(pdm_prefixes)
             else:
-                code_len = max(
-                    (len(code_of.get(a, "")) for a in article_ids), default=0
-                )
-                config_width = sum(
-                    prop_width.get(str(a.id), 0) for a in properties
-                )
-                base_length = max(code_len - config_width, 0)
+                head_positions = [
+                    head_layout[str(a.id)]["position"]
+                    for a in properties
+                    if str(a.id) in head_layout
+                    and head_layout[str(a.id)].get("width", 0)
+                ]
+                if head_positions:
+                    base_length = max(min(head_positions), 0)
+                else:
+                    code_len = max(
+                        (len(code_of.get(a, "")) for a in article_ids), default=0
+                    )
+                    config_width = sum(
+                        prop_width.get(str(a.id), 0) for a in properties
+                    )
+                    base_length = max(code_len - config_width, 0)
             # Base code = the article number shown only as far as the group's
             # codes are the SAME value (common prefix), never beyond the derived
             # base length. This is the shared "base article" for the set.
@@ -443,15 +487,30 @@ class EngineeringReductionService(BaseService):
         product_of: dict[str, str],
         product_value_ids: dict[str, list[str]],
         value_lookup: dict[str, tuple[str, str, str, str]],
+        article_value_ids: dict[str, list[str]] | None = None,
     ) -> list[SetAttribute]:
         """Group the set's carried values by attribute, tracking which articles
         carry each value (first-seen order, unique)."""
         # attribute id -> (name, {value id -> [article ids]})
         by_attribute: dict[str, tuple[str, dict[str, list[str]]]] = {}
         order: list[str] = []
+        article_value_ids = article_value_ids or {}
         for article_id in article_ids:
             product_id = product_of.get(article_id, "")
-            for value_id in product_value_ids.get(product_id, []):
+            # PDM Item-level BaseAttributeValues are authoritative. Product
+            # values are fallback only for properties absent from the Item.
+            selected = [str(v) for v in article_value_ids.get(article_id, [])]
+            product_values = [str(v) for v in product_value_ids.get(product_id, [])]
+            selected_props = {
+                value_lookup[v][0]
+                for v in selected
+                if v in value_lookup
+            }
+            value_ids = selected + [
+                v for v in product_values
+                if v in value_lookup and value_lookup[v][0] not in selected_props
+            ]
+            for value_id in value_ids:
                 info = value_lookup.get(str(value_id))
                 if info is None:
                     continue
