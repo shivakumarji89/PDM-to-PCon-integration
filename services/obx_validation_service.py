@@ -204,19 +204,21 @@ class ObxValidationService(BaseService):
         return file_currency, lines
 
     @staticmethod
-    def _duplicate_key(line: ObxLine) -> str:
-        """Identify an OBX duplicate by article number, regardless of currency."""
-        return " ".join(line.final_article.strip().upper().split())
+    def _duplicate_key(line: ObxLine) -> tuple[str, str]:
+        """Identify an OBX duplicate by article number and currency."""
+        return (
+            (line.currency or "").strip().upper(),
+            " ".join(line.final_article.strip().upper().split()),
+        )
 
     @classmethod
     def duplicate_count(cls, lines: list[ObxLine]) -> int:
-        """Return extra source rows for repeated article numbers.
+        """Return extra source rows sharing the same article and currency.
 
-        Currency is intentionally ignored here. The same article can occur in
-        multiple OBX currencies and is still the same article for duplicate
-        reporting.
+        The same article in EUR and GBP is not a duplicate because those are
+        separate currency-specific validations.
         """
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
         duplicates = 0
         for line in lines:
             key = cls._duplicate_key(line)
@@ -246,16 +248,8 @@ class ObxValidationService(BaseService):
 
     @staticmethod
     def _validation_key(line: ObxLine) -> tuple[str, str]:
-        """Identify one PDM pricing calculation.
-
-        Currency remains part of the calculation key because PDM pricing is
-        currency-specific. This is separate from duplicate reporting, where
-        currency is intentionally ignored.
-        """
-        return (
-            (line.currency or "").strip().upper(),
-            ObxValidationService._duplicate_key(line),
-        )
+        """Identify one PDM pricing calculation by currency and article."""
+        return ObxValidationService._duplicate_key(line)
 
     @staticmethod
     def _result_for_line(result: SifResult, line: ObxLine) -> SifResult:
