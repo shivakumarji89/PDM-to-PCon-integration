@@ -117,6 +117,16 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage(f"Ready - {title} workspace")
 
+    def log_activity(self, kind: str, message: str) -> None:
+        """Forward a detailed activity line to the Engineering Activity panel.
+
+        Public hook so long-running operations (Load Family, and future
+        Generate/Import/Export) can feed their progress-reporter activity events
+        into the shared Activity timeline.
+        """
+        self._assistant_panel.log_activity(kind, message)
+
+
     def _on_product_loaded(self, label: str) -> None:
         self._product_status.setText(label)
 
@@ -1013,6 +1023,13 @@ class MainWindow(QMainWindow):
     def _make_action(self, text: str) -> QAction:
         # Actions are intentionally inert in Phase 1.
         return QAction(text, self)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if not self._confirm_discard_if_modified():
+            event.ignore()
+            return
+        self._save_layout()
+        super().closeEvent(event)
 
     def _build_status_bar(self) -> None:
         status: QStatusBar = self.statusBar()
