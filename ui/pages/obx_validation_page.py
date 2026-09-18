@@ -243,7 +243,7 @@ class ObxValidationPage(BasePage):
             ("completed", "Completed"), ("remaining", "Remaining"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
-            ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
+            ("speed", "Speed"), ("currency", "Currency"), ("site", "PDM site"), ("recovery", "Recovery"),
         ]
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
@@ -262,15 +262,15 @@ class ObxValidationPage(BasePage):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_1)
-        self._table = QTableWidget(0, 8, container)
-        self._table.setHorizontalHeaderLabels(["#", "SKU", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
+        self._table = QTableWidget(0, 9, container)
+        self._table.setHorizontalHeaderLabels(["#", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
         self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, 1)
         return container
 
@@ -450,6 +450,21 @@ class ObxValidationPage(BasePage):
         self._set_metric("eta", self._format_duration(seconds) if seconds else "-")
 
     def _on_progress_step(self, text: str) -> None:
+        # SIF/OBX pricing reports the exact currency group currently being sent
+        # to PDM, e.g. "Pricing ... (site 12, EUR)...". Surface that in the UI
+        # so a multi-currency folder cannot look like one currency is being used
+        # for every file.
+        if text.startswith("Pricing ") and "(" in text and "," in text:
+            try:
+                detail = text.rsplit("(", 1)[1].split(")", 1)[0]
+                site_text, currency = [part.strip() for part in detail.split(",", 1)]
+                if currency:
+                    self._set_metric("currency", currency)
+                if site_text.lower().startswith("site "):
+                    self._set_metric("site", f"{currency} / {site_text[5:].strip()}")
+                self._progress_state.setText(f"VALIDATING {currency}")
+            except (IndexError, ValueError):
+                pass
         if text.startswith("PDM connection lost.") and "attempt" in text:
             try:
                 self._recovery_attempt = int(text.split("attempt ", 1)[1].split("/", 1)[0])
@@ -504,7 +519,7 @@ class ObxValidationPage(BasePage):
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
         self._recovery_attempt = 0
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "currency", "site"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
         self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
@@ -627,7 +642,7 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "currency", "site", "recovery"):
             self._set_metric(key, "-")
         self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
@@ -692,10 +707,20 @@ class ObxValidationPage(BasePage):
 
     def _put_row(self, row: int, r) -> None:
         self._table.insertRow(row)
-        cells = [str(r.seq), r.sku, r.plc, str(r.qty), f"{r.sif_price:.2f}", "-" if r.pdm_price is None else f"{r.pdm_price:.2f}", r.source_date or "-", r.result]
+        cells = [
+            str(r.seq),
+            r.sku,
+            getattr(r, "currency", "") or "-",
+            r.plc,
+            str(r.qty),
+            f"{r.sif_price:.2f}",
+            "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+            r.source_date or "-",
+            r.result,
+        ]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
-            if col in (0, 3, 4, 5):
+            if col in (0, 4, 5, 6):
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if r.status != "ok":
                 cell.setForeground(Qt.GlobalColor.red)
