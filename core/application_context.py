@@ -53,6 +53,9 @@ from services.engineering.engineering_property_service import (
 from services.engineering.engineering_class_service import (
     EngineeringClassService,
 )
+# Activate the Class Creation decoder compatibility layer used by the application runtime.
+# The compatibility module patches the service after its class is defined.
+import services.engineering.engineering_class_decode_fix  # noqa: F401,E402
 from services.engineering.engineering_assignment_service import (
     EngineeringAssignmentService,
 )
