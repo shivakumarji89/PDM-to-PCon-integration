@@ -30,8 +30,7 @@ from core.application_context import ApplicationContext
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
-from ui.components.module_selector import ModuleSelector
-from core.modules import WorkbenchModule, module_title
+from core.modules import WorkbenchModule, module_title, module_workflows
 from ui.pages.articles_page import ArticlesPage
 from ui.pages.base_page import BasePage
 from ui.pages.class_creation_page import ClassCreationPage
@@ -45,6 +44,8 @@ from ui.pages.text_page import TextPage
 from ui.pages.maintenance_page import MaintenancePage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
 from ui.pages.obx_validation_page import ObxValidationPage
+from ui.pages.module_home_page import ModuleHomePage
+from ui.pages.module_placeholder_page import ModulePlaceholderPage
 from workflow.host import WorkspaceHost
 from workflow.manager import WorkflowManager
 from ui.widgets.activity_panel import ActivityPanel
@@ -72,9 +73,14 @@ class MainWindow(QMainWindow):
 
         self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
-        self._module_selector = ModuleSelector(self)
-        self._active_module = self._module_selector.current_module()
+        self._active_module: WorkbenchModule | None = None
         self._stack = QStackedWidget(self)
+        self._module_home = ModuleHomePage(self)
+        self._module_placeholder = ModulePlaceholderPage(self)
+        self._stack.addWidget(self._module_home)
+        self._stack.addWidget(self._module_placeholder)
+        self._module_home.module_selected.connect(self._on_module_selected)
+        self._module_placeholder.back_button.clicked.connect(self._show_module_home)
 
         self._build_pages()
 
@@ -98,11 +104,8 @@ class MainWindow(QMainWindow):
         # collapse state) before activating the first workspace.
         self._restore_layout()
 
-        # Try to auto-open the last opened project (if it exists and is valid).
-        self._try_auto_open_last_project()
-
-        # Activate the first workspace through the framework.
-        self._manager.jump_to(WorkflowStep.PRODUCT)
+        # Start at Level 1. No workflow is shown until a module is selected.
+        self._show_module_home()
 
     def _build_assistant_dock(self) -> None:
         # AI Engineering Assistant (dockable, additive layer above the app).
@@ -233,9 +236,16 @@ class MainWindow(QMainWindow):
         self._database_selector.currentTextChanged.connect(self._on_database_changed)
         layout.addWidget(self._database_selector)
 
-        layout.addSpacing(4)
-        self._module_selector.module_changed.connect(self._on_module_changed)
-        layout.addWidget(self._module_selector)
+        module_label = QLabel("Module", container)
+        module_label.setObjectName("activeModuleLabel")
+        layout.addWidget(module_label)
+        self._active_module_label = module_label
+
+        back_btn = QPushButton("← Modules", container)
+        back_btn.setObjectName("backToModulesNavButton")
+        back_btn.setStyleSheet(secondary_button_qss("backToModulesNavButton"))
+        back_btn.clicked.connect(self._show_module_home)
+        layout.addWidget(back_btn)
 
         monitor_btn = QPushButton("Check PDM Changes", container)
         monitor_btn.setObjectName("pdmMonitorBtn")
@@ -247,18 +257,46 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._navigator, 1)
         return container
 
-    def _on_module_changed(self, module: WorkbenchModule) -> None:
-        """Store the selected top-level module.
-
-        Module selection is intentionally independent from workflow navigation
-        at this stage. The selected module is surfaced in the status bar; the
-        module-to-workflow mapping will be introduced after the module shell is
-        established.
-        """
+    def _on_module_selected(self, module: WorkbenchModule) -> None:
+        """Enter Level 2 and expose only the workflows for the selected module."""
         self._active_module = module
-        self.statusBar().showMessage(
-            f"Module: {module_title(module)}", 4000
-        )
+        steps = list(module_workflows(module))
+        self._active_module_label.setText(module_title(module))
+
+        self._module_home.hide()
+        self._module_placeholder.hide()
+        self._assistant_dock.hide()
+        self._activity_dock.hide()
+
+        if not steps:
+            self._left_panel.hide()
+            self._nav_footer.hide()
+            self._module_placeholder.set_module(module)
+            self._module_placeholder.show()
+            self._stack.setCurrentWidget(self._module_placeholder)
+            self.statusBar().showMessage(f"Module: {module_title(module)}", 4000)
+            return
+
+        self._navigator.set_workflow_items(tuple(
+            item for item in WORKFLOW_ITEMS if item.step in steps
+        ))
+        self._manager.set_steps(steps)
+        self._left_panel.show()
+        self._nav_footer.show()
+        self._stack.setCurrentWidget(self._pages[self._manager.current_step()])
+        self.statusBar().showMessage(f"Module: {module_title(module)}", 4000)
+
+    def _show_module_home(self) -> None:
+        """Return to Level 1 and hide all workflow-specific UI."""
+        self._active_module = None
+        self._left_panel.hide()
+        self._nav_footer.hide()
+        self._assistant_dock.hide()
+        self._activity_dock.hide()
+        self._module_placeholder.hide()
+        self._module_home.show()
+        self._stack.setCurrentWidget(self._module_home)
+        self.statusBar().showMessage("Select a module", 4000)
 
     def _on_database_changed(self, name: str) -> None:
         """Switch the active PDM database and re-sync the product hierarchy."""
@@ -288,20 +326,23 @@ class MainWindow(QMainWindow):
         layout.setSpacing(theme.SECTION_SPACING)
         layout.addWidget(self._stack, 1)
 
-        footer = QHBoxLayout()
-        self._back_btn = QPushButton("\u2190 Back", container)
+        footer_widget = QWidget(container)
+        footer = QHBoxLayout(footer_widget)
+        footer.setContentsMargins(0, 0, 0, 0)
+        self._back_btn = QPushButton("\u2190 Back", footer_widget)
         self._back_btn.setObjectName("navBackButton")
         self._back_btn.setToolTip("Go to the previous workflow step")
         self._back_btn.clicked.connect(self._on_nav_back)
         footer.addWidget(self._back_btn)
         footer.addStretch(1)
-        self._continue_btn = QPushButton("Continue \u2192", container)
+        self._continue_btn = QPushButton("Continue \u2192", footer_widget)
         self._continue_btn.setObjectName("navContinueButton")
         self._continue_btn.setDefault(True)
         self._continue_btn.setToolTip("Continue to the next workflow step")
         self._continue_btn.clicked.connect(self._on_nav_continue)
         footer.addWidget(self._continue_btn)
-        layout.addLayout(footer)
+        self._nav_footer = footer_widget
+        layout.addWidget(footer_widget)
 
         self._manager.state_changed.connect(self._update_nav_buttons)
         self._manager.step_changed.connect(lambda *_: self._update_nav_buttons())
