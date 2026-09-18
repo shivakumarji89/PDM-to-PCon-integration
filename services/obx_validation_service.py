@@ -80,8 +80,17 @@ class ObxValidationService(BaseService):
 
     @classmethod
     def _features(cls, article: ET.Element) -> dict[str, str]:
+        """Read features from the complete article subtree.
+
+        OBX exports can nest feature elements below the bskArticle element.
+        Keep feature extraction recursive (as the original OBX parser was),
+        while price extraction remains direct-child-only so a parent article
+        cannot inherit a nested child's price.
+        """
         values: dict[str, str] = {}
-        for feature in cls._children(article, "feature"):
+        for feature in article.iter():
+            if feature is article or cls._local_name(feature) != "feature":
+                continue
             name = (feature.get("name") or "").strip()
             value = (feature.get("value") or "").strip()
             if name and value:
