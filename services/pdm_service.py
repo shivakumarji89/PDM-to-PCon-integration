@@ -235,6 +235,15 @@ class PDMService(BaseService):
                 ],
                 "options": [self._scalars(o) for o in snapshot.options],
                 "option_values": [self._scalars(v) for v in snapshot.option_values],
+                # Preserve the source-link maps required by Class Creation
+                # config-code decoding. The generic Snapshot serializer already
+                # persists these; the family cache must not silently drop them.
+                "article_property_value_ids": dict(snapshot.article_property_value_ids),
+                "product_property_value_ids": dict(snapshot.product_property_value_ids),
+                "product_option_value_ids": dict(snapshot.product_option_value_ids),
+                "config_value_codes": dict(snapshot.config_value_codes),
+                "config_code_overrides": dict(snapshot.config_code_overrides),
+                "config_ignore_overrides": dict(snapshot.config_ignore_overrides),
                 "engineering": self._engineering_dict(snapshot.engineering),
                 # Snapshot-level maps Class Creation needs so a restored cache
                 # keeps the PDM range grouping.
