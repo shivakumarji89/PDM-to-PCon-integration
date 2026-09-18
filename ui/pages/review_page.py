@@ -73,6 +73,7 @@ class ReviewPage(BasePage):
             "Template", "Program", "Series", "Manufacturer",
             "Package ID", "COM Group ID", "CAD Base-Length Overrides",
             "Generated MDB rows", "Generated MDB tables", "Retained template tables",
+            "CAD Registry",
         ):
             value = QLabel("-", box)
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -96,6 +97,7 @@ class ReviewPage(BasePage):
                 "tCOMd_ComGroup", "tCOMd_Package", "tCOMd_Manufacturer",
                 "tCOMd_DistributionRegion", "tCOMd_OfmlType",
                 "tCOMd_PriceList2", "tCOMd_DistributionRegionPriceList",
+                "Generation CAD Base-Length Registry",
             )),
             ("Export Mapping", (
                 "tCOMd_Article", "tCOMd_ArticleClass",
@@ -234,6 +236,9 @@ class ReviewPage(BasePage):
         )
         self._generation_rows["Retained template tables"].setText(
             str(len(result.retained_rows))
+        )
+        self._generation_rows["CAD Registry"].setText(
+            result.registry_path or "-"
         )
         self._mdb_preview_status.setText(
             f"Generated {sum(result.table_counts.values())} backend/export rows "
