@@ -60,6 +60,7 @@ class SifResult:
 
     seq: int = 0
     sku: str = ""
+    currency: str = ""
     plc: str = ""            # PDM "Category (Product_Code)"
     qty: int = 1
     source_date: str = ""
@@ -577,7 +578,7 @@ class SifValidationService(BaseService):
                 plc = plc_by_item.get(line.base, "")
                 if base is None:
                     results.append(SifResult(
-                        seq=line.seq, sku=sku, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
+                        seq=line.seq, sku=sku, currency=currency, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
                         status="unresolved", message=f"unable to resolve SKU in PDM [{line.base}]"))
                     if on_result:
                         on_result(results[-1])
