@@ -135,14 +135,10 @@ def _decode_with_product_fallback(self, snapshot):
         # properties below and merge them into the valid legacy result.
         decoded = _ORIGINAL_DECODE(self, snapshot) or {}
 
-        # The completed signature can still be ambiguous to the legacy
-        # positional decoder when the product-level property is the only source
-        # for that property. Recover those properties directly from their value
-        # groups. A property is accepted only when each of its values maps to one
-        # stable, minimal contiguous run and the runs are consistent across all
-        # values. Existing article-level properties are left entirely to the
-        # original decoder.
-        by_value: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+        # Recover product-level-only properties, but preserve the exact structural
+        # boundary used by the legacy decoder: head length plus the set of
+        # configuration properties carried by the article. Mixing different
+        # structures can manufacture a false positional code.
         heads: dict[str, str] = {}
         assignments: dict[str, dict[str, str]] = defaultdict(dict)
         for article in snapshot.articles:
@@ -156,65 +152,72 @@ def _decode_with_product_fallback(self, snapshot):
                 if pid is not None:
                     assignments[aid][pid] = str(vid)
 
-        for aid, props in assignments.items():
-            for pid, vid in props.items():
-                if pid in fallback_properties:
-                    by_value[pid][vid].append(aid)
+        by_structure: dict[tuple[int, frozenset[str]], list[str]] = defaultdict(list)
+        for aid, head in heads.items():
+            by_structure[(len(head), frozenset(assignments[aid].keys()))].append(aid)
+
+        recovered_by_value: dict[str, dict[str, set[str]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        recovered_positions: dict[str, set[tuple[int, int]]] = defaultdict(set)
+
+        for (head_len, signature), aids in by_structure.items():
+            if len(aids) < 2:
+                continue
+            for pid in fallback_properties:
+                if pid not in signature:
+                    continue
+                value_groups: dict[str, list[str]] = defaultdict(list)
+                for aid in aids:
+                    vid = assignments[aid].get(pid)
+                    if vid is not None:
+                        value_groups[vid].append(aid)
+                if len(value_groups) < 2:
+                    continue
+
+                positions: list[int] = []
+                for i in range(head_len):
+                    if all(
+                        len({heads[aid][i] for aid in group_aids}) == 1
+                        for group_aids in value_groups.values()
+                    ) and len({heads[group_aids[0]][i] for group_aids in value_groups.values()}) > 1:
+                        positions.append(i)
+
+                if not positions:
+                    continue
+                runs: list[tuple[int, int]] = []
+                run_start = previous = positions[0]
+                for pos in positions[1:]:
+                    if pos == previous + 1:
+                        previous = pos
+                    else:
+                        runs.append((run_start, previous + 1))
+                        run_start = previous = pos
+                runs.append((run_start, previous + 1))
+                if len(runs) != 1:
+                    continue
+
+                start_pos, end_pos = runs[0]
+                recovered_positions[pid].add((start_pos, end_pos - start_pos))
+                for vid, group_aids in value_groups.items():
+                    code = heads[group_aids[0]][start_pos:end_pos]
+                    if code:
+                        recovered_by_value[pid][vid].add(code)
 
         recovered: dict[str, dict[str, str]] = {}
-        for pid, value_groups in by_value.items():
-            len_groups = [aids for aids in value_groups.values() if aids]
-            if len(value_groups) < 2 or len(len_groups) != len(value_groups):
+        for pid, value_codes in recovered_by_value.items():
+            positions = recovered_positions.get(pid, set())
+            if len(positions) != 1:
                 continue
-
-            positions_by_value: dict[str, list[int]] = {}
-            widths: set[int] = set()
-            for vid, aids in value_groups.items():
-                sample = heads.get(aids[0], "")
-                if not sample:
-                    break
-                candidate_positions: list[int] = []
-                for i in range(len(sample)):
-                    chars = {
-                        heads[aid][i]
-                        for aid in aids
-                        if i < len(heads.get(aid, ""))
-                    }
-                    if len(chars) == 1:
-                        candidate_positions.append(i)
-                runs: list[tuple[int, int]] = []
-                if candidate_positions:
-                    start = prev = candidate_positions[0]
-                    for pos in candidate_positions[1:]:
-                        if pos == prev + 1:
-                            prev = pos
-                        else:
-                            runs.append((start, prev + 1))
-                            start = prev = pos
-                    runs.append((start, prev + 1))
-                if len(runs) != 1:
-                    break
-                st, en = runs[0]
-                positions_by_value[vid] = list(range(st, en))
-                widths.add(en - st)
-            else:
-                if not positions_by_value or len(widths) != 1:
-                    continue
-                common_positions = set.intersection(
-                    *(set(pos) for pos in positions_by_value.values())
-                )
-                if not common_positions:
-                    continue
-                ordered = sorted(common_positions)
-                start = ordered[0]
-                if ordered != list(range(start, start + len(ordered))):
-                    continue
-                codes: dict[str, str] = {}
-                for vid, aids in value_groups.items():
-                    sample = heads[aids[0]]
-                    codes[vid] = sample[start:start + len(ordered)]
-                if all(codes.values()) and len(set(codes.values())) == len(codes):
-                    recovered[pid] = codes
+            codes = {
+                vid: next(iter(candidates))
+                for vid, candidates in value_codes.items()
+                if len(candidates) == 1
+            }
+            if len(codes) != len(value_codes):
+                continue
+            if len(codes) >= 2 and len(set(codes.values())) == len(codes):
+                recovered[pid] = codes
 
         for pid, codes in recovered.items():
             decoded.setdefault(pid, {}).update(codes)
