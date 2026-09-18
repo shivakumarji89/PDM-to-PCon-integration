@@ -1,11 +1,12 @@
 """OBX validation service.
 
 Parses incoming OBX files independently from the CET SIF workflow.
-OBX parsing is format-specific; PDM pricing is reused through the existing
-shared pricing implementation until OBX-specific mapping is added.
+OBX parsing follows the pCon basket/price rules needed by the validation
+workflow; PDM pricing is reused through the shared PDM pricing implementation.
 """
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -83,7 +84,17 @@ class ObxValidationService(BaseService):
 
     @classmethod
     def _children(cls, element: ET.Element, name: str):
-        return [child for child in element.iter() if cls._local_name(child) == name]
+        """Return direct children with the requested local XML name.
+
+        OBX bskArticle elements can contain nested child bskArticle elements.
+        Using element.iter() here would let a parent article accidentally
+        inherit a child's artNr, itemPrice, feature, or priceDate.
+        """
+        return [
+            child
+            for child in list(element)
+            if cls._local_name(child) == name
+        ]
 
     @staticmethod
     def _text(element: ET.Element | None) -> str:
@@ -111,13 +122,23 @@ class ObxValidationService(BaseService):
 
     @classmethod
     def _sale_price(cls, article: ET.Element) -> tuple[str, float]:
-        prices = cls._children(article, "itemPrice")
+        """Return the OBX web-shop price: type='sale' and pd='1'.
 
-        sale_price = next(
-            (price for price in prices if (price.get("type") or "").lower() == "sale"),
+        pCon's PriceService specification explicitly identifies that pair as
+        the net OFML price intended for shop pricing. Do not silently select a
+        purchase price or a different sale-price entry when the required entry
+        is absent.
+        """
+        prices = cls._children(article, "itemPrice")
+        price = next(
+            (
+                candidate
+                for candidate in prices
+                if (candidate.get("type") or "").strip().lower() == "sale"
+                and (candidate.get("pd") or "").strip() == "1"
+            ),
             None,
         )
-        price = sale_price or (prices[0] if prices else None)
 
         if price is None:
             return "", 0.0
@@ -125,7 +146,9 @@ class ObxValidationService(BaseService):
         currency = (price.get("currency") or "").strip()
         try:
             value = float((price.get("value") or "0").replace(",", "."))
-        except ValueError:
+            if not math.isfinite(value):
+                value = 0.0
+        except (TypeError, ValueError):
             value = 0.0
 
         return currency, value
@@ -147,7 +170,13 @@ class ObxValidationService(BaseService):
             if self._local_name(element) == "bskArticle"
         ]
 
-        for seq, article in enumerate(articles, start=1):
+        for article in articles:
+            item_type = (article.get("itemType") or "").strip().lower()
+            if item_type not in {"basketarticle", "basketaggregate"}:
+                # pCon specifies BasketPartialPlanning as non-priceable and
+                # therefore it must not enter PDM price validation.
+                continue
+
             base_article = self._article_value(article, "base")
             final_article = self._article_value(article, "final")
 
@@ -192,7 +221,7 @@ class ObxValidationService(BaseService):
         )
         return [int(r.SiteId) for r in rows]
 
-    def _resolve_site(self, currency, lines, pricing, repo, conn, calibration_date) -> int | None:
+    def _resolve_site(self, currency, lines, pricing, repo, conn) -> int | None:
         """Resolve the OBX pricing site using the original PDM OBX rule.
 
         The legacy validator sets both GBP and EUR OBX files to UK. Resolve the
@@ -224,15 +253,10 @@ class ObxValidationService(BaseService):
             sites: dict[str, int | None] = {}
             results = []
             for cur, group in groups.items():
-                # Resolve the permanent pricing site using the OBX price date,
-                # then price that same site at the user-selected validation date.
-                calibration_date = next(
-                    (line.source_date for line in group if line.source_date),
-                    mydate,
-                )
-                resolved = self._resolve_site(
-                    cur, group, pricing, repo, conn, calibration_date
-                )
+                # Resolve the permanent pricing site from the original PDM
+                # currency-to-site rule, then price that same site at the
+                # user-selected validation date.
+                resolved = self._resolve_site(cur, group, pricing, repo, conn)
                 group_sites, group_results = pricing.validate(
                     cur, group, site=resolved, obx=True, validation_date=mydate,
                     progress=progress, stage=stage, on_result=on_result)
