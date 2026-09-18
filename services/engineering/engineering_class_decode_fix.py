@@ -101,16 +101,20 @@ def _decode_with_product_fallback(self, snapshot):
             if vid in value_to_prop
         }
 
-        product_values_by_property = defaultdict(list)
+        product_values_by_property: dict[str, set[str]] = defaultdict(set)
         for vid in (ppv.get(product_of.get(aid, ""), []) or []):
             vid = str(vid)
             pid = value_to_prop.get(vid)
             if pid is not None and pid not in article_property_ids:
-                product_values_by_property[pid].append(vid)
+                product_values_by_property[pid].add(vid)
 
+        # ProductAttributeValues can contain repeated rows for the same
+        # AttributeValueId. Treat repeated copies as one value; otherwise a
+        # valid product-level B property would be incorrectly rejected as
+        # ambiguous before it reaches the decoder.
         for pid, vids in product_values_by_property.items():
             if len(vids) == 1:
-                merged_values.append(vids[0])
+                merged_values.append(next(iter(vids)))
                 fallback_properties.add(pid)
                 changed = True
 
