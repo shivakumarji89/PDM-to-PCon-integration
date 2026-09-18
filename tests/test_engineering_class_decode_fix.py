@@ -101,8 +101,8 @@ def test_product_level_fallback_does_not_mix_different_head_structures(monkeypat
     snapshot.articles = [
         Article(id="1", product_id="P1", code="XMA.tail"),
         Article(id="2", product_id="P2", code="XMB.tail"),
-        Article(id="3", product_id="P3", code="XMAQ.tail"),
-        Article(id="4", product_id="P4", code="XMBQ.tail"),
+        Article(id="3", product_id="P3", code="XQMA.tail"),
+        Article(id="4", product_id="P4", code="XQMB.tail"),
     ]
     snapshot.article_property_value_ids = {
         "1": [], "2": [], "3": [], "4": [],
