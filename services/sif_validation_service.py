@@ -12,14 +12,12 @@ the file's no-upcharge lines (the region site whose PDM base matches); effective
 date = server ``GetUTCDate()`` (the current price list, not the SIF date); fabric
 option codes matched to their PDM band by prefix (``1HA01`` -> ``1HA#``).
 
-OBX (pCon) is intentionally not handled yet - SIF (CET) only.
+OBX (pCon) uses a dedicated parser and shares the PDM repricing engine; this service remains the shared pricing implementation.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from tokenize import group
-
 from services.base_service import BaseService
 
 
@@ -271,8 +269,14 @@ class SifValidationService(BaseService):
             price, _is_fabric, quantity = inc[code]
             return price * quantity
 
-        # Legacy fallback matching
-        for key in (code[:2] + "#", code[:3] + "#"):
+        # Prefix fallback: prefer the most specific PDM band. For example,
+        # 1HA01 must resolve to 1HA# before a broader 1H# band when both exist.
+        candidates = []
+        if len(code) >= 3:
+            candidates.append(code[:3] + "#")
+        if len(code) >= 2:
+            candidates.append(code[:2] + "#")
+        for key in candidates:
             if key in inc:
                 price, _is_fabric, quantity = inc[key]
                 return price * quantity
