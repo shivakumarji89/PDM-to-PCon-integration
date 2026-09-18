@@ -1064,12 +1064,15 @@ class EngineeringClassService(BaseService):
         if snapshot is None:
             return findings
         decoded = self.resolve_config_codes(snapshot)
+        ignored = getattr(snapshot, "config_ignore_overrides", None) or {}
         for prop in snapshot.properties:
             values = list(getattr(prop, "values", []))
             if len(values) < 2:
                 continue
             if not getattr(prop, "has_dependent_options", False):
                 continue  # non-dependency (identity/metatype): not a config code
+            if ignored.get(str(prop.id), False):
+                continue  # user chose to keep this property in the base
             if any((v.code or "").strip() for v in values):
                 continue  # coded / partially-coded: not a pure config attribute
             codes = decoded.get(str(prop.id), {})
