@@ -144,3 +144,35 @@ def test_sif_price_is_base_plus_explicit_option_line_amounts():
     assert currency == "EUR"
     assert len(lines) == 1
     assert lines[0].sif_price == 120.0
+
+
+def test_obx_selected_options_are_represented_as_priced_codes():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">NODLE140</artNr>
+        <artNr type="final">NODLE140 OAK WSE 1HA01</artNr>
+        <feature name="PLC" value="DESK"/>
+        <feature name="DERIVED" value="NOT_A_PRICED_OPTION"/>
+        <itemPrice type="sale" pd="1" currency="EUR" value="250"/>
+      </bskArticle>
+    </root>
+    """
+    currency, lines = service.parse_obx(xml)
+
+    assert currency == "EUR"
+    assert len(lines) == 1
+    assert lines[0].base == "NODLE140"
+    assert [option.code for option in lines[0].options] == ["OAK", "WSE", "1HA01"]
+    assert lines[0].plc == "DESK"
+    assert "DERIVED" in lines[0].features
+
+
+def test_obx_option_group_matching_consumes_each_pdm_group_once():
+    groups = {
+        "10": {"RED": 20.0},
+        "20": {"RED": 35.0},
+    }
+
+    assert SifValidationService._match_inc_groups(groups, ["RED", "RED"]) == 55.0
