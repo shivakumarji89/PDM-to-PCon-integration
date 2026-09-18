@@ -17,7 +17,16 @@ _ORIGINAL_RESOLVE = EngineeringClassService.resolve_config_codes
 
 
 def _config_props(snapshot):
-    return [p for p in snapshot.properties if p.values and len(p.values) >= 2 and any(not (v.code or "").strip() for v in p.values)]
+    """Properties that participate in configuration-code resolution.
+
+    Purely coded properties are already authoritative. A mixed/partially coded
+    property still participates so only its missing values need resolution.
+    """
+    return [
+        p for p in snapshot.properties
+        if p.values and len(p.values) >= 2
+        and any(not (v.code or "").strip() for v in p.values)
+    ]
 
 
 def _add_unresolved_slice_hints(self, snapshot, config_props):
@@ -242,6 +251,5 @@ def _resolve_with_mixed_properties(self, snapshot):
     return result
 
 
-EngineeringClassService._decode_config_codes_by_value_id = _decode_with_product_fallback
 EngineeringClassService._decode_config_codes_by_value_id = _decode_with_product_fallback
 EngineeringClassService.resolve_config_codes = _resolve_with_mixed_properties
