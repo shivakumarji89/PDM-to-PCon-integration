@@ -90,6 +90,7 @@ class OcdExportResult:
     comgroup_id: Any = None
     manufacturer_id: str = ""
     registry_overrides: dict[str, int] = field(default_factory=dict)
+    registry_path: str = ""
 
 
 class OcdExportService(BaseService):
@@ -207,6 +208,7 @@ class OcdExportService(BaseService):
         # Review snapshot.
         preview_snapshot = copy.deepcopy(snapshot)
         registry_path = self.context.price_update_service.registry_path()
+        result.registry_path = str(registry_path)
         result.registry_overrides = (
             self.context.price_update_service.snapshot_base_length_overrides(
                 preview_snapshot, registry_path
@@ -264,6 +266,15 @@ class OcdExportService(BaseService):
             "tCOMd_ComGroup": [final_group] if final_group else [],
             "tCOMd_Package": [final_pkg],
             "tCOMd_Manufacturer": manufacturer_rows,
+            "Generation CAD Base-Length Registry": [
+                {
+                    "Program": program_code,
+                    "Item": item,
+                    "AppliedBaseLength": length,
+                    "Registry": str(registry_path),
+                }
+                for item, length in sorted(result.registry_overrides.items())
+            ],
         }
         for table in (
             "tCOMd_DistributionRegion",
