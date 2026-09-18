@@ -20,13 +20,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ui import theme
 from ui.pages.base_page import BasePage
-from core.export_readiness import ERROR, scan_snapshot, summarise
+from services.xocd_export_service import XocdExportService
 
 
 class ReviewPage(BasePage):
@@ -38,146 +39,97 @@ class ReviewPage(BasePage):
             description="Read-only engineering review before generation.",
             parent=parent,
             show_placeholder=False,
+            content_stretch=True,
         )
         self._context = context
         self._last_review = None  # cached review() output; reused by is_ready()
 
         self.add_content(self._build_toolbar())
-        self.add_content(self._build_summary_group())
-        self.add_content(self._build_lists_row())
-        self.add_content(self._build_readiness_group())
-        self.add_content(self._build_export_readiness_group())
-        self.add_content(self._build_mdb_preview_group())
-        self.add_content(self._build_recon_group())
+        self.add_content(self._build_generation_summary())
+        self.add_content(self._build_backend_review())
+
+        self._last_review = None
+        self._mdb_preview_rows = {}
+        self._mdb_preview_result = None
         self.refresh()
 
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
+        box = QGroupBox("Review Controls", self)
         layout = QHBoxLayout(box)
-        self._refresh_btn = QPushButton("Refresh", box)
+        self._refresh_btn = QPushButton("Refresh Review", box)
         self._refresh_btn.clicked.connect(self.refresh)
         layout.addWidget(self._refresh_btn)
-        layout.addStretch(1)
+        self._mdb_preview_status = QLabel("MDB generation data not loaded.", box)
+        self._mdb_preview_status.setWordWrap(True)
+        layout.addWidget(self._mdb_preview_status, 1)
         return box
 
-    def _build_summary_group(self) -> QWidget:
-        box = QGroupBox("Engineering Summary (loaded / selected)", self)
+    def _build_generation_summary(self) -> QWidget:
+        box = QGroupBox("Final Generation Summary", self)
         form = QFormLayout(box)
-        self._rows = {}
-        for label in ("Articles", "Properties", "Property Values", "Options", "Option Values"):
-            value = QLabel("0 / 0", box)
-            self._rows[label] = value
+        self._generation_rows = {}
+        for label in (
+            "Template", "Program", "Series", "Package ID", "COM Group ID",
+            "Generated MDB rows", "Generated MDB tables",
+        ):
+            value = QLabel("-", box)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._generation_rows[label] = value
             form.addRow(f"{label}:", value)
         return box
 
-    def _build_lists_row(self) -> QWidget:
-        row = QWidget(self)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._build_list_box("Warnings"), 1)
-        layout.addWidget(self._build_list_box("Duplicates"), 1)
-        layout.addWidget(self._build_list_box("Missing Relationships"), 1)
-        return row
-
-    def _build_list_box(self, title: str) -> QWidget:
-        box = QGroupBox(title, self)
-        layout = QVBoxLayout(box)
-        widget = QListWidget(box)
-        layout.addWidget(widget)
-        setattr(self, f"_list_{title.split()[0].lower()}", widget)
-        return box
-
-    def _build_readiness_group(self) -> QWidget:
-        box = QGroupBox("Engineering Readiness", self)
-        form = QFormLayout(box)
-        self._readiness = QLabel("-", box)
-        self._errors = QLabel("-", box)
-        self._errors.setWordWrap(True)
-        form.addRow("Status:", self._readiness)
-        form.addRow("Errors:", self._errors)
-        return box
-
-    # -- export readiness (OCD/XOCD identifier + text checks) -------------
-    def _build_export_readiness_group(self) -> QWidget:
-        box = QGroupBox("Export Readiness (OCD / XOCD)", self)
-        layout = QVBoxLayout(box)
-        self._export_status = QLabel("-", box)
-        layout.addWidget(self._export_status)
-        self._export_list = QListWidget(box)
-        self._export_list.setToolTip(
-            "Disallowed characters or empty required fields in base articles, "
-            "relation objects, code schemes and text - fix before export."
+    def _build_backend_review(self) -> QWidget:
+        box = QGroupBox(
+            "Backend / Derived / Export Data (not repeated from the other workflows)",
+            self,
         )
-        layout.addWidget(self._export_list)
-        return box
-
-    # -- MDB generation preview -------------------------------------------
-    def _build_mdb_preview_group(self) -> QWidget:
-        box = QGroupBox("MDB Generation Preview (same data as Export MDB)", self)
         layout = QVBoxLayout(box)
 
-        bar = QHBoxLayout()
-        self._mdb_preview_btn = QPushButton("Refresh MDB Data", box)
-        self._mdb_preview_btn.setToolTip(
-            "Build the exact tCOMd_* rows used by Export MDB without writing an MDB file."
-        )
-        self._mdb_preview_btn.clicked.connect(self._refresh_mdb_preview)
-        bar.addWidget(self._mdb_preview_btn)
-        self._mdb_preview_table = QComboBox(box)
-        self._mdb_preview_table.currentTextChanged.connect(self._show_mdb_table)
-        bar.addWidget(self._mdb_preview_table, 1)
-        self._mdb_preview_status = QLabel("Not loaded.", box)
-        self._mdb_preview_status.setWordWrap(True)
-        bar.addWidget(self._mdb_preview_status, 2)
-        layout.addLayout(bar)
+        self._backend_tabs = QTabWidget(box)
+        layout.addWidget(self._backend_tabs, 1)
 
-        self._mdb_preview_grid = QTableWidget(box)
-        self._mdb_preview_grid.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._mdb_preview_grid.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._mdb_preview_grid.setAlternatingRowColors(True)
-        self._mdb_preview_grid.setSortingEnabled(False)
-        layout.addWidget(self._mdb_preview_grid)
-        self._mdb_preview_rows = {}
+        self._backend_tables = {}
+        tab_specs = [
+            ("Export Mapping", (
+                "tCOMd_Article", "tCOMd_ArticleClass",
+                "tCOMd_Class", "tCOMd_Property", "tCOMd_PropValue",
+            )),
+            ("Relations", (
+                "tCOMd_RelObj", "tCOMd_Relation", "tCOMd_RelObjRel",
+            )),
+            ("Code Schemes", ("tCOMd_CodeScheme",)),
+            ("Article Restrictions", ("tCOMd_ArtBase",)),
+            ("Generated Text", ("tCOMd_Text",)),
+            ("Value Tables", (
+                "tCOMd_Table", "tCOMd_TableColumn", "tCOMd_TableLine",
+            )),
+            ("Export Pricing", ("tCOMd_Price", "tCOMd_GlobalPrice")),
+        ]
+
+        for tab_name, tables in tab_specs:
+            tab = QWidget(self._backend_tabs)
+            tab_layout = QVBoxLayout(tab)
+            tab_layout.setContentsMargins(0, 0, 0, 0)
+
+            selector = QComboBox(tab)
+            selector.addItems(tables)
+            table = QTableWidget(tab)
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            table.setAlternatingRowColors(True)
+            table.setSortingEnabled(False)
+
+            selector.currentTextChanged.connect(
+                lambda name, t=table: self._show_backend_table(name, t)
+            )
+            tab_layout.addWidget(selector)
+            tab_layout.addWidget(table, 1)
+            self._backend_tables[tab_name] = (selector, table)
+            self._backend_tabs.addTab(tab, tab_name)
+
         return box
 
-    def _refresh_mdb_preview(self) -> None:
-        snapshot = self._context.active_snapshot
-        if snapshot is None:
-            self._mdb_preview_status.setText("Load a product first.")
-            self._mdb_preview_rows = {}
-            self._mdb_preview_table.clear()
-            self._mdb_preview_grid.clear()
-            return
-        try:
-            result = self._context.ocd_export_service.preview(snapshot)
-        except Exception as error:
-            self._mdb_preview_status.setText(f"MDB preview failed: {error}")
-            self._mdb_preview_rows = {}
-            self._mdb_preview_table.clear()
-            self._mdb_preview_grid.clear()
-            return
-        if result.error:
-            self._mdb_preview_status.setText(f"MDB preview unavailable: {result.error}")
-            self._mdb_preview_rows = {}
-            self._mdb_preview_table.clear()
-            self._mdb_preview_grid.clear()
-            return
-        self._mdb_preview_rows = result.preview_rows
-        self._mdb_preview_table.blockSignals(True)
-        self._mdb_preview_table.clear()
-        self._mdb_preview_table.addItems(list(result.preview_rows))
-        self._mdb_preview_table.blockSignals(False)
-        self._mdb_preview_status.setText(
-            f"Template: {result.template} | {sum(result.table_counts.values())} generated rows "
-            f"across {len(result.table_counts)} MDB tables. Read-only preview; nothing was written."
-        )
-        if result.preview_rows:
-            self._mdb_preview_table.setCurrentIndex(0)
-            self._show_mdb_table(self._mdb_preview_table.currentText())
-        else:
-            self._mdb_preview_grid.clear()
-
-    def _show_mdb_table(self, table_name: str) -> None:
+    def _show_backend_table(self, table_name: str, widget: QTableWidget) -> None:
         rows = self._mdb_preview_rows.get(table_name, [])
         columns: list[str] = []
         seen: set[str] = set()
@@ -186,17 +138,101 @@ class ReviewPage(BasePage):
                 if key not in seen:
                     seen.add(key)
                     columns.append(key)
-        self._mdb_preview_grid.clear()
-        self._mdb_preview_grid.setColumnCount(len(columns))
-        self._mdb_preview_grid.setRowCount(len(rows))
-        self._mdb_preview_grid.setHorizontalHeaderLabels(columns)
-        for r, row in enumerate(rows):
-            for c, key in enumerate(columns):
+
+        widget.clear()
+        widget.setColumnCount(len(columns))
+        widget.setRowCount(len(rows))
+        widget.setHorizontalHeaderLabels(columns)
+
+        for row_index, row in enumerate(rows):
+            for column_index, key in enumerate(columns):
                 value = row.get(key)
-                item = QTableWidgetItem("" if value is None else str(value))
-                self._mdb_preview_grid.setItem(r, c, item)
-        self._mdb_preview_grid.resizeColumnsToContents()
-        self._mdb_preview_grid.resizeRowsToContents()
+                widget.setItem(
+                    row_index,
+                    column_index,
+                    QTableWidgetItem("" if value is None else str(value)),
+                )
+
+        widget.resizeColumnsToContents()
+        widget.resizeRowsToContents()
+
+    def _refresh_mdb_preview(self) -> None:
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            self._mdb_preview_rows = {}
+            self._mdb_preview_result = None
+            self._mdb_preview_status.setText("Load a product first.")
+            self._clear_generation_summary()
+            return
+
+        try:
+            result = self._context.ocd_export_service.preview(snapshot)
+        except Exception as error:
+            self._mdb_preview_rows = {}
+            self._mdb_preview_result = None
+            self._mdb_preview_status.setText(f"MDB generation data failed: {error}")
+            self._clear_generation_summary()
+            return
+
+        self._mdb_preview_result = result
+        self._mdb_preview_rows = result.preview_rows or {}
+
+        if result.error:
+            self._mdb_preview_status.setText(
+                f"MDB generation data unavailable: {result.error}"
+            )
+            self._clear_generation_summary()
+            return
+
+        product = snapshot.product
+        program = self._safe_xocd_value("program_key", product)
+        series = self._safe_xocd_value("series_id", product)
+
+        pkg_rows = self._mdb_preview_rows.get("tCOMd_Package", [])
+        group_rows = self._mdb_preview_rows.get("tCOMd_ComGroup", [])
+        # Package/ComGroup are template metadata and are not inserted by _build;
+        # retain the actual values used by the exporter when available.
+        package_id = "-"
+        comgroup_id = "-"
+        if pkg_rows:
+            package_id = pkg_rows[0].get("com_PackageID", "-")
+            comgroup_id = pkg_rows[0].get("com_ComGroupID", "-")
+
+        self._generation_rows["Template"].setText(result.template or "-")
+        self._generation_rows["Program"].setText(str(program or "-"))
+        self._generation_rows["Series"].setText(str(series or "-"))
+        self._generation_rows["Package ID"].setText(str(package_id))
+        self._generation_rows["COM Group ID"].setText(str(comgroup_id))
+        self._generation_rows["Generated MDB rows"].setText(
+            str(sum(result.table_counts.values()))
+        )
+        self._generation_rows["Generated MDB tables"].setText(
+            str(len(result.table_counts))
+        )
+        self._mdb_preview_status.setText(
+            f"Generated {sum(result.table_counts.values())} backend/export rows "
+            f"across {len(result.table_counts)} MDB tables. Read-only; nothing written."
+        )
+
+        for selector, table in self._backend_tables.values():
+            name = selector.currentText()
+            self._show_backend_table(name, table)
+
+    @staticmethod
+    def _safe_xocd_value(method_name: str, product):
+        try:
+            method = getattr(XocdExportService, method_name)
+            return method(product)
+        except Exception:
+            return None
+
+    def _clear_generation_summary(self) -> None:
+        for widget in self._generation_rows.values():
+            widget.setText("-")
+        for selector, table in self._backend_tables.values():
+            table.clear()
+            table.setRowCount(0)
+            table.setColumnCount(0)
 
     # -- MDB -> XOCD reconciliation (the Asker) ---------------------------
     def _build_recon_group(self) -> QWidget:
@@ -347,48 +383,16 @@ class ReviewPage(BasePage):
     def refresh(self) -> None:
         review = self._context.validation_service.review()
         self._last_review = review
-        for label, widget in self._rows.items():
-            total = review.counts.get(label, 0)
-            selected = review.selected_counts.get(label, 0)
-            widget.setText(f"{total} / {selected}")
-
-        self._fill_list(self._list_warnings, review.warnings)
-        self._fill_list(self._list_duplicates, review.duplicates)
-        self._fill_list(self._list_missing, review.missing_relationships)
-
-        self._readiness.setText("READY" if review.ready else "NOT READY")
-        self._errors.setText("\n".join(review.errors) if review.errors else "None")
-
-        # MDB preview uses the same generation pipeline as Export MDB.
-        # Refresh it with the Review refresh so the backend-generated data is
-        # actually visible when the Review page is opened.
         self._refresh_mdb_preview()
-        # Export readiness: OCD/XOCD identifier + text problems (pre-export).
-        findings = scan_snapshot(self._context.active_snapshot)
-        errors, warns = summarise(findings)
-        self._export_status.setText(
-            "No export problems found." if not findings
-            else f"{errors} error(s), {warns} warning(s)"
-        )
-        self._export_list.clear()
-        if findings:
-            for f in findings:
-                tag = "ERROR" if f.severity == ERROR else "WARN"
-                self._export_list.addItem(f"[{tag}] {f.field}: {f.message} ({f.entity_id})")
-        else:
-            self._export_list.addItem("None")
 
-    @staticmethod
-    def _fill_list(widget, items) -> None:
-        widget.clear()
-        if items:
-            widget.addItems(items)
-        else:
-            widget.addItem("None")
-
-    def showEvent(self, event) -> None:  # noqa: N802
-        super().showEvent(event)
-        self.refresh()
+        if self._mdb_preview_result is not None and self._mdb_preview_result.error:
+            # Keep the existing engineering readiness semantics; the generation
+            # preview reports its own backend/export preparation failure.
+            self._mdb_preview_status.setText(
+                self._mdb_preview_status.text()
+                + f" | Engineering validation: "
+                + ("READY" if review.ready else "NOT READY")
+            )
 
     def is_ready(self) -> bool:
         # Reuse the last refresh() output; refresh() always runs before readiness
