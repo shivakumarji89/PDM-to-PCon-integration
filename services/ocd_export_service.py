@@ -81,6 +81,8 @@ class OcdExportResult:
     table_counts: dict[str, int] = field(default_factory=dict)
     logs: list[str] = field(default_factory=list)
     error: str | None = None
+    # Read-only rows prepared by the same pipeline used by Export MDB.
+    preview_rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 class OcdExportService(BaseService):
@@ -162,6 +164,48 @@ class OcdExportService(BaseService):
             f"Wrote {sum(result.table_counts.values())} rows across "
             f"{len(result.table_counts)} table(s) into {mdb}"
         )
+        return result
+
+    # -- Read-only generation preview -----------------------------------
+
+    def preview(
+        self, snapshot: Snapshot, template_kind: str | None = None
+    ) -> OcdExportResult:
+        """Build the exact MDB rows without creating or modifying an MDB file.
+
+        This reuses the same template/prototype preparation and _build pipeline
+        as export, so Review inspects the same data that Export MDB will write.
+        """
+        result = OcdExportResult()
+        if snapshot.product is None:
+            result.error = "No product loaded."
+            return result
+
+        kind = (template_kind or self._infer_template(snapshot.product)).lower()
+        template = _TEMPLATES.get(kind)
+        if template is None or not template.is_file():
+            result.error = f"Template not found for '{kind}': {template}"
+            return result
+
+        pkg = self.context.mdb_service.read_table(
+            template, "SELECT com_PackageID, com_ComGroupID FROM tCOMd_Package"
+        )
+        if not pkg:
+            result.error = "Template tCOMd_Package is empty."
+            return result
+        package_id = pkg[0]["com_PackageID"]
+        comgroup_id = pkg[0]["com_ComGroupID"]
+        protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
+        product = snapshot.product
+        series_id = XocdExportService.series_id(product)
+        price_lists = self._price_lists_by_currency(template)
+        sequence = self._build(
+            snapshot, package_id, comgroup_id, series_id, protos, price_lists, result
+        )
+        result.template = kind
+        result.mdb_path = str(template)
+        result.preview_rows = {table: rows for table, rows in sequence if rows}
+        result.ok = result.error is None
         return result
 
     # -- Template selection ---------------------------------------------
