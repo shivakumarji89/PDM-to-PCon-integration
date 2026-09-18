@@ -82,9 +82,8 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
     ),
-    # Product is the common entry workflow for every module. It establishes
-    # the active product/session before module-specific work begins.
-    # Development and Maintenance use the same engineering workflow.
+    # Product is the common entry workflow for every module. Development and
+    # Maintenance intentionally use the same workflow.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -107,6 +106,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.OAP: (
         WorkflowStep.PRODUCT,
     ),
+}
 
 
 def module_workflows(module: WorkbenchModule) -> tuple[WorkflowStep, ...]:
