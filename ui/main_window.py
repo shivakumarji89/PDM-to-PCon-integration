@@ -107,6 +107,75 @@ class MainWindow(QMainWindow):
         # Start at Level 1. No workflow is shown until a module is selected.
         self._show_module_home()
 
+
+    def _on_product_loaded(self, label: str) -> None:
+        self._product_status.setText(label)
+
+
+    def _on_snapshot_changed(self) -> None:
+        self.refresh_workspaces()
+
+    #: Workspaces that read the Snapshot's product data directly, refreshed as
+    #: soon as the snapshot is published (before Engineering Initialization).
+    _SNAPSHOT_DEPENDENT_STEPS: tuple[WorkflowStep, ...] = ()
+
+    #: Workspaces that consume ``snapshot.engineering`` and therefore only
+    #: become populated once background Engineering Initialization completes.
+    #: Class Creation groups by the reduction's ``article_sets`` (materialised by
+    #: Engineering Initialization), so it belongs here, not at snapshot-publish.
+    _ENGINEERING_DEPENDENT_STEPS = (
+        WorkflowStep.ARTICLES,
+        WorkflowStep.CLASS_CREATION,
+        WorkflowStep.TEXT,
+        WorkflowStep.RELATION,
+        WorkflowStep.PRICING,
+        WorkflowStep.PRICING_RELATION,
+        WorkflowStep.REVIEW,
+        WorkflowStep.ENGINEERING,
+    )
+
+
+    def _on_snapshot_published(self) -> None:
+        """Family load Stage A: the snapshot is published but Engineering
+        Initialization is still running. Refresh only the snapshot-dependent
+        workspaces; the engineering-dependent ones are refreshed once, later, by
+        :meth:`_on_engineering_ready`, so no workspace is rebuilt twice.
+        """
+        for step in self._SNAPSHOT_DEPENDENT_STEPS:
+            page = self._pages.get(step)
+            if page is not None and hasattr(page, "refresh"):
+                page.refresh()
+        self._manager.refresh()
+
+
+    def _on_engineering_ready(self) -> None:
+        """Background Engineering Initialization finished: refresh only the
+        engineering-dependent workspaces and update workflow readiness (which
+        enables Generate). Article/Property/Option workspaces are left untouched
+        so in-progress user edits are never disturbed.
+        """
+        for step in self._ENGINEERING_DEPENDENT_STEPS:
+            page = self._pages.get(step)
+            if page is not None and hasattr(page, "refresh"):
+                page.refresh()
+        self._manager.refresh()
+        self.statusBar().showMessage("Snapshot Ready")
+
+
+    def _on_load_complete(self) -> None:
+        """A load fully finished: do one final refresh of EVERY workspace so all
+        of them reflect the complete, settled snapshot."""
+        self.refresh_workspaces()
+
+
+    def refresh_workspaces(self) -> None:
+        """Refresh all workspaces and the workflow state."""
+        for page in self._refreshable_pages:
+            page.refresh()
+        self._manager.refresh()
+
+    # -- UI standardisation ------------------------------------------------
+
     def _build_assistant_dock(self) -> None:
         # AI Engineering Assistant (dockable, additive layer above the app).
         self._assistant_panel = AssistantPanel(
