@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from core.enums import WorkflowStep
+
 
 class WorkbenchModule(Enum):
     """Top-level functional modules of the workbench."""
@@ -64,3 +66,34 @@ def module_title(module: WorkbenchModule) -> str:
         if item.module == module:
             return item.title
     return module.name.replace("_", " ").title()
+
+
+# Workflows exposed after entering each module. Existing workflow/page
+# implementations are reused; this mapping only controls which ones are shown.
+MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
+    WorkbenchModule.DEVELOPMENT: (
+        WorkflowStep.PRODUCT,
+        WorkflowStep.ARTICLES,
+        WorkflowStep.CLASS_CREATION,
+        WorkflowStep.TEXT,
+        WorkflowStep.RELATION,
+        WorkflowStep.PRICING,
+        WorkflowStep.PRICING_RELATION,
+        WorkflowStep.REVIEW,
+        WorkflowStep.ENGINEERING,
+    ),
+    WorkbenchModule.MAINTENANCE: (
+        WorkflowStep.MAINTENANCE,
+    ),
+    WorkbenchModule.QA_VALIDATION: (
+        WorkflowStep.CET_SIF_VALIDATION,
+        WorkflowStep.OBX_VALIDATION,
+    ),
+    WorkbenchModule.METATYPE: (),
+    WorkbenchModule.OAP: (),
+}
+
+
+def module_workflows(module: WorkbenchModule) -> tuple[WorkflowStep, ...]:
+    """Return the existing workflows exposed by a top-level module."""
+    return MODULE_WORKFLOWS.get(module, ())
