@@ -201,3 +201,21 @@ def test_obx_recovers_completed_articles_from_truncated_export():
     assert [line.base for line in lines] == ["ABC", "DEF"]
     assert [line.obx_price for line in lines] == [100.0, 200.0]
     assert service.last_parse_recovered is True
+
+
+def test_obx_does_not_recover_structural_xml_corruption():
+    service = ObxValidationService(None)
+    xml = """
+    <root>
+      <bskArticle itemType="BasketArticle">
+        <artNr type="base">ABC</artNr>
+      </bskArticle>
+      <broken>
+    </root>
+    """
+    try:
+        service.parse_obx(xml)
+    except Exception as exc:
+        assert "mismatched tag" in str(exc).lower()
+    else:
+        raise AssertionError("Structural XML corruption must not be silently recovered")
