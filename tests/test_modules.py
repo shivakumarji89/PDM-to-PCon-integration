@@ -32,10 +32,11 @@ def test_module_workflow_mapping_uses_existing_workflows():
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
     )
-    assert module_workflows(WorkbenchModule.MAINTENANCE) == (WorkflowStep.MAINTENANCE,)
+    assert module_workflows(WorkbenchModule.MAINTENANCE) == (WorkflowStep.PRODUCT, WorkflowStep.MAINTENANCE)
     assert module_workflows(WorkbenchModule.QA_VALIDATION) == (
+        WorkflowStep.PRODUCT,
         WorkflowStep.CET_SIF_VALIDATION,
         WorkflowStep.OBX_VALIDATION,
     )
-    assert module_workflows(WorkbenchModule.METATYPE) == ()
-    assert module_workflows(WorkbenchModule.OAP) == ()
+    assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.PRODUCT,)
+    assert module_workflows(WorkbenchModule.OAP) == (WorkflowStep.PRODUCT,)
