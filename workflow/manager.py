@@ -64,7 +64,11 @@ class WorkflowManager(QObject):
     def enabled_steps(self) -> set[WorkflowStep]:
         # Steps that work on the published-package repository (not the loaded
         # product) stay reachable; the rest unlock once a product is loaded.
-        standalone = {\n            WorkflowStep.MAINTENANCE,\n            WorkflowStep.CET_SIF_VALIDATION,\n            WorkflowStep.OBX_VALIDATION,\n        }
+        standalone = {
+            WorkflowStep.MAINTENANCE,
+            WorkflowStep.CET_SIF_VALIDATION,
+            WorkflowStep.OBX_VALIDATION,
+        }
         always = {self._steps[0]} | (standalone & set(self._steps))
         if self._product_loaded():
             return set(self._steps)
