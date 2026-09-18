@@ -1,0 +1,66 @@
+"""Top-level module definitions for MK Product Workbench.
+
+Modules are the product-level entry points above the individual workflow
+steps. This layer intentionally contains metadata only; workflow selection and
+module-specific rules are implemented separately.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+
+class WorkbenchModule(Enum):
+    """Top-level functional modules of the workbench."""
+
+    DEVELOPMENT = "development"
+    MAINTENANCE = "maintenance"
+    QA_VALIDATION = "qa_validation"
+    METATYPE = "metatype"
+    OAP = "oap"
+
+
+@dataclass(frozen=True)
+class ModuleItem:
+    """Presentation metadata for a top-level module."""
+
+    module: WorkbenchModule
+    title: str
+    description: str
+
+
+MODULE_ITEMS: tuple[ModuleItem, ...] = (
+    ModuleItem(
+        WorkbenchModule.DEVELOPMENT,
+        "Development",
+        "Create and develop product engineering data.",
+    ),
+    ModuleItem(
+        WorkbenchModule.MAINTENANCE,
+        "Maintenance",
+        "Maintain and update published product packages.",
+    ),
+    ModuleItem(
+        WorkbenchModule.QA_VALIDATION,
+        "QA Validation",
+        "Validate product data and generated deliverables.",
+    ),
+    ModuleItem(
+        WorkbenchModule.METATYPE,
+        "Metatype",
+        "Create and validate metatype definitions.",
+    ),
+    ModuleItem(
+        WorkbenchModule.OAP,
+        "OAP",
+        "Create and validate OAP definitions and packages.",
+    ),
+)
+
+
+def module_title(module: WorkbenchModule) -> str:
+    """Return the display title for a module."""
+    for item in MODULE_ITEMS:
+        if item.module == module:
+            return item.title
+    return module.name.replace("_", " ").title()
