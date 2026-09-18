@@ -20,6 +20,7 @@ class WorkbenchModule(Enum):
     QA_VALIDATION = "qa_validation"
     METATYPE = "metatype"
     OAP = "oap"
+    BULK_UPDATE = "bulk_update"
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,11 @@ MODULE_ITEMS: tuple[ModuleItem, ...] = (
         "OAP",
         "Create and validate OAP definitions and packages.",
     ),
+    ModuleItem(
+        WorkbenchModule.BULK_UPDATE,
+        "Bulk Update",
+        "Run bulk maintenance operations on published product packages.",
+    ),
 )
 
 
@@ -82,8 +88,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
     ),
-    # Product is the common entry workflow for every module. Development and
-    # Maintenance intentionally use the same workflow.
+    # Product is the common entry workflow for Development and Maintenance.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -94,6 +99,9 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
+    ),
+    WorkbenchModule.BULK_UPDATE: (
+        WorkflowStep.MAINTENANCE,
     ),
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
