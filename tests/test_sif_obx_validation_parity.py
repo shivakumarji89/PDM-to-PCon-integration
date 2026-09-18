@@ -193,6 +193,7 @@ def test_obx_recovers_completed_articles_from_truncated_export():
       </bskArticle>
       <bskArticle itemType="BasketArticle">
         <artNr type="base">INCOMPLETE</artNr>
+    """
     currency, lines = service.parse_obx(xml)
 
     assert currency == "GBP"
