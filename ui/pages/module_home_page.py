@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLay
 
 from core.modules import MODULE_ITEMS, WorkbenchModule
 from ui import theme
-from ui.components._styles import accent_card_qss, card_qss, primary_button_qss
+from ui.components._styles import card_qss, primary_button_qss
 
 
 class ModuleHomePage(QWidget):
