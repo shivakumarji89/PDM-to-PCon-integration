@@ -35,8 +35,8 @@ WORKFLOW_ITEMS: tuple[WorkflowItem, ...] = (
                  "Generate the PA_PRICING relation that merges config to price varconds."),
     WorkflowItem(WorkflowStep.REVIEW, "Review", "Review the assembled configuration."),
     WorkflowItem(WorkflowStep.ENGINEERING, "Engineering", "Read-only view of the engineering hierarchy."),
-    WorkflowItem(WorkflowStep.MAINTENANCE, "Maintenance",
-                 "Annual maintenance on a published package: price-list roll-over (fabric later)."),
+    WorkflowItem(WorkflowStep.MAINTENANCE, "Bulk Update",
+                 "Run bulk maintenance operations on published product packages."),
 )
 
 # --- CET SIF Validation (self-contained, easily disconnectable) -------------
