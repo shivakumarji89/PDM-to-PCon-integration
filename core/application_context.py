@@ -46,6 +46,8 @@ from services.engineering.engineering_property_service import EngineeringPropert
 from services.engineering.engineering_class_service import EngineeringClassService
 from services.engineering.engineering_assignment_service import EngineeringAssignmentService
 from services.engineering.engineering_reduction_service import EngineeringReductionService
+from services.engineering.candidate_strategy_service import CandidateStrategyService
+from services.engineering.pdm_family_reduction_service import PDMFamilyReductionService
 from services.engineering.engineering_text_service import EngineeringTextService
 from services.engineering.engineering_relation_service import EngineeringRelationService
 from services.engineering.engineering_artbase_service import EngineeringArtbaseService
@@ -97,6 +99,8 @@ class ApplicationContext:
             EngineeringPropertyService: EngineeringPropertyService,
             EngineeringAssignmentService: EngineeringAssignmentService,
             EngineeringReductionService: EngineeringReductionService,
+            CandidateStrategyService: CandidateStrategyService,
+            PDMFamilyReductionService: PDMFamilyReductionService,
             EngineeringTextService: EngineeringTextService,
             EngineeringRelationService: EngineeringRelationService,
             EngineeringArtbaseService: EngineeringArtbaseService,
@@ -196,6 +200,17 @@ class ApplicationContext:
     @property
     def product_profile_service(self) -> ProductProfileService:
         return self.get_service(ProductProfileService)
+
+    @property
+    @property
+    def candidate_strategy_service(self) -> CandidateStrategyService:
+        """Additional legacy-PDM candidate proposals; never the validator."""
+        return self.get_service(CandidateStrategyService)
+
+    @property
+    def pdm_family_reduction_service(self) -> PDMFamilyReductionService:
+        """Legacy ProductsList boundary validator for reduction candidates."""
+        return self.get_service(PDMFamilyReductionService)
 
     @property
     def engineering_text_service(self) -> EngineeringTextService:
