@@ -24,8 +24,8 @@ def test_module_titles():
 def test_module_workflow_mapping_uses_existing_workflows():
     assert module_workflows(WorkbenchModule.DEVELOPMENT) == (
         WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLES,
         WorkflowStep.CLASS_CREATION,
+        WorkflowStep.ARTICLES,
         WorkflowStep.TEXT,
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
@@ -33,6 +33,8 @@ def test_module_workflow_mapping_uses_existing_workflows():
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
     )
+    # Maintenance keeps the previous order; the Development change is scoped
+    # to the Development module only.
     assert module_workflows(WorkbenchModule.MAINTENANCE) == (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
