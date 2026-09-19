@@ -900,6 +900,9 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "config_code_overrides": snapshot.config_code_overrides,
         "config_value_codes": snapshot.config_value_codes,
         "config_ignore_overrides": snapshot.config_ignore_overrides,
+        "prog_info_rows": snapshot.prog_info_rows,
+        "material_manufacturer_code": snapshot.material_manufacturer_code,
+        "material_package_code": snapshot.material_package_code,
         "split_classes_by_group": snapshot.split_classes_by_group,
         "class_group_basis": snapshot.class_group_basis,
         "class_group_names": snapshot.class_group_names,
@@ -1032,6 +1035,21 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
             str(k): bool(v)
             for k, v in (data.get("config_ignore_overrides") or {}).items()
         },
+        prog_info_rows=[
+            {
+                "type": str(row.get("type") or ""),
+                "argument": str(row.get("argument") or ""),
+                "value": str(row.get("value") or ""),
+            }
+            for row in (data.get("prog_info_rows") or [])
+            if isinstance(row, dict)
+        ],
+        material_manufacturer_code=str(
+            data.get("material_manufacturer_code") or "hmx"
+        ),
+        material_package_code=str(
+            data.get("material_package_code") or "basics"
+        ),
         split_classes_by_group=bool(data.get("split_classes_by_group", False)),
         class_group_basis=str(data.get("class_group_basis", "") or "range"),
         class_group_names={
