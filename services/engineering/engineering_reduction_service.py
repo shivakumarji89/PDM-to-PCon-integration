@@ -397,15 +397,20 @@ class EngineeringReductionService(BaseService):
             selected_ids = [str(v) for v in article_values.get(article_id, [])]
             product_ids = [str(v) for v in product_values.get(product_id, [])]
 
-            selected_signature = {
-                value_prop[v] for v in selected_ids if v in value_prop
-            }
-            product_signature = {
-                value_prop[v] for v in product_ids if v in value_prop
-            }
-            signature = tuple(
-                sorted(selected_signature if selected_ids else product_signature)
-            )
+            # Item-level BaseAttributeValues are authoritative. Do not
+            # build the product-level signature when the Item already has its
+            # concrete selection; large products can carry a very large
+            # ProductAttributeValues vocabulary and that work is otherwise
+            # completely discarded.
+            if selected_ids:
+                signature_values = {
+                    value_prop[v] for v in selected_ids if v in value_prop
+                }
+            else:
+                signature_values = {
+                    value_prop[v] for v in product_ids if v in value_prop
+                }
+            signature = tuple(sorted(signature_values))
             scope = str(range_of.get(product_id, "") or "")
             groups.setdefault((scope, signature), []).append(article_id)
 
@@ -520,20 +525,6 @@ class EngineeringReductionService(BaseService):
         }
         code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
 
-        # Per-property slice width = the STORED code length (OrderCodeValue) - the
-        # only consistent, 100% definition for the parametric TAIL. Head config
-        # properties have no stored code; their width/position come from the
-        # value-id head decoder instead (see head_layout below).
-        prop_width: dict[str, int] = {}
-        for prop in snapshot.properties:
-            codes = [(v.code or "").strip() for v in prop.values]
-            if any(codes):
-                prop_width[str(prop.id)] = max(
-                    (len(c) for c in codes if c), default=0
-                )
-            else:
-                prop_width[str(prop.id)] = 0  # head config: no stored code
-
         # Head config codes are needed only when PDM did NOT provide an
         # authoritative article prefix length. Do not decode the entire
         # configuration matrix up front when every loaded Item already has the
@@ -636,6 +627,19 @@ class EngineeringReductionService(BaseService):
                                 (len(code_of.get(a, "")) for a in article_ids),
                                 default=0,
                             )
+                            # This branch is rare: PDM did not provide a
+                            # prefix length. Only now do the full property
+                            # vocabulary scan needed for stored tail widths.
+                            prop_width: dict[str, int] = {}
+                            for prop in snapshot.properties:
+                                codes_for_prop = [
+                                    (v.code or "").strip() for v in prop.values
+                                ]
+                                if any(codes_for_prop):
+                                    prop_width[str(prop.id)] = max(
+                                        (len(c) for c in codes_for_prop if c),
+                                        default=0,
+                                    )
                             config_width = sum(
                                 prop_width.get(str(a.id), 0) for a in properties
                             )
@@ -732,7 +736,20 @@ class EngineeringReductionService(BaseService):
             for p in getattr(snapshot, "properties", []) or []
         }
 
-        for cls in getattr(engineering, "classes", []) or []:
+        # Most loads have no manual Class Creation values. Avoid walking every
+        # engineering class/assignment for every Article Set in that case.
+        classes = getattr(engineering, "classes", []) or []
+        if not any(
+            any(
+                getattr(v, "source", "pdm") == "manual" and getattr(v, "code", "")
+                for v in getattr(assignment, "values", []) or []
+            )
+            for cls in classes
+            for assignment in getattr(cls, "properties", []) or []
+        ):
+            return attributes
+
+        for cls in classes:
             offset = 0
             for assignment in getattr(cls, "properties", []) or []:
                 width = max(0, int(getattr(assignment, "width", 0) or 0))
