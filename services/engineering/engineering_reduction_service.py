@@ -363,7 +363,9 @@ class EngineeringReductionService(BaseService):
         )
 
     def classify_by_properties(
-        self, snapshot: Snapshot | None
+        self,
+        snapshot: Snapshot | None,
+        value_prop: dict[str, tuple[str, int]] | None = None,
     ) -> tuple[PropertyClass, ...]:
         """Classify articles by the property IDs actually carried by each PDM Item.
 
@@ -375,11 +377,12 @@ class EngineeringReductionService(BaseService):
         """
         if snapshot is None:
             return ()
-        value_prop: dict[str, tuple[str, int]] = {}
-        for prop in snapshot.properties:
-            entry = (str(prop.name), int(bool(prop.has_dependent_options)))
-            for value in prop.values:
-                value_prop[str(value.id)] = entry
+        if value_prop is None:
+            value_prop = {}
+            for prop in snapshot.properties:
+                entry = (str(prop.name), int(bool(prop.has_dependent_options)))
+                for value in prop.values:
+                    value_prop[str(value.id)] = entry
 
         product_values = getattr(snapshot, "product_property_value_ids", {}) or {}
         article_values = getattr(snapshot, "article_property_value_ids", {}) or {}
@@ -503,14 +506,24 @@ class EngineeringReductionService(BaseService):
         """
         if snapshot is None:
             return []
-        classes = self.classify_by_properties(snapshot)
-        # value id -> (attribute id, attribute name, value name, code)
+
+        # Build the property-value index once. classify_by_properties needs only
+        # the property name/dependency flag, while _set_attributes needs the
+        # richer value metadata. Keeping both maps in this one pass avoids
+        # walking a large PDM property/value vocabulary twice per load.
+        value_prop: dict[str, tuple[str, int]] = {}
         prop_value: dict[str, tuple[str, str, str, str]] = {}
         for prop in snapshot.properties:
+            prop_id = str(prop.id)
+            value_prop_entry = (str(prop.name), int(bool(prop.has_dependent_options)))
             for value in prop.values:
-                prop_value[str(value.id)] = (
-                    str(prop.id), prop.name or "", value.value or "", value.code or ""
+                value_id = str(value.id)
+                value_prop[value_id] = value_prop_entry
+                prop_value[value_id] = (
+                    prop_id, prop.name or "", value.value or "", value.code or ""
                 )
+
+        classes = self.classify_by_properties(snapshot, value_prop=value_prop)
         option_value: dict[str, tuple[str, str, str, str]] = {}
         for option in getattr(snapshot, "options", []) or []:
             for value in option.values:
