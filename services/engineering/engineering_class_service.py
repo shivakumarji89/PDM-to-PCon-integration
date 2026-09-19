@@ -321,6 +321,7 @@ class EngineeringClassService(BaseService):
         if snapshot is None or snapshot.engineering is None:
             return []
         category = (category or "").strip() or "Class"
+        self.context.material_picking_service.ensure_package_defaults(snapshot)
         engineering = snapshot.engineering
         prop_name = {str(p.id): (p.name or "") for p in snapshot.properties}
         opt_name = {str(o.id): (o.name or "") for o in snapshot.options}
