@@ -1204,25 +1204,34 @@ class ClassCreationPage(BasePage):
             )
             self._attr_tree.setItemWidget(node, _COL_USAGE, usage_combo)
             node.setSizeHint(_COL_USAGE, usage_combo.sizeHint())
-            # Ignore toggle: keep a head property in the base instead of slicing
-            # it. The decode only SUGGESTS (redundant duplicates pre-ticked with
-            # a reason); the user makes the final call.
+            # Ignore toggle: every property row gets an Ignore checkbox.
+            # For properties recognised by the head decoder, use its suggestion
+            # unless the user has an explicit override. Properties without a
+            # decoded head span still expose the same row-level control so the
+            # table is consistent across all properties.
             hint = getattr(self, "_slice_hints", {}).get(str(prop.id))
-            if hint is not None:
-                ignore_cb = QCheckBox()
-                ignore_cb.setChecked(bool(hint.get("ignored")))
-                overlaps = hint.get("overlaps")
-                ignore_cb.setToolTip(
-                    f"Looks like a duplicate of '{overlaps}' - suggested to keep "
-                    "in the base. Untick to slice it."
-                    if overlaps else
-                    "Tick to keep this property in the base (do not slice it)."
-                )
-                ignore_cb.toggled.connect(
-                    lambda checked, p_id=prop.id:
-                    self._on_ignore_toggled(p_id, checked)
-                )
-                self._attr_tree.setItemWidget(node, _COL_IGNORE, ignore_cb)
+            overrides = getattr(
+                self._context.active_snapshot, "config_ignore_overrides", None
+            ) or {}
+            prop_id = str(prop.id)
+            ignore_cb = QCheckBox()
+            if prop_id in overrides:
+                ignore_cb.setChecked(bool(overrides[prop_id]))
+            else:
+                ignore_cb.setChecked(bool(hint.get("ignored")) if hint else False)
+
+            overlaps = hint.get("overlaps") if hint else ""
+            ignore_cb.setToolTip(
+                f"Looks like a duplicate of '{overlaps}' - suggested to keep "
+                "in the base. Untick to slice it."
+                if overlaps else
+                "Tick to keep this property in the base (do not slice it)."
+            )
+            ignore_cb.toggled.connect(
+                lambda checked, p_id=prop.id:
+                self._on_ignore_toggled(p_id, checked)
+            )
+            self._attr_tree.setItemWidget(node, _COL_IGNORE, ignore_cb)
             for value in display_values:
                 # Value text-block key matches the Text workflow / PDM:
                 # <Property>_<code> (e.g. Type_1), using the stored or decoded code.
