@@ -9,6 +9,7 @@ def test_top_level_modules_are_defined_in_order():
         WorkbenchModule.QA_VALIDATION,
         WorkbenchModule.METATYPE,
         WorkbenchModule.OAP,
+        WorkbenchModule.BULK_UPDATE,
     ]
 
 
@@ -50,3 +51,10 @@ def test_module_workflow_mapping_uses_existing_workflows():
     )
     assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.PRODUCT,)
     assert module_workflows(WorkbenchModule.OAP) == (WorkflowStep.PRODUCT,)
+
+
+# Bulk Update intentionally exposes the existing Maintenance workflow.
+def test_bulk_update_module_uses_maintenance_workflow():
+    assert module_workflows(WorkbenchModule.BULK_UPDATE) == (
+        WorkflowStep.MAINTENANCE,
+    )
