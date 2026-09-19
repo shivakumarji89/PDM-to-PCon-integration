@@ -188,8 +188,9 @@ class MainWindow(QMainWindow):
             WorkflowStep.ENGINEERING: "Finalizing Engineering Workspace",
         }
         for step in self._ENGINEERING_DEPENDENT_STEPS:
+            label = labels.get(step, f"Finalizing {step.name.title()} Workspace")
             if reporter is not None:
-                reporter.log("info", labels.get(step, f"Finalizing {step.name.title()} Workspace"))
+                reporter.advance(label)
             page = self._pages.get(step)
             if page is not None and hasattr(page, "refresh"):
                 page.refresh()
@@ -207,7 +208,7 @@ class MainWindow(QMainWindow):
         """
         reporter = getattr(self._product_page, "_family_reporter", None)
         if reporter is not None:
-            reporter.log("success", "All workspaces finalized")
+            reporter.advance("Workspace finalization complete")
         self._manager.refresh()
         self.statusBar().showMessage("Snapshot Ready")
 
