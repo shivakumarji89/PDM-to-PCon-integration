@@ -906,14 +906,19 @@ class EngineeringClassService(BaseService):
             result.pop(pid, None)
             minpos.pop(pid, None)
 
+        # Keep the physical span of an explicitly ignored property in the
+        # layout even though its decoded value codes are removed from result.
+        # Article Set materialization needs that span to know where the base ends
+        # when the ignored property is the last/only configurable head field.
+        # Previously ignored properties disappeared from _position_layout, so
+        # materialization had no boundary to apply and the checkbox appeared to
+        # have no effect.
         self._position_layout = {
             pid: {
-                "width": max(
-                    (len(c) for c in result.get(pid, {}).values()), default=1
-                ),
-                "position": pos,
+                "width": spans[pid][1] - spans[pid][0],
+                "position": spans[pid][0],
             }
-            for pid, pos in minpos.items()
+            for pid in spans
         }
         return result
 
