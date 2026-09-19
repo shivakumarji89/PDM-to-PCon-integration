@@ -390,33 +390,22 @@ class EngineeringReductionService(BaseService):
             article_id = str(getattr(article, "id", "") or "")
             product_id = str(getattr(article, "product_id", "") or "")
 
-            # BaseAttributeValues is the PDM Item truth. Only use the product
-            # assignment as fallback for an attribute that is absent at Item
-            # level; never union both blindly.
+            # BaseAttributeValues are the concrete PDM Item truth. When
+            # Item-level rows exist, use that complete selection as the
+            # signature. ProductAttributeValues are only the fallback for Items
+            # for which PDM supplied no BaseAttributeValues at all.
             selected_ids = [str(v) for v in article_values.get(article_id, [])]
             product_ids = [str(v) for v in product_values.get(product_id, [])]
 
-            by_attribute: dict[str, tuple[str, int]] = {}
-            for value_id in product_ids:
-                entry = value_prop.get(value_id)
-                if entry is not None:
-                    by_attribute.setdefault(value_id, entry)
-            # Collapse product values to one property signature first.
+            selected_signature = {
+                value_prop[v] for v in selected_ids if v in value_prop
+            }
             product_signature = {
                 value_prop[v] for v in product_ids if v in value_prop
             }
-            for value_id in selected_ids:
-                entry = value_prop.get(value_id)
-                if entry is not None:
-                    # Replace the product-level value for the same property
-                    # with the concrete Item-level value.
-                    prop_name = entry[0]
-                    for key in tuple(by_attribute):
-                        if by_attribute[key][0] == prop_name:
-                            by_attribute.pop(key, None)
-                    by_attribute[value_id] = entry
-
-            signature = tuple(sorted(set(by_attribute.values()) if selected_ids else product_signature))
+            signature = tuple(
+                sorted(selected_signature if selected_ids else product_signature)
+            )
             scope = str(range_of.get(product_id, "") or "")
             groups.setdefault((scope, signature), []).append(article_id)
 
@@ -518,7 +507,7 @@ class EngineeringReductionService(BaseService):
                     str(prop.id), prop.name or "", value.value or "", value.code or ""
                 )
         option_value: dict[str, tuple[str, str, str, str]] = {}
-        for option in snapshot.options:
+        for option in getattr(snapshot, "options", []) or []:
             for value in option.values:
                 option_value[str(value.id)] = (
                     str(option.id), option.name or "",
@@ -585,50 +574,65 @@ class EngineeringReductionService(BaseService):
             ]
             if override_lengths:
                 base_length = min(override_lengths)
+            elif pdm_prefixes:
+                # PDM's getArticlePrefixLength is authoritative when it is
+                # available for these Items.
+                base_length = min(pdm_prefixes)
             else:
-                # PDM's prefix length is the start of the configuration/head
-                # portion.  An ignored head property is deliberately NOT sliced,
-                # so its decoded span must be included in the base article length.
-                # Previously the PDM prefix won outright whenever it was present,
-                # which meant Class Creation's "Ignore" decision was stored but
-                # never propagated to Articles: the ignored property's characters
-                # appeared in Remaining instead of Base Article.
-                base_length = min(pdm_prefixes) if pdm_prefixes else 0
-
-                # Head-layout positions are absolute positions in the article
-                # code. Extending to the end of every explicitly ignored head
-                # property makes the resulting length independent of property
-                # ordering and also handles multiple ignored properties.
                 ignored = getattr(snapshot, "config_ignore_overrides", {}) or {}
-                ignored_end_positions = [
-                    int(head_layout[str(prop.id)].get("position", 0) or 0)
-                    + int(head_layout[str(prop.id)].get("width", 0) or 0)
-                    for prop in properties
-                    if ignored.get(str(prop.id)) is True
-                    and str(prop.id) in head_layout
-                    and head_layout[str(prop.id)].get("width", 0)
-                ]
-                if ignored_end_positions:
-                    base_length = max(base_length, max(ignored_end_positions))
 
-                if not base_length:
-                    head_positions = [
-                        head_layout[str(a.id)]["position"]
-                        for a in properties
-                        if str(a.id) in head_layout
-                        and head_layout[str(a.id)].get("width", 0)
-                        and ignored.get(str(a.id)) is not True
+                # A head property is part of the base when its value is
+                # constant across the set. The first NON-ignored head property
+                # whose value varies is where the configurable portion starts.
+                # This is data-driven: it does not assume fixed character
+                # positions for a particular product family.
+                varying_head_positions = [
+                    int(head_layout[str(prop.id)].get("position", 0) or 0)
+                    for prop in properties
+                    if str(prop.id) in head_layout
+                    and head_layout[str(prop.id)].get("width", 0)
+                    and ignored.get(str(prop.id)) is not True
+                    and any(
+                        len({str(v.id) for v in attr.values}) > 1
+                        for attr in properties
+                        if str(attr.id) == str(prop.id)
+                    )
+                ]
+
+                if varying_head_positions:
+                    base_length = min(varying_head_positions)
+                else:
+                    ignored_end_positions = [
+                        int(head_layout[str(prop.id)].get("position", 0) or 0)
+                        + int(head_layout[str(prop.id)].get("width", 0) or 0)
+                        for prop in properties
+                        if ignored.get(str(prop.id)) is True
+                        and str(prop.id) in head_layout
+                        and head_layout[str(prop.id)].get("width", 0)
                     ]
-                    if head_positions:
-                        base_length = max(min(head_positions), 0)
+                    if ignored_end_positions:
+                        base_length = max(ignored_end_positions)
                     else:
-                        code_len = max(
-                            (len(code_of.get(a, "")) for a in article_ids), default=0
-                        )
-                        config_width = sum(
-                            prop_width.get(str(a.id), 0) for a in properties
-                        )
-                        base_length = max(code_len - config_width, 0)
+                        # With no configurable head property, the complete
+                        # pre-dot article number is the base. This also keeps
+                        # singleton structure classes from retaining the
+                        # after-dot suffix in Base Article.
+                        pre_dot_lengths = [
+                            len(code.split(".", 1)[0])
+                            for code in (code_of.get(a, "") for a in article_ids)
+                            if code
+                        ]
+                        if pre_dot_lengths:
+                            base_length = min(pre_dot_lengths)
+                        else:
+                            code_len = max(
+                                (len(code_of.get(a, "")) for a in article_ids),
+                                default=0,
+                            )
+                            config_width = sum(
+                                prop_width.get(str(a.id), 0) for a in properties
+                            )
+                            base_length = max(code_len - config_width, 0)
             # Base code = the article number shown only as far as the group's
             # codes are the SAME value (common prefix), never beyond the derived
             # base length. This is the shared "base article" for the set.
@@ -664,19 +668,12 @@ class EngineeringReductionService(BaseService):
         article_value_ids = article_value_ids or {}
         for article_id in article_ids:
             product_id = product_of.get(article_id, "")
-            # PDM Item-level BaseAttributeValues are authoritative. Product
-            # values are fallback only for properties absent from the Item.
+            # PDM Item-level BaseAttributeValues are authoritative when
+            # present. Product-level values are a fallback only when the Item
+            # has no BaseAttributeValues rows.
             selected = [str(v) for v in article_value_ids.get(article_id, [])]
             product_values = [str(v) for v in product_value_ids.get(product_id, [])]
-            selected_props = {
-                value_lookup[v][0]
-                for v in selected
-                if v in value_lookup
-            }
-            value_ids = selected + [
-                v for v in product_values
-                if v in value_lookup and value_lookup[v][0] not in selected_props
-            ]
+            value_ids = selected if selected else product_values
             for value_id in value_ids:
                 info = value_lookup.get(str(value_id))
                 if info is None:
