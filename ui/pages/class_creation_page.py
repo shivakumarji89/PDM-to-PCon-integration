@@ -681,8 +681,26 @@ class ClassCreationPage(BasePage):
         if snapshot is None:
             return None
         sets = tuple(
-            (s.base_length, len(s.article_ids))
+            (
+                s.base_length,
+                len(s.article_ids),
+                tuple(sorted(str(a) for a in s.article_ids)),
+            )
             for s in (getattr(snapshot, "article_sets", None) or [])
+        )
+        # Article workflow reductions are persisted on engineering members
+        # (reduced_article), not on ArticleSet itself. Include those values so
+        # returning to Class Creation detects an Article-page reduction even
+        # when the ArticleSet membership/counts did not change.
+        reduced = tuple(
+            sorted(
+                (
+                    str(member.id),
+                    str(getattr(member, "reduced_article", "") or ""),
+                )
+                for family in (getattr(snapshot.engineering, "families", []) or [])
+                for member in (getattr(family, "members", []) or [])
+            )
         )
         overrides = getattr(snapshot, "config_code_overrides", None) or {}
         return (
@@ -690,6 +708,7 @@ class ClassCreationPage(BasePage):
             len(snapshot.properties),
             len(snapshot.articles),
             sets,
+            reduced,
             sum(len(m) for m in overrides.values()),
             tuple(sorted(getattr(snapshot, "ignored_ranges", None) or [])),
         )
