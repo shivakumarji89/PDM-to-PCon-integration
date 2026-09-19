@@ -440,28 +440,50 @@ class EngineeringReductionService(BaseService):
             ]
             if override_lengths:
                 base_length = min(override_lengths)
-            elif pdm_prefixes:
-                # A class is one PDM property structure. If PDM supplied multiple
-                # item prefix lengths, the common fixed prefix is the shortest
-                # authoritative prefix rather than an invented slice width.
-                base_length = min(pdm_prefixes)
             else:
-                head_positions = [
-                    head_layout[str(a.id)]["position"]
-                    for a in properties
-                    if str(a.id) in head_layout
-                    and head_layout[str(a.id)].get("width", 0)
+                # PDM's prefix length is the start of the configuration/head
+                # portion.  An ignored head property is deliberately NOT sliced,
+                # so its decoded span must be included in the base article length.
+                # Previously the PDM prefix won outright whenever it was present,
+                # which meant Class Creation's "Ignore" decision was stored but
+                # never propagated to Articles: the ignored property's characters
+                # appeared in Remaining instead of Base Article.
+                base_length = min(pdm_prefixes) if pdm_prefixes else 0
+
+                # Head-layout positions are absolute positions in the article
+                # code. Extending to the end of every explicitly ignored head
+                # property makes the resulting length independent of property
+                # ordering and also handles multiple ignored properties.
+                ignored = getattr(snapshot, "config_ignore_overrides", {}) or {}
+                ignored_end_positions = [
+                    int(head_layout[str(prop.id)].get("position", 0) or 0)
+                    + int(head_layout[str(prop.id)].get("width", 0) or 0)
+                    for prop in properties
+                    if ignored.get(str(prop.id)) is True
+                    and str(prop.id) in head_layout
+                    and head_layout[str(prop.id)].get("width", 0)
                 ]
-                if head_positions:
-                    base_length = max(min(head_positions), 0)
-                else:
-                    code_len = max(
-                        (len(code_of.get(a, "")) for a in article_ids), default=0
-                    )
-                    config_width = sum(
-                        prop_width.get(str(a.id), 0) for a in properties
-                    )
-                    base_length = max(code_len - config_width, 0)
+                if ignored_end_positions:
+                    base_length = max(base_length, max(ignored_end_positions))
+
+                if not base_length:
+                    head_positions = [
+                        head_layout[str(a.id)]["position"]
+                        for a in properties
+                        if str(a.id) in head_layout
+                        and head_layout[str(a.id)].get("width", 0)
+                        and ignored.get(str(a.id)) is not True
+                    ]
+                    if head_positions:
+                        base_length = max(min(head_positions), 0)
+                    else:
+                        code_len = max(
+                            (len(code_of.get(a, "")) for a in article_ids), default=0
+                        )
+                        config_width = sum(
+                            prop_width.get(str(a.id), 0) for a in properties
+                        )
+                        base_length = max(code_len - config_width, 0)
             # Base code = the article number shown only as far as the group's
             # codes are the SAME value (common prefix), never beyond the derived
             # base length. This is the shared "base article" for the set.
