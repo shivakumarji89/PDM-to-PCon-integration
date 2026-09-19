@@ -32,6 +32,9 @@ from services.xocd_export_service import XocdExportService
 _DATE_MIN = "20200101"
 _DATE_MAX = "99991231"
 
+_MATERIAL_MANUFACTURER = "hmx"
+_MATERIAL_PACKAGE = "basics"
+
 #: Category templates (the "copy, wipe, hand-enter" starting points).
 _TEMPLATE_ROOT = Path(r"C:\HermanMillerOFMLSVN\Staging\HermanMiller_old\WS\1_WS_Templates")
 _TEMPLATES = {
@@ -54,6 +57,7 @@ _PRODUCT_TABLES = [
     "tCOMd_Price", "tCOMd_GlobalPrice",
     "tCOMd_TableLine", "tCOMd_TableColumn", "tCOMd_Table",
     "tCOMd_RelObjRel", "tCOMd_ArtBase", "tCOMd_ArticleClass",
+    "tCOMd_Article2Mat", "tCOMd_Package2Mat",
     "tCOMd_PropValue", "tCOMd_Property", "tCOMd_Article", "tCOMd_Class",
     "tCOMd_Relation", "tCOMd_RelObj", "tCOMd_CodeScheme", "tCOMd_Text",
 ]
@@ -65,6 +69,7 @@ _PK = {
     "tCOMd_Article": "com_ArticleID", "tCOMd_ArticleClass": "com_ArticleClassID",
     "tCOMd_ArtBase": "com_ArtBaseID", "tCOMd_RelObj": "com_RelObjID",
     "tCOMd_Relation": "com_RelationID", "tCOMd_RelObjRel": "com_RelObjRelID",
+    "tCOMd_Article2Mat": "com_Article2MatID", "tCOMd_Package2Mat": "com_Package2MatID",
     "tCOMd_CodeScheme": "com_CodeSchemeID", "tCOMd_Table": "com_TableID",
     "tCOMd_TableColumn": "com_TableColumnID", "tCOMd_TableLine": "com_TableLineID",
     "tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID",
