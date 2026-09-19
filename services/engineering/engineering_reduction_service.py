@@ -722,6 +722,10 @@ class EngineeringReductionService(BaseService):
         article_by_id = {str(a.id): a for a in snapshot.articles}
         target_ids = {str(a) for a in article_ids}
         by_id = {str(a.id): a for a in attributes}
+        prop_names = {
+            str(p.id): (p.name or "")
+            for p in getattr(snapshot, "properties", []) or []
+        }
 
         for cls in getattr(engineering, "classes", []) or []:
             offset = 0
@@ -731,8 +735,17 @@ class EngineeringReductionService(BaseService):
                     v for v in getattr(assignment, "values", []) or []
                     if getattr(v, "source", "pdm") == "manual" and v.code
                 ]
-                if manual and str(assignment.property_id) in by_id and width:
-                    set_attr = by_id[str(assignment.property_id)]
+                if manual and width:
+                    set_attr = by_id.get(str(assignment.property_id))
+                    if set_attr is None:
+                        set_attr = SetAttribute(
+                            id=str(assignment.property_id),
+                            name=getattr(assignment, "property_name", "")
+                            or prop_names.get(str(assignment.property_id), ""),
+                            values=[],
+                        )
+                        attributes.append(set_attr)
+                        by_id[str(assignment.property_id)] = set_attr
                     for article_id in target_ids:
                         article = article_by_id.get(article_id)
                         if article is None:
