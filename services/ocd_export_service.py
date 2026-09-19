@@ -158,7 +158,10 @@ class OcdExportService(BaseService):
         )
         protos = {t: self._prototype(mdb, t) for t in _PRODUCT_TABLES}
 
+        self.context.material_picking_service.ensure_package_defaults(snapshot)
         product = snapshot.product
+        material_mf = snapshot.material_manufacturer_code or _MATERIAL_MANUFACTURER
+        material_pk = snapshot.material_package_code or _MATERIAL_PACKAGE
         program_code = XocdExportService.program_key(product)
         series_id = XocdExportService.series_id(product)
         result.program_code = program_code
@@ -181,8 +184,8 @@ class OcdExportService(BaseService):
                     "set": {
                         "reg_ProgramCode": program_code,
                         "reg_ProgramLabel": label,
-                        "com_MaterialMF": _MATERIAL_MANUFACTURER,
-                        "com_MaterialPK": _MATERIAL_PACKAGE,
+                        "com_MaterialMF": material_mf,
+                        "com_MaterialPK": material_pk,
                     },
                     "where": {"com_PackageID": package_id}})
         ops.append({"op": "update", "table": "tCOMd_ComGroup",
@@ -253,6 +256,9 @@ class OcdExportService(BaseService):
         comgroup_id = pkg[0].get("com_ComGroupID")
         program_code = XocdExportService.program_key(preview_snapshot.product)
         series_id = XocdExportService.series_id(preview_snapshot.product)
+        self.context.material_picking_service.ensure_package_defaults(preview_snapshot)
+        material_mf = preview_snapshot.material_manufacturer_code or _MATERIAL_MANUFACTURER
+        material_pk = preview_snapshot.material_package_code or _MATERIAL_PACKAGE
         label = (
             preview_snapshot.product.range_name
             or preview_snapshot.product.name
@@ -268,8 +274,8 @@ class OcdExportService(BaseService):
         final_pkg.update({
             "reg_ProgramCode": program_code,
             "reg_ProgramLabel": label,
-            "com_MaterialMF": _MATERIAL_MANUFACTURER,
-            "com_MaterialPK": _MATERIAL_PACKAGE,
+            "com_MaterialMF": material_mf,
+            "com_MaterialPK": material_pk,
         })
         final_group = dict(groups[0]) if groups else {}
         final_group.update({
