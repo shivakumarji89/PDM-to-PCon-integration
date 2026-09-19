@@ -623,7 +623,7 @@ class OcdExportService(BaseService):
         return rows, index
 
     def _properties(
-        self, classes: list, class_index: dict[str, int],
+        self, snapshot: Snapshot, classes: list, class_index: dict[str, int],
         text_index: dict[tuple[str, str], int], digits: dict[str, int],
         proto: dict[str, Any],
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -641,6 +641,15 @@ class OcdExportService(BaseService):
                 pid += 1
                 index[str(a.property_id)] = pid
                 prop_key = XocdExportService._prop_ident(a.property_name)
+                source_prop = next(
+                    (p for p in snapshot.properties if str(p.id) == str(a.property_id)),
+                    None,
+                )
+                prop_info_prefix = self.context.material_picking_service.prop_info_pic_prefix(
+                    snapshot,
+                    a.property_name,
+                    str(getattr(source_prop, "code", "") or ""),
+                )
                 scope = "RG" if (a.usage or "").lower().startswith("g") else "C"
                 text_id = self._property_text_id(
                     text_index, a.text_block or text_block_name(a.property_name)
@@ -652,8 +661,73 @@ class OcdExportService(BaseService):
                     "com_PropScopeCode": scope, "com_PropPosition": 100 + position * 10,
                     "com_TextID": text_id, "com_RelObjID": None, "com_HintTextID": None,
                     "com_PropDigits": width, "com_PropDecDigits": 0,
+                    "com_PropInfoPicPrefix": prop_info_prefix,
                 }))
         return rows, index
+
+    def _material_mappings(
+        self,
+        snapshot: Snapshot,
+        classes: list,
+        base_codes: list[str],
+        article_index: dict[str, int],
+        package_id: Any,
+        material_map_id: Any,
+        package_proto: dict[str, Any],
+        article_proto: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Build package/article material-selection links from ProgInfo rules."""
+        if material_map_id in (None, ""):
+            return [], []
+
+        prop_ids = {
+            str(a.property_id)
+            for cls in classes
+            for a in cls.properties
+        }
+        source_props = [p for p in snapshot.properties if str(p.id) in prop_ids]
+        mapped = self.context.material_picking_service.mapped_properties(
+            snapshot, source_props
+        )
+        if not mapped:
+            return [], []
+
+        package_rows: list[dict[str, Any]] = []
+        article_rows: list[dict[str, Any]] = []
+        for pos, (prop, _prefix, _map_name) in enumerate(mapped, start=1):
+            prop_name = XocdExportService._prop_ident(
+                str(getattr(prop, "name", "") or "")
+            )
+            package_rows.append(self._row(package_proto, {
+                "com_Package2MatID": pos,
+                "com_PackageID": package_id,
+                "com_Pos": 100 + (pos - 1) * 10,
+                "com_PropName": prop_name,
+                "geo_MaterialCategory": None,
+                "com_Val2MatMapID": material_map_id,
+                "com_StatusInfoID": 1,
+            }))
+
+        row_id = 0
+        for code in base_codes:
+            article_id = article_index.get(code)
+            if article_id is None:
+                continue
+            for pos, (prop, _prefix, _map_name) in enumerate(mapped, start=1):
+                row_id += 1
+                prop_name = XocdExportService._prop_ident(
+                    str(getattr(prop, "name", "") or "")
+                )
+                article_rows.append(self._row(article_proto, {
+                    "com_Article2MatID": row_id,
+                    "com_ArticleID": article_id,
+                    "com_Pos": 100 + (pos - 1) * 10,
+                    "com_PropName": prop_name,
+                    "geo_MaterialCategory": None,
+                    "com_Val2MatMapID": material_map_id,
+                    "com_StatusInfoID": 1,
+                }))
+        return package_rows, article_rows
 
     def _property_values(
         self, snapshot: Snapshot, classes: list, prop_index: dict[str, int],
