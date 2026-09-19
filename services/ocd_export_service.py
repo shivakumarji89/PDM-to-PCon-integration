@@ -394,7 +394,8 @@ class OcdExportService(BaseService):
     def _build(
         self, snapshot: Snapshot, package_id: Any, comgroup_id: Any,
         series_id: str, protos: dict[str, dict[str, Any]],
-        price_lists: dict[str, dict[str, Any]], result: OcdExportResult,
+        price_lists: dict[str, dict[str, Any]], material_map_id: Any,
+        result: OcdExportResult,
     ) -> list[tuple[str, list[dict[str, Any]]]]:
         """Assemble every ``tCOMd_`` insert batch, parent tables first."""
         xocd = self.context.xocd_export_service
@@ -413,7 +414,8 @@ class OcdExportService(BaseService):
         )
         class_rows, class_index = self._classes(classes, package_id, protos["tCOMd_Class"])
         property_rows, prop_index = self._properties(
-            classes, class_index, text_index, digits, protos["tCOMd_Property"]
+            snapshot, classes, class_index, text_index, digits,
+            protos["tCOMd_Property"]
         )
         propvalue_rows = self._property_values(
             snapshot, classes, prop_index, text_index, value_relobj, codes,
@@ -428,6 +430,10 @@ class OcdExportService(BaseService):
             protos["tCOMd_ArticleClass"]
         )
         artbase_rows = self._artbase(snapshot, article_index, classes, codes, protos["tCOMd_ArtBase"])
+        package2mat_rows, article2mat_rows = self._material_mappings(
+            snapshot, classes, base_codes, article_index, package_id,
+            material_map_id, protos["tCOMd_Package2Mat"], protos["tCOMd_Article2Mat"]
+        )
         table_rows, column_rows, line_rows = self._value_tables(snapshot, package_id)
         price_rows, global_rows = self._prices(
             snapshot, article_index, price_lists, package_id, text_index,
@@ -445,6 +451,8 @@ class OcdExportService(BaseService):
             ("tCOMd_Article", article_rows),
             ("tCOMd_ArticleClass", articleclass_rows),
             ("tCOMd_ArtBase", artbase_rows),
+            ("tCOMd_Package2Mat", package2mat_rows),
+            ("tCOMd_Article2Mat", article2mat_rows),
             ("tCOMd_RelObjRel", relobjrel_rows),
             ("tCOMd_Table", table_rows),
             ("tCOMd_TableColumn", column_rows),
