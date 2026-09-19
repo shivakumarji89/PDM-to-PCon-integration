@@ -147,6 +147,15 @@ class OcdExportService(BaseService):
             return result
         package_id = pkg[0]["com_PackageID"]
         comgroup_id = pkg[0]["com_ComGroupID"]
+        manufacturer_rows = mdb_svc.read_table(
+            mdb,
+            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
+            + "WHERE com_ManufacturerID = " + str(pkg[0].get("com_ManufacturerID") or 0)
+        )
+        result.manufacturer_id = str(
+            manufacturer_rows[0].get("reg_ManufacturerCode")
+            if manufacturer_rows else _MATERIAL_MANUFACTURER
+        )
         protos = {t: self._prototype(mdb, t) for t in _PRODUCT_TABLES}
 
         product = snapshot.product
@@ -271,10 +280,15 @@ class OcdExportService(BaseService):
         # Manufacturer information is retained from the template. Keep both
         # the table row and any package/group/article manufacturer reference
         # visible in Review.
+        manufacturer_id = final_pkg.get("com_ManufacturerID") or final_group.get("com_ManufacturerID")
+        manufacturer_rows = self.context.mdb_service.read_table(
+            template,
+            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
+            + "WHERE com_ManufacturerID = " + str(manufacturer_id or 0)
+        )
         result.manufacturer_id = str(
-            final_group.get("com_ManufacturerID")
-            or final_pkg.get("com_ManufacturerID")
-            or "HM"
+            manufacturer_rows[0].get("reg_ManufacturerCode")
+            if manufacturer_rows else _MATERIAL_MANUFACTURER
         )
 
         # Export MDB copies the whole template, so every user table not in
