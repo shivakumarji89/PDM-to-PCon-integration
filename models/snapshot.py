@@ -167,6 +167,14 @@ class Snapshot:
     # automatic suggestion (redundant duplicates ignored). Persisted; user wins.
     config_ignore_overrides: dict[str, bool] = field(default_factory=dict)
 
+    # Ordered OFML ProgInfo control-table rows. The first matching
+    # @PropInfoPicPrefix entry wins, so row order is persisted exactly.
+    prog_info_rows: list[dict[str, str]] = field(default_factory=list)
+
+    # Case-sensitive OFML central material package codes.
+    material_manufacturer_code: str = "hmx"
+    material_package_code: str = "basics"
+
     # User opt-in: split the standard classes into one <Group>_* set per product
     # range (desk / screen / wire management) instead of one flat <Category>_*
     # set. Off by default (flat, historical behaviour). Persisted with the project.
