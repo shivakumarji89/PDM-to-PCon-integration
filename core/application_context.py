@@ -202,7 +202,6 @@ class ApplicationContext:
         return self.get_service(ProductProfileService)
 
     @property
-    @property
     def candidate_strategy_service(self) -> CandidateStrategyService:
         """Additional legacy-PDM candidate proposals; never the validator."""
         return self.get_service(CandidateStrategyService)
