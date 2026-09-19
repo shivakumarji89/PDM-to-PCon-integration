@@ -41,8 +41,8 @@ _ENCODING = "latin-1"
 _DATE_MIN = "20200101"
 _DATE_MAX = "99991231"
 
-#: Sales manufacturer key (XOCD ``Article.ManufacturerID``); Herman Miller.
-_MANUFACTURER_ID = "HM"
+#: OFML manufacturer code used by Herman Miller material and article data.
+_MANUFACTURER_ID = "hmx"
 
 #: Text-block type code -> XOCD description file. OCD models options as
 #: properties, so option text folds into the property text files.
