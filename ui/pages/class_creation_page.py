@@ -1251,7 +1251,7 @@ class ClassCreationPage(BasePage):
                 if cls_prop is not None:
                     add_value = QTreeWidgetItem(
                         node,
-                        [_ADD_VALUE_HINT, "", "", "", "", "", "", ""],
+                        [_ADD_VALUE_HINT, "Auto", "", "", "", "", "", ""],
                     )
                     add_value.setData(
                         _COL_NAME,
@@ -1995,13 +1995,27 @@ class ClassCreationPage(BasePage):
 
         if kind == _KIND_CLASS_VALUE_ADD:
             cls_prop, prop = obj
-            code = item.text(_COL_CODE).strip()
             value = item.text(_COL_NAME).strip()
             if value == _ADD_VALUE_HINT:
                 value = ""
-            if code and value:
+            if value:
                 cls = self._attribute_class()
                 if cls is not None:
+                    inferred = self._context.engineering_class_service.infer_missing_value_code(
+                        self._context.active_snapshot, prop.id, cls.id
+                    )
+                    if inferred is None:
+                        QMessageBox.information(
+                            self,
+                            "Missing value",
+                            "The tool could not determine a unique code, width and "
+                            "placement for this value from the loaded article data.",
+                        )
+                        return
+                    code, width, _position = inferred
+                    self._context.engineering_class_service.set_width(
+                        self._context.active_snapshot, cls.id, prop.id, width
+                    )
                     self._context.engineering_class_service.add_value(
                         self._context.active_snapshot,
                         cls.id,
