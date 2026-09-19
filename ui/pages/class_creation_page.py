@@ -1275,27 +1275,6 @@ class ClassCreationPage(BasePage):
                     item.setData(1, Qt.ItemDataRole.UserRole + 1, {1})
                     flags |= Qt.ItemFlag.ItemIsEditable
                 item.setFlags(flags)
-                # Manual gap-fill row for standard Attribute class properties.
-                if cls_prop is not None:
-                    add_value = QTreeWidgetItem(
-                        node,
-                        [_ADD_VALUE_HINT, "Auto", "", "", "", "", "", ""],
-                    )
-                    add_value.setData(
-                        _COL_NAME,
-                        Qt.ItemDataRole.UserRole,
-                        (_KIND_CLASS_VALUE_ADD, (cls_prop, prop)),
-                    )
-                    add_value.setData(_COL_NAME, Qt.ItemDataRole.UserRole + 1, {_COL_NAME})
-                    add_value.setData(_COL_CODE, Qt.ItemDataRole.UserRole + 1, {_COL_CODE})
-                    add_value.setFlags(
-                        Qt.ItemFlag.ItemIsEnabled
-                        | Qt.ItemFlag.ItemIsSelectable
-                        | Qt.ItemFlag.ItemIsEditable
-                    )
-                    add_value.setForeground(_COL_NAME, Qt.GlobalColor.gray)
-                    add_value.setForeground(_COL_CODE, Qt.GlobalColor.gray)
-
                 if distinct:
                     # Embedded pull-down: always shows it IS a dropdown and
                     # opens on a single click.
