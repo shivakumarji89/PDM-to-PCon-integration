@@ -77,10 +77,13 @@ def module_title(module: WorkbenchModule) -> str:
 # Workflows exposed after entering each module. Existing workflow/page
 # implementations are reused; this mapping only controls which ones are shown.
 MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
+    # Development: Class Creation comes before Articles because class-derived
+    # article/base-position information is finalized there. Articles is then
+    # revisited to apply/review the resulting position.
     WorkbenchModule.DEVELOPMENT: (
         WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLES,
         WorkflowStep.CLASS_CREATION,
+        WorkflowStep.ARTICLES,
         WorkflowStep.TEXT,
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
@@ -88,7 +91,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.REVIEW,
         WorkflowStep.ENGINEERING,
     ),
-    # Product is the common entry workflow for Development and Maintenance.
+    # Maintenance keeps its existing workflow order.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
