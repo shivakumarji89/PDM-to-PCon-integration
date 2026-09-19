@@ -1397,6 +1397,15 @@ class EngineeringClassService(BaseService):
 
     # -- helpers -----------------------------------------------------------
     @staticmethod
+    def _find_property(cls, property_id):
+        """Return a class property assignment by property id, if present."""
+        return next(
+            (assignment for assignment in getattr(cls, "properties", []) or []
+             if str(getattr(assignment, "property_id", "")) == str(property_id)),
+            None,
+        )
+
+    @staticmethod
     def _find_by_name(classes, name):
         """Return the engineering class with the given name, if present."""
         return next((c for c in classes if c.name == name), None)
