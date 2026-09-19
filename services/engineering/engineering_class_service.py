@@ -1183,6 +1183,85 @@ class EngineeringClassService(BaseService):
         return []
 
     # -- value management --------------------------------------------------
+    def infer_missing_value_code(
+        self,
+        snapshot: Snapshot | None,
+        property_id: str,
+        class_id: str | None = None,
+    ) -> tuple[str, int, int] | None:
+        """Infer a missing value's code, width and absolute placement from the tool data.
+
+        Uses the same configuration decoder used by Class Creation. It searches
+        article codes for a code at the property's decoded position that is not
+        already represented by the class/PDM values. For tail properties it
+        falls back to the class property width and the materialised Article Set
+        slicing. Returns (code, width, position), or None when the source data
+        cannot determine it safely.
+        """
+        if snapshot is None or not property_id:
+            return None
+        layout = self.config_code_layout(snapshot).get(str(property_id))
+        if layout:
+            width = int(layout.get("width", 0) or 0)
+            position = int(layout.get("position", 0) or 0)
+            if width:
+                existing = set()
+                cls = self._find_by_id(
+                    getattr(getattr(snapshot, "engineering", None), "classes", []),
+                    class_id,
+                ) if class_id else None
+                if cls is not None:
+                    assignment = self._find_property(cls, property_id)
+                    if assignment:
+                        existing = {
+                            str(v.code).strip()
+                            for v in assignment.values
+                            if v.code
+                        }
+                candidates = set()
+                for article in getattr(snapshot, "articles", []) or []:
+                    head = (getattr(article, "code", "") or "").split(".", 1)[0]
+                    code = head[position:position + width]
+                    if len(code) == width and code not in existing:
+                        candidates.add(code)
+                if len(candidates) == 1:
+                    return next(iter(candidates)), width, position
+                return None
+
+        # Tail/configuration fallback: use the assignment width and each
+        # materialised set's actual remaining slice. The base length comes from
+        # the same reduction engine that Articles uses.
+        cls = self._find_by_id(
+            getattr(getattr(snapshot, "engineering", None), "classes", []),
+            class_id,
+        ) if class_id else None
+        if cls is None:
+            return None
+        assignment = self._find_property(cls, property_id)
+        if assignment is None or not assignment.width:
+            return None
+        width = int(assignment.width)
+        offset = 0
+        for item in cls.properties:
+            if item is assignment:
+                break
+            offset += max(0, int(item.width or 0))
+        existing = {
+            str(v.code).strip() for v in assignment.values if v.code
+        }
+        candidates = set()
+        code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
+        for aset in getattr(snapshot, "article_sets", []) or []:
+            for aid in aset.article_ids:
+                pre_dot = code_of.get(str(aid), "").split(".", 1)[0]
+                letters = pre_dot[int(aset.base_length or 0):]
+                code = letters[offset:offset + width]
+                if len(code) == width and code not in existing:
+                    candidates.add(code)
+        if len(candidates) == 1:
+            return next(iter(candidates)), width, offset
+        return None
+
     def add_value(
         self,
         snapshot: Snapshot | None,
