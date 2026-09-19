@@ -1212,6 +1212,13 @@ class ProductPage(BasePage):
         family_name = self._family_name
         activity = getattr(self, "_family_activity", None)
 
+        # The worker must always return a ProductLoadResult. Guard the UI
+        # boundary so an unexpected empty payload is routed to the normal
+        # failure cleanup instead of dereferencing None.
+        if result is None:
+            self._on_family_load_failed("Load Family worker returned no result.")
+            return
+
         if not result.ok:
             reporter.log("error", result.message)
             reporter.finish(False, result.message)
