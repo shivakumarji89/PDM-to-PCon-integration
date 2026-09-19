@@ -1049,8 +1049,9 @@ class ProductPage(BasePage):
         # progress until the whole load finishes, then auto-closes. Steps:
         #   connect(1) + articles(1) + info(1)   [articles]
         #   + properties(1) + options(1) + links(1) + merge(1) + sets(1) + save(1)
-        #   [details] + initialize(1) + finalize(1)  [engineering + workspaces]
-        total_steps = 12
+        #   [details] + initialize(1) + finalize-start(1)
+        #   + 8 workspace refreshes + completion(1)
+        total_steps = 20
         reporter.begin(total_steps, title="Loading Family", subject=family_name)
         reporter.log("info", "Started Load Family")
 
