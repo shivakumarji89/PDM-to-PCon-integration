@@ -1247,6 +1247,27 @@ class ClassCreationPage(BasePage):
                     item.setData(1, Qt.ItemDataRole.UserRole + 1, {1})
                     flags |= Qt.ItemFlag.ItemIsEditable
                 item.setFlags(flags)
+                # Manual gap-fill row for standard Attribute class properties.
+                if cls_prop is not None:
+                    add_value = QTreeWidgetItem(
+                        node,
+                        [_ADD_VALUE_HINT, "", "", "", "", "", "", ""],
+                    )
+                    add_value.setData(
+                        _COL_NAME,
+                        Qt.ItemDataRole.UserRole,
+                        (_KIND_CLASS_VALUE_ADD, (cls_prop, prop)),
+                    )
+                    add_value.setData(_COL_NAME, Qt.ItemDataRole.UserRole + 1, {_COL_NAME})
+                    add_value.setData(_COL_CODE, Qt.ItemDataRole.UserRole + 1, {_COL_CODE})
+                    add_value.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled
+                        | Qt.ItemFlag.ItemIsSelectable
+                        | Qt.ItemFlag.ItemIsEditable
+                    )
+                    add_value.setForeground(_COL_NAME, Qt.GlobalColor.gray)
+                    add_value.setForeground(_COL_CODE, Qt.GlobalColor.gray)
+
                 if distinct:
                     # Embedded pull-down: always shows it IS a dropdown and
                     # opens on a single click.
@@ -1970,6 +1991,32 @@ class ClassCreationPage(BasePage):
                 self._context.property_value_service.set_selected(obj, selected)
             elif column == _COL_CODE:
                 obj.code = item.text(_COL_CODE).strip()
+            return
+
+        if kind == _KIND_CLASS_VALUE_ADD:
+            cls_prop, prop = obj
+            code = item.text(_COL_CODE).strip()
+            value = item.text(_COL_NAME).strip()
+            if value == _ADD_VALUE_HINT:
+                value = ""
+            if code and value:
+                cls = self._attributes_class()
+                if cls is not None:
+                    self._context.engineering_class_service.add_value(
+                        self._context.active_snapshot,
+                        cls.id,
+                        prop.id,
+                        code,
+                        value,
+                        source="manual",
+                    )
+                    self._context.snapshot_manager.mark_modified()
+                    self._context.engineering_reduction_service.materialize_article_sets(
+                        self._context.active_snapshot
+                    )
+                    self._populating = True
+                    self._populate_attributes()
+                    self._populating = False
             return
 
         if kind == _KIND_OPTION:
