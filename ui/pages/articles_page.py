@@ -189,7 +189,8 @@ class ArticlesPage(BasePage):
         )
         header = self._sets_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._sets_tree.itemSelectionChanged.connect(self._on_set_changed)
+        # currentItemChanged is deterministic for mouse and keyboard navigation.
+        self._sets_tree.currentItemChanged.connect(self._on_set_changed)
         layout.addWidget(self._sets_tree)
         return box
 
@@ -251,7 +252,7 @@ class ArticlesPage(BasePage):
         return item
 
     def _on_set_changed(self, *_args) -> None:
-        """Select a set to view its FULL line items (ungrouped); 'All sets' shows
+        """Select a set to view ONLY that set's line items; 'All sets' shows
         the grouped overview. Base length is driven by Class Creation."""
         if self._syncing:
             return
