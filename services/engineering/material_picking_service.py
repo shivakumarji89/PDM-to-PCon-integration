@@ -133,7 +133,10 @@ class MaterialPickingService(BaseService):
     @staticmethod
     def _condition_vectors(argument: str) -> list[str]:
         text = argument.strip()
-        if text.startswith("[") and text.endswith("]"):
+        # A single condition is [@PropName,["Name"]]; multiple conditions
+        # may be wrapped as [[...],[...]] or written as [...],[...].
+        # Only remove the outer wrapper in the first form.
+        if text.startswith("[[") and text.endswith("]]"):
             text = text[1:-1]
         vectors: list[str] = []
         start = 0
