@@ -141,7 +141,7 @@ class OcdExportService(BaseService):
             return result
 
         # Package/ComGroup ids to rename; prototype rows for NOT-NULL boilerplate.
-        pkg = mdb_svc.read_table(mdb, "SELECT com_PackageID, com_ComGroupID FROM tCOMd_Package")
+        pkg = mdb_svc.read_table(mdb, "SELECT com_PackageID, com_ComGroupID, com_ManufacturerID FROM tCOMd_Package")
         if not pkg:
             result.error = "Template tCOMd_Package is empty."
             return result
@@ -158,14 +158,23 @@ class OcdExportService(BaseService):
         result.comgroup_id = comgroup_id
         label = product.range_name or product.name or program_code
 
+        material_map_id = self._material_map_id(
+            mdb, package_id, self.context.material_picking_service.DEFAULT_MAP
+        )
         price_lists = self._price_lists_by_currency(mdb)
         inserts = self._build(
-            snapshot, package_id, comgroup_id, series_id, protos, price_lists, result
+            snapshot, package_id, comgroup_id, series_id, protos, price_lists,
+            material_map_id, result
         )
 
         ops: list[dict[str, Any]] = [{"op": "delete", "table": t} for t in _PRODUCT_TABLES]
         ops.append({"op": "update", "table": "tCOMd_Package",
-                    "set": {"reg_ProgramCode": program_code, "reg_ProgramLabel": label},
+                    "set": {
+                        "reg_ProgramCode": program_code,
+                        "reg_ProgramLabel": label,
+                        "com_MaterialMF": _MATERIAL_MANUFACTURER,
+                        "com_MaterialPK": _MATERIAL_PACKAGE,
+                    },
                     "where": {"com_PackageID": package_id}})
         ops.append({"op": "update", "table": "tCOMd_ComGroup",
                     "set": {"com_ComGroupCode": series_id, "com_ComGroupLabel": label},
@@ -250,6 +259,8 @@ class OcdExportService(BaseService):
         final_pkg.update({
             "reg_ProgramCode": program_code,
             "reg_ProgramLabel": label,
+            "com_MaterialMF": _MATERIAL_MANUFACTURER,
+            "com_MaterialPK": _MATERIAL_PACKAGE,
         })
         final_group = dict(groups[0]) if groups else {}
         final_group.update({
@@ -295,10 +306,13 @@ class OcdExportService(BaseService):
         result.retained_rows = retained
 
         protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
+        material_map_id = self._material_map_id(
+            template, package_id, self.context.material_picking_service.DEFAULT_MAP
+        )
         price_lists = self._price_lists_by_currency(template)
         sequence = self._build(
             preview_snapshot, package_id, comgroup_id, series_id,
-            protos, price_lists, result
+            protos, price_lists, material_map_id, result
         )
         result.template = kind
         result.mdb_path = str(template)
