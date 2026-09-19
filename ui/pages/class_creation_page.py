@@ -1325,7 +1325,6 @@ class ClassCreationPage(BasePage):
         self._context.engineering_class_service.set_config_ignore(
             snapshot, str(prop_id), bool(checked)
         )
-        self._context.engineering_reduction_service.materialize_article_sets(snapshot)
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
