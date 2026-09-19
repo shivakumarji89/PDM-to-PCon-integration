@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
@@ -198,6 +199,10 @@ class ClassCreationPage(BasePage):
         # editable so a second edit is never locked out (reset per snapshot).
         self._user_edited_props: set[str] = set()
         self._edited_snap_id: int | None = None
+        # Prototype state for article base length and value suggestions.
+        self._article_base_length = 0
+        self._article_layout_suggestions: dict[str, list[str]] = {}
+        self._article_layout_selected: dict[str, str] = {}
 
         self.add_content(self._build_toolbar())
         self.add_content(self._build_body())
@@ -217,6 +222,22 @@ class ClassCreationPage(BasePage):
 
         # Split the classes into one group per product range (desk / screen /
         # wire management). Off = the historical flat <Category>_* classes.
+        # Article layout prototype: enter only the Base Article character count.
+        layout_label = QLabel("Base chars:", box)
+        layout_label.setToolTip("Number of leading article characters reserved for the Base Article.")
+        layout.addWidget(layout_label)
+        self._article_base_spin = QSpinBox(box)
+        self._article_base_spin.setRange(0, 999)
+        self._article_base_spin.setValue(0)
+        self._article_base_spin.setFixedWidth(70)
+        self._article_base_spin.setToolTip("Enter Base Article character count; remaining characters are used for property suggestions.")
+        self._article_base_spin.valueChanged.connect(self._on_article_base_length_changed)
+        layout.addWidget(self._article_base_spin)
+        self._article_suggest_btn = QPushButton("Suggest Values", box)
+        self._article_suggest_btn.setToolTip("Preview property values using Base chars + property Width. Does not modify PDM or reduction state.")
+        self._article_suggest_btn.clicked.connect(self._refresh_article_layout_suggestions)
+        layout.addWidget(self._article_suggest_btn)
+
         self._split_cb = QCheckBox("Split by group", box)
         self._split_cb.setToolTip(
             "Create a separate class set per product range instead of one flat "
@@ -597,8 +618,89 @@ class ClassCreationPage(BasePage):
         self._populate_attributes()
         self._populate_options()
         self._populate_visual()
+        self._refresh_article_layout_suggestions()
         self._populating = False
         self._last_render_sig = self._render_signature()
+
+    def _on_article_base_length_changed(self, value: int) -> None:
+        self._article_base_length = max(0, int(value or 0))
+        if self._article_base_length:
+            self._refresh_article_layout_suggestions()
+
+    def _article_layout_candidates(self, snapshot, cls) -> dict[str, list[str]]:
+        """Return observed property-code segments for the prototype layout."""
+        if snapshot is None or cls is None or not self._article_base_length:
+            return {}
+        articles = getattr(snapshot, "articles", []) or []
+        codes = [
+            str(getattr(article, "code", "") or "").split(".", 1)[0]
+            for article in articles
+        ]
+        result: dict[str, list[str]] = {}
+        offset = int(self._article_base_length)
+        for assignment in getattr(cls, "properties", []) or []:
+            pid = str(getattr(assignment, "property_id", "") or "")
+            width = int(getattr(assignment, "width", 0) or 0)
+            if not pid or width <= 0:
+                continue
+            values = {
+                code[offset:offset + width]
+                for code in codes
+                if len(code) >= offset + width
+            }
+            result[pid] = sorted(v for v in values if v)
+            offset += width
+        return result
+
+    def _refresh_article_layout_suggestions(self) -> None:
+        """Preview property-value candidates without changing existing data."""
+        snapshot = self._context.active_snapshot
+        cls = self._attribute_class()
+        if snapshot is None or cls is None:
+            return
+        self._article_base_length = int(self._article_base_spin.value())
+        if self._article_base_length <= 0:
+            return
+        suggestions = self._article_layout_candidates(snapshot, cls)
+        self._article_layout_suggestions = suggestions
+
+        for i in range(self._attr_tree.topLevelItemCount()):
+            group = self._attr_tree.topLevelItem(i)
+            nodes = [group] + [group.child(j) for j in range(group.childCount())]
+            for node in nodes:
+                data = node.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                if not data or data[0] != _KIND_PROP:
+                    continue
+                prop = data[1]
+                candidates = suggestions.get(str(prop.id), [])
+                if not candidates:
+                    continue
+                combo = QComboBox()
+                combo.addItem("Select...")
+                combo.addItems(candidates)
+                selected = self._article_layout_selected.get(str(prop.id), "")
+                idx = combo.findText(selected)
+                combo.setCurrentIndex(idx if idx >= 0 else 0)
+                width = next(
+                    (int(a.width or 0) for a in cls.properties
+                     if str(a.property_id) == str(prop.id)),
+                    0,
+                )
+                combo.setToolTip(
+                    f"Suggested from Base chars={self._article_base_length}, Width={width}."
+                )
+                combo.currentTextChanged.connect(
+                    lambda text, pid=str(prop.id):
+                    self._on_article_layout_value_selected(pid, text)
+                )
+                self._attr_tree.setItemWidget(node, _COL_SLICED, combo)
+                node.setSizeHint(_COL_SLICED, combo.sizeHint())
+
+    def _on_article_layout_value_selected(self, property_id: str, value: str) -> None:
+        if not value or value == "Select...":
+            self._article_layout_selected.pop(str(property_id), None)
+            return
+        self._article_layout_selected[str(property_id)] = value
 
     def _on_split_toggled(self, checked: bool) -> None:
         """Persist the split opt-in and rebuild."""
