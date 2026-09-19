@@ -1397,5 +1397,10 @@ class EngineeringClassService(BaseService):
 
     # -- helpers -----------------------------------------------------------
     @staticmethod
+    def _find_by_name(classes, name):
+        """Return the engineering class with the given name, if present."""
+        return next((c for c in classes if c.name == name), None)
+
+    @staticmethod
     def _find_by_id(classes, class_id):
         return next((c for c in classes if c.id == class_id), None)
