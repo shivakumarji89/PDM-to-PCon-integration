@@ -24,6 +24,7 @@ from models.product import Product
 from models.property import Property
 from models.property_value import PropertyValue
 from models.snapshot import Snapshot, SnapshotMetadata
+from repositories.legacy_pdm_compat_repository import LegacyPDMCompatRepository
 from repositories.pdm_repository import PDMRepository
 from services.base_service import BaseService
 
@@ -36,6 +37,30 @@ class ProductLoadResult:
     message: str
     snapshot: Snapshot | None = None
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ProductRangeGap:
+    """One ProductRange the session holds only PART of.
+
+    ``dbo.ProductsList`` always answers over the COMPLETE eligible population of
+    a ProductRange, never over a locally loaded subset, so a family drawn from a
+    partial range cannot be compared against it. This records the shortfall so
+    the range can be completed before reduction is validated.
+    """
+
+    product_range_id: str = ""
+    range_name: str = ""
+    loaded_product_ids: tuple[str, ...] = ()
+    missing_product_ids: tuple[str, ...] = ()
+
+    @property
+    def eligible_count(self) -> int:
+        return len(self.loaded_product_ids) + len(self.missing_product_ids)
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.missing_product_ids
 
 
 @dataclass
@@ -88,6 +113,7 @@ class PDMService(BaseService):
     def __init__(self, context) -> None:
         super().__init__(context)
         self._repository: PDMRepository | None = None
+        self._compat_repository: LegacyPDMCompatRepository | None = None
         self._connected = False
 
     # -- repository access -------------------------------------------------
@@ -1270,6 +1296,139 @@ class PDMService(BaseService):
         )
         return ProductLoadResult(True, message, snapshot, [])
 
+    # -- ProductRange completeness ----------------------------------------
+    @property
+    def compat_repository(self) -> LegacyPDMCompatRepository:
+        """The legacy-compatibility reads, built once per service.
+
+        Kept separate from :attr:`repository` because these queries mirror
+        ``dbo.ProductsList``'s own predicates rather than the editable
+        snapshot's.
+        """
+        repository = getattr(self, "_compat_repository", None)
+        if repository is None:
+            repository = LegacyPDMCompatRepository(self.context)
+            self._compat_repository = repository
+        return repository
+
+    def product_range_gaps(
+        self, snapshot: Snapshot | None, connection=None
+    ) -> tuple[ProductRangeGap, ...]:
+        """Which ProductRanges in ``snapshot`` are only PARTLY loaded.
+
+        ``dbo.ProductsList`` filters the complete eligible population of one
+        ProductRange (>=1 released Item, or ``NewProduct = 1``). A candidate
+        family drawn from a partially loaded range is therefore not comparable
+        against it, however correct the grouping is. This reports the shortfall
+        per range - loaded ids, missing ids - so the gap is a fact to act on
+        rather than an unexplained rejection.
+
+        Read-only; one query. Returns every range in the snapshot, complete or
+        not, so a caller can report coverage as well as shortfall.
+        """
+        if snapshot is None:
+            return ()
+        loaded = sorted(
+            {
+                str(getattr(a, "product_id", "") or "")
+                for a in snapshot.articles
+                if getattr(a, "product_id", None)
+            }
+        )
+        if not loaded:
+            return ()
+        rows = self.compat_repository.fetch_range_population_for_products(
+            loaded, connection=connection
+        )
+        loaded_set = set(loaded)
+        by_range: dict[str, dict] = {}
+        for row in rows:
+            range_id = str(getattr(row, "ProductRangeId", "") or "")
+            entry = by_range.setdefault(
+                range_id,
+                {
+                    "name": (getattr(row, "RangeName", "") or "").strip(),
+                    "loaded": [],
+                    "missing": [],
+                },
+            )
+            product_id = str(getattr(row, "ProductId", "") or "")
+            key = "loaded" if product_id in loaded_set else "missing"
+            entry[key].append(product_id)
+        return tuple(
+            ProductRangeGap(
+                product_range_id=range_id,
+                range_name=entry["name"],
+                loaded_product_ids=tuple(sorted(entry["loaded"])),
+                missing_product_ids=tuple(sorted(entry["missing"])),
+            )
+            for range_id, entry in sorted(by_range.items())
+        )
+
+    def complete_product_ranges(
+        self,
+        snapshot: Snapshot | None,
+        product_range_ids=None,
+        reporter=None,
+    ) -> ProductLoadResult:
+        """Load the Products missing from the session's ProductRanges.
+
+        Brings every partly loaded range up to its complete legacy-eligible
+        population, so the candidate families the reduction engine derives cover
+        the same population ``ProductsList`` answers over. ``product_range_ids``
+        limits the work to those ranges; omitting it completes them all.
+
+        The missing Products are merged through :meth:`add_family_to_session`,
+        so articles, properties, options, per-article links and the article-set
+        table are rebuilt exactly as for any other family - nothing about the
+        merge is special-cased for completion.
+        """
+        if snapshot is None:
+            return ProductLoadResult(False, "No snapshot to complete.")
+        wanted = (
+            None if product_range_ids is None
+            else {str(r) for r in product_range_ids}
+        )
+        gaps = [
+            gap for gap in self.product_range_gaps(snapshot)
+            if gap.missing_product_ids
+            and (wanted is None or gap.product_range_id in wanted)
+        ]
+        if not gaps:
+            return ProductLoadResult(
+                True, "Every ProductRange in the session is already complete.",
+                snapshot, [],
+            )
+        # A completed Product joins the session's catalogue, so catalogue-gated
+        # options resolve exactly as they did for the Products already loaded.
+        catalogue_id = getattr(snapshot.product, "catalogue_id", None)
+        products = [
+            Product(
+                id=product_id,
+                catalogue_id=catalogue_id,
+                range_name=gap.range_name,
+            )
+            for gap in gaps
+            for product_id in gap.missing_product_ids
+        ]
+        names = ", ".join(
+            f"{gap.range_name or gap.product_range_id} "
+            f"(+{len(gap.missing_product_ids)})"
+            for gap in gaps
+        )
+        result = self.add_family_to_session(
+            products, f"Range completion: {names}", reporter=reporter
+        )
+        if not result.ok:
+            return result
+        return ProductLoadResult(
+            True,
+            f"Completed {len(gaps)} ProductRange(s) with {len(products)} "
+            f"Product(s): {names}.",
+            result.snapshot,
+            result.warnings,
+        )
+
     def add_family_to_session(
         self, products: list[Product], family_name: str = "", reporter=None
     ) -> ProductLoadResult:
@@ -1420,6 +1579,14 @@ class PDMService(BaseService):
             pid: [str(r.OptionValueId) for r in rows
                   if r.OptionValueId is not None]
             for pid, rows in opts_by.items()
+        })
+        # The merged products' ProductRange names. Reduction slices candidate
+        # families by this map (ProductsList is ProductRange-scoped), so a
+        # merged product without it would fall into an unnamed range slice.
+        snapshot.product_range.update({
+            str(row.ProductId): (getattr(row, "RangeName", "") or "").strip()
+            for row in info_rows
+            if getattr(row, "ProductId", None) is not None
         })
 
         # Re-materialise the article-set table across ALL families in the session.
