@@ -13,8 +13,9 @@ direct-MDB writer, XOCD is:
   so one package (one SVN folder) holds every series. Export is a per-series
   **upsert**: rows for the exported series are replaced, other series are kept.
 
-Writes the full package: registry, structural tables, text, relations, code
-schemes, prices and value-combination tables.
+Writes the non-price product package: registry, structural tables, text, relations,
+code schemes and value-combination tables. Pricing is intentionally owned by the
+MDB export path and is not emitted to XOCD.
 """
 from __future__ import annotations
 
@@ -193,7 +194,6 @@ class XocdExportService(BaseService):
         classes = self.context.engineering_class_service.get_classes(snapshot)
         relobj_rows, relation_rows, value_relobj = self._relations(snapshot, ctx)
         scheme_rows, scheme_by_code = self._code_schemes(snapshot, ctx, classes)
-        price_lists = self._active_price_lists(snapshot, ctx)
         plan: list[tuple[Path, int, str, list[list[Any]]]] = [
             (out / "xocd_programs.csv", 0, program,
              [[program, ctx["program_id"], ctx["label"], ""]]),
@@ -208,7 +208,6 @@ class XocdExportService(BaseService):
              self._property_values(snapshot, ctx, classes, value_relobj)),
             (out / "xocd_artbase.csv", 0, program, self._artbase(snapshot, ctx, classes)),
             (out / "xocd_codescheme.csv", 0, program, scheme_rows),
-            (out / "xocd_price.csv", 0, program, self._prices(snapshot, ctx, price_lists)),
             (out / "xocd_packaging.csv", 0, program, self._packaging(snapshot, ctx)),
             # Optional tables with no snapshot source yet - written empty so the
             # package structure is complete; populate when a source exists.
@@ -219,12 +218,6 @@ class XocdExportService(BaseService):
             (out / "xocd_taxscheme.csv", 0, program, []),
             (out / "xocd_classification.csv", 0, program, []),
         ]
-        # One xocd_pricelists row per list (each upserts by its own id).
-        for price_list in price_lists:
-            plan.append((
-                out / "xocd_pricelists.csv", 0, price_list["id"],
-                [[price_list["id"], price_list["label"]]],
-            ))
         for filename, rows in self._text_files(snapshot, ctx).items():
             plan.append((out / filename, 0, program, rows))
         return plan
