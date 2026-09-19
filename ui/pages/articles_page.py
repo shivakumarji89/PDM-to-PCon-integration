@@ -76,6 +76,10 @@ class ArticlesPage(BasePage):
         self._set_len_by_ids: dict = {}  # set ids -> Class-Creation-derived length
         self._snapshot_key = None  # identity of the loaded snapshot (product change)
         self._auto_reduced_signature: object = object()  # last auto-reduced set lengths
+        # Articles legacy PDM refused to collapse (see _auto_reduce_all_sets);
+        # recomputed with the auto-reduce, empty until then.
+        self._blocked_article_ids: frozenset[str] = frozenset()
+        self._blocked_reason: str = ""
         self._group_by_base = True  # collapse line items to one row per base
         self._syncing = False  # guard while programmatically syncing widgets
 
@@ -540,8 +544,58 @@ class ArticlesPage(BasePage):
 
     def _auto_reduce_all_sets(self) -> None:
         """Reduce every set at its Class-Creation-derived base length so the
-        grouped list is ready the moment the workflow opens."""
+        grouped list is ready the moment the workflow opens.
+
+        A set is auto-reduced only when legacy PDM confirmed the family it
+        asserts: the reduction service asks ``ProductsList`` whether the
+        candidate's common functional AttributeValueIds select exactly the
+        candidate's Products (see
+        ``EngineeringReductionService.validate_article_sets``). A rejected,
+        unresolved or un-checkable family is left expanded and reported in the
+        reduction status, never collapsed on the assumption that it is fine.
+        Rows are keyed by base master, so a row is held back when it contains
+        any blocked article.
+        """
+        snapshot = self._context.active_snapshot
+        service = self._context.engineering_reduction_service
+        validations = service.validate_article_sets(snapshot)
+        self._blocked_article_ids = service.blocked_article_ids(snapshot, validations)
+        held = [v for v in validations if v.blocks_reduction]
+        # A range the session holds only part of is the one blocked cause the
+        # user can act on: ProductsList filters the WHOLE ProductRange, so no
+        # family in a partly loaded range can be confirmed however correct the
+        # grouping is. Name the shortfall instead of the generic verdict.
+        short = {}
+        for verdict in held:
+            if verdict.snapshot_covers_range is False and (
+                verdict.unloaded_range_product_count
+            ):
+                name = verdict.product_range or str(verdict.product_range_id)
+                short[name] = verdict.unloaded_range_product_count
+        families = f"{len(held)} candidate famil" + (
+            "y" if len(held) == 1 else "ies"
+        )
+        if not held:
+            self._blocked_reason = ""
+        elif short:
+            self._blocked_reason = (
+                f"{families} not collapsed: the session holds only part of "
+                + ", ".join(
+                    f"{name} ({count} more Product(s) to load)"
+                    for name, count in sorted(short.items())
+                )
+                + ". Legacy ProductsList filters the whole ProductRange, so a "
+                "family cannot be confirmed until the range is complete."
+            )
+        else:
+            self._blocked_reason = (
+                f"{families} not collapsed - legacy PDM did not confirm "
+                + ", ".join(sorted({v.status for v in held}))
+                + f": {held[0].reason}"
+            )
         for ids, length in self._set_len_by_ids.items():
+            if ids & self._blocked_article_ids:
+                continue
             self._apply_set(ids, length, refresh=False)
 
     def _effective_long_text(self, member, article) -> str:
@@ -1013,7 +1067,7 @@ class ArticlesPage(BasePage):
         return ""
 
     def _apply_reduction_status(self) -> None:
-        warning = self._reduction_warning()
+        warning = self._blocked_reason or self._reduction_warning()
         if warning:
             self._s_reduction.setText(f"\u26A0 {warning}")
             self._s_reduction.setStyleSheet(f"color: {theme.COLOR_WARNING};")

@@ -46,6 +46,8 @@ from services.engineering.engineering_property_service import EngineeringPropert
 from services.engineering.engineering_class_service import EngineeringClassService
 from services.engineering.engineering_assignment_service import EngineeringAssignmentService
 from services.engineering.engineering_reduction_service import EngineeringReductionService
+from services.engineering.candidate_strategy_service import CandidateStrategyService
+from services.engineering.pdm_family_reduction_service import PDMFamilyReductionService
 from services.engineering.engineering_text_service import EngineeringTextService
 from services.engineering.engineering_relation_service import EngineeringRelationService
 from services.engineering.engineering_artbase_service import EngineeringArtbaseService
@@ -286,6 +288,25 @@ class ApplicationContext:
     @property
     def engineering_reduction_service(self) -> EngineeringReductionService:
         return self.get_service(EngineeringReductionService)
+
+    @property
+    def candidate_strategy_service(self) -> CandidateStrategyService:
+        """Additional reduction candidates from the other legacy PDM evidence.
+
+        It only PROPOSES groupings; every proposal is still proven or rejected
+        by ``pdm_family_reduction_service``, and the primary grouping from
+        ``engineering_reduction_service`` outranks every one of them.
+        """
+        return self.get_service(CandidateStrategyService)
+
+    @property
+    def pdm_family_reduction_service(self) -> PDMFamilyReductionService:
+        """Legacy ``ProductsList`` validator for reduction candidate families.
+
+        It only proves or rejects what ``engineering_reduction_service``
+        already grouped; it is never the grouping engine itself.
+        """
+        return self.get_service(PDMFamilyReductionService)
 
     @property
     def engineering_relationship_service(self) -> EngineeringRelationshipService:
