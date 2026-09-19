@@ -320,6 +320,18 @@ class OcdExportService(BaseService):
         result.ok = result.error is None
         return result
 
+    def _material_map_id(
+        self, mdb: Path, package_id: Any, map_name: str
+    ) -> Any:
+        """Resolve an existing package material map; do not invent material definitions."""
+        safe_name = str(map_name or "").replace("'", "''")
+        rows = self.context.mdb_service.read_table(
+            mdb,
+            "SELECT TOP 1 com_Val2MatMapID FROM tCOMd_Val2MatMap "
+            f"WHERE com_PackageID = {package_id} AND com_Val2MatMapName = '{safe_name}'",
+        )
+        return rows[0].get("com_Val2MatMapID") if rows else None
+
     def _template_table_names(self, mdb: Path) -> list[str]:
         """Return every user table physically retained by the copied MDB template.
 
