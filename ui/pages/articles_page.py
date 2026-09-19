@@ -92,6 +92,11 @@ class ArticlesPage(BasePage):
 
         self.refresh()
 
+    def on_enter(self) -> None:
+        """Refresh when returning from another workflow so Class Creation
+        changes and reductions made elsewhere are reflected immediately."""
+        self.refresh()
+
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
