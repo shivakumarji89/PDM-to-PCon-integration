@@ -306,7 +306,7 @@ class ObxValidationPage(BasePage):
                 continue
             try:
                 cur, file_lines = svc.parse_obx(text)
-            except ET.ParseError as exc:
+            except (ET.ParseError, ValueError) as exc:
                 QMessageBox.warning(
                     self,
                     "OBX Validation",
