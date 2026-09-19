@@ -534,18 +534,13 @@ class EngineeringReductionService(BaseService):
             else:
                 prop_width[str(prop.id)] = 0  # head config: no stored code
 
-        # Head config codes (Type/Fabrics/... no stored code) are appended to the
-        # base article number $BAN (PDM A_CODE: Code = $BAN + head codes + '.' +
-        # tail codes). The value-id decoder reports each head config property's
-        # head position; $BAN ends at the earliest such position, so slicing them
-        # off leaves the short base line.
-        try:
-            head_layout = self.context.engineering_class_service.config_code_layout(
-                snapshot
-            )
-        except Exception:
-            head_layout = {}
-
+        # Head config codes are needed only when PDM did NOT provide an
+        # authoritative article prefix length. Do not decode the entire
+        # configuration matrix up front when every loaded Item already has the
+        # PDM prefix; that decoder can be expensive because it examines the
+        # complete property/value vocabulary, even for a tiny article selection.
+        # The decoder remains available lazily for the heuristic fallback below.
+        head_layout: dict = {}
         sets: list[ArticleSet] = []
         for pc in classes:
             article_ids = [str(a) for a in pc.article_ids]
@@ -581,6 +576,16 @@ class EngineeringReductionService(BaseService):
                 # available for these Items.
                 base_length = min(pdm_prefixes)
             else:
+                # Only the heuristic path needs decoded head positions. Most
+                # PDM loads supply article_prefix_length, so avoid doing this
+                # work entirely for the normal path.
+                if not head_layout:
+                    try:
+                        head_layout = self.context.engineering_class_service.config_code_layout(
+                            snapshot
+                        )
+                    except Exception:
+                        head_layout = {}
                 ignored = getattr(snapshot, "config_ignore_overrides", {}) or {}
 
                 # A head property is part of the base when its value is
