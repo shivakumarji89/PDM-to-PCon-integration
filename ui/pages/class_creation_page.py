@@ -2000,7 +2000,7 @@ class ClassCreationPage(BasePage):
             if value == _ADD_VALUE_HINT:
                 value = ""
             if code and value:
-                cls = self._attributes_class()
+                cls = self._attribute_class()
                 if cls is not None:
                     self._context.engineering_class_service.add_value(
                         self._context.active_snapshot,
