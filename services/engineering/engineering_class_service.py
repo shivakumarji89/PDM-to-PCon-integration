@@ -696,19 +696,53 @@ class EngineeringClassService(BaseService):
             gc: dict[str, dict[str, str]] = {}
             for prop in config_props:
                 pid = str(prop.id)
-                groups: dict[str, list[str]] = defaultdict(list)
+
+                # Index heads by value and by distinct head string first.  The
+                # previous implementation walked every article for every
+                # property and then walked every character position again.
+                # Large families (thousands of Items) made that quadratic-ish
+                # Python work dominate "Building Article Sets".  Distinct head
+                # strings are the only evidence needed to prove that a position
+                # is constant for a value, so collapse duplicates before the
+                # positional test.
+                groups: dict[str, set[str]] = defaultdict(set)
                 for aid in aids:
                     vid = assign[aid].get(pid)
                     if vid is not None:
-                        groups[vid].append(head_of[aid])
+                        groups[vid].add(head_of[aid])
                 if len(groups) < 2:
                     continue  # no contrast in this load -> left in the base
-                owned = [
-                    i for i in range(length)
-                    if all(len({h[i] for h in hs}) == 1 for hs in groups.values())
-                    and len({hs[0][i] for hs in groups.values()}) > 1
-                ]
-                # a positional code is a single contiguous run
+
+                constant_positions: dict[str, set[int]] = {}
+                for vid, heads in groups.items():
+                    if len(heads) == 1:
+                        constant_positions[vid] = set(range(length))
+                        continue
+                    common = set(range(length))
+                    head_list = tuple(heads)
+                    reference = head_list[0]
+                    for other in head_list[1:]:
+                        common.intersection_update(
+                            i for i in range(length)
+                            if reference[i] == other[i]
+                        )
+                        if not common:
+                            break
+                    constant_positions[vid] = common
+
+                owned = []
+                for i in range(length):
+                    if not all(
+                        i in constant_positions[vid] for vid in groups
+                    ):
+                        continue
+                    chars = {
+                        next(iter(heads))[i] for vid, heads in groups.items()
+                    }
+                    if len(chars) > 1:
+                        owned.append(i)
+
+                # A positional code is a single contiguous run.
                 if not owned or owned != list(range(owned[0], owned[0] + len(owned))):
                     continue
                 if owned[0] < minpos.get(pid, length):
@@ -717,9 +751,11 @@ class EngineeringClassService(BaseService):
                 elif pid not in minpos:
                     minpos[pid] = owned[0]
                     minpos_src_len[pid] = length
+
                 cc: dict[str, str] = {}
-                for vid, hs in groups.items():
-                    code = "".join(hs[0][i] for i in owned)
+                for vid, heads in groups.items():
+                    reference = next(iter(heads))
+                    code = "".join(reference[i] for i in owned)
                     if code:
                         codes_seen[pid][vid].add(code)
                         cc[vid] = code
