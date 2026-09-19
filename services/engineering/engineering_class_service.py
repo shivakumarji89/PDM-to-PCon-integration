@@ -671,12 +671,18 @@ class EngineeringClassService(BaseService):
                     assign[aid][pid] = str(vid)
 
         by_len: dict[tuple, list[str]] = defaultdict(list)
+        # Build the value->distinct-head index while walking each article once.
+        # Phase 1 previously re-scanned every article for every config property
+        # inside every structure group. This index makes the hot path proportional
+        # to the actual Item/value links instead of group_size * property_count.
+        group_value_heads: dict[
+            tuple, dict[str, dict[str, set[str]]]
+        ] = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
         for aid, head in head_of.items():
-            # STRUCTURE = head length + the exact set of config properties the
-            # article carries. Same length alone can mix different structures
-            # (e.g. an accessory whose code has no tail split), which corrupts the
-            # positional read; the property signature keeps like with like.
-            by_len[(len(head), frozenset(assign[aid].keys()))].append(aid)
+            gkey = (len(head), frozenset(assign[aid].keys()))
+            by_len[gkey].append(aid)
+            for pid, vid in assign[aid].items():
+                group_value_heads[gkey][pid][vid].add(head)
 
         # Phase 1: per-group ownership. Inside one (length, signature) group the
         # positions are fixed, so a property's code is the contiguous head run
@@ -687,40 +693,28 @@ class EngineeringClassService(BaseService):
         group_layout: dict[tuple, dict[str, tuple[int, int]]] = {}
         group_codes: dict[tuple, dict[str, dict[str, str]]] = {}
         minpos: dict[str, int] = {}
-        minpos_src_len: dict[str, int] = {}  # group length where minpos was established
+        minpos_src_len: dict[str, int] = {}
         for gkey, aids in by_len.items():
             length = gkey[0]
             if len(aids) < 2:
                 continue
             gl: dict[str, tuple[int, int]] = {}
             gc: dict[str, dict[str, str]] = {}
-            for prop in config_props:
-                pid = str(prop.id)
-
-                # Index heads by value and by distinct head string first.  The
-                # previous implementation walked every article for every
-                # property and then walked every character position again.
-                # Large families (thousands of Items) made that quadratic-ish
-                # Python work dominate "Building Article Sets".  Distinct head
-                # strings are the only evidence needed to prove that a position
-                # is constant for a value, so collapse duplicates before the
-                # positional test.
-                groups: dict[str, set[str]] = defaultdict(set)
-                for aid in aids:
-                    vid = assign[aid].get(pid)
-                    if vid is not None:
-                        groups[vid].add(head_of[aid])
+            # Only properties actually carried by this structure can own a
+            # position. This avoids scanning every config property for every
+            # group, which is the dominant cost on large families.
+            for pid, groups in group_value_heads[gkey].items():
                 if len(groups) < 2:
-                    continue  # no contrast in this load -> left in the base
+                    continue
 
                 constant_positions: dict[str, set[int]] = {}
                 for vid, heads in groups.items():
                     if len(heads) == 1:
                         constant_positions[vid] = set(range(length))
                         continue
-                    common = set(range(length))
                     head_list = tuple(heads)
                     reference = head_list[0]
+                    common = set(range(length))
                     for other in head_list[1:]:
                         common.intersection_update(
                             i for i in range(length)
@@ -737,12 +731,11 @@ class EngineeringClassService(BaseService):
                     ):
                         continue
                     chars = {
-                        next(iter(heads))[i] for vid, heads in groups.items()
+                        next(iter(heads))[i] for heads in groups.values()
                     }
                     if len(chars) > 1:
                         owned.append(i)
 
-                # A positional code is a single contiguous run.
                 if not owned or owned != list(range(owned[0], owned[0] + len(owned))):
                     continue
                 if owned[0] < minpos.get(pid, length):
@@ -1398,14 +1391,3 @@ class EngineeringClassService(BaseService):
     @staticmethod
     def _find_by_id(classes, class_id):
         return next((c for c in classes if c.id == class_id), None)
-
-    @staticmethod
-    def _find_by_name(classes, name):
-        low = name.casefold()
-        return next((c for c in classes if c.name.casefold() == low), None)
-
-    @staticmethod
-    def _find_property(cls: EngineeringClass, property_id: str):
-        return next(
-            (a for a in cls.properties if a.property_id == property_id), None
-        )
