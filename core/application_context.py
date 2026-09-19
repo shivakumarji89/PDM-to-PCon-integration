@@ -52,6 +52,7 @@ from services.engineering.engineering_artbase_service import EngineeringArtbaseS
 from services.engineering.engineering_value_table_service import EngineeringValueTableService
 from services.engineering.engineering_relationship_service import EngineeringRelationshipService
 from services.engineering.engineering_validation_service import EngineeringValidationService
+from services.engineering.material_picking_service import MaterialPickingService
 from services.engineering.engineering_generation_service import EngineeringGenerationRule, EngineeringGenerationService
 from services.engineering.generation_rules import default_engineering_generation_rules
 from services.engineering.engineering_repository import EngineeringRepository
@@ -102,6 +103,7 @@ class ApplicationContext:
             EngineeringValueTableService: EngineeringValueTableService,
             EngineeringRelationshipService: EngineeringRelationshipService,
             EngineeringValidationService: EngineeringValidationService,
+            MaterialPickingService: MaterialPickingService,
         }
 
     def get_service(self, service_type: type[TService]) -> TService:
@@ -294,6 +296,10 @@ class ApplicationContext:
     @property
     def engineering_validation_service(self) -> EngineeringValidationService:
         return self.get_service(EngineeringValidationService)
+
+    @property
+    def material_picking_service(self) -> MaterialPickingService:
+        return self.get_service(MaterialPickingService)
 
     @property
     def engineering_generation_service(self) -> EngineeringGenerationService:
