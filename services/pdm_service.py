@@ -1278,7 +1278,24 @@ class PDMService(BaseService):
         self.context.engineering_class_service.commit_config_codes(snapshot)
 
         # Auto-save the completed family snapshot (source data only) to
-       # -- ProductRange completeness ----------------------------------------
+        # cache/pdm_snapshots/<family>.json; best-effort so a save failure never
+        # affects the load.
+        if reporter is not None:
+            reporter.log("success", f"✓ Article Sets ({len(snapshot.article_sets)})")
+            reporter.advance("Saving Snapshot...")
+        self.save_family_snapshot(snapshot, family_name)
+
+        message = (
+            f"Loaded family '{family_name}': {len(products)} product(s), "
+            f"{len(snapshot.properties)} properties, "
+            f"{len(snapshot.property_values)} property values, "
+            f"{len(snapshot.options)} options, "
+            f"{len(snapshot.option_values)} option values, "
+            f"{len(snapshot.articles)} articles."
+        )
+        return ProductLoadResult(True, message, snapshot, [])
+
+    # -- ProductRange completeness ----------------------------------------
     @property
     def compat_repository(self) -> LegacyPDMCompatRepository:
         """The legacy-compatibility reads, built once per service.
