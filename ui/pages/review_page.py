@@ -58,7 +58,10 @@ class ReviewPage(BasePage):
         box = QGroupBox("Review Controls", self)
         layout = QHBoxLayout(box)
         self._refresh_btn = QPushButton("Refresh Review", box)
-        self._refresh_btn.clicked.connect(self.refresh)
+        # Explicit user refresh includes the potentially expensive MDB/XOCD
+        # generation preview. Normal workspace finalization only refreshes the
+        # lightweight validation state.
+        self._refresh_btn.clicked.connect(lambda: self.refresh(include_preview=True))
         layout.addWidget(self._refresh_btn)
         self._mdb_preview_status = QLabel("MDB generation data not loaded.", box)
         self._mdb_preview_status.setWordWrap(True)
@@ -423,10 +426,16 @@ class ReviewPage(BasePage):
         dialog.exec()
 
     # -- refresh -----------------------------------------------------------
-    def refresh(self) -> None:
+    def refresh(self, include_preview: bool = False) -> None:
         review = self._context.validation_service.review()
         self._last_review = review
-        self._refresh_mdb_preview()
+
+        # MDB preview performs template discovery, Access reads and full export
+        # row construction. It is deliberately not part of the synchronous
+        # family-load finalization path; the user can request it explicitly
+        # with Refresh Review.
+        if include_preview:
+            self._refresh_mdb_preview()
 
         if self._mdb_preview_result is not None and self._mdb_preview_result.error:
             # Keep the existing engineering readiness semantics; the generation
