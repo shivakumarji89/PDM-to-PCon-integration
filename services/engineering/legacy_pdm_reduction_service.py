@@ -7,7 +7,7 @@ the reduction model before wiring it into production reduction.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Iterable
 from xml.sax.saxutils import quoteattr
 
@@ -92,7 +92,18 @@ class LegacyPDMReductionService(BaseService):
 
     @staticmethod
     def build_attribute_xml(selections: Iterable[PDMSelection]) -> str:
-        """Build exactly the selector XML emitted by TemplateContainer.AttributeXml."""
+        """Build the selector XML in the shape ``TemplateContainer.AttributeXml``
+        emits and ``ProductsList`` parses.
+
+        ``AttributeXml`` additionally separates elements with CR/LF and
+        emits ``<DISABLED_attribute .../>`` placeholders for unselected
+        selectors; both are invisible to the procedure, which reads the
+        document through ``OPENXML(@hDoc, '/attributes/attribute', 1)``. It
+        also returns ``string.Empty`` when nothing is selected - callers must
+        reproduce that by sending no XML at all, never an empty
+        ``<attributes></attributes>`` document (see
+        ``PDMFamilyReductionService``).
+        """
         parts = ["<attributes>"]
         for selection in selections:
             parts.append(
@@ -234,20 +245,25 @@ class LegacyPDMReductionService(BaseService):
         )
 
     def verify_legacy_filter(
-        self, configuration: PDMArticleConfiguration, language_id: Any = 1, us_data: bool = False
+        self, configuration: PDMArticleConfiguration, language_id: Any = 1
     ) -> LegacyFilterResult:
-        """Send the exact selected AttributeId/AttributeValueId XML to PDM's
-        actual legacy ProductsList/USProductsList procedure and return its set.
+        """Send the selected AttributeId/AttributeValueId XML to PDM's actual
+        legacy ``ProductsList`` procedure and return its ProductId set.
+
+        Non-US ranges only. ``USProductsList`` takes a ProductCategoryId and
+        returns USItemIds from a separate entity, so a Product-keyed
+        configuration cannot be verified through it - see
+        :meth:`LegacyPDMCompatRepository.fetch_legacy_filtered_us_items`.
         """
         xml = self.build_attribute_xml(configuration.attributes)
         rows = self.repository.fetch_legacy_filtered_products(
-            configuration.product_range_id, language_id, xml, us_data=us_data
+            configuration.product_range_id, language_id, xml
         )
         ids = tuple(sorted({str(getattr(r, "ProductId")) for r in rows if getattr(r, "ProductId", None) is not None}))
         products = tuple(sorted({str(getattr(r, "Product", getattr(r, "OrderCode", ""))) for r in rows}))
         return LegacyFilterResult(product_ids=ids, products=products)
 
-    def analyze_items(self, product_ids: Iterable[Any], language_id: Any = 1, us_data: bool = False) -> ReductionReport:
+    def analyze_items(self, product_ids: Iterable[Any], language_id: Any = 1) -> ReductionReport:
         """Analyze a product set in one pass and report reconstruction/filter data.
 
         This method deliberately does not alter Snapshot or Engineering data.
@@ -276,7 +292,7 @@ class LegacyPDMReductionService(BaseService):
                     )
                     continue
                 try:
-                    filtered = self.verify_legacy_filter(configuration, language_id, us_data)
+                    filtered = self.verify_legacy_filter(configuration, language_id)
                 except Exception as exc:
                     failures.append(f"{item.ItemId}: legacy filter failed: {exc}")
                     continue

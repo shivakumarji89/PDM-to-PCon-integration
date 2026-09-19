@@ -16,6 +16,10 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from core.application_context import ApplicationContext  # noqa: E402
 from models.article import Article  # noqa: E402
 from models.product import Product  # noqa: E402
+from services.engineering.pdm_family_reduction_service import (  # noqa: E402
+    FamilyValidation,
+    PDMFamilyReductionService,
+)
 from ui.pages.articles_page import (  # noqa: E402
     ArticlesPage,
     _COL_BASE,
@@ -25,6 +29,32 @@ from ui.pages.articles_page import (  # noqa: E402
     _COL_SHORT,
     _COL_SOURCE,
 )
+
+
+class _StubValidator:
+    """Stands in for the PDM boundary: answers every candidate with one verdict.
+
+    Injected through the service container, exactly where the real
+    ``PDMFamilyReductionService`` is resolved from.
+    """
+
+    def __init__(self, status: str) -> None:
+        self._status = status
+
+    def validate_families(self, candidates, language_id=1, known_product_ids=None):
+        return tuple(
+            FamilyValidation(
+                base=c.base,
+                intended_product_ids=tuple(sorted(str(p) for p in c.product_ids)),
+                filtered_product_ids=(
+                    tuple(sorted(str(p) for p in c.product_ids))
+                    if self._status == "validated" else ()
+                ),
+                status=self._status,
+                reason="" if self._status == "validated" else "stub rejection",
+            )
+            for c in candidates
+        )
 
 
 def cell(table, row, col):
@@ -163,6 +193,34 @@ def main() -> int:
     assert page._dot_boundary_warning(["RY3XTDABFAD.", "RY3XTDABND."]) == ""
     assert page._dot_boundary_warning(["RY3XB", "RY3XT"]) == ""
     print("OK: inconsistent '.' boundary flagged (ends-at-dot vs tail-after-dot)")
+
+    # 8) Legacy gate: a set the PDM boundary did not confirm is NOT auto-reduced,
+    #    a confirmed one is. The validator is supplied through the normal
+    #    service container - nothing is patched onto the page or the service.
+    for index, verdict in enumerate(("rejected", "validated")):
+        product3 = Product(id=f"p3{index}", code="P3", name="Prod3")
+        snapshot3 = ctx.snapshot_manager.create_empty_snapshot(product3)
+        snapshot3.id = f"p3-{verdict}"
+        snapshot3.articles = [
+            Article(id=f"c{index}1", product_id=f"q{index}1", code="GH1", status="Active"),
+            Article(id=f"c{index}2", product_id=f"q{index}2", code="GH2", status="Active"),
+        ]
+        snapshot3.product_property_value_ids = {
+            f"q{index}1": ["v1"], f"q{index}2": ["v1"]
+        }
+        ctx.engineering_initialization_service.initialize(snapshot3)
+        ctx.engineering_reduction_service.materialize_article_sets(snapshot3)
+        ctx.get_service(PDMFamilyReductionService)  # materialise the slot
+        ctx._services[PDMFamilyReductionService] = _StubValidator(verdict)
+        page.refresh()
+        bases = {m.reduced_article for f in snapshot3.engineering.families
+                 for m in f.members}
+        if verdict == "rejected":
+            assert bases == {""}, (verdict, bases)
+            assert "not collapsed" in page._s_reduction.text(), page._s_reduction.text()
+        else:
+            assert bases and "" not in bases, (verdict, bases)
+    print("OK: unconfirmed family not auto-reduced; confirmed family reduced")
 
     print("ALL ARTICLES REDUCTION CHECKS PASSED")
     return 0
