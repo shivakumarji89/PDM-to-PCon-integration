@@ -573,11 +573,17 @@ class EngineeringReductionService(BaseService):
                 for a in article_ids
                 if code_of.get(a, "") in getattr(snapshot, "base_length_overrides", {})
             ]
+            explicit_ignores = getattr(
+                snapshot, "config_ignore_overrides", {}
+            ) or {}
             if override_lengths:
                 base_length = min(override_lengths)
-            elif pdm_prefixes:
-                # PDM's getArticlePrefixLength is authoritative when it is
-                # available for these Items.
+            elif pdm_prefixes and not explicit_ignores:
+                # PDM's getArticlePrefixLength is authoritative for the normal
+                # untouched load. An explicit Class Creation ignore decision
+                # intentionally overrides that boundary and must use the
+                # data-driven head layout below. This makes one property choice
+                # propagate to every Article Set carrying that property.
                 base_length = min(pdm_prefixes)
             else:
                 # Only the heuristic path needs decoded head positions. Most
