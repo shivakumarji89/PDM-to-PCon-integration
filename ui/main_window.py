@@ -168,12 +168,28 @@ class MainWindow(QMainWindow):
 
 
     def _on_engineering_ready(self) -> None:
-        """Background Engineering Initialization finished: refresh only the
-        engineering-dependent workspaces and update workflow readiness (which
-        enables Generate). Article/Property/Option workspaces are left untouched
-        so in-progress user edits are never disturbed.
+        """Background Engineering Initialization finished: refresh the
+        engineering-dependent workspaces exactly once.
+
+        The Product page emits this synchronously during the load-finalization
+        stage. Keep this pass single-purpose; _on_load_complete must not rebuild
+        the same pages a second time.
         """
+        product = self._product_page
+        reporter = getattr(product, "_family_reporter", None)
+        labels = {
+            WorkflowStep.ARTICLES: "Finalizing Articles Workspace",
+            WorkflowStep.CLASS_CREATION: "Finalizing Class Creation Workspace",
+            WorkflowStep.TEXT: "Finalizing Text Workspace",
+            WorkflowStep.RELATION: "Finalizing Relation Workspace",
+            WorkflowStep.PRICING: "Finalizing Pricing Workspace",
+            WorkflowStep.PRICING_RELATION: "Finalizing Pricing Relation Workspace",
+            WorkflowStep.REVIEW: "Finalizing Review Workspace",
+            WorkflowStep.ENGINEERING: "Finalizing Engineering Workspace",
+        }
         for step in self._ENGINEERING_DEPENDENT_STEPS:
+            if reporter is not None:
+                reporter.log("info", labels.get(step, f"Finalizing {step.name.title()} Workspace"))
             page = self._pages.get(step)
             if page is not None and hasattr(page, "refresh"):
                 page.refresh()
@@ -182,9 +198,18 @@ class MainWindow(QMainWindow):
 
 
     def _on_load_complete(self) -> None:
-        """A load fully finished: do one final refresh of EVERY workspace so all
-        of them reflect the complete, settled snapshot."""
-        self.refresh_workspaces()
+        """Mark the load complete without rebuilding every workspace again.
+
+        Engineering-dependent workspaces were already refreshed by
+        _on_engineering_ready. Re-running refresh_workspaces here caused the
+        finalization phase to execute the same expensive Article/Class Creation
+        work twice.
+        """
+        reporter = getattr(self._product_page, "_family_reporter", None)
+        if reporter is not None:
+            reporter.log("success", "All workspaces finalized")
+        self._manager.refresh()
+        self.statusBar().showMessage("Snapshot Ready")
 
 
     def refresh_workspaces(self) -> None:
