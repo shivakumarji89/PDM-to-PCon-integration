@@ -203,6 +203,12 @@ class EngineeringClassService(BaseService):
         if assignment is None:
             return False
         assignment.width = max(0, int(width or 0))
+        # Class Creation is an input to Article Sets. Keep the materialised
+        # reduction view synchronized immediately so Articles reflects the
+        # same base slicing without requiring a workflow change/reload.
+        reduction = getattr(self.context, "engineering_reduction_service", None)
+        if reduction is not None:
+            reduction.materialize_article_sets(snapshot)
         return True
 
     def auto_derive_widths(
@@ -1046,6 +1052,12 @@ class EngineeringClassService(BaseService):
             return
         snapshot.config_ignore_overrides[str(property_id)] = bool(ignore)
         self._valueid_key = None
+        # The ignore decision changes where the base ends. Rebuild the shared
+        # Article Set representation so the Articles workflow sees it
+        # immediately.
+        reduction = getattr(self.context, "engineering_reduction_service", None)
+        if reduction is not None:
+            reduction.materialize_article_sets(snapshot)
 
     def analyze_config_codes(
         self, snapshot: Snapshot | None
