@@ -1595,6 +1595,12 @@ class ClassCreationPage(BasePage):
             new_code = item.text(1).strip()
             self._commit_property_inferred(obj)
             obj.code = new_code
+            # A manually confirmed attribute code changes the article-set
+            # slicing inputs. Re-materialize the shared Article Sets now so
+            # Articles and Class Creation remain on the same snapshot state.
+            self._context.engineering_reduction_service.materialize_article_sets(
+                self._context.active_snapshot
+            )
             # Remember the owning property so its cells stay editable next time.
             snapshot = self._context.active_snapshot
             prop = next(
