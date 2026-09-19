@@ -1041,6 +1041,14 @@ class EngineeringClassService(BaseService):
         """
         if snapshot is None:
             return 0
+        # A complete PDM article-prefix map is authoritative for Article Sets.
+        # Do not eagerly run the expensive head-code correlation just to populate
+        # the optional persisted cache during a load. Class Creation resolves
+        # these codes lazily when it actually needs them.
+        articles = getattr(snapshot, "articles", []) or []
+        prefixes = getattr(snapshot, "article_prefix_length", {}) or {}
+        if articles and all(str(a.id) in prefixes for a in articles if getattr(a, "id", None)):
+            return 0
         resolved = self.resolve_config_codes(snapshot)
         store = snapshot.config_value_codes
         changed = 0
