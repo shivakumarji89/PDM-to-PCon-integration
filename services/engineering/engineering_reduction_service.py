@@ -559,6 +559,8 @@ class EngineeringReductionService(BaseService):
             options = self._set_attributes(
                 article_ids, product_of, product_options, option_value
             )
+            # Manual Class Creation values are an engineering-side overlay.
+            # They are resolved only after the base length is known.
             # PDM getArticlePrefixLength is authoritative for the fixed
             # article prefix. Use the per-Item value when available; do not infer
             # the base by character heuristics when PDM already supplied it.
@@ -633,6 +635,9 @@ class EngineeringReductionService(BaseService):
                                 prop_width.get(str(a.id), 0) for a in properties
                             )
                             base_length = max(code_len - config_width, 0)
+            properties = self._merge_manual_class_values(
+                snapshot, article_ids, properties, base_length
+            )
             # Base code = the article number shown only as far as the group's
             # codes are the SAME value (common prefix), never beyond the derived
             # base length. This is the shared "base article" for the set.
@@ -701,6 +706,58 @@ class EngineeringReductionService(BaseService):
             attributes.append(
                 SetAttribute(id=attribute_id, name=attribute_name, values=set_values)
             )
+        return attributes
+
+    @staticmethod
+    def _merge_manual_class_values(
+        snapshot: Snapshot,
+        article_ids: list[str],
+        attributes: list[SetAttribute],
+        base_length: int,
+    ) -> list[SetAttribute]:
+        """Overlay manual Class Creation values onto an Article Set."""
+        engineering = getattr(snapshot, "engineering", None)
+        if engineering is None:
+            return attributes
+        article_by_id = {str(a.id): a for a in snapshot.articles}
+        target_ids = {str(a) for a in article_ids}
+        by_id = {str(a.id): a for a in attributes}
+
+        for cls in getattr(engineering, "classes", []) or []:
+            offset = 0
+            for assignment in getattr(cls, "properties", []) or []:
+                width = max(0, int(getattr(assignment, "width", 0) or 0))
+                manual = [
+                    v for v in getattr(assignment, "values", []) or []
+                    if getattr(v, "source", "pdm") == "manual" and v.code
+                ]
+                if manual and str(assignment.property_id) in by_id and width:
+                    set_attr = by_id[str(assignment.property_id)]
+                    for article_id in target_ids:
+                        article = article_by_id.get(article_id)
+                        if article is None:
+                            continue
+                        pre_dot = (article.code or "").split(".", 1)[0]
+                        letters = pre_dot[base_length:][offset:offset + width]
+                        match = next((v for v in manual if v.code == letters), None)
+                        if match is None:
+                            continue
+                        existing = next(
+                            (v for v in set_attr.values if v.code == match.code),
+                            None,
+                        )
+                        if existing is None:
+                            set_attr.values.append(
+                                SetValue(
+                                    id=f"manual:{assignment.property_id}:{match.code}",
+                                    value=match.value or "",
+                                    code=match.code,
+                                    article_ids=[article_id],
+                                )
+                            )
+                        elif article_id not in existing.article_ids:
+                            existing.article_ids.append(article_id)
+                offset += width
         return attributes
 
     @staticmethod
