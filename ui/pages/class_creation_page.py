@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.engines.filtering import text_match
+from core.modules import WorkbenchModule
 from services.engineering.engineering_reduction_service import (
     collapse_duplicate_values,
 )
@@ -469,6 +470,8 @@ class ClassCreationPage(BasePage):
         self._apply_column_layout(self._attr_tree)
         self._attr_tree.itemChanged.connect(self._on_attr_item_changed)
         self._attr_tree.itemClicked.connect(self._on_attr_item_clicked)
+        self._attr_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._attr_tree.customContextMenuRequested.connect(self._on_attr_context_menu)
         # Opt out of the global tree standardisation (which turns ON
         # expand-on-double-click and would swallow cell editing): here a
         # double-click EDITS (Code/Width) and a single click expands.
@@ -1035,13 +1038,24 @@ class ClassCreationPage(BasePage):
             # mapped to a value.
             # When every value already carries a (standard) code the alignment
             # is done: show those codes directly, independent of article slicing.
+            class_values_by_id = {
+                str(getattr(v, "value_id", "")): v
+                for v in (getattr(cls_prop, "values", []) or [])
+                if getattr(v, "value_id", "")
+            } if cls_prop is not None else {}
             value_codes: list[str] = []
             for v in prop_values:
-                c = (v.code or "").strip()
+                cv = class_values_by_id.get(str(v.id))
+                c = ((getattr(cv, "code", "") if cv is not None else "") or
+                     (v.code or "").strip() or
+                     decoded.get(str(v.id), "")).strip()
                 if c and c not in value_codes:
                     value_codes.append(c)
             fully_coded = bool(prop_values) and all(
-                (v.code or "").strip() for v in prop_values
+                ((getattr(class_values_by_id.get(str(v.id)), "code", "") if class_values_by_id.get(str(v.id)) else "")
+                 or (v.code or "").strip()
+                 or decoded.get(str(v.id), "")).strip()
+                for v in prop_values
             )
             # A configuration property stays user-editable even once every value
             # is coded. Keyed off the PERSISTED config relation
@@ -1235,8 +1249,11 @@ class ClassCreationPage(BasePage):
             for value in display_values:
                 # Value text-block key matches the Text workflow / PDM:
                 # <Property>_<code> (e.g. Type_1), using the stored or decoded code.
+                class_value = class_values_by_id.get(str(value.id))
                 value_code = (
-                    (value.code or "").strip() or decoded.get(str(value.id), "")
+                    (getattr(class_value, "code", "") if class_value is not None else "")
+                    or (value.code or "").strip()
+                    or decoded.get(str(value.id), "")
                 ).replace("#", "")
                 value_tb = (
                     f"{self._text_block(prop.name)}_{value_code}"
