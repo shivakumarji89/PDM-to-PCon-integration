@@ -824,88 +824,123 @@ class ClassCreationPage(BasePage):
             self._inferred_hint.setVisible(False)
 
     def _on_resolve_remaining(self) -> None:
-        """Open a dialog to clarify every config value the automation could not
-        resolve, and SAVE the answers with the project (applied on top of the
-        automatic decode). Pre-fills each row with the best available suggestion.
-        """
+        """Open one bulk editor for unresolved codes and missing PDM values."""
         snap = self._context.active_snapshot
         svc = self._context.engineering_class_service
         unresolved = svc.unresolved_config_codes(snap)
-        if not unresolved:
-            return
         resolved = svc.resolve_config_codes(snap)
         rows = []
+
         for prop in unresolved:
             rmap = resolved.get(str(prop.id), {})
             for value in prop.values:
-                if str(value.id) in rmap:
-                    continue
-                rows.append((prop, value, ""))
+                if str(value.id) not in rmap:
+                    rows.append(("config", prop, value, ""))
+
+        cls = self._attribute_class()
+        if cls is not None:
+            for prop in self._context.property_service.get_properties():
+                for value in self._missing_pdm_values(prop):
+                    rows.append((
+                        "missing",
+                        prop,
+                        value,
+                        (getattr(value, "code", "") or "").strip(),
+                    ))
+
         if not rows:
             return
         self._open_clarification_dialog(rows)
 
     def _open_clarification_dialog(self, rows) -> None:
-        """Modal editor for unresolved config codes; writes chosen codes to the
-        snapshot's ``config_code_overrides`` (persisted with the project)."""
+        """Bulk repair unresolved codes and missing PDM class values."""
         dialog = QDialog(self)
-        dialog.setWindowTitle("Resolve remaining configuration codes")
-        dialog.resize(560, 360)
+        dialog.setWindowTitle("Resolve remaining Class Creation values")
+        dialog.resize(760, 460)
         layout = QVBoxLayout(dialog)
         info = QLabel(
-            "Assign an order-code letter to each value the automation could not "
-            "resolve unambiguously. Your choices are saved with the project and "
-            "used on top of the automatic decode.",
+            "Review unresolved configuration codes and PDM values missing from "
+            "Class Creation. Edit the Code column and click Apply All.",
             dialog,
         )
         info.setWordWrap(True)
         layout.addWidget(info)
-        table = QTableWidget(len(rows), 4, dialog)
-        table.setHorizontalHeaderLabels(["Property", "Value", "Suggestion", "Code"])
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(
-            QAbstractItemView.EditTrigger.AllEditTriggers
+
+        table = QTableWidget(len(rows), 5, dialog)
+        table.setHorizontalHeaderLabels(
+            ["Type", "Property", "Value", "Suggested Code", "Code"]
         )
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         standardize_table(table)
-        for r, (prop, value, hint) in enumerate(rows):
-            read_only = []
-            it_prop = QTableWidgetItem(prop.name or "")
-            it_value = QTableWidgetItem(value.value or "")
-            it_hint = QTableWidgetItem(hint)
-            read_only += [it_prop, it_value, it_hint]
-            for item in read_only:
-                item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            it_code = QTableWidgetItem(hint)  # editable, pre-filled with suggestion
-            table.setItem(r, 0, it_prop)
-            table.setItem(r, 1, it_value)
-            table.setItem(r, 2, it_hint)
-            table.setItem(r, 3, it_code)
+
+        for r, (kind, prop, value, hint) in enumerate(rows):
+            cells = [
+                QTableWidgetItem(
+                    "Missing PDM value" if kind == "missing" else "Config code"
+                ),
+                QTableWidgetItem(prop.name or ""),
+                QTableWidgetItem(value.value or ""),
+                QTableWidgetItem(hint),
+                QTableWidgetItem(hint),
+            ]
+            for col, cell in enumerate(cells):
+                table.setItem(r, col, cell)
+                if col < 4:
+                    cell.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                    )
+
         table.resizeColumnsToContents()
         table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(table)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel,
             dialog,
         )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Apply All")
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
         snap = self._context.active_snapshot
-        overrides = snap.config_code_overrides
+        cls = self._attribute_class()
+        if snap is None or cls is None:
+            return
+        service = self._context.engineering_class_service
         changed = False
-        for r, (prop, value, _hint) in enumerate(rows):
-            code = table.item(r, 3).text().strip()
-            if code:
-                overrides.setdefault(str(prop.id), {})[str(value.id)] = code
+
+        for r, (kind, prop, value, _hint) in enumerate(rows):
+            code = table.item(r, 4).text().strip()
+            if not code:
+                continue
+            if kind == "config":
+                snap.config_code_overrides.setdefault(
+                    str(prop.id), {}
+                )[str(value.id)] = code
                 changed = True
+            else:
+                added = service.add_value(
+                    snap,
+                    cls.id,
+                    str(prop.id),
+                    code,
+                    (value.value or "").strip(),
+                    source="pdm",
+                )
+                if added is not None:
+                    added.value_id = str(getattr(value, "id", "") or "")
+                    changed = True
+
         if changed:
             self._context.snapshot_manager.mark_modified()
-            self._populating = True
-            self._populate_attributes()
-            self._populating = False
+            self._sync_development_article_sets()
+            self.refresh()
 
     def _populate_attributes(self) -> None:
         # Preserve which group headers are collapsed and which property rows are
