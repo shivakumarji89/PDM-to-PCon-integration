@@ -282,7 +282,40 @@ class ArticlesPage(BasePage):
         if snapshot is None:
             return
         svc = self._context.engineering_reduction_service
-        if getattr(snapshot, "article_sets", None):
+        if (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            and getattr(snapshot, "article_sets", None)
+        ):
+            # Development Class Creation removes configured pre-dot segments,
+            # so the Article Set master must use the resulting reduced article,
+            # not a prefix cut of the original PDM code.
+            members_by_article = {
+                str(member.article_id): member
+                for family in (getattr(snapshot.engineering, "families", []) or [])
+                for member in (getattr(family, "members", []) or [])
+            }
+            by_base: dict[str, dict] = {}
+            set_props = {
+                str(aid): {
+                    str(getattr(attr, "name", "") or "")
+                    for attr in getattr(aset, "properties", []) or []
+                    if getattr(attr, "name", "")
+                }
+                for aset in (getattr(snapshot, "article_sets", []) or [])
+                for aid in getattr(aset, "article_ids", []) or []
+            }
+            for aset in getattr(snapshot, "article_sets", []) or []:
+                for aid in getattr(aset, "article_ids", []) or []:
+                    member = members_by_article.get(str(aid))
+                    base = (getattr(member, "reduced_article", "") if member else "") or ""
+                    base = base or "Set"
+                    entry = by_base.setdefault(base, {"ids": [], "props": set()})
+                    if str(aid) not in entry["ids"]:
+                        entry["ids"].append(str(aid))
+                    entry["props"].update(set_props.get(str(aid), set()))
+            for base, entry in by_base.items():
+                yield (base, entry["ids"], len(base), len(entry["props"]), ())
+        elif getattr(snapshot, "article_sets", None):
             for m in svc.merge_sets_by_base(snapshot):
                 yield (m.base or "Set", m.article_ids, m.base_length,
                        len(m.property_names), m.optional_property_names)
