@@ -158,6 +158,7 @@ class EngineeringClassService(BaseService):
             property_id=property_id,
             property_name=property_name,
             width=width,
+            placement=len(target.properties),
             values=self._seed_values(snapshot, property_id, value_ids),
         )
         target.properties.append(assignment)
@@ -242,6 +243,38 @@ class EngineeringClassService(BaseService):
                 assignment.width = width
                 changed += 1
         return changed
+
+    def move_property(
+        self,
+        snapshot: Snapshot | None,
+        class_id: str | None,
+        property_id: str,
+        direction: int,
+    ) -> bool:
+        """Move a Class Creation property one position and persist placement."""
+        if snapshot is None or snapshot.engineering is None or not class_id:
+            return False
+        target = self._find_by_id(snapshot.engineering.classes, class_id)
+        if target is None:
+            return False
+        props = target.properties
+        index = next(
+            (i for i, assignment in enumerate(props)
+             if str(getattr(assignment, "property_id", "")) == str(property_id)),
+            -1,
+        )
+        if index < 0:
+            return False
+        new_index = index + (1 if direction > 0 else -1)
+        if new_index < 0 or new_index >= len(props):
+            return False
+        props[index], props[new_index] = props[new_index], props[index]
+        for position, assignment in enumerate(props):
+            assignment.placement = position
+        reduction = getattr(self.context, "engineering_reduction_service", None)
+        if reduction is not None:
+            reduction.materialize_article_sets(snapshot)
+        return True
 
     def remove_property(
         self, snapshot: Snapshot | None, class_id: str | None, property_id: str
