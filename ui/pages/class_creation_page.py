@@ -199,6 +199,8 @@ class ClassCreationPage(BasePage):
         # editable so a second edit is never locked out (reset per snapshot).
         self._user_edited_props: set[str] = set()
         self._edited_snap_id: int | None = None
+        self._selected_attr_prop = None
+        self._selected_attr_value = None
 
         self.add_content(self._build_toolbar())
         self.add_content(self._build_body())
@@ -246,6 +248,29 @@ class ClassCreationPage(BasePage):
         self._group_combo.currentIndexChanged.connect(self._on_group_changed)
         self._group_combo.setVisible(False)
         layout.addWidget(self._group_combo)
+
+        # Development Class Creation controls. These are deliberately visible
+        # instead of being available only through a context menu so the
+        # authoritative property/value editing workflow is discoverable.
+        self._move_up_btn = QPushButton("Move Up", box)
+        self._move_up_btn.clicked.connect(lambda: self._move_selected_attr_property(-1))
+        self._move_up_btn.setEnabled(False)
+        layout.addWidget(self._move_up_btn)
+
+        self._move_down_btn = QPushButton("Move Down", box)
+        self._move_down_btn.clicked.connect(lambda: self._move_selected_attr_property(1))
+        self._move_down_btn.setEnabled(False)
+        layout.addWidget(self._move_down_btn)
+
+        self._add_value_btn = QPushButton("Add Value", box)
+        self._add_value_btn.clicked.connect(self._add_selected_attr_value)
+        self._add_value_btn.setEnabled(False)
+        layout.addWidget(self._add_value_btn)
+
+        self._remove_value_btn = QPushButton("Remove Value", box)
+        self._remove_value_btn.clicked.connect(self._remove_selected_attr_value)
+        self._remove_value_btn.setEnabled(False)
+        layout.addWidget(self._remove_value_btn)
 
         # Amber hint shown when configuration codes were inferred (read-only
         # guesses the user must confirm before generation).
@@ -470,6 +495,7 @@ class ClassCreationPage(BasePage):
         self._apply_column_layout(self._attr_tree)
         self._attr_tree.itemChanged.connect(self._on_attr_item_changed)
         self._attr_tree.itemClicked.connect(self._on_attr_item_clicked)
+        self._attr_tree.itemSelectionChanged.connect(self._on_attr_selection_changed)
         self._attr_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._attr_tree.customContextMenuRequested.connect(self._on_attr_context_menu)
         # Opt out of the global tree standardisation (which turns ON
@@ -600,6 +626,7 @@ class ClassCreationPage(BasePage):
         self._misc_box.setTitle(f"{token}_Visual")
         self._populate_attributes()
         self._populate_options()
+        self._on_attr_selection_changed()
         self._populate_visual()
         self._populating = False
         self._last_render_sig = self._render_signature()
@@ -1458,6 +1485,54 @@ class ClassCreationPage(BasePage):
         if cls_prop:
             cls_prop.usage = (usage or "").strip()
             self._context.snapshot_manager.mark_modified()
+
+    def _on_attr_selection_changed(self) -> None:
+        """Track the selected Attribute property/value for visible edit controls."""
+        item = self._attr_tree.currentItem()
+        self._selected_attr_prop = None
+        self._selected_attr_value = None
+        if item is not None:
+            data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+            if data:
+                kind, obj = data
+                if kind == _KIND_PROP:
+                    self._selected_attr_prop = obj
+                elif kind == _KIND_PROP_VALUE:
+                    self._selected_attr_value = obj
+                    parent = item.parent()
+                    pdata = (
+                        parent.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                        if parent is not None else None
+                    )
+                    if pdata and pdata[0] == _KIND_PROP:
+                        self._selected_attr_prop = pdata[1]
+        development = (
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
+        )
+        has_prop = self._selected_attr_prop is not None
+        self._move_up_btn.setEnabled(development and has_prop)
+        self._move_down_btn.setEnabled(development and has_prop)
+        self._add_value_btn.setEnabled(development and has_prop)
+        self._remove_value_btn.setEnabled(
+            development and self._selected_attr_value is not None
+        )
+
+    def _move_selected_attr_property(self, direction: int) -> None:
+        prop = self._selected_attr_prop
+        if prop is not None:
+            self._move_attr_property(prop, direction)
+
+    def _add_selected_attr_value(self) -> None:
+        prop = self._selected_attr_prop
+        if prop is not None:
+            self._add_attr_value(prop)
+
+    def _remove_selected_attr_value(self) -> None:
+        prop = self._selected_attr_prop
+        value = self._selected_attr_value
+        if prop is not None and value is not None:
+            self._remove_attr_value(prop, value)
 
     def _on_attr_context_menu(self, pos) -> None:
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
