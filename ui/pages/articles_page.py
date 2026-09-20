@@ -142,6 +142,14 @@ class ArticlesPage(BasePage):
         self._apply_len_btn.clicked.connect(self._on_apply_base_length)
         layout.addWidget(self._apply_len_btn)
 
+        self._rebuild_btn = QPushButton("Rebuild from Class Creation", box)
+        self._rebuild_btn.setToolTip(
+            "Development only: regenerate Article Sets and reduced articles from "
+            "the current Class Creation definition."
+        )
+        self._rebuild_btn.clicked.connect(self._on_rebuild_from_class_creation)
+        layout.addWidget(self._rebuild_btn)
+
         self._copy_long_btn = QPushButton("Copy Text", box)
         self._copy_long_btn.setToolTip(
             "Copy each shown article's Long Text into its Short Text."
@@ -956,6 +964,19 @@ class ArticlesPage(BasePage):
         self._d_validation.setText("OK")
 
     # -- editing -----------------------------------------------------------
+    def _on_rebuild_from_class_creation(self) -> None:
+        """Explicitly rebuild the Development Article view from Class Creation."""
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            return
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return
+        self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+            snapshot
+        )
+        self._context.snapshot_manager.mark_modified()
+        self.refresh()
+
     def _on_apply_base_length(self) -> None:
         """Apply the visible base-length edit to the currently filtered rows."""
         value = int(self._base_len_spin.value())
@@ -995,7 +1016,16 @@ class ArticlesPage(BasePage):
 
     # -- clear (per shown subset) ------------------------------------------
     def _on_clear_length(self) -> None:
-        """Remove the base-length override on the shown rows (revert to full)."""
+        """Clear manual Article reductions without destroying Development Class Creation output."""
+        if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            snapshot = self._context.active_snapshot
+            if snapshot is not None:
+                self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                    snapshot
+                )
+                self._context.snapshot_manager.mark_modified()
+                self.refresh()
+            return
         member_service = self._context.engineering_member_service
         for _family, member, _article in self._filtered:
             self._base_len_by_member.pop(getattr(member, "id", ""), None)
@@ -1038,8 +1068,6 @@ class ArticlesPage(BasePage):
                     reduced = getattr(member, "reduced_article", "") or ""
                     if reduced:
                         self._base_len_spin.setValue(len(reduced))
-        if self._populating:
-            return
         if self._populating:
             return
         rows = self._table.selectionModel().selectedRows()
