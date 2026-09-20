@@ -979,12 +979,28 @@ class ClassCreationPage(BasePage):
         self._update_inferred_hint(
             len(config_codes), len(unresolved), len(self._prop_findings)
         )
-        self._auto_btn.setEnabled(bool(unresolved))
         widths = {}
         if cls is not None:
             widths = {a.property_id: a.width for a in cls.properties}
 
         props = list(self._context.property_service.get_properties())
+        development = (
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
+        )
+        missing_value_count = (
+            sum(len(self._missing_pdm_values(prop)) for prop in props)
+            if development and cls is not None
+            else 0
+        )
+        self._auto_btn.setEnabled(
+            development and (bool(unresolved) or missing_value_count > 0)
+        )
+        if development and (unresolved or missing_value_count):
+            self._auto_btn.setToolTip(
+                f"Resolve {len(unresolved)} unresolved code(s) and "
+                f"{missing_value_count} missing PDM value(s) in one pass."
+            )
 
         snapshot = self._context.active_snapshot
         # Value ids that will actually get a relation (subset-confined); generic
@@ -1387,46 +1403,6 @@ class ClassCreationPage(BasePage):
                     # Grow the row so the combo (and its selected code) is fully
                     # visible instead of being vertically clipped.
                     item.setSizeHint(_COL_CODE, combo.sizeHint())
-            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
-                add_value_item = QTreeWidgetItem(
-                    node,
-                    [_ADD_VALUE_HINT, "", "", "", "", "", "", ""],
-                )
-                add_value_item.setData(
-                    _COL_NAME,
-                    Qt.ItemDataRole.UserRole,
-                    (_KIND_CLASS_VALUE_ADD, (cls_prop, prop)),
-                )
-                add_value_item.setData(
-                    _COL_NAME,
-                    Qt.ItemDataRole.UserRole + 1,
-                    {_COL_NAME},
-                )
-                add_value_item.setData(
-                    _COL_CODE,
-                    Qt.ItemDataRole.UserRole + 1,
-                    {_COL_CODE},
-                )
-                add_value_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsEditable
-                )
-                add_value_item.setForeground(
-                    _COL_NAME, QBrush(QColor(theme.COLOR_INFO))
-                )
-                add_value_item.setForeground(
-                    _COL_CODE, QBrush(QColor(theme.COLOR_INFO))
-                )
-                add_value_item.setToolTip(
-                    _COL_NAME,
-                    "Click '+ add value (code)' and type the missing value name.",
-                )
-                add_value_item.setToolTip(
-                    _COL_CODE,
-                    "Enter the pre-dot code in this same row.",
-                )
-
             if (
                 prop.id in expanded_props
                 or getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
