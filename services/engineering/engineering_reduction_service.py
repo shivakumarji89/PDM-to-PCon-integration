@@ -668,10 +668,12 @@ class EngineeringReductionService(BaseService):
                         pos, _candidate_len, candidate = max(
                             matches, key=lambda item: (item[0], item[1])
                         )
-                        # Class Creation width is the authoritative removal
-                        # width. When no width is configured, use the selected
-                        # Sliced value's code length.
-                        remove_width = width or len(candidate)
+                        # The Sliced value itself is authoritative. Width is
+                        # the maximum/configured slice capacity, but Sliced
+                        # values may be variable length (e.g. 2 vs 4L). Never
+                        # consume the character after a one-character value
+                        # merely because the property width is 2.
+                        remove_width = len(candidate)
                         if remove_width > 0:
                             working = working[:pos] + working[pos + remove_width:]
                             matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
