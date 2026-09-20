@@ -1357,42 +1357,6 @@ class ClassCreationPage(BasePage):
                     # Grow the row so the combo (and its selected code) is fully
                     # visible instead of being vertically clipped.
                     item.setSizeHint(_COL_CODE, combo.sizeHint())
-            # Development-only trailing row for adding a missing value.
-            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
-                add_value_item = QTreeWidgetItem(
-                    node,
-                    [_ADD_VALUE_HINT, "", "", "", "", "", "", ""],
-                )
-                add_value_item.setData(
-                    _COL_NAME, Qt.ItemDataRole.UserRole,
-                    (_KIND_CLASS_VALUE_ADD, (cls_prop, prop)),
-                )
-                add_value_item.setData(
-                    _COL_NAME, Qt.ItemDataRole.UserRole + 1, {_COL_NAME}
-                )
-                add_value_item.setData(
-                    _COL_CODE, Qt.ItemDataRole.UserRole + 1, {_COL_CODE}
-                )
-                add_value_item.setFlags(
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsEditable
-                )
-                add_value_item.setForeground(
-                    _COL_NAME, QBrush(QColor(theme.COLOR_INFO))
-                )
-                add_value_item.setForeground(
-                    _COL_CODE, QBrush(QColor(theme.COLOR_INFO))
-                )
-                add_value_item.setToolTip(
-                    _COL_NAME,
-                    "Enter a missing property value name. Then enter its pre-dot code in the Code column.",
-                )
-                add_value_item.setToolTip(
-                    _COL_CODE,
-                    "Enter the pre-dot code for this new value. Both fields are required.",
-                )
-
             if (
                 prop.id in expanded_props
                 or getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
@@ -1624,6 +1588,13 @@ class ClassCreationPage(BasePage):
             self.refresh()
 
     def _add_attr_value(self, prop) -> None:
+        """Add a missing value directly to the selected property.
+
+        Development Class Creation owns the class vocabulary, so the new value
+        is inserted as a normal child of the selected property. The user gets
+        one small dialog for both fields instead of editing a separate
+        add-value row.
+        """
         cls = self._attribute_class()
         snapshot = self._context.active_snapshot
         if cls is None or snapshot is None:
@@ -1633,14 +1604,64 @@ class ClassCreationPage(BasePage):
         )
         if assignment is None:
             return
-        value, ok = QInputDialog.getText(self, "Add Class Value", "Value name:")
-        if not ok or not value.strip():
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Property Value")
+        dialog.setMinimumWidth(360)
+        layout = QVBoxLayout(dialog)
+
+        name_label = QLabel("Value name", dialog)
+        name_edit = QLineEdit(dialog)
+        name_edit.setPlaceholderText("e.g. Single Fabric")
+        layout.addWidget(name_label)
+        layout.addWidget(name_edit)
+
+        code_label = QLabel("Pre-dot code", dialog)
+        code_edit = QLineEdit(dialog)
+        code_edit.setPlaceholderText("e.g. S")
+        layout.addWidget(code_label)
+        layout.addWidget(code_edit)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        name_edit.setFocus()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        code, ok = QInputDialog.getText(self, "Add Class Value", "Pre-dot code:")
-        if not ok or not code.strip():
+
+        value = name_edit.text().strip()
+        code = code_edit.text().strip()
+        if not value or not code:
+            QMessageBox.information(
+                self,
+                "Add Property Value",
+                "Enter both the value name and its pre-dot code.",
+            )
             return
+
         service = self._context.engineering_class_service
-        service.add_value(snapshot, cls.id, str(prop.id), code.strip(), value.strip(), source="manual")
+        added = service.add_value(
+            snapshot,
+            cls.id,
+            str(prop.id),
+            code,
+            value,
+            source="manual",
+        )
+        if added is None:
+            QMessageBox.information(
+                self,
+                "Value not added",
+                "The value could not be added to this property.",
+            )
+            return
+
         self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self.refresh()
