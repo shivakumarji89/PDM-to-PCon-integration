@@ -1393,7 +1393,10 @@ class ClassCreationPage(BasePage):
                     "Enter the pre-dot code for this new value. Both fields are required.",
                 )
 
-            if prop.id in expanded_props:
+            if (
+                prop.id in expanded_props
+                or getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            ):
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str):
