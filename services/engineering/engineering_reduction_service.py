@@ -636,25 +636,18 @@ class EngineeringReductionService(BaseService):
                     if ignored.get(pid, False):
                         continue
 
-                    # Prefer the exact PDM value carried by this article. This
-                    # prevents a code from another value of the same property
-                    # being removed merely because that code happens to occur
-                    # elsewhere in the article number.
-                    class_values = list(getattr(assignment, "values", []) or [])
-                    exact_codes = [
-                        (getattr(cv, "code", "") or "").strip()
-                        for cv in class_values
-                        if str(getattr(cv, "value_id", "") or "") in article_value_ids_for_article
-                        and (getattr(cv, "code", "") or "").strip()
-                    ]
-                    if not exact_codes:
-                        exact_codes = [
-                            (getattr(cv, "code", "") or "").strip()
-                            for cv in class_values
-                            if str(getattr(cv, "value_id", "") or "") in product_value_ids_for_article
-                            and (getattr(cv, "code", "") or "").strip()
-                        ]
-                    codes = exact_codes or effective_codes(pid)
+                    # Class Creation is authoritative for Development
+                    # reduction. The codes in assignment.values are exactly
+                    # the codes represented by the Class Creation Sliced
+                    # column. Do NOT use article/product PDM value IDs to
+                    # choose a reduction code: those IDs are retained for
+                    # relationship/value coverage, but they must never override
+                    # a code the user has corrected in Class Creation.
+                    #
+                    # This matters when PDM has duplicate value rows or
+                    # stale/mismatched value IDs: Article reduction must follow
+                    # what the user sees and edits in Sliced.
+                    codes = effective_codes(pid)
                     width = max(0, int(getattr(assignment, "width", 0) or 0))
                     for candidate in codes:
                         pos = working.find(candidate)
