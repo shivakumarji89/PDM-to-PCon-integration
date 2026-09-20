@@ -491,6 +491,155 @@ class EngineeringReductionService(BaseService):
         masters.sort(key=lambda m: len(m.article_ids), reverse=True)
         return tuple(masters)
 
+    def materialize_class_creation_article_sets(
+        self, snapshot: Snapshot | None
+    ) -> list[ArticleSet]:
+        """Materialise Development Article Sets from the Class Creation definition.
+
+        This is the authoritative Development path. It deliberately does NOT
+        use the user-entered PDM article-prefix length. PDM supplies the actual
+        articles and their property/value relationships; Class Creation supplies
+        the pre-dot reduction rules (value codes, placement/order and Ignore).
+
+        Reduction starts from each original pre-dot article and removes the
+        configured value code for each non-ignored property in placement order.
+        The original PDM article and all PDM relationship maps remain untouched.
+        The resulting remaining string is the derived base article.
+        """
+        if snapshot is None:
+            return []
+
+        value_prop: dict[str, tuple[str, int]] = {}
+        prop_value: dict[str, tuple[str, str, str, str]] = {}
+        for prop in snapshot.properties:
+            entry = (str(prop.name), int(bool(prop.has_dependent_options)))
+            for value in prop.values:
+                vid = str(value.id)
+                value_prop[vid] = entry
+                prop_value[vid] = (
+                    str(prop.id), prop.name or "", value.value or "", value.code or ""
+                )
+
+        classes = self.classify_by_properties(snapshot, value_prop=value_prop)
+        article_value_ids = getattr(snapshot, "article_property_value_ids", {}) or {}
+        product_value_ids = getattr(snapshot, "product_property_value_ids", {}) or {}
+        product_of = {
+            str(a.id): str(getattr(a, "product_id", "") or "")
+            for a in snapshot.articles
+        }
+        code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
+        ignored = {
+            str(k): bool(v)
+            for k, v in (getattr(snapshot, "config_ignore_overrides", {}) or {}).items()
+        }
+
+        # Class Creation assignments are the engineering-side vocabulary. Use
+        # Attribute classes only for pre-dot reduction; Options/Visual classes
+        # continue to serve their existing downstream workflows.
+        assignments_by_prop: dict[str, object] = {}
+        engineering = getattr(snapshot, "engineering", None)
+        for cls in getattr(engineering, "classes", []) or []:
+            if not str(getattr(cls, "name", "")).endswith("_Attribute"):
+                continue
+            for assignment in getattr(cls, "properties", []) or []:
+                pid = str(getattr(assignment, "property_id", "") or "")
+                if pid and pid not in assignments_by_prop:
+                    assignments_by_prop[pid] = assignment
+
+        # Resolve inferred configuration codes only as a fallback for a class
+        # value that has not yet been explicitly corrected in Class Creation.
+        try:
+            decoded = self.context.engineering_class_service.resolve_config_codes(snapshot)
+        except Exception:
+            decoded = {}
+
+        def effective_codes(pid: str) -> list[str]:
+            assignment = assignments_by_prop.get(pid)
+            if assignment is None:
+                return []
+            result: list[str] = []
+            prop = next((p for p in snapshot.properties if str(p.id) == pid), None)
+            by_name: dict[str, list[str]] = {}
+            if prop is not None:
+                for pv in getattr(prop, "values", []) or []:
+                    code = (getattr(pv, "code", "") or "").strip()
+                    if not code:
+                        code = (decoded.get(pid, {}) or {}).get(str(pv.id), "") or ""
+                    if code:
+                        by_name.setdefault((pv.value or "").strip().casefold(), []).append(code)
+            for cv in getattr(assignment, "values", []) or []:
+                code = (getattr(cv, "code", "") or "").strip()
+                if not code:
+                    code = next(iter(by_name.get((getattr(cv, "value", "") or "").strip().casefold(), [])), "")
+                if code and code not in result:
+                    result.append(code)
+            return sorted(result, key=lambda x: (-len(x), x))
+
+        sets: list[ArticleSet] = []
+        for pc in classes:
+            article_ids = [str(a) for a in pc.article_ids]
+            attributes = self._set_attributes(
+                article_ids,
+                product_of,
+                product_value_ids,
+                prop_value,
+                article_value_ids=article_value_ids,
+            )
+            options = self._set_attributes(
+                article_ids,
+                product_of,
+                getattr(snapshot, "product_option_value_ids", {}) or {},
+                {
+                    str(v.id): (str(o.id), o.name or "", v.value or "", v.code or "")
+                    for o in getattr(snapshot, "options", []) or []
+                    for v in getattr(o, "values", []) or []
+                },
+            )
+            carried = {str(a.id) for a in attributes}
+            reduced_by_article: dict[str, str] = {}
+            for article_id in article_ids:
+                original = code_of.get(article_id, "")
+                working = original.split(".", 1)[0]
+                ordered = sorted(
+                    (
+                        a for pid, a in assignments_by_prop.items()
+                        if pid in carried
+                    ),
+                    key=lambda a: (
+                        int(getattr(a, "placement", 0) or 0),
+                        int(getattr(a, "width", 0) or 0),
+                        str(getattr(a, "property_id", "")),
+                    ),
+                )
+                for assignment in ordered:
+                    pid = str(getattr(assignment, "property_id", "") or "")
+                    if ignored.get(pid, False):
+                        continue
+                    codes = effective_codes(pid)
+                    for candidate in codes:
+                        pos = working.find(candidate)
+                        if pos >= 0:
+                            working = working[:pos] + working[pos + len(candidate):]
+                            break
+                reduced_by_article[article_id] = working
+
+            bases = [v for v in reduced_by_article.values() if v]
+            base_code = self._common_prefix([*bases]) if bases else ""
+            base_length = len(base_code)
+            sets.append(
+                ArticleSet(
+                    id=pc.id,
+                    base_length=base_length,
+                    base_code=base_code,
+                    article_ids=article_ids,
+                    properties=attributes,
+                    options=options,
+                )
+            )
+
+        snapshot.article_sets = sets
+        return sets
+
     def materialize_article_sets(
         self, snapshot: Snapshot | None
     ) -> list[ArticleSet]:
