@@ -537,7 +537,9 @@ class EngineeringReductionService(BaseService):
         # Attribute classes only for pre-dot reduction; Options/Visual classes
         # continue to serve their existing downstream workflows.
         assignments_by_prop: dict[str, object] = {}
+        assignment_sequence: dict[str, int] = {}
         engineering = getattr(snapshot, "engineering", None)
+        sequence = 0
         for cls in getattr(engineering, "classes", []) or []:
             if not str(getattr(cls, "name", "")).endswith("_Attribute"):
                 continue
@@ -545,6 +547,8 @@ class EngineeringReductionService(BaseService):
                 pid = str(getattr(assignment, "property_id", "") or "")
                 if pid and pid not in assignments_by_prop:
                     assignments_by_prop[pid] = assignment
+                    assignment_sequence[pid] = sequence
+                sequence += 1
 
         # Resolve inferred configuration codes only as a fallback for a class
         # value that has not yet been explicitly corrected in Class Creation.
@@ -606,7 +610,7 @@ class EngineeringReductionService(BaseService):
                 ),
                 key=lambda item: (
                     int(getattr(item[1], "placement", 0) or 0),
-                    int(getattr(item[1], "width", 0) or 0),
+                    assignment_sequence.get(item[0], 10_000),
                     item[0],
                 ),
             )
