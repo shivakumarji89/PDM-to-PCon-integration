@@ -966,44 +966,21 @@ class ClassCreationPage(BasePage):
             group_props = [p for p in props if str(p.id) in group.prop_ids and _prop_kept(p.id, props)]
             group_widths = {a.property_id: a.width for a in group_cls.properties} if group_cls else {}
             group_ctx = (group_cls, service, remainings, config_codes, group_widths, expanded_props)
-            group_ranges = {
-                r for p in group_props for r in ranges.get(str(p.id), []) if r not in ignored
-            }
-            if group_node is not None:
-                parent = group_node
-            else:
-                parent = self._attr_tree
-            if len(group_ranges) > 1:
-                def _rank(gname: str) -> int:
-                    for i, p in enumerate(group_props):
-                        if gname in ranges.get(str(p.id), []):
-                            return i
-                    return 10_000
-                for gname in sorted(group_ranges, key=_rank):
-                    rnode = self._make_group_node(parent, gname, gname, collapsed_groups)
-                    for prop in group_props:
-                        if gname in ranges.get(str(prop.id), []):
-                            vids = {str(v.id) for v in prop.values if gname in value_range.get(str(v.id), [])}
-                            self._add_attr_property_node(
-                                rnode, prop, *group_ctx, value_ids=vids or None,
-                                group_name=group.name,
-                            )
-                orphans = [p for p in group_props if not ranges.get(str(p.id))]
-                if orphans:
-                    rnode = self._make_group_node(parent, "General", "__none__", collapsed_groups)
-                    for prop in orphans:
-                        self._add_attr_property_node(
-                            rnode, prop, *group_ctx, group_name=group.name
-                        )
-            else:
-                for prop in group_props:
-                    vids = None
-                    if ignored:
-                        vids = {str(v.id) for v in prop.values if _prop_kept(v.id, props)}
-                    self._add_attr_property_node(
-                        parent, prop, *group_ctx, value_ids=vids or None,
-                        group_name=group.name,
-                    )
+            # The split group itself is the grouping row. Keep all of that
+            # group's properties directly inside the same Attribute table rather
+            # than introducing another nested result table/group selector.
+            parent = group_node if group_node is not None else self._attr_tree
+            for prop in group_props:
+                vids = None
+                if ignored:
+                    vids = {
+                        str(v.id) for v in prop.values
+                        if _prop_kept(v.id, props)
+                    }
+                self._add_attr_property_node(
+                    parent, prop, *group_ctx, value_ids=vids or None,
+                    group_name=group.name,
+                )
 
         props = [p for p in props if _prop_kept(p.id, props)]
         split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
