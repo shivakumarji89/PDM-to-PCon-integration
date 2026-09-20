@@ -391,6 +391,9 @@ class ArticlesPage(BasePage):
     def refresh(self) -> None:
         """Reload engineering members from the active snapshot and rebuild."""
         snapshot = self._context.active_snapshot
+        self._rebuild_btn.setEnabled(
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
         key = snapshot.id if snapshot is not None else None
         if key != self._snapshot_key:
             # A different product is now active: drop the per-article base-length
