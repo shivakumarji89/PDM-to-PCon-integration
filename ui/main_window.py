@@ -143,8 +143,10 @@ class MainWindow(QMainWindow):
     #: Class Creation groups by the reduction's ``article_sets`` (materialised by
     #: Engineering Initialization), so it belongs here, not at snapshot-publish.
     _ENGINEERING_DEPENDENT_STEPS = (
-        WorkflowStep.ARTICLES,
+        # Class Creation is authoritative for Development article reduction,
+        # so it must materialize Article Sets before Articles is refreshed.
         WorkflowStep.CLASS_CREATION,
+        WorkflowStep.ARTICLES,
         WorkflowStep.TEXT,
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
