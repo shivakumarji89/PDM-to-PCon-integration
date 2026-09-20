@@ -117,7 +117,14 @@ class BasePage(QWidget):
         return True
 
     def on_enter(self) -> None:
-        """Called when the workspace becomes active."""
+        """Reload the active workspace whenever the user enters it.
+
+        Workflow navigation is the refresh boundary: every workspace must show
+        the latest snapshot state immediately when opened. Pages with additional
+        rebuild work (for example Development Articles) can override this hook
+        and perform that work before/while refreshing.
+        """
+        self.refresh()
 
     def on_leave(self) -> None:
         """Called when the workspace is left."""
