@@ -522,6 +522,7 @@ def class_property_assignment_to_dict(
         "property_id": assignment.property_id,
         "property_name": assignment.property_name,
         "width": assignment.width,
+        "placement": assignment.placement,
         "type": assignment.type,
         "usage": assignment.usage,
         "text_block": assignment.text_block,
@@ -536,6 +537,7 @@ def class_property_assignment_from_dict(
         property_id=data.get("property_id", ""),
         property_name=data.get("property_name", ""),
         width=int(data.get("width", 0) or 0),
+        placement=int(data.get("placement", 0) or 0),
         type=data.get("type", ""),
         usage=data.get("usage", ""),
         text_block=data.get("text_block", ""),
@@ -546,11 +548,17 @@ def class_property_assignment_from_dict(
 
 
 def class_value_to_dict(value: ClassValue) -> dict[str, Any]:
-    return {"code": value.code, "value": value.value, "source": value.source}
+    return {
+        "value_id": value.value_id,
+        "code": value.code,
+        "value": value.value,
+        "source": value.source,
+    }
 
 
 def class_value_from_dict(data: dict[str, Any]) -> ClassValue:
     return ClassValue(
+        value_id=data.get("value_id", ""),
         code=data.get("code", ""),
         value=data.get("value", ""),
         source=data.get("source", "pdm"),
