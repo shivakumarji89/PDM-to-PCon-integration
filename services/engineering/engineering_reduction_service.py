@@ -649,18 +649,32 @@ class EngineeringReductionService(BaseService):
                     # what the user sees and edits in Sliced.
                     codes = effective_codes(pid)
                     width = max(0, int(getattr(assignment, "width", 0) or 0))
+                    # Select the configured Sliced value from the article code
+                    # itself. A configuration code can also occur in the base
+                    # prefix (for example 0 in AL1C1002S), so the reduction
+                    # segment is the right-most matching configured code. This
+                    # keeps the decision entirely inside the Class Creation
+                    # Sliced vocabulary instead of using PDM value IDs.
+                    matches = []
                     for candidate in codes:
-                        pos = working.find(candidate)
-                        if pos >= 0:
-                            # Class Creation width is the authoritative slice
-                            # width. When no width has been configured yet,
-                            # fall back to the selected value-code length.
-                            remove_width = width or len(candidate)
-                            if remove_width <= 0:
-                                continue
+                        start = 0
+                        while candidate:
+                            pos = working.find(candidate, start)
+                            if pos < 0:
+                                break
+                            matches.append((pos, len(candidate), candidate))
+                            start = pos + 1
+                    if matches:
+                        pos, _candidate_len, candidate = max(
+                            matches, key=lambda item: (item[0], item[1])
+                        )
+                        # Class Creation width is the authoritative removal
+                        # width. When no width is configured, use the selected
+                        # Sliced value's code length.
+                        remove_width = width or len(candidate)
+                        if remove_width > 0:
                             working = working[:pos] + working[pos + remove_width:]
                             matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
-                            break
                 reduced_by_article[article_id] = working
                 member = member_by_article.get(article_id)
                 if member is not None:
