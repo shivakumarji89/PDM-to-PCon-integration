@@ -286,17 +286,6 @@ class ClassCreationPage(BasePage):
         self._auto_btn.clicked.connect(self._on_resolve_remaining)
         layout.addWidget(self._auto_btn)
 
-        self._pip_btn = QPushButton("Validate vs PIP", box)
-        self._pip_btn.setToolTip(
-            "Diff this Class Creation against the product's PIP ground truth "
-            "(features, values, tail codes, head/tail split)."
-        )
-        pip_menu = QMenu(self._pip_btn)
-        pip_menu.addAction("Against PDM (live)", self._on_validate_pip_pdm)
-        pip_menu.addAction("Against PIP file\u2026", self._on_validate_pip_file)
-        self._pip_btn.setMenu(pip_menu)
-        layout.addWidget(self._pip_btn)
-
         separator = QFrame(box)
         separator.setFrameShape(QFrame.Shape.VLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
@@ -311,93 +300,6 @@ class ClassCreationPage(BasePage):
         layout.addWidget(self._collapse_btn)
 
         return box
-
-    # -- PIP accuracy validation (on-demand) ------------------------------
-    def _on_validate_pip_pdm(self) -> None:
-        """Diff Class Creation against the PDM-reconstructed PIP (live query)."""
-        snapshot = self._context.active_snapshot
-        product = snapshot.product if snapshot is not None else None
-        if product is None or not getattr(product, "id", None):
-            QMessageBox.information(self, "Validate vs PIP", "Load a product first.")
-            return
-        try:
-            diff = self._context.pip_service.validate_class_creation(
-                product.id, snapshot
-            )
-        except Exception as error:  # no PDM / query issue
-            QMessageBox.warning(
-                self, "Validate vs PIP",
-                f"PIP check unavailable (no PDM connection):\n{error}",
-            )
-            return
-        self._show_pip_dialog(diff)
-
-    def _on_validate_pip_file(self) -> None:
-        """Diff Class Creation against an Excel PIP workbook (validates head codes
-        too, which PDM omits)."""
-        from PySide6.QtWidgets import QFileDialog
-
-        snapshot = self._context.active_snapshot
-        if snapshot is None or snapshot.product is None:
-            QMessageBox.information(self, "Validate vs PIP", "Load a product first.")
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select PIP workbook", "", "Excel workbooks (*.xlsx *.xlsm)"
-        )
-        if not path:
-            return
-        try:
-            sheets = self._context.pip_service.sheet_names(path)
-        except Exception as error:
-            QMessageBox.warning(
-                self, "Validate vs PIP", f"Could not open workbook:\n{error}"
-            )
-            return
-        if not sheets:
-            QMessageBox.information(self, "Validate vs PIP", "The workbook has no sheets.")
-            return
-        sheet = sheets[0]
-        if len(sheets) > 1:
-            sheet, ok = QInputDialog.getItem(
-                self, "Select PIP sheet", "Product sheet:", sheets, 0, False
-            )
-            if not ok:
-                return
-        try:
-            diff = self._context.pip_service.validate_class_creation_excel(
-                path, sheet, snapshot
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Validate vs PIP", f"PIP parse failed:\n{error}")
-            return
-        self._show_pip_dialog(diff)
-
-    def _show_pip_dialog(self, diff) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("PIP Accuracy (Class Creation vs ground truth)")
-        dialog.setMinimumSize(600, 440)
-        layout = QVBoxLayout(dialog)
-        colour = theme.COLOR_OK if diff.ok else theme.COLOR_ERROR
-        status = QLabel(f"{'PASS' if diff.ok else 'FAIL'} - {diff.summary()}", dialog)
-        status.setStyleSheet(f"color: {colour}; font-weight: 600;")
-        layout.addWidget(status)
-        listw = QListWidget(dialog)
-        if not diff.items:
-            listw.addItem("No differences - Class Creation matches the PIP.")
-        else:
-            sev_colour = {"error": theme.COLOR_ERROR, "warning": theme.COLOR_WARNING}
-            for item in diff.items:
-                entry = QListWidgetItem(f"[{item.severity.upper()}] {item.message}")
-                colour = sev_colour.get(item.severity)
-                if colour:
-                    entry.setForeground(QBrush(QColor(colour)))
-                listw.addItem(entry)
-        layout.addWidget(listw)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
-        buttons.rejected.connect(dialog.reject)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
-        dialog.exec()
 
     def _build_body(self) -> QWidget:
         container = QWidget(self)
