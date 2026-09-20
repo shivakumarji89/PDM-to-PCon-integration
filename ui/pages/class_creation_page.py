@@ -1357,6 +1357,42 @@ class ClassCreationPage(BasePage):
                     # Grow the row so the combo (and its selected code) is fully
                     # visible instead of being vertically clipped.
                     item.setSizeHint(_COL_CODE, combo.sizeHint())
+            # Development-only trailing row for adding a missing value.
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                add_value_item = QTreeWidgetItem(
+                    node,
+                    [_ADD_VALUE_HINT, "", "", "", "", "", "", ""],
+                )
+                add_value_item.setData(
+                    _COL_NAME, Qt.ItemDataRole.UserRole,
+                    (_KIND_CLASS_VALUE_ADD, (cls_prop, prop)),
+                )
+                add_value_item.setData(
+                    _COL_NAME, Qt.ItemDataRole.UserRole + 1, {_COL_NAME}
+                )
+                add_value_item.setData(
+                    _COL_CODE, Qt.ItemDataRole.UserRole + 1, {_COL_CODE}
+                )
+                add_value_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsEditable
+                )
+                add_value_item.setForeground(
+                    _COL_NAME, QBrush(QColor(theme.COLOR_INFO))
+                )
+                add_value_item.setForeground(
+                    _COL_CODE, QBrush(QColor(theme.COLOR_INFO))
+                )
+                add_value_item.setToolTip(
+                    _COL_NAME,
+                    "Enter a missing property value name. Then enter its pre-dot code in the Code column.",
+                )
+                add_value_item.setToolTip(
+                    _COL_CODE,
+                    "Enter the pre-dot code for this new value. Both fields are required.",
+                )
+
             if prop.id in expanded_props:
                 node.setExpanded(True)
 
@@ -2232,41 +2268,51 @@ class ClassCreationPage(BasePage):
         if kind == _KIND_CLASS_VALUE_ADD:
             cls_prop, prop = obj
             value = item.text(_COL_NAME).strip()
+            code = item.text(_COL_CODE).strip()
             if value == _ADD_VALUE_HINT:
                 value = ""
-            if value:
-                cls = self._attribute_class()
-                if cls is not None:
-                    inferred = self._context.engineering_class_service.infer_missing_value_code(
-                        self._context.active_snapshot, prop.id, cls.id
-                    )
-                    if inferred is None:
-                        QMessageBox.information(
-                            self,
-                            "Missing value",
-                            "The tool could not determine a unique code, width and "
-                            "placement for this value from the loaded article data.",
-                        )
-                        return
+            if not value:
+                return
+            cls = self._attribute_class()
+            if cls is None:
+                return
+            if not code:
+                inferred = self._context.engineering_class_service.infer_missing_value_code(
+                    self._context.active_snapshot, prop.id, cls.id
+                )
+                if inferred is not None:
                     code, width, _position = inferred
                     self._context.engineering_class_service.set_width(
                         self._context.active_snapshot, cls.id, prop.id, width
                     )
-                    self._context.engineering_class_service.add_value(
-                        self._context.active_snapshot,
-                        cls.id,
-                        prop.id,
-                        code,
-                        value,
-                        source="manual",
+                else:
+                    QMessageBox.information(
+                        self,
+                        "Missing value code",
+                        "Enter the pre-dot code in the Code column for this value.",
                     )
-                    self._context.snapshot_manager.mark_modified()
-                    self._context.engineering_reduction_service.materialize_article_sets(
-                        self._context.active_snapshot
-                    )
-                    self._populating = True
-                    self._populate_attributes()
-                    self._populating = False
+                    return
+            cv = self._context.engineering_class_service.add_value(
+                self._context.active_snapshot,
+                cls.id,
+                prop.id,
+                code,
+                value,
+                source="manual",
+            )
+            if cv is None:
+                QMessageBox.information(
+                    self,
+                    "Value not added",
+                    "The value could not be added. Check that the property is assigned "
+                    "to the Development Attribute class and the code is not blank.",
+                )
+                return
+            self._context.snapshot_manager.mark_modified()
+            self._sync_development_article_sets()
+            self._populating = True
+            self._populate_attributes()
+            self._populating = False
             return
 
         if kind == _KIND_OPTION:
