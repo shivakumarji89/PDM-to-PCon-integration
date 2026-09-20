@@ -1403,10 +1403,10 @@ class ClassCreationPage(BasePage):
                     # Grow the row so the combo (and its selected code) is fully
                     # visible instead of being vertically clipped.
                     item.setSizeHint(_COL_CODE, combo.sizeHint())
-            if (
-                prop.id in expanded_props
-                or getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-            ):
+            # Preserve only the expansion state chosen by the user.
+            # Refreshes (for example after changing Ignore) must never expand
+            # every property automatically.
+            if prop.id in expanded_props:
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str):
