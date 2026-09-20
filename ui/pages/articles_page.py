@@ -143,14 +143,6 @@ class ArticlesPage(BasePage):
         self._apply_len_btn.clicked.connect(self._on_apply_base_length)
         layout.addWidget(self._apply_len_btn)
 
-        self._rebuild_btn = QPushButton("Rebuild from Class Creation", box)
-        self._rebuild_btn.setToolTip(
-            "Development only: regenerate Article Sets and reduced articles from "
-            "the current Class Creation definition."
-        )
-        self._rebuild_btn.clicked.connect(self._on_rebuild_from_class_creation)
-        layout.addWidget(self._rebuild_btn)
-
         self._copy_long_btn = QPushButton("Copy Text", box)
         self._copy_long_btn.setToolTip(
             "Copy each shown article's Long Text into its Short Text."
@@ -426,7 +418,6 @@ class ArticlesPage(BasePage):
         """Reload engineering members from the active snapshot and rebuild."""
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
-        self._rebuild_btn.setEnabled(module == WorkbenchModule.DEVELOPMENT)
         if module != self._last_module:
             # Development exposes line-item reduction editing by default;
             # Maintenance retains the historical grouped view.
