@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.engines.filtering import text_match
+from core.modules import WorkbenchModule
 from core.engines.status import warnings_text
 from ui import theme
 from ui.pages.base_page import BasePage
@@ -93,8 +94,21 @@ class ArticlesPage(BasePage):
         self.refresh()
 
     def on_enter(self) -> None:
-        """Refresh when returning from another workflow so Class Creation
-        changes and reductions made elsewhere are reflected immediately."""
+        """Refresh when returning from another workflow.
+
+        Development re-materialises Article Sets from the current Class Creation
+        definition before the Article table is rebuilt. Maintenance keeps its
+        existing ArticleSet/reduction path.
+        """
+        snapshot = self._context.active_snapshot
+        window = self.window()
+        if (
+            snapshot is not None
+            and getattr(window, "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        ):
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
         self.refresh()
 
     # -- construction ------------------------------------------------------
