@@ -1315,6 +1315,8 @@ class ClassCreationPage(BasePage):
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str):
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            return None
         cls = self._attribute_class()
         if cls is None:
             return None
@@ -1452,6 +1454,8 @@ class ClassCreationPage(BasePage):
             self._context.snapshot_manager.mark_modified()
 
     def _on_attr_context_menu(self, pos) -> None:
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            return
         item = self._attr_tree.itemAt(pos)
         if item is None:
             return
