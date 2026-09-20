@@ -176,7 +176,12 @@ class EngineeringClassService(BaseService):
         if prop is None:
             return []
         return [
-            ClassValue(code=v.code or "", value=v.value or "", source="pdm")
+            ClassValue(
+                value_id=str(v.id or ""),
+                code=v.code or "",
+                value=v.value or "",
+                source="pdm",
+            )
             for v in prop.values
             if value_ids is None or str(v.id) in value_ids
         ]
