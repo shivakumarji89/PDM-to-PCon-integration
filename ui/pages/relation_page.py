@@ -181,6 +181,14 @@ class RelationPage(BasePage):
         return box
 
     # -- data --------------------------------------------------------------
+    def on_enter(self) -> None:
+        """Rebuild derived relation objects automatically when entering."""
+        snapshot = self._context.active_snapshot
+        service = self._context.engineering_relation_service
+        service.rebuild_relation_objects(snapshot)
+        self._context.engineering_value_table_service.rebuild_value_tables(snapshot)
+        self.refresh()
+
     def refresh(self) -> None:
         snapshot = self._context.active_snapshot
         self._entity_names = {}
