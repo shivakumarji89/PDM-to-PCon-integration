@@ -98,3 +98,17 @@ def test_development_class_creation_ignore_keeps_property_in_base():
     assert sets[0].base_length == 2
     assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
     assert snapshot.engineering.families[0].members[1].reduced_article == "A1Y100"
+
+
+def test_development_class_creation_code_correction_changes_only_matching_article():
+    snapshot = _snapshot()
+    assignment = snapshot.engineering.classes[0].properties[0]
+    assignment.values[0].code = "Q"
+    service = _service(snapshot)
+
+    service.materialize_class_creation_article_sets(snapshot)
+
+    # Article a1 still contains the old PDM code X, so the corrected Q does not
+    # remove it. Article a2 still uses the unchanged Y mapping.
+    assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
+    assert snapshot.engineering.families[0].members[1].reduced_article == "A1100"
