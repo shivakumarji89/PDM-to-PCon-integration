@@ -1465,6 +1465,9 @@ class ClassCreationPage(BasePage):
         menu = QMenu(self._attr_tree)
         if data[0] == _KIND_PROP:
             prop = data[1]
+            menu.addAction("Move up", lambda p=prop: self._move_attr_property(p, -1))
+            menu.addAction("Move down", lambda p=prop: self._move_attr_property(p, 1))
+            menu.addSeparator()
             menu.addAction("Add value", lambda p=prop: self._add_attr_value(p))
         elif data[0] == _KIND_PROP_VALUE:
             parent = item.parent()
@@ -1475,6 +1478,17 @@ class ClassCreationPage(BasePage):
                     lambda p=pdata[1], v=data[1]: self._remove_attr_value(p, v),
                 )
         menu.exec(self._attr_tree.viewport().mapToGlobal(pos))
+
+    def _move_attr_property(self, prop, direction: int) -> None:
+        cls = self._attribute_class()
+        snapshot = self._context.active_snapshot
+        if cls is None or snapshot is None:
+            return
+        service = self._context.engineering_class_service
+        if service.move_property(snapshot, cls.id, str(prop.id), direction):
+            self._context.snapshot_manager.mark_modified()
+            self._sync_development_article_sets()
+            self.refresh()
 
     def _add_attr_value(self, prop) -> None:
         cls = self._attribute_class()
