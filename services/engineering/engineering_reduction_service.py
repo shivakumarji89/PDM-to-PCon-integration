@@ -597,22 +597,23 @@ class EngineeringReductionService(BaseService):
             )
             carried = {str(a.id) for a in attributes}
             reduced_by_article: dict[str, str] = {}
+            matched_by_prop: dict[str, dict[str, set[str]]] = {}
+            ordered = sorted(
+                (
+                    (pid, assignment)
+                    for pid, assignment in assignments_by_prop.items()
+                    if pid in carried
+                ),
+                key=lambda item: (
+                    int(getattr(item[1], "placement", 0) or 0),
+                    int(getattr(item[1], "width", 0) or 0),
+                    item[0],
+                ),
+            )
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
                 working = original.split(".", 1)[0]
-                ordered = sorted(
-                    (
-                        a for pid, a in assignments_by_prop.items()
-                        if pid in carried
-                    ),
-                    key=lambda a: (
-                        int(getattr(a, "placement", 0) or 0),
-                        int(getattr(a, "width", 0) or 0),
-                        str(getattr(a, "property_id", "")),
-                    ),
-                )
-                for assignment in ordered:
-                    pid = str(getattr(assignment, "property_id", "") or "")
+                for pid, assignment in ordered:
                     if ignored.get(pid, False):
                         continue
                     codes = effective_codes(pid)
@@ -620,8 +621,54 @@ class EngineeringReductionService(BaseService):
                         pos = working.find(candidate)
                         if pos >= 0:
                             working = working[:pos] + working[pos + len(candidate):]
+                            matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
                             break
                 reduced_by_article[article_id] = working
+
+            # Make the ArticleSet reflect the Class Creation vocabulary without
+            # destroying the PDM article/value links. A corrected class code
+            # keeps the original PDM value id; a genuinely added manual value is
+            # represented by a stable manual id and the same article coverage.
+            attr_by_id = {str(a.id): a for a in attributes}
+            for pid, code_map in matched_by_prop.items():
+                assignment = assignments_by_prop.get(pid)
+                if assignment is None:
+                    continue
+                attr = attr_by_id.get(pid)
+                if attr is None:
+                    continue
+                class_values = {
+                    (getattr(v, "code", "") or "").strip(): v
+                    for v in getattr(assignment, "values", []) or []
+                    if (getattr(v, "code", "") or "").strip()
+                }
+                for code, carriers in code_map.items():
+                    class_value = class_values.get(code)
+                    value_id = str(getattr(class_value, "value_id", "") or "") if class_value else ""
+                    target = next(
+                        (v for v in attr.values if value_id and str(v.id) == value_id),
+                        None,
+                    )
+                    if target is None and class_value is not None and not value_id:
+                        target = next(
+                            (v for v in attr.values if str(v.code or "") == code and v.value == getattr(class_value, "value", "")),
+                            None,
+                        )
+                    if target is not None:
+                        target.code = code
+                        target.value = getattr(class_value, "value", target.value) or target.value
+                        for aid in carriers:
+                            if aid not in target.article_ids:
+                                target.article_ids.append(aid)
+                    elif class_value is not None:
+                        attr.values.append(
+                            SetValue(
+                                id=f"manual:{pid}:{code}",
+                                value=getattr(class_value, "value", "") or "",
+                                code=code,
+                                article_ids=sorted(carriers),
+                            )
+                        )
 
             bases = [v for v in reduced_by_article.values() if v]
             base_length = self._common_prefix_len(bases) if bases else 0
