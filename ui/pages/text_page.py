@@ -95,10 +95,6 @@ class TextPage(BasePage):
         self._fill_btn.clicked.connect(self._on_fill_from_en)
         layout.addWidget(self._fill_btn)
 
-        self._rebuild_btn = QPushButton("Rebuild", box)
-        self._rebuild_btn.setToolTip("Re-derive text blocks from the snapshot (discards edits).")
-        self._rebuild_btn.clicked.connect(self._on_rebuild)
-        layout.addWidget(self._rebuild_btn)
         return box
 
     def _build_table(self) -> QWidget:
@@ -121,6 +117,14 @@ class TextPage(BasePage):
         return self._table
 
     # -- data --------------------------------------------------------------
+    def on_enter(self) -> None:
+        """Rebuild derived text blocks automatically when entering Text."""
+        snapshot = self._context.active_snapshot
+        service = self._context.engineering_text_service
+        service.rebuild_text_blocks(snapshot)
+        self._all_blocks = service.ensure_text_blocks(snapshot)
+        self._apply_filter()
+
     def refresh(self) -> None:
         snapshot = self._context.active_snapshot
         self._all_blocks = self._context.engineering_text_service.ensure_text_blocks(
