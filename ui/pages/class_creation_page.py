@@ -1599,7 +1599,27 @@ class ClassCreationPage(BasePage):
             menu.addAction("Move up", lambda p=prop: self._move_attr_property(p, -1))
             menu.addAction("Move down", lambda p=prop: self._move_attr_property(p, 1))
             menu.addSeparator()
-            menu.addAction("Add value", lambda p=prop: self._add_attr_value(p))
+            missing = self._missing_pdm_values(prop)
+            add_menu = menu.addMenu("Add missing value")
+            coded_missing = [
+                v for v in missing if (getattr(v, "code", "") or "").strip()
+            ]
+            for pdm_value in coded_missing:
+                code = (getattr(pdm_value, "code", "") or "").strip()
+                label = f"{pdm_value.value or '(unnamed)'}  [{code}]"
+                add_menu.addAction(
+                    label,
+                    lambda p=prop, v=pdm_value: self._add_pdm_value(p, v),
+                )
+            if len(coded_missing) > 1:
+                add_menu.addSeparator()
+                add_menu.addAction(
+                    f"Add all {len(coded_missing)} coded missing values",
+                    lambda p=prop, vals=coded_missing: self._add_pdm_values(p, vals),
+                )
+            if not coded_missing:
+                add_menu.addAction("No coded missing values", lambda: None).setEnabled(False)
+            menu.addAction("Add custom value...", lambda p=prop: self._add_attr_value(p))
         elif data[0] == _KIND_PROP_VALUE:
             parent = item.parent()
             pdata = parent.data(_COL_NAME, Qt.ItemDataRole.UserRole) if parent else None
@@ -1620,6 +1640,73 @@ class ClassCreationPage(BasePage):
             self._context.snapshot_manager.mark_modified()
             self._sync_development_article_sets()
             self.refresh()
+
+    def _missing_pdm_values(self, prop) -> list:
+        """PDM values that are not yet represented by this Class Creation property."""
+        cls = self._attribute_class()
+        if cls is None:
+            return []
+        assignment = next(
+            (a for a in cls.properties if str(a.property_id) == str(prop.id)), None
+        )
+        if assignment is None:
+            return list(getattr(prop, "values", []) or [])
+        existing_ids = {
+            str(getattr(v, "value_id", ""))
+            for v in assignment.values
+            if getattr(v, "value_id", "")
+        }
+        existing_pairs = {
+            ((getattr(v, "code", "") or "").strip(), (getattr(v, "value", "") or "").strip())
+            for v in assignment.values
+        }
+        return [
+            value for value in (getattr(prop, "values", []) or [])
+            if str(getattr(value, "id", "") or "") not in existing_ids
+            and (
+                (getattr(value, "code", "") or "").strip(),
+                (getattr(value, "value", "") or "").strip(),
+            ) not in existing_pairs
+        ]
+
+    def _add_pdm_value(self, prop, pdm_value) -> None:
+        cls = self._attribute_class()
+        snapshot = self._context.active_snapshot
+        if cls is None or snapshot is None:
+            return
+        code = (getattr(pdm_value, "code", "") or "").strip()
+        if not code:
+            return
+        added = self._context.engineering_class_service.add_value(
+            snapshot, cls.id, str(prop.id), code,
+            (getattr(pdm_value, "value", "") or "").strip(), source="pdm"
+        )
+        if added is None:
+            return
+        added.value_id = str(getattr(pdm_value, "id", "") or "")
+        self._context.snapshot_manager.mark_modified()
+        self._sync_development_article_sets()
+        self.refresh()
+
+    def _add_pdm_values(self, prop, values) -> None:
+        cls = self._attribute_class()
+        snapshot = self._context.active_snapshot
+        if cls is None or snapshot is None:
+            return
+        service = self._context.engineering_class_service
+        for pdm_value in values:
+            code = (getattr(pdm_value, "code", "") or "").strip()
+            if not code:
+                continue
+            added = service.add_value(
+                snapshot, cls.id, str(prop.id), code,
+                (getattr(pdm_value, "value", "") or "").strip(), source="pdm"
+            )
+            if added is not None:
+                added.value_id = str(getattr(pdm_value, "id", "") or "")
+        self._context.snapshot_manager.mark_modified()
+        self._sync_development_article_sets()
+        self.refresh()
 
     def _add_attr_value(self, prop) -> None:
         """Start an inline missing-value entry directly under this property."""
