@@ -82,6 +82,7 @@ class ArticlesPage(BasePage):
         self._blocked_reason: str = ""
         self._group_by_base = False  # show editable line items by default
         self._syncing = False  # guard while programmatically syncing widgets
+        self._last_module = None
 
         # Debounce search typing: validation is snapshot-scoped
         # (term-independent), so coalesce keystrokes into one filter pass.
@@ -391,9 +392,17 @@ class ArticlesPage(BasePage):
     def refresh(self) -> None:
         """Reload engineering members from the active snapshot and rebuild."""
         snapshot = self._context.active_snapshot
-        self._rebuild_btn.setEnabled(
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-        )
+        module = getattr(self.window(), "_active_module", None)
+        self._rebuild_btn.setEnabled(module == WorkbenchModule.DEVELOPMENT)
+        if module != self._last_module:
+            # Development exposes line-item reduction editing by default;
+            # Maintenance retains the historical grouped view.
+            self._group_by_base = module != WorkbenchModule.DEVELOPMENT
+            if hasattr(self, "_group_check"):
+                self._group_check.blockSignals(True)
+                self._group_check.setChecked(self._group_by_base)
+                self._group_check.blockSignals(False)
+            self._last_module = module
         key = snapshot.id if snapshot is not None else None
         if key != self._snapshot_key:
             # A different product is now active: drop the per-article base-length
