@@ -38,6 +38,9 @@ class ClassPropertyAssignment:
     property_id: str = ""
     property_name: str = ""
     width: int = 0      # chars consumed from the article's remaining (manual)
+    # Authoritative pre-dot reduction order. Lower values are removed first.
+    # Kept explicit so placement is no longer an accidental side-effect of UI order.
+    placement: int = 0
     type: str = ""      # C=character, L=length, N=number, T=Text
     usage: str = ""     # MDB Usage: Configuration | Graphic
     text_block: str = ""  # MDB Text-block (display key, e.g. Desk_Type)
