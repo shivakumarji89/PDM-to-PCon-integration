@@ -142,7 +142,7 @@ def test_development_reduction_uses_class_creation_sliced_code_not_article_value
                         ClassPropertyAssignment(
                             property_id="p1",
                             property_name="Type",
-                            width=1,
+                            width=2,
                             placement=0,
                             values=[
                                 ClassValue(value_id="v0", code="0", value="Zero"),
