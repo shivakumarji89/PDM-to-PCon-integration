@@ -50,9 +50,6 @@ class PricingRelationPage(BasePage):
         layout = QHBoxLayout(box)
         self._name_label = QLabel("", box)
         layout.addWidget(self._name_label, 1)
-        self._generate_btn = QPushButton("Generate PA_PRICING", box)
-        self._generate_btn.clicked.connect(self._on_generate)
-        layout.addWidget(self._generate_btn)
         self._copy_btn = QPushButton("Copy", box)
         self._copy_btn.clicked.connect(self._on_copy)
         layout.addWidget(self._copy_btn)
@@ -70,6 +67,10 @@ class PricingRelationPage(BasePage):
         )
         layout.addWidget(self._editor)
         return box
+
+    def on_enter(self) -> None:
+        """Generate PA_PRICING relations automatically when entering."""
+        self._on_generate()
 
     def _on_generate(self) -> None:
         service = PricingRelationService(self._context)
