@@ -504,7 +504,9 @@ class ClassCreationPage(BasePage):
         elif names:
             self._active_group_name = names[0]
         self._group_combo.blockSignals(False)
-        self._group_combo.setVisible(split_on)
+        # Split results are rendered together in the Attribute tree. The selector
+        # is retained for compatibility but is not used as a separate result table.
+        self._group_combo.setVisible(False)
 
         # The basis selector shows whenever the split is on (even for a single
         # group), so the user can switch between range and article-set grouping.
@@ -663,6 +665,35 @@ class ClassCreationPage(BasePage):
             if cls.name == name:
                 return cls
         return None
+
+    def _attribute_class_for_group(self, group_name: str | None):
+        """Return the Attribute class belonging to a displayed split group."""
+        if not group_name:
+            return self._attribute_class()
+        service = self._context.engineering_class_service
+        token = service._group_token(group_name)
+        name = f"{token}_Attribute"
+        for cls in service.get_classes(self._context.active_snapshot):
+            if cls.name == name:
+                return cls
+        return None
+
+    def _group_name_for_attr_item(self, item) -> str | None:
+        """Find the split-group owner of an Attribute property/value row."""
+        if item is None:
+            return None
+        node = item
+        while node is not None:
+            data = node.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+            if data and data[0] == _KIND_GROUP:
+                return str(data[1])
+            node = node.parent()
+        return None
+
+    def _set_active_group_from_attr_item(self, item) -> None:
+        group = self._group_name_for_attr_item(item)
+        if group and getattr(self._context.active_snapshot, "split_classes_by_group", False):
+            self._active_group_name = group
 
     def _options_class(self):
         """The active group's ``<Group>_Options`` class, or None."""
@@ -926,59 +957,106 @@ class ClassCreationPage(BasePage):
         value_range = getattr(snapshot, "value_range", None) or {}
         ignored = set(getattr(snapshot, "ignored_ranges", None) or [])
 
-        def _prop_kept(pid) -> bool:
+        def _prop_kept(pid, source_props):
             rs = ranges.get(str(pid))
             return (not rs) or any(r not in ignored for r in rs)
 
-        def _val_kept(vid) -> bool:
-            vr = value_range.get(str(vid))
-            return (not vr) or any(r not in ignored for r in vr)
-
-        props = [p for p in props if _prop_kept(p.id)]
-        # When the split is on, the cards show only the active group's members.
-        group = self._active_group() if getattr(
-            snapshot, "split_classes_by_group", False
-        ) else None
-        if group is not None:
-            props = [p for p in props if str(p.id) in group.prop_ids]
-        all_ranges = {
-            r for p in props for r in ranges.get(str(p.id), []) if r not in ignored
-        }
-        if len(all_ranges) > 1:
-            def _group_rank(gname: str) -> int:
-                for i, p in enumerate(props):
-                    if gname in ranges.get(str(p.id), []):
-                        return i
-                return 10_000
-            for gname in sorted(all_ranges, key=_group_rank):
-                gnode = self._make_group_node(
-                    self._attr_tree, gname, gname, collapsed_groups
-                )
-                for prop in props:
-                    if gname in ranges.get(str(prop.id), []):
-                        vids = {
-                            str(v.id) for v in prop.values
-                            if gname in value_range.get(str(v.id), [])
-                        }
+        def _render_group(group, group_cls, group_node=None):
+            """Render one split group's properties into the SAME Attribute tree."""
+            group_props = [p for p in props if str(p.id) in group.prop_ids and _prop_kept(p.id, props)]
+            group_widths = {a.property_id: a.width for a in group_cls.properties} if group_cls else {}
+            group_ctx = (group_cls, service, remainings, config_codes, group_widths, expanded_props)
+            group_ranges = {
+                r for p in group_props for r in ranges.get(str(p.id), []) if r not in ignored
+            }
+            if group_node is not None:
+                parent = group_node
+            else:
+                parent = self._attr_tree
+            if len(group_ranges) > 1:
+                def _rank(gname: str) -> int:
+                    for i, p in enumerate(group_props):
+                        if gname in ranges.get(str(p.id), []):
+                            return i
+                    return 10_000
+                for gname in sorted(group_ranges, key=_rank):
+                    rnode = self._make_group_node(parent, gname, gname, collapsed_groups)
+                    for prop in group_props:
+                        if gname in ranges.get(str(prop.id), []):
+                            vids = {str(v.id) for v in prop.values if gname in value_range.get(str(v.id), [])}
+                            self._add_attr_property_node(
+                                rnode, prop, *group_ctx, value_ids=vids or None,
+                                group_name=group.name,
+                            )
+                orphans = [p for p in group_props if not ranges.get(str(p.id))]
+                if orphans:
+                    rnode = self._make_group_node(parent, "General", "__none__", collapsed_groups)
+                    for prop in orphans:
                         self._add_attr_property_node(
-                            gnode, prop, *ctx, value_ids=vids or None
+                            rnode, prop, *group_ctx, group_name=group.name
                         )
-            orphans = [p for p in props if not ranges.get(str(p.id))]
-            if orphans:
-                gnode = self._make_group_node(
-                    self._attr_tree, "General", "__none__", collapsed_groups
-                )
-                for prop in orphans:
-                    self._add_attr_property_node(gnode, prop, *ctx)
-        else:
-            for prop in props:
-                if ignored:
-                    vids = {str(v.id) for v in prop.values if _val_kept(v.id)}
+            else:
+                for prop in group_props:
+                    vids = None
+                    if ignored:
+                        vids = {str(v.id) for v in prop.values if _prop_kept(v.id, props)}
                     self._add_attr_property_node(
-                        self._attr_tree, prop, *ctx, value_ids=vids or None
+                        parent, prop, *group_ctx, value_ids=vids or None,
+                        group_name=group.name,
                     )
-                else:
-                    self._add_attr_property_node(self._attr_tree, prop, *ctx)
+
+        props = [p for p in props if _prop_kept(p.id, props)]
+        split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
+        groups = service.resolve_class_groups(snapshot, self._category_label()) if split_checked else []
+        if split_checked and len(groups) > 1:
+            # One Attribute table, with each split class represented by a group header.
+            collapsed_groups = set()
+            for i in range(self._attr_tree.topLevelItemCount()):
+                n = self._attr_tree.topLevelItem(i)
+                d = n.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                if d and d[0] == _KIND_GROUP and not n.isExpanded():
+                    collapsed_groups.add(d[1])
+            for group in groups:
+                group_cls = self._attribute_class_for_group(group.name)
+                if group_cls is None:
+                    continue
+                header = self._make_group_node(
+                    self._attr_tree, group.name, group.name, collapsed_groups
+                )
+                _render_group(group, group_cls, header)
+        else:
+            all_ranges = {
+                r for p in props for r in ranges.get(str(p.id), []) if r not in ignored
+            }
+            if len(all_ranges) > 1:
+                def _group_rank(gname: str) -> int:
+                    for i, p in enumerate(props):
+                        if gname in ranges.get(str(p.id), []):
+                            return i
+                    return 10_000
+                for gname in sorted(all_ranges, key=_group_rank):
+                    gnode = self._make_group_node(
+                        self._attr_tree, gname, gname, collapsed_groups
+                    )
+                    for prop in props:
+                        if gname in ranges.get(str(prop.id), []):
+                            vids = {str(v.id) for v in prop.values if gname in value_range.get(str(v.id), [])}
+                            self._add_attr_property_node(
+                                gnode, prop, *ctx, value_ids=vids or None
+                            )
+                orphans = [p for p in props if not ranges.get(str(p.id))]
+                if orphans:
+                    gnode = self._make_group_node(
+                        self._attr_tree, "General", "__none__", collapsed_groups
+                    )
+                    for prop in orphans:
+                        self._add_attr_property_node(gnode, prop, *ctx)
+            else:
+                for prop in props:
+                    vids = None
+                    if ignored:
+                        vids = {str(v.id) for v in prop.values if _prop_kept(v.id, props)}
+                    self._add_attr_property_node(self._attr_tree, prop, *ctx, value_ids=vids or None)
 
     def _make_group_node(self, tree, label, key, collapsed_groups):
         """Bold header for one functional group (ProductRange). Editable so the
@@ -1001,7 +1079,7 @@ class ClassCreationPage(BasePage):
 
     def _add_attr_property_node(
         self, parent, prop, cls, service, remainings, config_codes, widths,
-        expanded_props, value_ids=None,
+        expanded_props, value_ids=None, group_name: str | None = None,
     ) -> None:
             # Values shown under a functional-range group are limited to the ones
             # that group's products carry; unfiltered (value_ids None) elsewhere.
@@ -1146,6 +1224,8 @@ class ClassCreationPage(BasePage):
                 else "Not article-dependent (identity / metatype)",
             )
             node.setData(_COL_NAME, Qt.ItemDataRole.UserRole, (_KIND_PROP, prop))
+            if group_name:
+                node.setData(_COL_NAME, Qt.ItemDataRole.UserRole + 2, group_name)
             node.setData(2, Qt.ItemDataRole.UserRole + 1, {2})  # Width editable
             node.setData(  # Text-block editable
                 _COL_TEXTBLOCK, Qt.ItemDataRole.UserRole + 1, {_COL_TEXTBLOCK}
@@ -1224,8 +1304,8 @@ class ClassCreationPage(BasePage):
                 "Tick to keep this property in the base (do not slice it)."
             )
             ignore_cb.toggled.connect(
-                lambda checked, p_id=prop.id:
-                self._on_ignore_toggled(p_id, checked)
+                lambda checked, p_id=prop.id, n=node:
+                self._on_ignore_toggled(p_id, checked, n)
             )
             self._attr_tree.setItemWidget(node, _COL_IGNORE, ignore_cb)
             for value in display_values:
@@ -1311,10 +1391,10 @@ class ClassCreationPage(BasePage):
             if prop.id in expanded_props:
                 node.setExpanded(True)
 
-    def _class_value_for(self, prop_id: str, value_id: str):
+    def _class_value_for(self, prop_id: str, value_id: str, group_name: str | None = None):
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return None
-        cls = self._attribute_class()
+        cls = self._attribute_class_for_group(group_name)
         if cls is None:
             return None
         assignment = next(
@@ -1343,7 +1423,11 @@ class ClassCreationPage(BasePage):
         if self._populating:
             return
         new_code = (text or "").strip()
-        class_value = self._class_value_for(str(prop.id), str(getattr(value, "id", "")))
+        group_name = self._group_name_for_attr_item(prop_node)
+        self._set_active_group_from_attr_item(prop_node)
+        class_value = self._class_value_for(
+            str(prop.id), str(getattr(value, "id", "")), group_name
+        )
         if class_value is not None:
             class_value.code = new_code
         else:
@@ -1360,7 +1444,8 @@ class ClassCreationPage(BasePage):
         """A property's Type dropdown changed: write the type code to the class assignment."""
         if self._populating:
             return
-        cls = self._attribute_class()
+        group_name = self._group_name_for_attr_item(prop_node)
+        cls = self._attribute_class_for_group(group_name)
         if cls is None:
             return
         # Find the class property assignment
@@ -1376,7 +1461,8 @@ class ClassCreationPage(BasePage):
         """A property's Usage dropdown changed: write it to the class assignment."""
         if self._populating:
             return
-        cls = self._attribute_class()
+        group_name = self._group_name_for_attr_item(prop_node)
+        cls = self._attribute_class_for_group(group_name)
         if cls is None:
             return
         cls_prop = next(
@@ -1386,7 +1472,7 @@ class ClassCreationPage(BasePage):
             cls_prop.usage = (usage or "").strip()
             self._context.snapshot_manager.mark_modified()
 
-    def _on_ignore_toggled(self, prop_id, checked: bool) -> None:
+    def _on_ignore_toggled(self, prop_id, checked: bool, prop_node=None) -> None:
         """User chose to keep a head property in the base (checked) or slice it
         (unchecked). Re-slices and re-materialises the base masters so both this
         page and the Article Master reflect the choice."""
@@ -1395,6 +1481,7 @@ class ClassCreationPage(BasePage):
         snapshot = self._context.active_snapshot
         if snapshot is None:
             return
+        self._set_active_group_from_attr_item(prop_node)
         self._context.engineering_class_service.set_config_ignore(
             snapshot, str(prop_id), bool(checked)
         )
@@ -1453,6 +1540,7 @@ class ClassCreationPage(BasePage):
     def _on_attr_selection_changed(self) -> None:
         """Track the selected Attribute property/value for visible edit controls."""
         item = self._attr_tree.currentItem()
+        self._set_active_group_from_attr_item(item)
         self._selected_attr_prop = None
         self._selected_attr_value = None
         if item is not None:
@@ -1503,6 +1591,7 @@ class ClassCreationPage(BasePage):
         item = self._attr_tree.itemAt(pos)
         if item is None:
             return
+        self._set_active_group_from_attr_item(item)
         data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
         if not data:
             return
@@ -1755,7 +1844,7 @@ class ClassCreationPage(BasePage):
         return "_".join(w[:1].upper() + w[1:] for w in words if w)
 
     def _update_sliced(self, prop_node, prop) -> None:
-        cls = self._attribute_class()
+        cls = self._attribute_class_for_group(self._group_name_for_attr_item(prop_node))
         if cls is None:
             return
         remainings = [r for _code, r in self._split_members()]
@@ -1872,7 +1961,7 @@ class ClassCreationPage(BasePage):
         if kind == _KIND_PROP and column == 2:
             text = item.text(2).strip()
             width = int(text) if text.isdigit() else 0
-            cls = self._attribute_class()
+            cls = self._attribute_class_for_group(self._group_name_for_attr_item(item))
             if cls is not None:
                 self._context.engineering_class_service.set_width(
                     self._context.active_snapshot, cls.id, obj.id, width
@@ -1883,7 +1972,7 @@ class ClassCreationPage(BasePage):
             self._populate_attributes()
             self._populating = False
         elif kind == _KIND_PROP and column == _COL_TEXTBLOCK:
-            cls = self._attribute_class()
+            cls = self._attribute_class_for_group(self._group_name_for_attr_item(item))
             cls_prop = next(
                 (a for a in cls.properties if a.property_id == obj.id), None
             ) if cls is not None else None
@@ -1894,13 +1983,16 @@ class ClassCreationPage(BasePage):
             # Accepting/correcting one config value also commits the rest of its
             # property's inferred codes, so it becomes cleanly, fully coded.
             new_code = item.text(1).strip()
-            self._commit_property_inferred(obj)
+            group_name = self._group_name_for_attr_item(item)
+            self._set_active_group_from_attr_item(item)
+            self._commit_property_inferred(obj, group_name)
             class_value = self._class_value_for(
                 str(getattr(next(
                     (p for p in self._context.active_snapshot.properties
                      if any(v is obj for v in p.values)), None
                 ), "id", "")),
                 str(getattr(obj, "id", "")),
+                group_name,
             )
             if class_value is not None:
                 class_value.code = new_code
@@ -1920,7 +2012,7 @@ class ClassCreationPage(BasePage):
             self._populate_attributes()
             self._populating = False
 
-    def _commit_property_inferred(self, value) -> None:
+    def _commit_property_inferred(self, value, group_name: str | None = None) -> None:
         """Persist inferred configuration codes into the engineering class,
         never into the PDM source value objects."""
         snapshot = self._context.active_snapshot
@@ -1935,7 +2027,7 @@ class ClassCreationPage(BasePage):
         mapping = self._context.engineering_class_service.resolve_config_codes(
             snapshot
         ).get(str(prop.id)) or {}
-        cls = self._attribute_class()
+        cls = self._attribute_class_for_group(group_name)
         if cls is None:
             return
         assignment = next(
@@ -1953,6 +2045,7 @@ class ClassCreationPage(BasePage):
         """Expand properties, or start the direct inline missing-value entry."""
         if item is None:
             return
+        self._set_active_group_from_attr_item(item)
         data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
         if data and data[0] == _KIND_CLASS_VALUE_ADD:
             self._attr_tree.setCurrentItem(item, _COL_NAME)
