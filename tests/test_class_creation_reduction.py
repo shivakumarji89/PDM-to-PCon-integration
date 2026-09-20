@@ -112,3 +112,60 @@ def test_development_class_creation_code_correction_changes_only_matching_articl
     # remove it. Article a2 still uses the unchanged Y mapping.
     assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
     assert snapshot.engineering.families[0].members[1].reduced_article == "A1100"
+
+
+def test_development_reduction_uses_class_creation_sliced_code_not_article_value_id():
+    snapshot = Snapshot(
+        id="s2",
+        articles=[Article(id="a1", product_id="prod", code="AL1C1002S")],
+        properties=[
+            Property(
+                id="p1",
+                name="Type",
+                values=[
+                    PropertyValue(id="v0", property_id="p1", value="Zero", code="0"),
+                    PropertyValue(id="v2", property_id="p1", value="Two", code="2"),
+                ],
+                has_dependent_options=True,
+            )
+        ],
+        # Deliberately point the PDM relationship at 0 even though the
+        # Class Creation Sliced vocabulary contains both 0 and 2. The
+        # reduction must follow Class Creation, not this PDM value id.
+        article_property_value_ids={"a1": ["v0"]},
+        engineering=Engineering(
+            classes=[
+                EngineeringClass(
+                    id="class2",
+                    name="Bolster_Attribute",
+                    properties=[
+                        ClassPropertyAssignment(
+                            property_id="p1",
+                            property_name="Type",
+                            width=1,
+                            placement=0,
+                            values=[
+                                ClassValue(value_id="v0", code="0", value="Zero"),
+                                ClassValue(value_id="v2", code="2", value="Two"),
+                            ],
+                        )
+                    ],
+                )
+            ],
+            families=[
+                EngineeringFamily(
+                    id="f2",
+                    name="Bolster",
+                    members=[MemberArticle(id="m3", article_id="a1", family_id="f2")],
+                )
+            ],
+        ),
+    )
+    service = _service(snapshot)
+
+    service.materialize_class_creation_article_sets(snapshot)
+
+    # The Class Creation vocabulary contains 2, so that is the code selected
+    # for reduction. The PDM value id v0 must not force removal of 0.
+    assert snapshot.engineering.families[0].members[0].reduced_article == "AL1C100S"
+    assert snapshot.engineering.families[0].members[0].reduced_article != "AL1C102S"
