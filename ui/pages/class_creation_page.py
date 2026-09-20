@@ -1319,10 +1319,13 @@ class ClassCreationPage(BasePage):
                     # can accept it (re-enter) or correct it; editing stores it.
                     item.setText(_COL_CODE, inferred)
                     item.setForeground(_COL_CODE, QBrush(QColor(theme.COLOR_OK)))
-                if inferred or is_config or (not distinct and not fully_coded):
-                    # Editable for inferred/config codes (accept or correct), or
-                    # a manual code when the value has none. Genuine PDM order
-                    # codes (variant props) stay read-only - they are correct.
+                development = (
+                    getattr(self.window(), "_active_module", None)
+                    == WorkbenchModule.DEVELOPMENT
+                )
+                if development or inferred or is_config or (not distinct and not fully_coded):
+                    # Development Class Creation owns the pre-dot reduction
+                    # vocabulary, so every value code is correctable there.
                     item.setData(1, Qt.ItemDataRole.UserRole + 1, {1})
                     flags |= Qt.ItemFlag.ItemIsEditable
                 item.setFlags(flags)
