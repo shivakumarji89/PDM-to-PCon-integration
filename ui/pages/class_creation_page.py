@@ -1692,11 +1692,8 @@ class ClassCreationPage(BasePage):
             self._populating = False
 
     def _commit_property_inferred(self, value) -> None:
-        """Store inferred codes on the edited value's property siblings.
-
-        Called before the user's own edit is written, while the property is
-        still all-uncoded (so the decode still recognises it).
-        """
+        """Persist inferred configuration codes into the engineering class,
+        never into the PDM source value objects."""
         snapshot = self._context.active_snapshot
         if snapshot is None:
             return
@@ -1709,10 +1706,19 @@ class ClassCreationPage(BasePage):
         mapping = self._context.engineering_class_service.resolve_config_codes(
             snapshot
         ).get(str(prop.id)) or {}
-        for sibling in prop.values:
-            code = mapping.get(str(sibling.id))
-            if code and not (sibling.code or "").strip():
-                sibling.code = code
+        cls = self._attribute_class()
+        if cls is None:
+            return
+        assignment = next(
+            (a for a in cls.properties if str(a.property_id) == str(prop.id)),
+            None,
+        )
+        if assignment is None:
+            return
+        for class_value in getattr(assignment, "values", []) or []:
+            code = mapping.get(str(getattr(class_value, "value_id", "")))
+            if code and not (getattr(class_value, "code", "") or "").strip():
+                class_value.code = code
 
     def _on_attr_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         """Clicking a property (or set) row toggles its children open.
