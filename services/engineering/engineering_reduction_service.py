@@ -528,6 +528,12 @@ class EngineeringReductionService(BaseService):
             for a in snapshot.articles
         }
         code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
+        member_by_article = {
+            str(member.article_id): member
+            for family in (getattr(snapshot.engineering, "families", []) or [])
+            for member in (getattr(family, "members", []) or [])
+            if getattr(member, "article_id", "")
+        }
         ignored = {
             str(k): bool(v)
             for k, v in (getattr(snapshot, "config_ignore_overrides", {}) or {}).items()
@@ -621,13 +627,26 @@ class EngineeringReductionService(BaseService):
                     if ignored.get(pid, False):
                         continue
                     codes = effective_codes(pid)
+                    width = max(0, int(getattr(assignment, "width", 0) or 0))
                     for candidate in codes:
                         pos = working.find(candidate)
                         if pos >= 0:
-                            working = working[:pos] + working[pos + len(candidate):]
+                            # Class Creation width is the authoritative slice
+                            # width. When no width has been configured yet,
+                            # fall back to the selected value-code length.
+                            remove_width = width or len(candidate)
+                            if remove_width <= 0:
+                                continue
+                            working = working[:pos] + working[pos + remove_width:]
                             matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
                             break
                 reduced_by_article[article_id] = working
+                member = member_by_article.get(article_id)
+                if member is not None:
+                    # Development Articles reads this as the authoritative
+                    # reduced/base article. The source PDM Article remains
+                    # untouched.
+                    member.reduced_article = working
 
             # Make the ArticleSet reflect the Class Creation vocabulary without
             # destroying the PDM article/value links. A corrected class code
