@@ -1034,6 +1034,14 @@ class ClassCreationPage(BasePage):
                 v for v in prop.values
                 if value_ids is None or str(v.id) in value_ids
             ]
+            # Resolve the persisted class assignment and inferred codes before
+            # calculating the effective value codes. These must be available
+            # below because Class Creation values can come from either source.
+            cls_prop = next(
+                (a for a in cls.properties if a.property_id == prop.id), None
+            ) if cls else None
+            decoded = config_codes.get(prop.id) or {}
+
             # Discovered distinct codes at this property's slice, across ALL
             # split articles, with an "unassigned" count for the ones not yet
             # mapped to a value.
@@ -1070,8 +1078,6 @@ class ClassCreationPage(BasePage):
                 str(prop.id) in {str(k) for k in _cfg_codes}
                 or str(prop.id) in self._user_edited_props
             )
-            # Read-only inferred codes for a configuration (uncoded) attribute.
-            decoded = config_codes.get(prop.id) or {}
             # Drop redundant same-name value rows (PDM lists a value once per
             # product sub-series); keep the coded twin, preserve distinct codes.
             display_values = collapse_duplicate_values(
