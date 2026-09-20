@@ -623,10 +623,38 @@ class EngineeringReductionService(BaseService):
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
                 working = original.split(".", 1)[0]
+                article_value_ids_for_article = {
+                    str(v) for v in (article_value_ids.get(article_id, []) or [])
+                }
+                product_value_ids_for_article = {
+                    str(v)
+                    for v in (
+                        product_value_ids.get(product_of.get(article_id, ""), []) or []
+                    )
+                }
                 for pid, assignment in ordered:
                     if ignored.get(pid, False):
                         continue
-                    codes = effective_codes(pid)
+
+                    # Prefer the exact PDM value carried by this article. This
+                    # prevents a code from another value of the same property
+                    # being removed merely because that code happens to occur
+                    # elsewhere in the article number.
+                    class_values = list(getattr(assignment, "values", []) or [])
+                    exact_codes = [
+                        (getattr(cv, "code", "") or "").strip()
+                        for cv in class_values
+                        if str(getattr(cv, "value_id", "") or "") in article_value_ids_for_article
+                        and (getattr(cv, "code", "") or "").strip()
+                    ]
+                    if not exact_codes:
+                        exact_codes = [
+                            (getattr(cv, "code", "") or "").strip()
+                            for cv in class_values
+                            if str(getattr(cv, "value_id", "") or "") in product_value_ids_for_article
+                            and (getattr(cv, "code", "") or "").strip()
+                        ]
+                    codes = exact_codes or effective_codes(pid)
                     width = max(0, int(getattr(assignment, "width", 0) or 0))
                     for candidate in codes:
                         pos = working.find(candidate)
