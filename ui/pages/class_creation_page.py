@@ -262,11 +262,6 @@ class ClassCreationPage(BasePage):
         self._move_down_btn.setEnabled(False)
         layout.addWidget(self._move_down_btn)
 
-        self._add_value_btn = QPushButton("Add Value", box)
-        self._add_value_btn.clicked.connect(self._add_selected_attr_value)
-        self._add_value_btn.setEnabled(False)
-        layout.addWidget(self._add_value_btn)
-
         self._remove_value_btn = QPushButton("Remove Value", box)
         self._remove_value_btn.clicked.connect(self._remove_selected_attr_value)
         self._remove_value_btn.setEnabled(False)
@@ -1569,7 +1564,6 @@ class ClassCreationPage(BasePage):
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
-        self._add_value_btn.setEnabled(development and has_prop)
         self._remove_value_btn.setEnabled(
             development and self._selected_attr_value is not None
         )
@@ -1642,8 +1636,6 @@ class ClassCreationPage(BasePage):
         # The add row is already rendered under the property. Select it and
         # start editing the value name immediately; the user then enters the
         # pre-dot code in the adjacent Code cell.
-        for i in range(assignment.values.__len__() + 1):
-            pass
         self._populating = True
         self._populate_attributes()
         self._populating = False
@@ -1958,13 +1950,15 @@ class ClassCreationPage(BasePage):
                 class_value.code = code
 
     def _on_attr_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        """Clicking a property (or set) row toggles its children open.
-
-        Property rows are editable (for the Width cell), which stops the usual
-        double-click-to-expand; this restores click-to-expand explicitly. Property
-        rows are nested under set groups, so toggle by child count, not depth.
-        """
-        if item is None or item.childCount() == 0:
+        """Expand properties, or start the direct inline missing-value entry."""
+        if item is None:
+            return
+        data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+        if data and data[0] == _KIND_CLASS_VALUE_ADD:
+            self._attr_tree.setCurrentItem(item, _COL_NAME)
+            self._attr_tree.editItem(item, _COL_NAME)
+            return
+        if item.childCount() == 0:
             return
         item.setExpanded(not item.isExpanded())
 
