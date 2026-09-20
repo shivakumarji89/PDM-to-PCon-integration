@@ -68,7 +68,7 @@ def _service(snapshot):
     return EngineeringReductionService(context)
 
 
-def test_development_class_creation_reduction_uses_article_specific_pdm_value():
+def test_development_class_creation_reduction_preserves_article_specific_value_coverage():
     snapshot = _snapshot()
     service = _service(snapshot)
 
@@ -108,7 +108,7 @@ def test_development_class_creation_code_correction_changes_only_matching_articl
 
     service.materialize_class_creation_article_sets(snapshot)
 
-    # Article a1 still contains the old PDM code X, so the corrected Q does not
+    # Article a1 still contains the old sliced code X, so the corrected Q does not
     # remove it. Article a2 still uses the unchanged Y mapping.
     assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
     assert snapshot.engineering.families[0].members[1].reduced_article == "A1100"
