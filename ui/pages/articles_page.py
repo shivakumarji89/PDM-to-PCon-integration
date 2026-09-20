@@ -80,7 +80,7 @@ class ArticlesPage(BasePage):
         self._auto_reduced_signature: object = object()  # last auto-reduced set lengths
         self._blocked_article_ids: frozenset[str] = frozenset()
         self._blocked_reason: str = ""
-        self._group_by_base = False  # show editable line items by default
+        self._group_by_base = True  # group by base by default
         self._syncing = False  # guard while programmatically syncing widgets
         self._last_module = None
 
@@ -419,9 +419,9 @@ class ArticlesPage(BasePage):
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
         if module != self._last_module:
-            # Development exposes line-item reduction editing by default;
-            # Maintenance retains the historical grouped view.
-            self._group_by_base = module != WorkbenchModule.DEVELOPMENT
+            # Article workflow defaults to the grouped Base Article view
+            # in every module. The user can switch to line items explicitly.
+            self._group_by_base = True
             if hasattr(self, "_group_check"):
                 self._group_check.blockSignals(True)
                 self._group_check.setChecked(self._group_by_base)
