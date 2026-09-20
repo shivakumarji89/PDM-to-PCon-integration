@@ -388,8 +388,12 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Module: {module_title(module)}", 4000)
             return
 
+        # Preserve the module's declared workflow order. Filtering the
+        # global WORKFLOW_ITEMS tuple alone would incorrectly force its legacy
+        # Articles-before-Class-Creation order onto Development.
+        items_by_step = {item.step: item for item in WORKFLOW_ITEMS}
         self._navigator.set_workflow_items(tuple(
-            item for item in WORKFLOW_ITEMS if item.step in steps
+            items_by_step[step] for step in steps if step in items_by_step
         ))
         self._manager.set_steps(steps)
         self._left_panel.show()
