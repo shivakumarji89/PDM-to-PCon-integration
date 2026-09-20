@@ -623,15 +623,7 @@ class EngineeringReductionService(BaseService):
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
                 working = original.split(".", 1)[0]
-                article_value_ids_for_article = {
-                    str(v) for v in (article_value_ids.get(article_id, []) or [])
-                }
-                product_value_ids_for_article = {
-                    str(v)
-                    for v in (
-                        product_value_ids.get(product_of.get(article_id, ""), []) or []
-                    )
-                }
+
                 for pid, assignment in ordered:
                     if ignored.get(pid, False):
                         continue
