@@ -141,24 +141,6 @@ class CetSifValidationPage(BasePage):
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         head.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignTop)
-        self._rebuild_btn = QPushButton("Rebuild table", container)
-        self._rebuild_btn.setEnabled(False)
-        self._rebuild_btn.clicked.connect(self._on_rebuild)
-        head.addWidget(self._rebuild_btn, 0, Qt.AlignmentFlag.AlignTop)
-        self._toggle_btn = QPushButton("Show errors only", container)
-        self._toggle_btn.setCheckable(True)
-        self._toggle_btn.setChecked(True)
-        self._toggle_btn.toggled.connect(self._on_toggle_all)
-        self._toggle_btn.setEnabled(False)
-        head.addWidget(self._toggle_btn, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(head)
-
-        self._grid = StatisticsGrid(columns=4, parent=container)
-        self._grid.set_metric("lines", "Order lines", "-")
-        self._grid.set_metric("ok", "Matched", "-")
-        self._grid.set_metric("mismatch", "Price mismatch", "-")
-        self._grid.set_metric("unresolved", "Unresolved", "-")
-        layout.addWidget(self._grid)
 
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
@@ -334,10 +316,6 @@ class CetSifValidationPage(BasePage):
     def _on_toggle_all(self, checked: bool) -> None:
         self._show_all = checked
         self._toggle_btn.setText("Show errors only" if checked else "Show all lines")
-        self._render_table()
-
-    def _on_rebuild(self) -> None:
-        """Force a clean rebuild of the table from the validated data."""
         self._render_table()
 
     def _on_export(self) -> None:
