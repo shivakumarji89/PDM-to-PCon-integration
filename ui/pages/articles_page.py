@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -79,7 +80,7 @@ class ArticlesPage(BasePage):
         self._auto_reduced_signature: object = object()  # last auto-reduced set lengths
         self._blocked_article_ids: frozenset[str] = frozenset()
         self._blocked_reason: str = ""
-        self._group_by_base = True  # collapse line items to one row per base
+        self._group_by_base = False  # show editable line items by default
         self._syncing = False  # guard while programmatically syncing widgets
 
         # Debounce search typing: validation is snapshot-scoped
@@ -122,6 +123,24 @@ class ArticlesPage(BasePage):
         self._search.setMinimumWidth(240)
         self._search.textChanged.connect(self._schedule_filter)
         layout.addWidget(self._search, 1)
+
+        self._base_len_spin = QSpinBox(box)
+        self._base_len_spin.setRange(0, 999)
+        self._base_len_spin.setValue(0)
+        self._base_len_spin.setToolTip(
+            "Manual base length for the currently filtered Article rows. "
+            "Development Class Creation remains the authoritative source for "
+            "the automatically generated base."
+        )
+        layout.addWidget(QLabel("Base Length:", box))
+        layout.addWidget(self._base_len_spin)
+
+        self._apply_len_btn = QPushButton("Apply Length", box)
+        self._apply_len_btn.setToolTip(
+            "Apply the selected base length to the currently filtered Article rows."
+        )
+        self._apply_len_btn.clicked.connect(self._on_apply_base_length)
+        layout.addWidget(self._apply_len_btn)
 
         self._copy_long_btn = QPushButton("Copy Text", box)
         self._copy_long_btn.setToolTip(
@@ -587,6 +606,11 @@ class ArticlesPage(BasePage):
                 + ", ".join(sorted({v.status for v in held}))
                 + f": {held[0].reason}"
             )
+        # In Development the Class Creation materializer already wrote
+        # each member's reduced_article. Do not replace that transformed base
+        # with the legacy prefix-only reduction.
+        if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            return
         for ids, length in self._set_len_by_ids.items():
             if ids & self._blocked_article_ids:
                 continue
@@ -705,7 +729,17 @@ class ArticlesPage(BasePage):
                 continue
             code = article.code if article is not None else ""
             description = article.description if article is not None else ""
-            if not text_match(term, code, description):
+            reduced = getattr(member, "reduced_article", "") or ""
+            searchable = (
+                code,
+                description,
+                reduced,
+                getattr(member, "short_description", "") or "",
+                getattr(member, "long_description", "") or "",
+                getattr(member, "relation_object", "") or "",
+                getattr(member, "code_scheme", "") or "",
+            )
+            if term and not any(text_match(term, value) for value in searchable):
                 continue
             filtered.append((family, member, article))
 
@@ -741,7 +775,16 @@ class ArticlesPage(BasePage):
             applied = self._applied_length(member)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            base, remaining = self._split_base(code, length)
+            if (
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                and getattr(member, "reduced_article", "")
+            ):
+                base = member.reduced_article
+                remaining = code[len(base):] if base and code.startswith(base) else ""
+                length = len(base)
+                has_length = True
+            else:
+                base, remaining = self._split_base(code, length)
 
             source_item = QTableWidgetItem(code)
             source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
@@ -813,9 +856,16 @@ class ArticlesPage(BasePage):
         order_keys: list[str] = []
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            base, remaining = self._split_base(
-                code, self._applied_length(member) or default_len
-            )
+            if (
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                and getattr(member, "reduced_article", "")
+            ):
+                base = member.reduced_article
+                remaining = code[len(base):] if base and code.startswith(base) else ""
+            else:
+                base, remaining = self._split_base(
+                    code, self._applied_length(member) or default_len
+                )
             group = groups.get(base)
             if group is None:
                 group = {"members": [], "remainders": set(),
@@ -906,6 +956,19 @@ class ArticlesPage(BasePage):
         self._d_validation.setText("OK")
 
     # -- editing -----------------------------------------------------------
+    def _on_apply_base_length(self) -> None:
+        """Apply the visible base-length edit to the currently filtered rows."""
+        value = int(self._base_len_spin.value())
+        ids = {
+            str(article.id)
+            for _family, _member, article in self._filtered
+            if article is not None
+        }
+        if not ids:
+            return
+        self._apply_set(ids, value)
+        self._context.snapshot_manager.mark_modified()
+
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._populating:
             return
@@ -956,6 +1019,27 @@ class ArticlesPage(BasePage):
 
     # -- details -----------------------------------------------------------
     def _on_row_selected(self) -> None:
+        rows = self._table.selectionModel().selectedRows()
+        if rows:
+            item = self._table.item(rows[0].row(), _COL_SOURCE)
+            record = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if record:
+                if record[0] == "__base__":
+                    members = list(record[2])
+                    lengths = [
+                        len(getattr(m, "reduced_article", "") or "")
+                        for m in members
+                        if getattr(m, "reduced_article", "")
+                    ]
+                    if lengths:
+                        self._base_len_spin.setValue(max(lengths))
+                else:
+                    member = record[1]
+                    reduced = getattr(member, "reduced_article", "") or ""
+                    if reduced:
+                        self._base_len_spin.setValue(len(reduced))
+        if self._populating:
+            return
         if self._populating:
             return
         rows = self._table.selectionModel().selectedRows()
