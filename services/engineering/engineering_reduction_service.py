@@ -624,8 +624,8 @@ class EngineeringReductionService(BaseService):
                 reduced_by_article[article_id] = working
 
             bases = [v for v in reduced_by_article.values() if v]
-            base_code = self._common_prefix([*bases]) if bases else ""
-            base_length = len(base_code)
+            base_length = self._common_prefix_len(bases) if bases else 0
+            base_code = (bases[0][:base_length] if bases else "")
             sets.append(
                 ArticleSet(
                     id=pc.id,
