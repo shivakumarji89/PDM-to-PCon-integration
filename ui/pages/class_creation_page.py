@@ -1332,7 +1332,17 @@ class ClassCreationPage(BasePage):
                     combo = QComboBox()
                     combo.addItem("")
                     combo.addItems([str(c) for c in distinct])
-                    pos = combo.findText(value.code or "")
+                    effective_code = (
+                        (getattr(class_value, "code", "") if class_value is not None else "")
+                        or (value.code or "").strip()
+                    )
+                    if effective_code and combo.findText(effective_code) < 0:
+                        combo.addItem(effective_code)
+                    # Development Class Creation permits correction of every
+                    # value code, not only inferred/configuration codes.
+                    if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                        combo.setEditable(True)
+                    pos = combo.findText(effective_code)
                     combo.setCurrentIndex(pos if pos >= 0 else 0)
                     combo.setMinimumHeight(26)
                     combo.currentTextChanged.connect(
