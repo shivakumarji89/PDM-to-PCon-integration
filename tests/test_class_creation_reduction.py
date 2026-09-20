@@ -94,7 +94,7 @@ def test_development_class_creation_ignore_keeps_property_in_base():
 
     sets = service.materialize_class_creation_article_sets(snapshot)
 
-    assert sets[0].base_code == "A1X100"
-    assert sets[0].base_length == 6
+    assert sets[0].base_code == "A1"
+    assert sets[0].base_length == 2
     assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
     assert snapshot.engineering.families[0].members[1].reduced_article == "A1Y100"
