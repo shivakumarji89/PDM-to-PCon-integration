@@ -1313,6 +1313,28 @@ class ClassCreationPage(BasePage):
             if prop.id in expanded_props:
                 node.setExpanded(True)
 
+    def _class_value_for(self, prop_id: str, value_id: str):
+        cls = self._attribute_class()
+        if cls is None:
+            return None
+        assignment = next(
+            (a for a in cls.properties if str(a.property_id) == str(prop_id)),
+            None,
+        )
+        if assignment is None:
+            return None
+        return next(
+            (v for v in assignment.values if str(getattr(v, "value_id", "")) == str(value_id)),
+            None,
+        )
+
+    def _sync_development_article_sets(self) -> None:
+        snapshot = self._context.active_snapshot
+        window = self.window()
+        if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            return
+        self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
+
     def _on_code_selected(
         self, value, text: str, prop_node, prop, value_item=None
     ) -> None:
@@ -1320,7 +1342,13 @@ class ClassCreationPage(BasePage):
         property row's discovered/unassigned summary (no full rebuild)."""
         if self._populating:
             return
-        value.code = (text or "").strip()
+        new_code = (text or "").strip()
+        class_value = self._class_value_for(str(prop.id), str(getattr(value, "id", "")))
+        if class_value is not None:
+            class_value.code = new_code
+        else:
+            value.code = new_code
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self._update_sliced(prop_node, prop)
         if value_item is not None:
@@ -1638,13 +1666,18 @@ class ClassCreationPage(BasePage):
             # property's inferred codes, so it becomes cleanly, fully coded.
             new_code = item.text(1).strip()
             self._commit_property_inferred(obj)
-            obj.code = new_code
-            # A manually confirmed attribute code changes the article-set
-            # slicing inputs. Re-materialize the shared Article Sets now so
-            # Articles and Class Creation remain on the same snapshot state.
-            self._context.engineering_reduction_service.materialize_article_sets(
-                self._context.active_snapshot
+            class_value = self._class_value_for(
+                str(getattr(next(
+                    (p for p in self._context.active_snapshot.properties
+                     if any(v is obj for v in p.values)), None
+                ), "id", "")),
+                str(getattr(obj, "id", "")),
             )
+            if class_value is not None:
+                class_value.code = new_code
+            else:
+                obj.code = new_code
+            self._sync_development_article_sets()
             # Remember the owning property so its cells stay editable next time.
             snapshot = self._context.active_snapshot
             prop = next(
