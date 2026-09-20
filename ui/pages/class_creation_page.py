@@ -1449,6 +1449,64 @@ class ClassCreationPage(BasePage):
             cls_prop.usage = (usage or "").strip()
             self._context.snapshot_manager.mark_modified()
 
+    def _on_attr_context_menu(self, pos) -> None:
+        item = self._attr_tree.itemAt(pos)
+        if item is None:
+            return
+        data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        menu = QMenu(self._attr_tree)
+        if data[0] == _KIND_PROP:
+            prop = data[1]
+            menu.addAction("Add value", lambda p=prop: self._add_attr_value(p))
+        elif data[0] == _KIND_PROP_VALUE:
+            parent = item.parent()
+            pdata = parent.data(_COL_NAME, Qt.ItemDataRole.UserRole) if parent else None
+            if pdata and pdata[0] == _KIND_PROP:
+                menu.addAction(
+                    "Remove value",
+                    lambda p=pdata[1], v=data[1]: self._remove_attr_value(p, v),
+                )
+        menu.exec(self._attr_tree.viewport().mapToGlobal(pos))
+
+    def _add_attr_value(self, prop) -> None:
+        cls = self._attribute_class()
+        snapshot = self._context.active_snapshot
+        if cls is None or snapshot is None:
+            return
+        assignment = next(
+            (a for a in cls.properties if str(a.property_id) == str(prop.id)), None
+        )
+        if assignment is None:
+            return
+        value, ok = QInputDialog.getText(self, "Add Class Value", "Value name:")
+        if not ok or not value.strip():
+            return
+        code, ok = QInputDialog.getText(self, "Add Class Value", "Pre-dot code:")
+        if not ok or not code.strip():
+            return
+        service = self._context.engineering_class_service
+        service.add_value(snapshot, cls.id, str(prop.id), code.strip(), value.strip(), source="manual")
+        self._sync_development_article_sets()
+        self._context.snapshot_manager.mark_modified()
+        self.refresh()
+
+    def _remove_attr_value(self, prop, value) -> None:
+        cls = self._attribute_class()
+        snapshot = self._context.active_snapshot
+        if cls is None or snapshot is None:
+            return
+        code = (getattr(value, "code", "") or "").strip()
+        if not code:
+            return
+        self._context.engineering_class_service.remove_value(
+            snapshot, cls.id, str(prop.id), code
+        )
+        self._sync_development_article_sets()
+        self._context.snapshot_manager.mark_modified()
+        self.refresh()
+
     def _on_visual_context_menu(self, pos) -> None:
         """Right-click: add a value to a definition, or remove a value row."""
         item = self._misc_tree.itemAt(pos)
