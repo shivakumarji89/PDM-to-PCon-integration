@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QLineEdit,
+    QStyledItemDelegate,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -52,6 +54,44 @@ _COL_LONG = 5         # Long Text (editable)
 _COL_RELATION = 6     # Relation Object (editable, default P_<base>)
 _COL_SCHEME = 7       # Code Scheme (editable)
 _COL_ORDER = 8        # Hidden natural-order sort key.
+
+
+class _ArticleTextDelegate(QStyledItemDelegate):
+    """Give editable Article text fields a larger, readable edit box.
+
+    The table keeps compact columns for browsing, but Short/Long Text are often
+    much longer than the visible cell. While editing, expand the editor over
+    the table viewport so the existing value can be read and changed without
+    being clipped by the cell width.
+    """
+
+    _MIN_WIDTHS = {
+        _COL_SHORT: 360,
+        _COL_LONG: 560,
+        _COL_RELATION: 280,
+        _COL_SCHEME: 240,
+    }
+
+    def createEditor(self, parent, option, index):  # noqa: N802 (Qt override)
+        editor = QLineEdit(parent)
+        editor.setFrame(True)
+        editor.setClearButtonEnabled(True)
+        editor.setMinimumWidth(self._MIN_WIDTHS.get(index.column(), 0))
+        return editor
+
+    def updateEditorGeometry(self, editor, option, index):  # noqa: N802 (Qt override)
+        rect = option.rect
+        desired = max(rect.width(), self._MIN_WIDTHS.get(index.column(), rect.width()))
+        viewport = editor.parentWidget()
+        if viewport is None:
+            editor.setGeometry(rect)
+            return
+        available = max(1, viewport.width())
+        width = min(desired, available)
+        x = rect.x()
+        if x + width > available:
+            x = max(0, available - width)
+        editor.setGeometry(x, rect.y(), width, rect.height())
 
 
 class ArticlesPage(BasePage):
@@ -363,11 +403,18 @@ class ArticlesPage(BasePage):
         header.setSectionResizeMode(_COL_BASE, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(_COL_REMAINING, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(_COL_LEN, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(_COL_SHORT, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(_COL_LONG, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(_COL_RELATION, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_SCHEME, QHeaderView.ResizeMode.ResizeToContents)
+        # Keep text columns readable instead of distributing the remaining
+        # space too aggressively. Users can still resize columns manually.
+        header.setSectionResizeMode(_COL_SHORT, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(_COL_LONG, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(_COL_RELATION, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(_COL_SCHEME, QHeaderView.ResizeMode.Interactive)
         self._table.setColumnWidth(_COL_LEN, 48)
+        self._table.setColumnWidth(_COL_SHORT, 300)
+        self._table.setColumnWidth(_COL_LONG, 430)
+        self._table.setColumnWidth(_COL_RELATION, 180)
+        self._table.setColumnWidth(_COL_SCHEME, 160)
+        self._table.setItemDelegate(_ArticleTextDelegate(self._table))
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         self._table.itemChanged.connect(self._on_item_changed)
         return self._table
