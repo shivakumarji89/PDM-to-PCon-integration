@@ -24,9 +24,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ClassValue:
-    """One value of a class property: the sliced ``code`` letter -> ``value``."""
+    """One value of a class property: the reduction ``code`` -> ``value``."""
 
-    code: str = ""       # the letter that appears in the article's remaining
+    value_id: str = ""   # linked PDM PropertyValue id when sourced from PDM
+    code: str = ""       # the pre-dot code removed from the article
     value: str = ""      # the value name/meaning
     source: str = "pdm"  # "pdm" (seeded from PDM) | "manual" (gap-fill)
 
