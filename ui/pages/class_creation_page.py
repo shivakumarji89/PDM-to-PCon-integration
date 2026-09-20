@@ -564,6 +564,7 @@ class ClassCreationPage(BasePage):
             self._edited_snap_id = id(snap)
         service = self._context.engineering_class_service
         service.ensure_standard_classes(snap, category)
+        self._sync_development_article_sets()
 
         groups = service.resolve_class_groups(snap, category) if snap else []
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
@@ -1398,6 +1399,7 @@ class ClassCreationPage(BasePage):
         self._context.engineering_class_service.set_config_ignore(
             snapshot, str(prop_id), bool(checked)
         )
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
@@ -1707,6 +1709,7 @@ class ClassCreationPage(BasePage):
                 self._context.engineering_class_service.set_width(
                     self._context.active_snapshot, cls.id, obj.id, width
                 )
+                self._sync_development_article_sets()
                 self._context.snapshot_manager.mark_modified()
             self._populating = True
             self._populate_attributes()
