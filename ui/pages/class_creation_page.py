@@ -924,6 +924,7 @@ class ClassCreationPage(BasePage):
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self._opt_values.setAlternatingRowColors(True)
+        self._opt_values.itemChanged.connect(self._on_option_value_changed)
 
         for table in (self._opt_master, self._opt_values):
             table.verticalHeader().setVisible(False)
@@ -1005,6 +1006,7 @@ class ClassCreationPage(BasePage):
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self._visual_values.setAlternatingRowColors(True)
+        self._visual_values.itemChanged.connect(self._on_visual_value_changed)
 
         for table in (self._visual_master, self._visual_values):
             table.verticalHeader().setVisible(False)
@@ -2715,12 +2717,41 @@ class ClassCreationPage(BasePage):
             self._opt_values.insertRow(row)
             self._opt_values.setItem(row, 0, QTableWidgetItem(value.value or "-"))
             self._opt_values.setItem(row, 1, QTableWidgetItem((value.code or "").strip()))
-            self._opt_values.setItem(row, 2, QTableWidgetItem((value.code or "").strip()))
+            sliced_item = QTableWidgetItem((value.code or "").strip())
+            sliced_item.setToolTip("Option value code. Edit the Class Creation code in Development.")
+            cls = self._options_class()
+            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
+            cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
+            if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            self._opt_values.setItem(row, 2, sliced_item)
             self._opt_values.setItem(row, 3, QTableWidgetItem(self._value_relation_object(option, value)))
             status = "Active" if (value.code or "").strip() else "Needs code"
             self._opt_values.setItem(row, 4, QTableWidgetItem(status))
         self._opt_values.resizeRowsToContents()
         self._populating = False
+
+    def _on_option_value_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 2:
+            return
+        rows = self._opt_master.selectionModel().selectedRows()
+        if not rows:
+            return
+        meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        option, _group_name = meta
+        values = _by_display_order(list(getattr(option, "values", []) or []))
+        if item.row() >= len(values):
+            return
+        value = values[item.row()]
+        cls = self._options_class()
+        cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
+        cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
+        if cv is not None:
+            cv.code = item.text().strip()
+            self._context.snapshot_manager.mark_modified()
+            self._populate_visible_option_values(option, self._active_group_name)
 
     def _on_option_master_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
@@ -2743,6 +2774,51 @@ class ClassCreationPage(BasePage):
         # Option values are PDM-owned records. Do not synthesize a new PDM
         # option value from Class Creation.
         return
+
+    def _on_visual_master_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 1:
+            return
+        meta = item.data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        definition = meta[0]
+        text = item.text().strip()
+        width = int(text) if text.isdigit() else 0
+        cls = self._visual_class()
+        cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(definition.id)), None)
+        if cls_prop is not None:
+            cls_prop.width = width
+            self._context.snapshot_manager.mark_modified()
+            self.refresh()
+
+    def _on_visual_value_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() not in (0, 1, 2):
+            return
+        rows = self._visual_master.selectionModel().selectedRows()
+        if not rows:
+            return
+        meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        definition = meta[0]
+        cls = self._visual_class()
+        cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(definition.id)), None)
+        if cls_prop is None or item.row() >= len(cls_prop.values):
+            return
+        cv = cls_prop.values[item.row()]
+        if item.column() == 0:
+            self._context.engineering_class_service.set_value_name(
+                self._context.active_snapshot, cls.id, definition.id, cv.code, item.text().strip()
+            )
+            cv.value = item.text().strip()
+        else:
+            new_code = item.text().strip()
+            self._context.engineering_class_service.set_value_code(
+                self._context.active_snapshot, cls.id, definition.id, cv.code, new_code
+            )
+            cv.code = new_code
+        self._context.snapshot_manager.mark_modified()
+        self._populate_visible_visual_values(definition)
 
     def _on_visual_master_selected(self) -> None:
         if self._populating:
