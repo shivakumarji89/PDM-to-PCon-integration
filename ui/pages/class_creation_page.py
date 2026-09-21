@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
+    QSplitter,
     QWidget,
 )
 
@@ -373,16 +374,22 @@ class ClassCreationPage(BasePage):
         header.setStretchLastSection(False)
 
     def _build_attributes_card(self) -> "_CollapsibleCard":
+        """Build the Attribute master/detail workspace.
+
+        The legacy tree remains as an invisible backing model because the
+        existing Class Creation actions (grouping, inferred-code resolution,
+        add/remove value and reduction synchronisation) already operate on it.
+        The visible surface is now a compact Property -> Value master/detail
+        editor.
+        """
         self._attr_tree = QTreeWidget(self)
-        self._attr_tree.setObjectName("classAttributesTree")
+        self._attr_tree.setObjectName("classAttributesBackingTree")
         self._attr_tree.setColumnCount(9)
         self._attr_tree.setHeaderLabels(
             ["Property / Value", "Code", "Width", "Sliced", "Type",
              "Usage", "Text-block", "Relation Object", "Ignore"]
         )
-        self._attr_tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
+        self._attr_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._attr_tree.setUniformRowHeights(True)
         self._attr_tree.setItemDelegate(_NameOrCodeDelegate(self._attr_tree))
         self._attr_tree.setEditTriggers(
@@ -395,13 +402,358 @@ class ClassCreationPage(BasePage):
         self._attr_tree.itemSelectionChanged.connect(self._on_attr_selection_changed)
         self._attr_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._attr_tree.customContextMenuRequested.connect(self._on_attr_context_menu)
-        # Opt out of the global tree standardisation (which turns ON
-        # expand-on-double-click and would swallow cell editing): here a
-        # double-click EDITS (Code/Width) and a single click expands.
         self._attr_tree.setProperty("_ews_standardized", True)
         self._attr_tree.setExpandsOnDoubleClick(False)
-        self._attr_box = _CollapsibleCard("Attributes", self._attr_tree, self)
+        self._attr_tree.setVisible(False)
+
+        self._attr_master = QTableWidget(self)
+        self._attr_master.setObjectName("classAttributePropertiesTable")
+        self._attr_master.setColumnCount(6)
+        self._attr_master.setHorizontalHeaderLabels(
+            ["Property", "Width", "Ignore", "Type", "Usage", "Relation Object"]
+        )
+        self._attr_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._attr_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._attr_master.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self._attr_master.setAlternatingRowColors(True)
+        self._attr_master.itemSelectionChanged.connect(self._on_attribute_master_selected)
+        self._attr_master.itemChanged.connect(self._on_attribute_master_changed)
+
+        self._attr_values = QTableWidget(self)
+        self._attr_values.setObjectName("classAttributeValuesTable")
+        self._attr_values.setColumnCount(5)
+        self._attr_values.setHorizontalHeaderLabels(
+            ["Value", "Code", "Sliced", "Relation Object", "Status"]
+        )
+        self._attr_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._attr_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._attr_values.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self._attr_values.setAlternatingRowColors(True)
+        self._attr_values.itemChanged.connect(self._on_attribute_value_changed)
+
+        for table in (self._attr_master, self._attr_values):
+            table.verticalHeader().setVisible(False)
+            table.horizontalHeader().setStretchLastSection(False)
+            table.setWordWrap(False)
+
+        mh = self._attr_master.horizontalHeader()
+        mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            mh.resizeSection(col, width)
+
+        vh = self._attr_values.horizontalHeader()
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            vh.resizeSection(col, width)
+
+        value_toolbar = QWidget(self)
+        value_layout = QHBoxLayout(value_toolbar)
+        value_layout.setContentsMargins(0, 0, 0, 4)
+        value_layout.addWidget(QLabel("Values", value_toolbar))
+        value_layout.addStretch(1)
+        self._add_value_btn = QPushButton("Add Value", value_toolbar)
+        self._add_value_btn.clicked.connect(self._add_selected_attr_value)
+        self._add_value_btn.setEnabled(False)
+        value_layout.addWidget(self._add_value_btn)
+        self._remove_value_btn.setEnabled(False)
+        # The existing toolbar Remove Value button is kept as the single remove action.
+        
+        values_panel = QWidget(self)
+        values_layout = QVBoxLayout(values_panel)
+        values_layout.setContentsMargins(0, 0, 0, 0)
+        values_layout.setSpacing(4)
+        values_layout.addWidget(value_toolbar)
+        values_layout.addWidget(self._attr_values, 1)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setObjectName("classAttributeMasterDetail")
+        splitter.addWidget(self._attr_master)
+        splitter.addWidget(values_panel)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 5)
+        splitter.setChildrenCollapsible(False)
+        splitter.setSizes([420, 680])
+
+        self._attr_box = _CollapsibleCard("Attributes", splitter, self)
         return self._attr_box
+
+    def _populate_attribute_tables(self) -> None:
+        """Render the visible Property and Value tables from the backing tree."""
+        self._populating = True
+        self._attr_master.clearContents()
+        self._attr_master.setRowCount(0)
+        self._attr_values.clearContents()
+        self._attr_values.setRowCount(0)
+        self._visible_attr_records = []
+
+        def walk(parent, group_name=None):
+            for i in range(parent.childCount()):
+                item = parent.child(i)
+                data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                current_group = group_name
+                if data and data[0] == _KIND_GROUP:
+                    current_group = str(data[1])
+                elif data and data[0] == _KIND_PROP:
+                    prop = data[1]
+                    self._visible_attr_records.append((prop, current_group, item))
+                if item.childCount():
+                    walk(item, current_group)
+
+        for i in range(self._attr_tree.topLevelItemCount()):
+            item = self._attr_tree.topLevelItem(i)
+            data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+            group = str(data[1]) if data and data[0] == _KIND_GROUP else None
+            if data and data[0] == _KIND_PROP:
+                self._visible_attr_records.append((data[1], group, item))
+            if item.childCount():
+                walk(item, group)
+
+        for prop, group_name, backing in self._visible_attr_records:
+            cls = self._attribute_class_for_group(group_name)
+            cls_prop = next(
+                (a for a in (cls.properties if cls else [])
+                 if str(a.property_id) == str(prop.id)), None
+            )
+            row = self._attr_master.rowCount()
+            self._attr_master.insertRow(row)
+            label = prop.name or "-"
+            if group_name and getattr(self._context.active_snapshot, "split_classes_by_group", False):
+                label = f"{label}  [{group_name}]"
+            name_item = QTableWidgetItem(label)
+            name_item.setData(Qt.ItemDataRole.UserRole, (prop, group_name, backing))
+            name_item.setToolTip(
+                "Select this property to edit its values."
+                + (f"\nGroup: {group_name}" if group_name else "")
+            )
+            self._attr_master.setItem(row, 0, name_item)
+
+            width = int(getattr(cls_prop, "width", 0) or 0)
+            width_item = QTableWidgetItem(str(width))
+            width_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            width_item.setData(Qt.ItemDataRole.UserRole, (prop, group_name, backing))
+            self._attr_master.setItem(row, 1, width_item)
+
+            ignore = self._ignore_state_for_property(prop.id)
+            ignore_cb = QCheckBox()
+            ignore_cb.setChecked(ignore)
+            ignore_cb.setToolTip("Keep this property in the base and do not slice it.")
+            ignore_cb.toggled.connect(
+                lambda checked, p=prop, g=group_name, b=backing:
+                self._on_visible_attr_ignore(p, g, b, checked)
+            )
+            ignore_host = QWidget(self._attr_master)
+            il = QHBoxLayout(ignore_host)
+            il.setContentsMargins(0, 0, 0, 0)
+            il.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            il.addWidget(ignore_cb)
+            self._attr_master.setCellWidget(row, 2, ignore_host)
+
+            type_combo = QComboBox(self._attr_master)
+            for code, desc in _TYPE_OPTIONS:
+                type_combo.addItem(f"{code} - {desc}" if code and desc else "", code)
+            if cls_prop and cls_prop.type:
+                idx = type_combo.findData(cls_prop.type)
+                type_combo.setCurrentIndex(max(0, idx))
+            type_combo.currentIndexChanged.connect(
+                lambda _idx, p=prop, g=group_name, b=backing, c=type_combo:
+                self._on_visible_attr_type(p, g, b, c.currentData())
+            )
+            self._attr_master.setCellWidget(row, 3, type_combo)
+
+            usage_combo = QComboBox(self._attr_master)
+            for usage in _USAGE_OPTIONS:
+                usage_combo.addItem(usage)
+            if cls_prop and cls_prop.usage:
+                idx = usage_combo.findText(cls_prop.usage)
+                usage_combo.setCurrentIndex(max(0, idx))
+            usage_combo.currentTextChanged.connect(
+                lambda text, p=prop, g=group_name, b=backing:
+                self._on_visible_attr_usage(p, g, b, text)
+            )
+            self._attr_master.setCellWidget(row, 4, usage_combo)
+
+            relation = self._prop_relation_object(prop)
+            self._attr_master.setItem(row, 5, QTableWidgetItem(relation))
+
+        self._attr_master.resizeRowsToContents()
+        self._attr_values.setRowCount(0)
+        if self._attr_master.rowCount():
+            self._attr_master.selectRow(0)
+        else:
+            self._selected_attr_prop = None
+            self._selected_attr_value = None
+        self._populating = False
+        self._on_attribute_master_selected()
+
+    def _ignore_state_for_property(self, prop_id: str) -> bool:
+        overrides = getattr(self._context.active_snapshot, "config_ignore_overrides", None) or {}
+        if str(prop_id) in overrides:
+            return bool(overrides[str(prop_id)])
+        hint = getattr(self, "_slice_hints", {}).get(str(prop_id))
+        return bool(hint.get("ignored")) if hint else False
+
+    def _on_attribute_master_selected(self) -> None:
+        if self._populating:
+            return
+        rows = self._attr_master.selectionModel().selectedRows()
+        if not rows:
+            self._selected_attr_prop = None
+            self._selected_attr_value = None
+            self._attr_values.setRowCount(0)
+            self._add_value_btn.setEnabled(False)
+            self._remove_value_btn.setEnabled(False)
+            return
+        row = rows[0].row()
+        meta = self._attr_master.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        prop, group_name, backing = meta
+        self._active_group_name = group_name or self._active_group_name
+        self._selected_attr_prop = prop
+        self._selected_attr_value = None
+        self._populate_visible_values(prop, group_name, backing)
+        development = getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        self._add_value_btn.setEnabled(development)
+        self._remove_value_btn.setEnabled(False)
+
+    def _populate_visible_values(self, prop, group_name, backing) -> None:
+        self._populating = True
+        self._attr_values.clearContents()
+        self._attr_values.setRowCount(0)
+        cls = self._attribute_class_for_group(group_name)
+        cls_prop = next(
+            (a for a in (cls.properties if cls else [])
+             if str(a.property_id) == str(prop.id)), None
+        )
+        class_values = {
+            str(getattr(v, "value_id", "")): v
+            for v in (getattr(cls_prop, "values", []) if cls_prop else [])
+            if getattr(v, "value_id", "")
+        }
+        decoded = (getattr(self, "_config_layout", {}) and
+                   self._context.engineering_class_service.resolve_config_codes(
+                       self._context.active_snapshot
+                   ).get(str(prop.id), {})) or {}
+        displayed = list(getattr(prop, "values", []) or [])
+        for value in _by_display_order(displayed):
+            cv = class_values.get(str(getattr(value, "id", "")))
+            pdm_code = (getattr(value, "code", "") or "").strip()
+            sliced = (
+                (getattr(cv, "code", "") if cv is not None else "").strip()
+                or decoded.get(str(getattr(value, "id", "")), "")
+            )
+            row = self._attr_values.rowCount()
+            self._attr_values.insertRow(row)
+            value_item = QTableWidgetItem(value.value or "-")
+            value_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
+            self._attr_values.setItem(row, 0, value_item)
+
+            code_item = QTableWidgetItem(pdm_code)
+            code_item.setToolTip("PDM value code (source value).")
+            code_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self._attr_values.setItem(row, 1, code_item)
+
+            sliced_item = QTableWidgetItem(sliced)
+            sliced_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                sliced_item.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsEditable
+                )
+            else:
+                sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            sliced_item.setToolTip(
+                "Development Class Creation reduction code. Edit this value to "
+                "change the pre-dot slice vocabulary."
+            )
+            self._attr_values.setItem(row, 2, sliced_item)
+
+            self._attr_values.setItem(
+                row, 3, QTableWidgetItem(self._value_relation_object(prop, value))
+            )
+            status = "PDM"
+            if cv is not None and getattr(cv, "source", "pdm") != "pdm":
+                status = "Added"
+            elif not sliced:
+                status = "Needs Sliced code"
+            elif sliced_item.text() != pdm_code:
+                status = "Corrected"
+            status_item = QTableWidgetItem(status)
+            status_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self._attr_values.setItem(row, 4, status_item)
+        self._attr_values.resizeRowsToContents()
+        self._populating = False
+
+    def _on_attribute_value_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 2:
+            return
+        meta = item.data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        prop, value, cv, group_name = meta
+        self._set_active_group_from_attr_item(None)
+        self._active_group_name = group_name or self._active_group_name
+        new_code = item.text().strip()
+        if cv is None:
+            self._commit_property_inferred(value, group_name)
+            cv = self._class_value_for(str(prop.id), str(value.id), group_name)
+        if cv is not None:
+            cv.code = new_code
+        else:
+            # No class value exists yet; keep the PDM source untouched and stop
+            # rather than silently changing source data.
+            self._populate_visible_values(prop, group_name, None)
+            return
+        self._user_edited_props.add(str(prop.id))
+        self._sync_development_article_sets()
+        self._context.snapshot_manager.mark_modified()
+        self._populate_visible_values(prop, group_name, None)
+
+    def _on_visible_attr_ignore(self, prop, group_name, backing, checked) -> None:
+        if self._populating:
+            return
+        self._active_group_name = group_name or self._active_group_name
+        self._on_ignore_toggled(prop.id, checked, backing)
+
+    def _on_visible_attr_type(self, prop, group_name, backing, code) -> None:
+        if self._populating:
+            return
+        self._active_group_name = group_name or self._active_group_name
+        self._on_type_selected(str(prop.id), code, backing)
+
+    def _on_visible_attr_usage(self, prop, group_name, backing, usage) -> None:
+        if self._populating:
+            return
+        self._active_group_name = group_name or self._active_group_name
+        self._on_usage_selected(str(prop.id), usage, backing)
+
+    def _on_attribute_master_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 1:
+            return
+        meta = item.data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        prop, group_name, backing = meta
+        text = item.text().strip()
+        width = int(text) if text.isdigit() else 0
+        self._active_group_name = group_name or self._active_group_name
+        cls = self._attribute_class_for_group(group_name)
+        if cls is not None:
+            self._context.engineering_class_service.set_width(
+                self._context.active_snapshot, cls.id, str(prop.id), width
+            )
+            self._sync_development_article_sets()
+            self._context.snapshot_manager.mark_modified()
+            self.refresh()
 
     def _build_options_card(self) -> "_CollapsibleCard":
         self._opt_tree = QTreeWidget(self)
@@ -524,6 +876,7 @@ class ClassCreationPage(BasePage):
         self._opt_box.setTitle(f"{token}_Options")
         self._misc_box.setTitle(f"{token}_Visual")
         self._populate_attributes()
+        self._populate_attribute_tables()
         self._populate_options()
         self._on_attr_selection_changed()
         self._populate_visual()
