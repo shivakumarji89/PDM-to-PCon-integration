@@ -319,8 +319,12 @@ class ObxValidationService(BaseService):
 
         # O(1) local lookup instead of scanning unique_lines for every result.
         key_by_seq = {line.seq: self._validation_key(line) for line in unique_lines}
+        emitted_unique_seqs: set[int] = set()
 
         def handle_unique_result(result: SifResult) -> None:
+            if result.seq in emitted_unique_seqs:
+                return
+            emitted_unique_seqs.add(result.seq)
             key = key_by_seq[result.seq]
             for line in duplicate_groups[key]:
                 mapped = self._result_for_line(result, line)
