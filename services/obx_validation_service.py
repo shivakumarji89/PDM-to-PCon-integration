@@ -415,5 +415,16 @@ class ObxValidationService(BaseService):
 
         return sites, sorted(expanded_results, key=lambda r: r.seq)
 
-    def export_csv(self, path, currency, results) -> None:
+    def export_csv(self, path, currency, results, elapsed_seconds: float | None = None) -> None:
+        """Write the OBX validation report and optionally stamp validation time."""
         self._pricing_service().export_csv(path, currency, results, source_label="OBX")
+        if elapsed_seconds is not None:
+            import csv
+            seconds = max(0, int(elapsed_seconds))
+            hours, remainder = divmod(seconds, 3600)
+            minutes, secs = divmod(remainder, 60)
+            elapsed = f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+            with open(path, "a", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                writer.writerow([])
+                writer.writerow(["Validation Elapsed Time", elapsed])
