@@ -436,6 +436,7 @@ class ClassCreationPage(BasePage):
         )
         self._attr_values.setAlternatingRowColors(True)
         self._attr_values.itemChanged.connect(self._on_attribute_value_changed)
+        self._attr_values.itemSelectionChanged.connect(self._on_attribute_value_selected)
 
         for table in (self._attr_master, self._attr_values):
             table.verticalHeader().setVisible(False)
@@ -642,7 +643,19 @@ class ClassCreationPage(BasePage):
                    self._context.engineering_class_service.resolve_config_codes(
                        self._context.active_snapshot
                    ).get(str(prop.id), {})) or {}
-        displayed = list(getattr(prop, "values", []) or [])
+        allowed_ids = None
+        if backing is not None:
+            ids = set()
+            for i in range(backing.childCount()):
+                child_data = backing.child(i).data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                if child_data and child_data[0] == _KIND_PROP_VALUE:
+                    ids.add(str(getattr(child_data[1], "id", "")))
+            if ids:
+                allowed_ids = ids
+        displayed = [
+            v for v in (getattr(prop, "values", []) or [])
+            if allowed_ids is None or str(getattr(v, "id", "")) in allowed_ids
+        ]
         for value in _by_display_order(displayed):
             cv = class_values.get(str(getattr(value, "id", "")))
             pdm_code = (getattr(value, "code", "") or "").strip()
@@ -692,6 +705,27 @@ class ClassCreationPage(BasePage):
             self._attr_values.setItem(row, 4, status_item)
         self._attr_values.resizeRowsToContents()
         self._populating = False
+
+    def _on_attribute_value_selected(self) -> None:
+        if self._populating:
+            return
+        rows = self._attr_values.selectionModel().selectedRows()
+        if not rows:
+            self._selected_attr_value = None
+            self._remove_value_btn.setEnabled(False)
+            return
+        meta = self._attr_values.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            self._selected_attr_value = None
+            self._remove_value_btn.setEnabled(False)
+            return
+        prop, value, _cv, group_name = meta
+        self._selected_attr_prop = prop
+        self._selected_attr_value = value
+        self._active_group_name = group_name or self._active_group_name
+        self._remove_value_btn.setEnabled(
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
 
     def _on_attribute_value_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 2:
