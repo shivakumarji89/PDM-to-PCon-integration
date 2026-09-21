@@ -308,9 +308,10 @@ class ClassCreationPage(BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Each source card is collapsible ("hide and see"): collapse the ones
-        # you are not using so the expanded, few-column tables get the full
-        # vertical space. Titles are set to <Category>_* in refresh().
+        # Three explicit Class Creation cards: Attribute, Options and Visual.
+        # Each card owns one functional area; the active class/group is shown in
+        # the card title during refresh(). Cards remain independently collapsible
+        # so the user can focus on one area without changing the underlying model.
         for card in (
             self._build_attributes_card(),
             self._build_options_card(),
@@ -483,7 +484,11 @@ class ClassCreationPage(BasePage):
         splitter.setChildrenCollapsible(False)
         splitter.setSizes([420, 680])
 
-        self._attr_box = _CollapsibleCard("Attributes", splitter, self)
+        self._attr_box = _CollapsibleCard("Attribute", splitter, self)
+        self._attr_box.setToolTip(
+            "Attribute: configure class properties and their PDM values. "
+            "Sliced is the Development reduction code."
+        )
         return self._attr_box
 
     def _populate_attribute_tables(self) -> None:
@@ -818,6 +823,9 @@ class ClassCreationPage(BasePage):
         self._opt_tree.setExpandsOnDoubleClick(False)
         self._opt_tree.itemClicked.connect(self._on_opt_item_clicked)
         self._opt_box = _CollapsibleCard("Options", self._opt_tree, self)
+        self._opt_box.setToolTip(
+            "Options: select and configure the options that belong to this class."
+        )
         return self._opt_box
 
     def _build_visual_card(self) -> "_CollapsibleCard":
@@ -853,6 +861,9 @@ class ClassCreationPage(BasePage):
             self._on_visual_context_menu
         )
         self._misc_box = _CollapsibleCard("Visual / Misc", self._misc_tree, self)
+        self._misc_box.setToolTip(
+            "Visual / Misc: create engineering properties that are not sourced from PDM."
+        )
         return self._misc_box
 
     # -- data --------------------------------------------------------------
@@ -906,9 +917,13 @@ class ClassCreationPage(BasePage):
         self._basis_combo.setVisible(split_checked)
 
         token = self._active_token()
-        self._attr_box.setTitle(f"{token}_Attribute")
-        self._opt_box.setTitle(f"{token}_Options")
-        self._misc_box.setTitle(f"{token}_Visual")
+        # Keep the functional workspace names visible as the card titles.
+        # The active class token is shown alongside the card name so users can
+        # distinguish Attribute / Options / Visual without losing the class
+        # context (for example: "Attribute — Bolster").
+        self._attr_box.setTitle(f"Attribute — {token}")
+        self._opt_box.setTitle(f"Options — {token}")
+        self._misc_box.setTitle(f"Visual / Misc — {token}")
         self._populate_attributes()
         self._populate_attribute_tables()
         self._populate_options()
