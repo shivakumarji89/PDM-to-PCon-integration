@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QSplitter,
+    QStackedWidget,
     QWidget,
 )
 
@@ -161,8 +162,7 @@ class _CollapsibleCard(QGroupBox):
     def __init__(self, title: str, content: QWidget, parent: QWidget | None = None):
         super().__init__(title, parent)
         self.setObjectName("classCreationCard")
-        self.setCheckable(True)
-        self.setChecked(True)
+        self.setCheckable(False)
         self.setFont(theme.font("card_title"))
         # Give Attribute / Options / Visual a distinct card surface instead of
         # making the class name look like a raw tree heading.
@@ -181,11 +181,8 @@ class _CollapsibleCard(QGroupBox):
                 color: {theme.INK};
                 font-weight: 600;
             }}
-            QGroupBox#classCreationCard:checked::title {{
+            QGroupBox#classCreationCard::title {{
                 color: {theme.INK};
-            }}
-            QGroupBox#classCreationCard:unchecked::title {{
-                color: {theme.MUTED};
             }}
             """
         )
@@ -337,26 +334,91 @@ class ClassCreationPage(BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Three explicit Class Creation cards: Attribute, Options and Visual.
-        # Each card owns one functional area; the active class/group is shown in
-        # the card title during refresh(). Cards remain independently collapsible
-        # so the user can focus on one area without changing the underlying model.
-        for card in (
+        # Class Creation has three functional workspaces. Keep them as explicit
+        # cards, but show one workspace at a time so the user gets the full area
+        # for the task instead of three compressed tables stacked vertically.
+        self._workspace_nav = QHBoxLayout()
+        self._workspace_nav.setSpacing(theme.CONTROL_SPACING)
+        self._workspace_buttons = []
+        for index, (label, subtitle) in enumerate((
+            ("ATTRIBUTE", "Properties & values"),
+            ("OPTIONS", "Class options"),
+            ("VISUAL", "Engineering properties"),
+        )):
+            button = QPushButton(label)
+            button.setToolTip(subtitle)
+            button.setCheckable(True)
+            button.setMinimumHeight(42)
+            button.setObjectName("classCreationWorkspaceButton")
+            button.setStyleSheet(
+                f"""
+                QPushButton#classCreationWorkspaceButton {{
+                    border: 1px solid {theme.LINE};
+                    border-radius: {theme.RADIUS_MD}px;
+                    background: {theme.SURFACE};
+                    color: {theme.INK_SOFT};
+                    font-weight: 600;
+                    padding: 8px 12px;
+                    text-align: center;
+                }}
+                QPushButton#classCreationWorkspaceButton:hover {{
+                    border-color: {theme.LINE_STRONG};
+                    background: {theme.SURFACE_ALT};
+                }}
+                QPushButton#classCreationWorkspaceButton:checked {{
+                    border: 2px solid {theme.ACCENT};
+                    background: {theme.ACCENT_SOFT};
+                    color: {theme.ACCENT_DARK};
+                }}
+                """
+            )
+            button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
+            self._workspace_buttons.append(button)
+            self._workspace_nav.addWidget(button, 1)
+        self._body_layout.addLayout(self._workspace_nav)
+
+        self._workspace_stack = QStackedWidget(self)
+        self._workspace_stack.setObjectName("classCreationWorkspaceStack")
+        cards = (
             self._build_attributes_card(),
             self._build_options_card(),
             self._build_visual_card(),
-        ):
+        )
+        for card in cards:
             self._cards.append(card)
-            card.toggled.connect(self._rebalance_cards)
-            self._body_layout.addWidget(card)
-        self._rebalance_cards()
+            # The card itself is the visible workspace surface. Its checkable
+            # title is disabled because workspace selection is handled above.
+            card.setCheckable(False)
+            self._workspace_stack.addWidget(card)
+        self._body_layout.addWidget(self._workspace_stack, 1)
+        self._select_workspace(0)
         return container
 
+    def _select_workspace(self, index: int) -> None:
+        if not self._workspace_buttons or not self._workspace_stack:
+            return
+        index = max(0, min(index, len(self._workspace_buttons) - 1))
+        self._workspace_stack.setCurrentIndex(index)
+        for i, button in enumerate(self._workspace_buttons):
+            button.setChecked(i == index)
+            button.setProperty("active", i == index)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        # Keep the toolbar relevant to the Attribute workspace. Options and
+        # Visual retain their own direct editing/context actions.
+        attribute = index == 0
+        for widget in (
+            self._move_up_btn, self._move_down_btn, self._remove_value_btn,
+            self._auto_btn,
+        ):
+            widget.setVisible(attribute)
+        self._inferred_hint.setVisible(attribute and self._inferred_hint.text() != "")
+
     def _rebalance_cards(self, *_args) -> None:
-        """Give vertical stretch only to expanded cards; collapsed ones shrink
-        to just their header, handing their space to the expanded cards."""
-        for card in self._cards:
-            self._body_layout.setStretchFactor(card, 1 if card.is_expanded() else 0)
+        # Retained as a compatibility hook for existing callers; the workspace
+        # stack now gives the selected card all available vertical space.
+        if hasattr(self, "_workspace_stack"):
+            self._workspace_stack.updateGeometry()
 
     def _expand_all(self) -> None:
         for tree in (self._attr_tree, self._opt_tree, self._misc_tree):
@@ -831,8 +893,8 @@ class ClassCreationPage(BasePage):
         # derived from the value codes (no article slicing).
         self._opt_tree.setColumnCount(9)
         self._opt_tree.setHeaderLabels(
-            ["Option / Value", "Code", "Width", "Sliced", "Type",
-             "Usage", "Text-block", "Relation Object", ""]
+            ["Option / Value", "Code", "Width", "Type", "Usage",
+             "Relation Object", "", "", ""]
         )
         self._opt_tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
@@ -864,8 +926,7 @@ class ClassCreationPage(BasePage):
         # engineered definitions (no PDM values), so Code/Width/Sliced stay blank.
         self._misc_tree.setColumnCount(9)
         self._misc_tree.setHeaderLabels(
-            ["Property / Value", "Code", "Width", "Sliced", "Type",
-             "Usage", "Text-block", "Relation Object", ""]
+            ["Property / Value", "Code", "Type", "Usage", "Relation Object", "", "", "", ""]
         )
         self._misc_tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
@@ -2576,17 +2637,13 @@ class ClassCreationPage(BasePage):
                 f"{option.name or '-'} ({len(values)})",
                 option.code or "-",
                 str(width),
-                ", ".join(value_codes),
                 "",  # Type (combo)
                 "",  # Usage (combo)
-                text_block,
                 self._prop_relation_object(option),
+                "", "", "",
             ],
         )
         item.setData(_COL_NAME, Qt.ItemDataRole.UserRole, (_KIND_OPTION, option))
-        item.setData(  # Text-block editable
-            _COL_TEXTBLOCK, Qt.ItemDataRole.UserRole + 1, {_COL_TEXTBLOCK}
-        )
         item.setFlags(
             Qt.ItemFlag.ItemIsEnabled
             | Qt.ItemFlag.ItemIsSelectable
@@ -2686,21 +2743,16 @@ class ClassCreationPage(BasePage):
                     [
                         definition.name or "-",
                         "",  # Code (definitions have no order code)
-                        "",  # Width
-                        "",  # Sliced
                         "",  # Type (combo)
                         "",  # Usage (combo)
-                        text_block,
                         self._relation_object(definition.name),
+                        "", "", "", "",
                     ],
                 )
                 item.setData(
                     _COL_NAME, Qt.ItemDataRole.UserRole, (_KIND_DEFINITION, definition)
                 )
                 item.setData(_COL_NAME, Qt.ItemDataRole.UserRole + 1, {_COL_NAME})
-                item.setData(  # Text-block editable
-                    _COL_TEXTBLOCK, Qt.ItemDataRole.UserRole + 1, {_COL_TEXTBLOCK}
-                )
                 item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsSelectable
