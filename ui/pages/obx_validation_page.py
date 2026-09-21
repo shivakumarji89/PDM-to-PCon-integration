@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 import xml.etree.ElementTree as ET
 
 from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
@@ -161,6 +162,8 @@ class ObxValidationPage(BasePage):
         self._active_control: ValidationControl | None = None
         self._active_reporter = None
         self._recovery_attempt = 0
+        self._validation_start_time = 0.0
+        self._validation_elapsed_seconds = 0.0
         self.add_content(self._build_controls())
         self.add_content(self._build_progress_panel())
         self.add_content(self._build_results())
@@ -420,6 +423,8 @@ class ObxValidationPage(BasePage):
         self._signals = signals
         if fresh:
             self._begin_live()
+            self._validation_start_time = time.perf_counter()
+            self._validation_elapsed_seconds = 0.0
         self._is_paused = False
         self._pause_btn.setText("Pause Validation")
         self._pause_btn.setEnabled(True)
@@ -479,6 +484,7 @@ class ObxValidationPage(BasePage):
         QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
+        self._finalize_validation_elapsed()
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
@@ -486,6 +492,7 @@ class ObxValidationPage(BasePage):
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
 
     def _on_cancelled(self, message: str) -> None:
+        self._finalize_validation_elapsed()
         self._release_active_control()
         self._pending_lines = []
         self._is_paused = False
@@ -494,6 +501,7 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("CANCELLED")
 
     def _on_paused(self, payload) -> None:
+        self._finalize_validation_elapsed()
         sites, remaining_lines, reason = payload
         self._release_active_control()
         self._pending_lines = list(remaining_lines)
@@ -546,6 +554,7 @@ class ObxValidationPage(BasePage):
             self._append_row(r)
 
     def _on_results(self, payload) -> None:
+        self._finalize_validation_elapsed()
         sites, results = payload
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
@@ -615,6 +624,7 @@ class ObxValidationPage(BasePage):
                     str(target),
                     cur_of_path.get(src, self._currency),
                     rows,
+                    elapsed_seconds=self._current_validation_elapsed(),
                 )
                 written += 1
             except OSError as exc:
@@ -635,6 +645,8 @@ class ObxValidationPage(BasePage):
             )
 
     def _reset_results(self) -> None:
+        self._validation_start_time = 0.0
+        self._validation_elapsed_seconds = 0.0
         self._results = []
         self._pending_lines = []
         self._is_paused = False
@@ -653,6 +665,17 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
+
+    def _current_validation_elapsed(self) -> float:
+        if self._validation_start_time <= 0:
+            return self._validation_elapsed_seconds
+        return max(
+            self._validation_elapsed_seconds,
+            time.perf_counter() - self._validation_start_time,
+        )
+
+    def _finalize_validation_elapsed(self) -> None:
+        self._validation_elapsed_seconds = self._current_validation_elapsed()
 
     def _set_metric(self, key: str, value: str) -> None:
         label = self._metrics.get(key)
