@@ -906,6 +906,11 @@ class ClassCreationPage(BasePage):
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self._apply_column_layout(self._opt_tree)
+        # Keep the legacy backing columns hidden; the visible Options workspace
+        # is intentionally compact: Option/Value, Code, Width, Type, Usage,
+        # Relation Object.
+        for col in (3, 6, 8):
+            self._opt_tree.hideColumn(col)
         self._opt_tree.itemChanged.connect(self._on_item_changed)
         # Expandable (option -> its values); single click expands, matching the
         # Attributes card. Opt out of the global standardisation so a
@@ -938,6 +943,10 @@ class ClassCreationPage(BasePage):
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self._apply_column_layout(self._misc_tree)
+        # Visual/Misc needs only Property/Value, Code, Type, Usage and Relation
+        # Object. Width/Sliced/Text-block are implementation details here.
+        for col in (2, 3, 6, 8):
+            self._misc_tree.hideColumn(col)
         self._misc_tree.itemChanged.connect(self._on_item_changed)
         self._misc_tree.setRootIsDecorated(True)
         # Opt out of the global standardisation (own context menu + editing) so
@@ -2637,10 +2646,12 @@ class ClassCreationPage(BasePage):
                 f"{option.name or '-'} ({len(values)})",
                 option.code or "-",
                 str(width),
+                "",  # legacy Sliced column (hidden)
                 "",  # Type (combo)
                 "",  # Usage (combo)
+                "",  # legacy Text-block column (hidden)
                 self._prop_relation_object(option),
-                "", "", "",
+                "",
             ],
         )
         item.setData(_COL_NAME, Qt.ItemDataRole.UserRole, (_KIND_OPTION, option))
@@ -2743,10 +2754,13 @@ class ClassCreationPage(BasePage):
                     [
                         definition.name or "-",
                         "",  # Code (definitions have no order code)
+                        "",  # legacy Width (hidden)
+                        "",  # legacy Sliced (hidden)
                         "",  # Type (combo)
                         "",  # Usage (combo)
+                        "",  # legacy Text-block (hidden)
                         self._relation_object(definition.name),
-                        "", "", "", "",
+                        "",
                     ],
                 )
                 item.setData(
