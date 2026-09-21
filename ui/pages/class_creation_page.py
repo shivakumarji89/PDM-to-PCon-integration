@@ -26,7 +26,7 @@ snapshot (no database access).
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -2613,6 +2613,10 @@ class ClassCreationPage(BasePage):
             )
 
     def _populate_visual(self) -> None:
+        # Rebuilding the tree destroys its existing QTreeWidgetItems. Block
+        # itemChanged while clearing/recreating them so a queued edit signal
+        # cannot re-enter refresh() and delete the item currently being built.
+        blocker = QSignalBlocker(self._misc_tree)
         self._misc_tree.clear()
         cls = self._visual_class()
         snapshot = self._context.active_snapshot
@@ -2722,6 +2726,7 @@ class ClassCreationPage(BasePage):
             | Qt.ItemFlag.ItemIsEditable
         )
         add_item.setForeground(_COL_NAME, Qt.GlobalColor.gray)
+        del blocker
 
     # -- interaction -------------------------------------------------------
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
