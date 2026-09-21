@@ -160,9 +160,38 @@ class _CollapsibleCard(QGroupBox):
 
     def __init__(self, title: str, content: QWidget, parent: QWidget | None = None):
         super().__init__(title, parent)
+        self.setObjectName("classCreationCard")
         self.setCheckable(True)
         self.setChecked(True)
+        self.setFont(theme.font("card_title"))
+        # Give Attribute / Options / Visual a distinct card surface instead of
+        # making the class name look like a raw tree heading.
+        self.setStyleSheet(
+            f"""
+            QGroupBox#classCreationCard {{
+                border: 1px solid {theme.LINE};
+                border-radius: {theme.RADIUS_LG}px;
+                margin-top: 14px;
+                background: {theme.SURFACE};
+            }}
+            QGroupBox#classCreationCard::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 7px;
+                color: {theme.INK};
+                font-weight: 600;
+            }}
+            QGroupBox#classCreationCard:checked::title {{
+                color: {theme.INK};
+            }}
+            QGroupBox#classCreationCard:unchecked::title {{
+                color: {theme.MUTED};
+            }}
+            """
+        )
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(theme.GROUP_PADDING, theme.GROUP_PADDING,
+                                  theme.GROUP_PADDING, theme.GROUP_PADDING)
         self._content = content
         layout.addWidget(content, 1)
         # Hide/show the content when the title is toggled (collapse / expand).
