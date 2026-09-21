@@ -253,11 +253,7 @@ class ObxValidationService(BaseService):
 
     @staticmethod
     def _result_for_line(result: SifResult, line: ObxLine) -> SifResult:
-        """Fan one PDM result back to a duplicate OBX source line.
-
-        PDM price is shared, but the source price, sequence, quantity and date
-        remain line-specific so duplicate rows are still independently reported.
-        """
+        """Fan one PDM result back to a duplicate OBX source line."""
         status = result.status
         message = result.message
         if result.pdm_price is not None:
@@ -294,16 +290,38 @@ class ObxValidationService(BaseService):
             groups[key].append(line)
         return unique, groups
 
+    def _validation_cache(self) -> dict[tuple[str, str, str, int | None], SifResult]:
+        """Return the in-memory validation-session result cache."""
+        cache = getattr(self, "_obx_validation_cache", None)
+        if cache is None:
+            cache = {}
+            self._obx_validation_cache = cache
+        return cache
+
+    @staticmethod
+    def _cache_key(line: ObxLine, validation_date: str, site: int | None):
+        currency, article = ObxValidationService._duplicate_key(line)
+        return currency, article, validation_date or "", site
+
+    @staticmethod
+    def _copy_cached_result(result: SifResult, seq: int) -> SifResult:
+        return SifResult(
+            seq=seq, sku=result.sku, currency=result.currency, plc=result.plc,
+            qty=result.qty, source_date=result.source_date, sif_price=result.sif_price,
+            pdm_price=result.pdm_price, status=result.status, message=result.message,
+        )
+
     def validate(self, currency, lines, site=None, validation_date=None,
                  progress=None, stage=None, on_result=None, operation_control=None):
         pricing = self._pricing_service(operation_control)
         unique_lines, duplicate_groups = self._deduplicate(lines)
         expanded_results: list[SifResult] = []
 
+        # O(1) local lookup instead of scanning unique_lines for every result.
+        key_by_seq = {line.seq: self._validation_key(line) for line in unique_lines}
+
         def handle_unique_result(result: SifResult) -> None:
-            key = self._validation_key(next(
-                line for line in unique_lines if line.seq == result.seq
-            ))
+            key = key_by_seq[result.seq]
             for line in duplicate_groups[key]:
                 mapped = self._result_for_line(result, line)
                 expanded_results.append(mapped)
@@ -312,23 +330,12 @@ class ObxValidationService(BaseService):
 
         if site is not None:
             pricing.validate(
-                currency,
-                unique_lines,
-                site=site,
-                obx=True,
-                validation_date=validation_date,
-                progress=progress,
-                stage=stage,
-                on_result=handle_unique_result,
-                operation_control=operation_control,
+                currency, unique_lines, site=site, obx=True,
+                validation_date=validation_date, progress=progress, stage=stage,
+                on_result=handle_unique_result, operation_control=operation_control,
             ) if operation_control is not None else pricing.validate(
-                currency,
-                unique_lines,
-                site=site,
-                obx=True,
-                validation_date=validation_date,
-                progress=progress,
-                stage=stage,
+                currency, unique_lines, site=site, obx=True,
+                validation_date=validation_date, progress=progress, stage=stage,
                 on_result=handle_unique_result,
             )
             return {currency: site}, sorted(expanded_results, key=lambda r: r.seq)
@@ -347,32 +354,58 @@ class ObxValidationService(BaseService):
             for line in unique_lines:
                 groups.setdefault(line.currency or currency, []).append(line)
 
+            cache = self._validation_cache()
             sites: dict[str, int | None] = {}
             for cur, group in groups.items():
                 if operation_control is not None:
                     operation_control.checkpoint()
                 calibration_date = next(
-                    (line.source_date for line in group if line.source_date),
-                    mydate,
+                    (line.source_date for line in group if line.source_date), mydate
                 )
                 resolved = self._resolve_site(
                     cur, group, pricing, repo, conn, calibration_date
                 )
+                sites[cur] = resolved
+
+                misses: list[ObxLine] = []
+                for line in group:
+                    cache_key = self._cache_key(line, mydate, resolved)
+                    cached = cache.get(cache_key)
+                    if cached is None:
+                        misses.append(line)
+                    else:
+                        handle_unique_result(self._copy_cached_result(cached, line.seq))
+
+                if not misses:
+                    continue
+
+                next_line_by_seq = {line.seq: line for line in misses}
+
+                def handle_miss_result(result: SifResult) -> None:
+                    line = next_line_by_seq.get(result.seq)
+                    if line is None:
+                        return
+                    cache_key = self._cache_key(line, mydate, resolved)
+                    # This callback is reached only after PDM produced a
+                    # completed result, so interrupted work is never cached.
+                    cache[cache_key] = self._copy_cached_result(result, result.seq)
+                    handle_unique_result(result)
+
                 if operation_control is not None:
                     pricing.validate(
-                        cur, group, site=resolved, obx=True, validation_date=mydate,
-                        progress=progress, stage=stage, on_result=handle_unique_result,
+                        cur, misses, site=resolved, obx=True, validation_date=mydate,
+                        progress=progress, stage=stage, on_result=handle_miss_result,
                         operation_control=operation_control,
                     )
                 else:
                     _, group_results = pricing.validate(
-                        cur, group, site=resolved, obx=True, validation_date=mydate,
-                        progress=progress, stage=stage, on_result=handle_unique_result,
+                        cur, misses, site=resolved, obx=True, validation_date=mydate,
+                        progress=progress, stage=stage, on_result=handle_miss_result,
                     )
+                    callback_seqs = set()
                     for result in group_results:
-                        if not any(r.seq == result.seq for r in expanded_results):
-                            handle_unique_result(result)
-                sites[cur] = resolved
+                        callback_seqs.add(result.seq)
+                        handle_miss_result(result)
         finally:
             conn.close()
 
