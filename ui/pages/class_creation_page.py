@@ -993,6 +993,7 @@ class ClassCreationPage(BasePage):
         self._visual_master.setAlternatingRowColors(True)
         self._visual_master.itemSelectionChanged.connect(self._on_visual_master_selected)
         self._visual_master.itemChanged.connect(self._on_visual_master_changed)
+        self._visual_master.itemDoubleClicked.connect(self._on_visual_master_double_clicked)
 
         self._visual_values = QTableWidget(self)
         self._visual_values.setColumnCount(5)
@@ -2775,8 +2776,25 @@ class ClassCreationPage(BasePage):
         # option value from Class Creation.
         return
 
+    def _on_visual_master_double_clicked(self, item: QTableWidgetItem, column: int) -> None:
+        if item.data(Qt.ItemDataRole.UserRole) != ("__add__",):
+            return
+        self._visual_master.editItem(item, 0)
+
     def _on_visual_master_changed(self, item: QTableWidgetItem) -> None:
-        if self._populating or item.column() != 1:
+        if self._populating:
+            return
+        meta = item.data(Qt.ItemDataRole.UserRole)
+        if meta == ("__add__",) and item.column() == 0:
+            name = item.text().strip()
+            if name and name != "Type to add a property...":
+                self._context.engineering_property_service.create_property(
+                    self._context.active_snapshot, name
+                )
+                self._context.snapshot_manager.mark_modified()
+                self.refresh()
+            return
+        if item.column() != 1:
             return
         meta = item.data(Qt.ItemDataRole.UserRole)
         if not meta:
@@ -2890,6 +2908,14 @@ class ClassCreationPage(BasePage):
             )
             self._visual_master.setCellWidget(row, 4, usage_combo)
             self._visual_master.setItem(row, 5, QTableWidgetItem(self._relation_object(definition.name)))
+        add_row = self._visual_master.rowCount()
+        self._visual_master.insertRow(add_row)
+        add_item = QTableWidgetItem("Type to add a property...")
+        add_item.setData(Qt.ItemDataRole.UserRole, ("__add__",))
+        add_item.setForeground(Qt.GlobalColor.gray)
+        self._visual_master.setItem(add_row, 0, add_item)
+        for col in range(1, 6):
+            self._visual_master.setItem(add_row, col, QTableWidgetItem(""))
         self._visual_master.resizeRowsToContents()
         self._visual_values.setRowCount(0)
         self._populating = False
