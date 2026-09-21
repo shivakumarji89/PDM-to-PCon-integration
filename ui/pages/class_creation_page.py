@@ -893,8 +893,8 @@ class ClassCreationPage(BasePage):
         # derived from the value codes (no article slicing).
         self._opt_tree.setColumnCount(9)
         self._opt_tree.setHeaderLabels(
-            ["Option / Value", "Code", "Width", "Type", "Usage",
-             "Relation Object", "", "", ""]
+            ["Option / Value", "Code", "Width", "", "Type",
+             "Usage", "", "Relation Object", ""]
         )
         self._opt_tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
@@ -931,7 +931,8 @@ class ClassCreationPage(BasePage):
         # engineered definitions (no PDM values), so Code/Width/Sliced stay blank.
         self._misc_tree.setColumnCount(9)
         self._misc_tree.setHeaderLabels(
-            ["Property / Value", "Code", "Type", "Usage", "Relation Object", "", "", "", ""]
+            ["Property / Value", "Code", "", "", "Type",
+             "Usage", "", "Relation Object", "", ""]
         )
         self._misc_tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
