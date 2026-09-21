@@ -886,83 +886,167 @@ class ClassCreationPage(BasePage):
             self.refresh()
 
     def _build_options_card(self) -> "_CollapsibleCard":
+        # Keep the legacy option tree as a hidden backing model. The visible
+        # workspace uses the same master/detail pattern as Attribute.
         self._opt_tree = QTreeWidget(self)
-        self._opt_tree.setObjectName("classOptionsTree")
-        # Match the frozen Attributes card: same column set, checkbox next to
-        # the name (col 0). Options are always fully-coded, so Width/Sliced are
-        # derived from the value codes (no article slicing).
+        self._opt_tree.setObjectName("classOptionsBackingTree")
         self._opt_tree.setColumnCount(9)
         self._opt_tree.setHeaderLabels(
-            ["Option / Value", "Code", "Width", "", "Type",
-             "Usage", "", "Relation Object", ""]
+            ["Option / Value", "Code", "Width", "Sliced", "Type",
+             "Usage", "Text-block", "Relation Object", ""]
         )
-        self._opt_tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
+        self._opt_tree.setVisible(False)
+
+        self._opt_master = QTableWidget(self)
+        self._opt_master.setColumnCount(6)
+        self._opt_master.setHorizontalHeaderLabels(
+            ["Option", "Width", "Ignore", "Type", "Usage", "Relation Object"]
         )
-        self._opt_tree.setUniformRowHeights(True)
-        self._opt_tree.setItemDelegate(_NameOrCodeDelegate(self._opt_tree))
-        self._opt_tree.setEditTriggers(
+        self._opt_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._opt_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._opt_master.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
-        self._apply_column_layout(self._opt_tree)
-        # Keep the legacy backing columns hidden; the visible Options workspace
-        # is intentionally compact: Option/Value, Code, Width, Type, Usage,
-        # Relation Object.
-        for col in (3, 6, 8):
-            self._opt_tree.hideColumn(col)
-        self._opt_tree.itemChanged.connect(self._on_item_changed)
-        # Expandable (option -> its values); single click expands, matching the
-        # Attributes card. Opt out of the global standardisation so a
-        # double-click never swallows the option-level selection toggle.
-        self._opt_tree.setProperty("_ews_standardized", True)
-        self._opt_tree.setExpandsOnDoubleClick(False)
-        self._opt_tree.itemClicked.connect(self._on_opt_item_clicked)
-        self._opt_box = _CollapsibleCard("Options", self._opt_tree, self)
+        self._opt_master.setAlternatingRowColors(True)
+        self._opt_master.itemSelectionChanged.connect(self._on_option_master_selected)
+        self._opt_master.itemChanged.connect(self._on_option_master_changed)
+
+        self._opt_values = QTableWidget(self)
+        self._opt_values.setColumnCount(5)
+        self._opt_values.setHorizontalHeaderLabels(
+            ["Value", "Code", "Sliced", "Relation Object", "Status"]
+        )
+        self._opt_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._opt_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._opt_values.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self._opt_values.setAlternatingRowColors(True)
+
+        for table in (self._opt_master, self._opt_values):
+            table.verticalHeader().setVisible(False)
+            table.setWordWrap(False)
+
+        mh = self._opt_master.horizontalHeader()
+        mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            mh.resizeSection(col, width)
+        vh = self._opt_values.horizontalHeader()
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            vh.resizeSection(col, width)
+
+        value_panel = QWidget(self)
+        vl = QVBoxLayout(value_panel)
+        vl.setContentsMargins(0, 0, 0, 0)
+        value_head = QHBoxLayout()
+        self._opt_values_title = QLabel("Values")
+        value_head.addWidget(self._opt_values_title)
+        value_head.addStretch(1)
+        self._opt_add_value_btn = QPushButton("Add Value")
+        self._opt_add_value_btn.clicked.connect(self._add_selected_option_value)
+        self._opt_add_value_btn.setEnabled(False)
+        value_head.addWidget(self._opt_add_value_btn)
+        vl.addLayout(value_head)
+        vl.addWidget(self._opt_values, 1)
+
+        split = QSplitter(Qt.Orientation.Horizontal, self)
+        split.setObjectName("classOptionsMasterDetail")
+        split.addWidget(self._opt_master)
+        split.addWidget(value_panel)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 5)
+        split.setChildrenCollapsible(False)
+        split.setSizes([420, 680])
+
+        self._opt_box = _CollapsibleCard("Options", split, self)
         self._opt_box.setToolTip(
-            "Options: select and configure the options that belong to this class."
+            "Options: select an option on the left to edit its values on the right."
         )
         return self._opt_box
 
     def _build_visual_card(self) -> "_CollapsibleCard":
+        # Visual follows the same Property -> Value master/detail model as
+        # Attribute and Options. Definitions are engineering properties; their
+        # manually-created values are shown in the detail table.
         self._misc_tree = _DeletableTree(self._delete_definition, self)
-        self._misc_tree.setObjectName("classVisualTree")
-        # Match the Attributes/Options cards: same 8-column set. Visual rows are
-        # engineered definitions (no PDM values), so Code/Width/Sliced stay blank.
+        self._misc_tree.setObjectName("classVisualBackingTree")
         self._misc_tree.setColumnCount(9)
-        self._misc_tree.setHeaderLabels(
-            ["Property / Value", "Code", "", "", "Type",
-             "Usage", "", "Relation Object", ""]
+        self._misc_tree.setVisible(False)
+
+        self._visual_master = QTableWidget(self)
+        self._visual_master.setColumnCount(6)
+        self._visual_master.setHorizontalHeaderLabels(
+            ["Property", "Width", "Ignore", "Type", "Usage", "Relation Object"]
         )
-        self._misc_tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self._misc_tree.setUniformRowHeights(True)
-        self._misc_tree.setItemDelegate(_NameOrCodeDelegate(self._misc_tree))
-        self._misc_tree.setEditTriggers(
+        self._visual_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._visual_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._visual_master.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
-        self._apply_column_layout(self._misc_tree)
-        # Visual/Misc needs only Property/Value, Code, Type, Usage and Relation
-        # Object. Width/Sliced/Text-block are implementation details here.
-        for col in (2, 3, 6, 8):
-            self._misc_tree.hideColumn(col)
-        self._misc_tree.itemChanged.connect(self._on_item_changed)
-        self._misc_tree.setRootIsDecorated(True)
-        # Opt out of the global standardisation (own context menu + editing) so
-        # the Add/Remove value menu and inline editing are not swallowed.
-        self._misc_tree.setProperty("_ews_standardized", True)
-        self._misc_tree.setExpandsOnDoubleClick(False)
-        self._misc_tree.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu
+        self._visual_master.setAlternatingRowColors(True)
+        self._visual_master.itemSelectionChanged.connect(self._on_visual_master_selected)
+        self._visual_master.itemChanged.connect(self._on_visual_master_changed)
+
+        self._visual_values = QTableWidget(self)
+        self._visual_values.setColumnCount(5)
+        self._visual_values.setHorizontalHeaderLabels(
+            ["Value", "Code", "Sliced", "Relation Object", "Status"]
         )
-        self._misc_tree.customContextMenuRequested.connect(
-            self._on_visual_context_menu
+        self._visual_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._visual_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._visual_values.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
         )
-        self._misc_box = _CollapsibleCard("Visual / Misc", self._misc_tree, self)
+        self._visual_values.setAlternatingRowColors(True)
+
+        for table in (self._visual_master, self._visual_values):
+            table.verticalHeader().setVisible(False)
+            table.setWordWrap(False)
+
+        mh = self._visual_master.horizontalHeader()
+        mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            mh.resizeSection(col, width)
+        vh = self._visual_values.horizontalHeader()
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            vh.resizeSection(col, width)
+
+        value_panel = QWidget(self)
+        vl = QVBoxLayout(value_panel)
+        vl.setContentsMargins(0, 0, 0, 0)
+        value_head = QHBoxLayout()
+        self._visual_values_title = QLabel("Values")
+        value_head.addWidget(self._visual_values_title)
+        value_head.addStretch(1)
+        self._visual_add_value_btn = QPushButton("Add Value")
+        self._visual_add_value_btn.clicked.connect(self._add_selected_visual_value)
+        self._visual_add_value_btn.setEnabled(False)
+        value_head.addWidget(self._visual_add_value_btn)
+        vl.addLayout(value_head)
+        vl.addWidget(self._visual_values, 1)
+
+        split = QSplitter(Qt.Orientation.Horizontal, self)
+        split.setObjectName("classVisualMasterDetail")
+        split.addWidget(self._visual_master)
+        split.addWidget(value_panel)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 5)
+        split.setChildrenCollapsible(False)
+        split.setSizes([420, 680])
+
+        self._misc_box = _CollapsibleCard("Visual / Misc", split, self)
         self._misc_box.setToolTip(
-            "Visual / Misc: create engineering properties that are not sourced from PDM."
+            "Visual / Misc: select an engineering property and manage its values."
         )
         return self._misc_box
 
@@ -1027,8 +1111,10 @@ class ClassCreationPage(BasePage):
         self._populate_attributes()
         self._populate_attribute_tables()
         self._populate_options()
+        self._populate_option_tables()
         self._on_attr_selection_changed()
         self._populate_visual()
+        self._populate_visual_tables()
         self._populating = False
         self._last_render_sig = self._render_signature()
 
