@@ -2626,6 +2626,228 @@ class ClassCreationPage(BasePage):
             return
         item.setExpanded(not item.isExpanded())
 
+    def _on_option_master_selected(self) -> None:
+        if self._populating:
+            return
+        rows = self._opt_master.selectionModel().selectedRows()
+        if not rows:
+            self._opt_values.setRowCount(0)
+            self._opt_add_value_btn.setEnabled(False)
+            return
+        meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        option, group_name = meta
+        self._active_group_name = group_name or self._active_group_name
+        self._populate_visible_option_values(option, group_name)
+        self._opt_add_value_btn.setEnabled(False)
+        self._opt_values_title.setText(f"Values — {option.name}")
+
+    def _populate_option_tables(self) -> None:
+        self._populating = True
+        self._opt_master.clearContents()
+        self._opt_master.setRowCount(0)
+        options = list(self._context.option_service.get_options())
+        snapshot = self._context.active_snapshot
+        group = self._active_group() if getattr(snapshot, "split_classes_by_group", False) else None
+        if group is not None:
+            option_ids = set(str(x) for x in group.option_ids)
+            options = [o for o in options if str(o.id) in option_ids]
+        for option in options:
+            values = list(getattr(option, "values", []) or [])
+            width = max((len((getattr(v, "code", "") or "").strip()) for v in values), default=0)
+            row = self._opt_master.rowCount()
+            self._opt_master.insertRow(row)
+            item = QTableWidgetItem(option.name or "-")
+            item.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
+            self._opt_master.setItem(row, 0, item)
+            wi = QTableWidgetItem(str(width))
+            wi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            wi.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
+            self._opt_master.setItem(row, 1, wi)
+            ignore = QCheckBox()
+            ignore.setChecked(self._ignore_state_for_property(option.id))
+            ignore.setToolTip("Keep this option in the base and do not slice it.")
+            ignore.toggled.connect(
+                lambda checked, oid=option.id: self._on_ignore_toggled(str(oid), checked, None)
+            )
+            host = QWidget(self._opt_master)
+            hl = QHBoxLayout(host)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hl.addWidget(ignore)
+            self._opt_master.setCellWidget(row, 2, host)
+            cls = self._options_class()
+            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
+            type_combo = QComboBox(self._opt_master)
+            for code, desc in _TYPE_OPTIONS:
+                type_combo.addItem(f"{code} - {desc}" if code and desc else "", code)
+            if cls_prop and cls_prop.type:
+                idx = type_combo.findData(cls_prop.type)
+                type_combo.setCurrentIndex(max(0, idx))
+            type_combo.currentIndexChanged.connect(
+                lambda _idx, oid=option.id, combo=type_combo: self._on_opt_type_selected(oid, combo.currentData())
+            )
+            self._opt_master.setCellWidget(row, 3, type_combo)
+            usage_combo = QComboBox(self._opt_master)
+            for usage in _USAGE_OPTIONS:
+                usage_combo.addItem(usage)
+            if cls_prop and cls_prop.usage:
+                idx = usage_combo.findText(cls_prop.usage)
+                usage_combo.setCurrentIndex(max(0, idx))
+            usage_combo.currentTextChanged.connect(
+                lambda text, oid=option.id: self._on_opt_usage_selected(oid, text)
+            )
+            self._opt_master.setCellWidget(row, 4, usage_combo)
+            self._opt_master.setItem(row, 5, QTableWidgetItem(self._prop_relation_object(option)))
+        self._opt_master.resizeRowsToContents()
+        self._opt_values.setRowCount(0)
+        self._populating = False
+        if self._opt_master.rowCount():
+            self._opt_master.selectRow(0)
+
+    def _populate_visible_option_values(self, option, group_name=None) -> None:
+        self._populating = True
+        self._opt_values.clearContents()
+        self._opt_values.setRowCount(0)
+        for value in _by_display_order(list(getattr(option, "values", []) or [])):
+            row = self._opt_values.rowCount()
+            self._opt_values.insertRow(row)
+            self._opt_values.setItem(row, 0, QTableWidgetItem(value.value or "-"))
+            self._opt_values.setItem(row, 1, QTableWidgetItem((value.code or "").strip()))
+            self._opt_values.setItem(row, 2, QTableWidgetItem((value.code or "").strip()))
+            self._opt_values.setItem(row, 3, QTableWidgetItem(self._value_relation_object(option, value)))
+            status = "Active" if (value.code or "").strip() else "Needs code"
+            self._opt_values.setItem(row, 4, QTableWidgetItem(status))
+        self._opt_values.resizeRowsToContents()
+        self._populating = False
+
+    def _on_option_master_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 1:
+            return
+        meta = item.data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        option, _group_name = meta
+        text = item.text().strip()
+        width = int(text) if text.isdigit() else 0
+        cls = self._options_class()
+        if cls is not None:
+            self._context.engineering_class_service.set_width(
+                self._context.active_snapshot, cls.id, str(option.id), width
+            )
+            self._context.snapshot_manager.mark_modified()
+            self.refresh()
+
+    def _add_selected_option_value(self) -> None:
+        # Option values are PDM-owned records. Do not synthesize a new PDM
+        # option value from Class Creation.
+        return
+
+    def _on_visual_master_selected(self) -> None:
+        if self._populating:
+            return
+        rows = self._visual_master.selectionModel().selectedRows()
+        if not rows:
+            self._visual_values.setRowCount(0)
+            self._visual_add_value_btn.setEnabled(False)
+            return
+        meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not meta:
+            return
+        definition = meta[0]
+        self._populate_visible_visual_values(definition)
+        self._visual_values_title.setText(f"Values — {definition.name}")
+        self._visual_add_value_btn.setEnabled(True)
+
+    def _populate_visual_tables(self) -> None:
+        self._populating = True
+        self._visual_master.clearContents()
+        self._visual_master.setRowCount(0)
+        snapshot = self._context.active_snapshot
+        cls = self._visual_class()
+        definitions = []
+        if snapshot is not None and snapshot.engineering is not None:
+            group = self._active_group() if getattr(snapshot, "split_classes_by_group", False) else None
+            gids = set(str(x) for x in group.visual_ids) if group is not None else None
+            definitions = [
+                d for d in sorted(snapshot.engineering.properties, key=lambda d: d.order)
+                if gids is None or str(d.id) in gids
+            ]
+        for definition in definitions:
+            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(definition.id)), None)
+            row = self._visual_master.rowCount()
+            self._visual_master.insertRow(row)
+            item = QTableWidgetItem(definition.name or "-")
+            item.setData(Qt.ItemDataRole.UserRole, (definition,))
+            self._visual_master.setItem(row, 0, item)
+            wi = QTableWidgetItem(str(int(getattr(cls_prop, "width", 0) or 0)))
+            wi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._visual_master.setItem(row, 1, wi)
+            ignore = QCheckBox()
+            ignore.setChecked(self._ignore_state_for_property(definition.id))
+            ignore.setEnabled(False)
+            host = QWidget(self._visual_master)
+            hl = QHBoxLayout(host)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hl.addWidget(ignore)
+            self._visual_master.setCellWidget(row, 2, host)
+            type_combo = QComboBox(self._visual_master)
+            for code, desc in _TYPE_OPTIONS:
+                type_combo.addItem(f"{code} - {desc}" if code and desc else "", code)
+            if cls_prop and cls_prop.type:
+                idx = type_combo.findData(cls_prop.type)
+                type_combo.setCurrentIndex(max(0, idx))
+            type_combo.currentIndexChanged.connect(
+                lambda _idx, did=definition.id, combo=type_combo: self._on_visual_type_selected(did, combo.currentData())
+            )
+            self._visual_master.setCellWidget(row, 3, type_combo)
+            usage_combo = QComboBox(self._visual_master)
+            for usage in _USAGE_OPTIONS:
+                usage_combo.addItem(usage)
+            if cls_prop and cls_prop.usage:
+                idx = usage_combo.findText(cls_prop.usage)
+                usage_combo.setCurrentIndex(max(0, idx))
+            usage_combo.currentTextChanged.connect(
+                lambda text, did=definition.id: self._on_visual_usage_selected(did, text)
+            )
+            self._visual_master.setCellWidget(row, 4, usage_combo)
+            self._visual_master.setItem(row, 5, QTableWidgetItem(self._relation_object(definition.name)))
+        self._visual_master.resizeRowsToContents()
+        self._visual_values.setRowCount(0)
+        self._populating = False
+        if self._visual_master.rowCount():
+            self._visual_master.selectRow(0)
+
+    def _populate_visible_visual_values(self, definition) -> None:
+        self._populating = True
+        self._visual_values.clearContents()
+        self._visual_values.setRowCount(0)
+        cls = self._visual_class()
+        cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(definition.id)), None)
+        for cv in (getattr(cls_prop, "values", []) if cls_prop else []):
+            row = self._visual_values.rowCount()
+            self._visual_values.insertRow(row)
+            self._visual_values.setItem(row, 0, QTableWidgetItem(cv.value or ""))
+            self._visual_values.setItem(row, 1, QTableWidgetItem(cv.code or ""))
+            self._visual_values.setItem(row, 2, QTableWidgetItem(cv.code or ""))
+            relation = self._relation_object(definition.name)
+            self._visual_values.setItem(row, 3, QTableWidgetItem(
+                f"{relation}_{cv.code.strip()}" if (cv.code or "").strip() else ""
+            ))
+            self._visual_values.setItem(row, 4, QTableWidgetItem("Active"))
+        self._visual_values.resizeRowsToContents()
+        self._populating = False
+
+    def _add_selected_visual_value(self) -> None:
+        rows = self._visual_master.selectionModel().selectedRows()
+        if not rows:
+            return
+        meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if meta:
+            self._add_visual_value(meta[0])
+
     def _populate_options(self) -> None:
         # Preserve which range group headers are collapsed across a rebuild.
         collapsed_groups: set = set()
