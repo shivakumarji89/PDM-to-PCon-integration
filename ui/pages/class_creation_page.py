@@ -932,7 +932,7 @@ class ClassCreationPage(BasePage):
         self._misc_tree.setColumnCount(9)
         self._misc_tree.setHeaderLabels(
             ["Property / Value", "Code", "", "", "Type",
-             "Usage", "", "Relation Object", "", ""]
+             "Usage", "", "Relation Object", ""]
         )
         self._misc_tree.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
