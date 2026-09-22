@@ -260,7 +260,7 @@ class ObxValidationPage(BasePage):
         layout.addLayout(progress_row)
         self._metrics: dict[str, QLabel] = {}
         metrics = [
-            ("completed", "Completed"), ("remaining", "Remaining"), ("matched", "Matched"),
+            ("completed", "Completed"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
             ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
@@ -525,8 +525,7 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(bool(self._pending_lines))
         self._progress_state.setText("PAUSED")
-        self._set_metric("completed", str(len(self._results)))
-        self._set_metric("remaining", str(len(self._pending_lines)))
+        self._set_metric("completed", f"{len(self._results)}/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._export_btn.setEnabled(bool(self._results))
@@ -544,7 +543,7 @@ class ObxValidationPage(BasePage):
         self._recovery_attempt = 0
         for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
-        self._set_metric("remaining", str(len(self._lines)))
+        self._set_metric("completed", f"0/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._set_metric("recovery", "0")
@@ -558,8 +557,7 @@ class ObxValidationPage(BasePage):
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
         completed = self._live["lines"]
-        self._set_metric("completed", str(completed))
-        self._set_metric("remaining", str(max(0, len(self._lines) - completed)))
+        self._set_metric("completed", f"{completed}/{len(self._lines)}")
         self._set_metric("matched", str(self._live["ok"]))
         self._set_metric("mismatch", str(self._live["mismatch"]))
         self._set_metric("unresolved", str(self._live["unresolved"]))
@@ -581,8 +579,7 @@ class ObxValidationPage(BasePage):
         ok = sum(1 for r in results if r.status == "ok")
         mism = sum(1 for r in results if r.status == "price_mismatch")
         unres = sum(1 for r in results if r.status == "unresolved")
-        self._set_metric("completed", str(len(results)))
-        self._set_metric("remaining", "0")
+        self._set_metric("completed", f"{len(results)}/{len(self._lines)}")
         self._set_metric("matched", str(ok))
         self._set_metric("mismatch", str(mism))
         self._set_metric("unresolved", str(unres))
