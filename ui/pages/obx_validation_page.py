@@ -92,6 +92,29 @@ class _ObxWorker(QRunnable):
                     sites.update(site)
                 for result in results:
                     on_result(result)
+
+                skipped_items = list(
+                    getattr(self._svc, "last_skipped_items", []) or []
+                )
+                if skipped_items:
+                    skipped_set = set(skipped_items)
+                    skipped_lines = [
+                        line for line in pending
+                        if getattr(line, "base", "") in skipped_set
+                    ]
+                    self._reporter.note(
+                        f"Skipped {len(skipped_lines)} line(s) from "
+                        f"{len(skipped_items)} article lookup(s); "
+                        "these will remain pending for retry."
+                    )
+                    pending = skipped_lines
+                    self._signals.paused.emit((
+                        sites,
+                        pending,
+                        f"{len(skipped_lines)} line(s) skipped during worker pricing.",
+                    ))
+                    return
+
                 pending = [line for line in pending if getattr(line, "seq", None) not in completed]
                 recovery_attempts = 0
                 if not pending:
