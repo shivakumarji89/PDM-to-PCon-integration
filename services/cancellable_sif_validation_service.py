@@ -9,6 +9,7 @@ class CancellableSifValidationService(SifValidationService):
     def __init__(self, context, lookup_cache=None) -> None:
         super().__init__(context)
         self._lookup_cache = lookup_cache if lookup_cache is not None else {}
+        self.last_skipped_items: list[str] = []
 
     def _fetch_plc(self, items, site, repo, conn) -> dict[str, str]:
         """Reuse completed OBX PLC lookups and query only missing items."""
@@ -81,6 +82,7 @@ class CancellableSifValidationService(SifValidationService):
         from repositories.cancellable_pdm_repository import CancellablePDMRepository
 
         repo = CancellablePDMRepository(self.context, operation_control, self._lookup_cache)
+        self.last_skipped_items = []
         conn = repo.get_connection()
         try:
             # Only query PDM for the server date when no validation date was supplied.
@@ -119,6 +121,7 @@ class CancellableSifValidationService(SifValidationService):
                     )
                 )
             results.sort(key=lambda result: result.seq)
+            self.last_skipped_items = list(dict.fromkeys(repo.last_skipped_option_items))
             return sites, results
         finally:
             conn.close()
