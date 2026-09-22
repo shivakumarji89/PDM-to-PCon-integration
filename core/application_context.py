@@ -247,7 +247,11 @@ class ApplicationContext:
     @property
     def xocd_export_service(self) -> XocdExportService:
         return self.get_service(XocdExportService)
-\n    @property\n    def xocd_svn_service(self) -> XocdSvnService:\n        return XocdSvnService(self)\n
+
+    @property
+    def xocd_svn_service(self) -> XocdSvnService:
+        return XocdSvnService(self)
+
     @property
     def ocd_export_service(self) -> OcdExportService:
         return self.get_service(OcdExportService)
