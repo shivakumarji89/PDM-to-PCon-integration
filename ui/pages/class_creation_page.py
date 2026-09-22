@@ -846,8 +846,6 @@ class ClassCreationPage(BasePage):
         self._selected_attr_prop = None
         self._selected_attr_value = None
         if not rows:
-            self._move_up_btn.setEnabled(False)
-            self._move_down_btn.setEnabled(False)
             return
         item = self._attr_master.item(rows[0].row(), 0)
         meta = item.data(Qt.ItemDataRole.UserRole) if item else None
@@ -2099,8 +2097,6 @@ class ClassCreationPage(BasePage):
             == WorkbenchModule.DEVELOPMENT
         )
         has_prop = self._selected_attr_prop is not None
-        self._move_up_btn.setEnabled(development and has_prop)
-        self._move_down_btn.setEnabled(development and has_prop)
 
     def _on_attr_context_menu(self, pos) -> None:
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
