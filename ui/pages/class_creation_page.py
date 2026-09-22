@@ -2598,7 +2598,7 @@ class ClassCreationPage(BasePage):
         rows = self._opt_master.selectionModel().selectedRows()
         if not rows:
             self._opt_values.setRowCount(0)
-                return
+            return
         meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
