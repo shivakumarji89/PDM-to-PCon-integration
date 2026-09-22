@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QProgressBar,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -73,6 +74,10 @@ class ReviewPage(BasePage):
         self._preview_thread: QThread | None = None
         self._preview_worker: _MdbPreviewWorker | None = None
         self._preview_running = False
+        self._preview_elapsed = 0
+        self._preview_elapsed_timer = QTimer(self)
+        self._preview_elapsed_timer.setInterval(1000)
+        self._preview_elapsed_timer.timeout.connect(self._update_preview_progress)
         self.refresh()
 
     def _build_toolbar(self) -> QWidget:
@@ -87,6 +92,12 @@ class ReviewPage(BasePage):
         self._mdb_preview_status = QLabel("MDB generation data not loaded.", box)
         self._mdb_preview_status.setWordWrap(True)
         layout.addWidget(self._mdb_preview_status, 1)
+        self._mdb_preview_progress = QProgressBar(box)
+        self._mdb_preview_progress.setRange(0, 0)
+        self._mdb_preview_progress.setTextVisible(False)
+        self._mdb_preview_progress.setFixedHeight(8)
+        self._mdb_preview_progress.hide()
+        layout.addWidget(self._mdb_preview_progress)
         return box
 
     def _build_generation_summary(self) -> QWidget:
@@ -220,10 +231,11 @@ class ReviewPage(BasePage):
             return
 
         self._preview_running = True
+        self._preview_elapsed = 0
         self._refresh_btn.setEnabled(False)
-        self._mdb_preview_status.setText(
-            "Refreshing MDB/XOCD generation data… this may take a moment."
-        )
+        self._mdb_preview_progress.show()
+        self._preview_elapsed_timer.start()
+        self._update_preview_progress()
 
         thread = QThread(self)
         worker = _MdbPreviewWorker(self._context, snapshot)
@@ -238,6 +250,21 @@ class ReviewPage(BasePage):
         self._preview_thread = thread
         self._preview_worker = worker
         thread.start()
+
+    def _update_preview_progress(self) -> None:
+        """Show live elapsed progress while the background MDB build is running.
+
+        The exporter currently does not expose trustworthy percentage milestones,
+        so the UI deliberately uses an indeterminate progress bar plus elapsed
+        time instead of displaying a misleading percentage.
+        """
+        if not self._preview_running:
+            return
+        self._mdb_preview_status.setText(
+            "Refreshing MDB/XOCD generation data… "
+            f"{self._preview_elapsed}s elapsed. The UI remains responsive."
+        )
+        self._preview_elapsed += 1
 
     @Slot(object)
     def _on_mdb_preview_finished(self, result) -> None:
@@ -310,6 +337,8 @@ class ReviewPage(BasePage):
     @Slot()
     def _on_mdb_preview_thread_finished(self) -> None:
         self._preview_running = False
+        self._preview_elapsed_timer.stop()
+        self._mdb_preview_progress.hide()
         self._preview_thread = None
         self._preview_worker = None
         self._refresh_btn.setEnabled(True)
