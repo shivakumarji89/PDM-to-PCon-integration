@@ -981,6 +981,11 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
             for k, v in (data.get("article_prefix_length") or {}).items()
             if v is not None
         },
+        base_length_overrides={
+            str(k): int(v)
+            for k, v in (data.get("base_length_overrides") or {}).items()
+            if v is not None
+        },
         option_increments={
             str(k): list(v or [])
             for k, v in (data.get("option_increments") or {}).items()
