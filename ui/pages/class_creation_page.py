@@ -309,11 +309,6 @@ class ClassCreationPage(BasePage):
         self._move_down_btn.setEnabled(False)
         layout.addWidget(self._move_down_btn)
 
-        self._remove_value_btn = QPushButton("Remove Value", box)
-        self._remove_value_btn.clicked.connect(self._remove_selected_attr_value)
-        self._remove_value_btn.setEnabled(False)
-        layout.addWidget(self._remove_value_btn)
-
         # Amber hint shown when configuration codes were inferred (read-only
         # guesses the user must confirm before generation).
         self._inferred_hint = QLabel("", box)
@@ -323,15 +318,6 @@ class ClassCreationPage(BasePage):
         layout.addWidget(self._inferred_hint)
 
         layout.addStretch(1)
-
-        self._auto_btn = QPushButton("Resolve remaining", box)
-        self._auto_btn.setToolTip(
-            "Jump to the next configuration attribute the automation could not "
-            "code and start editing it; assign a code and the automation "
-            "continues until none remain."
-        )
-        self._auto_btn.clicked.connect(self._on_resolve_remaining)
-        layout.addWidget(self._auto_btn)
 
         return box
 
@@ -714,7 +700,6 @@ class ClassCreationPage(BasePage):
             self._selected_attr_prop = None
             self._selected_attr_value = None
             self._attr_values.setRowCount(0)
-            self._remove_value_btn.setEnabled(False)
             return
         row = rows[0].row()
         meta = self._attr_master.item(row, 0).data(Qt.ItemDataRole.UserRole)
@@ -825,9 +810,6 @@ class ClassCreationPage(BasePage):
         self._selected_attr_prop = prop
         self._selected_attr_value = value
         self._active_group_name = group_name or self._active_group_name
-        self._remove_value_btn.setEnabled(
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-        )
 
     def _on_attribute_value_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
@@ -871,6 +853,32 @@ class ClassCreationPage(BasePage):
             return
         self._active_group_name = group_name or self._active_group_name
         self._on_usage_selected(str(prop.id), usage, backing)
+
+    def _on_attribute_master_selected(self) -> None:
+        """Synchronize the visible Property selection with the legacy backing
+        selection used by movement/context-menu actions."""
+        if self._populating:
+            return
+        rows = self._attr_master.selectionModel().selectedRows()
+        self._selected_attr_prop = None
+        self._selected_attr_value = None
+        if not rows:
+            self._move_up_btn.setEnabled(False)
+            self._move_down_btn.setEnabled(False)
+            return
+        item = self._attr_master.item(rows[0].row(), 0)
+        meta = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not meta:
+            return
+        prop, group_name, _backing = meta
+        self._selected_attr_prop = prop
+        self._active_group_name = group_name or self._active_group_name
+        development = (
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
+        )
+        self._move_up_btn.setEnabled(development)
+        self._move_down_btn.setEnabled(development)
 
     def _on_attribute_master_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
@@ -2131,9 +2139,6 @@ class ClassCreationPage(BasePage):
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
-        self._remove_value_btn.setEnabled(
-            development and self._selected_attr_value is not None
-        )
 
     def _move_selected_attr_property(self, direction: int) -> None:
         prop = self._selected_attr_prop
