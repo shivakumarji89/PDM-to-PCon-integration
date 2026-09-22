@@ -518,8 +518,7 @@ class SifValidationService(BaseService):
         if stage:
             stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
 
-        # Price in small windows so rows appear steadily instead of one big
-        # batch at the end, while keeping PDM queries bulk (fast) and parity exact.
+        # Price in small windows so rows appear steadily while keeping PDM queries bulk and parity exact.
         window = self._PRICE_WINDOW
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
