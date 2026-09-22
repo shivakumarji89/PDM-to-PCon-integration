@@ -28,7 +28,9 @@ class SvnStatus:
 class XocdSvnService:
     """Build and execute the small set of TortoiseSVN operations used by XOCD."""
 
-    def __init__(self, context=None) -> None:\n        self.context = context\n\n    _TORTOISE_CANDIDATES = (
+    def __init__(self, context=None) -> None:
+        self.context = context
+\n    _TORTOISE_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\TortoiseProc.exe"),
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\TortoiseProc.exe"),
     )
