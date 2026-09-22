@@ -325,14 +325,18 @@ class OcdExportService(BaseService):
         ]
         result.retained_rows = retained
 
-        protos = {t: self._prototype(template, t) for t in _PRODUCT_TABLES}
-        material_map_id = self._material_map_id(
-            template, package_id, self.context.material_picking_service.DEFAULT_MAP
+        # Review only needs the engineering/export mapping. Text, relations,
+        # value tables and pricing have dedicated workflow pages and are therefore
+        # deliberately not rebuilt here. Avoiding those generators removes a large
+        # amount of Access/MDB work from every Review refresh.
+        review_tables = (
+            "tCOMd_CodeScheme", "tCOMd_Class", "tCOMd_Property",
+            "tCOMd_PropValue", "tCOMd_Article", "tCOMd_ArticleClass",
+            "tCOMd_ArtBase",
         )
-        price_lists = self._price_lists_by_currency(template)
-        sequence = self._build(
-            preview_snapshot, package_id, comgroup_id, series_id,
-            protos, price_lists, material_map_id, result
+        protos = {t: self._prototype(template, t) for t in review_tables}
+        sequence = self._build_review(
+            preview_snapshot, package_id, comgroup_id, series_id, protos, result
         )
         result.template = kind
         result.mdb_path = str(template)
@@ -422,6 +426,74 @@ class OcdExportService(BaseService):
         return {**proto, **computed}
 
     # -- Row assembly ---------------------------------------------------
+
+    def _build_review(
+        self,
+        snapshot: Snapshot,
+        package_id: Any,
+        comgroup_id: Any,
+        series_id: str,
+        protos: dict[str, dict[str, Any]],
+        result: OcdExportResult,
+    ) -> list[tuple[str, list[dict[str, Any]]]]:
+        """Build only the data Review owns.
+
+        Review is the final engineering/export-mapping checkpoint. Text,
+        relation, value-table and pricing data are validated in their own
+        workflows, so rebuilding them here only adds MDB/Access work without
+        adding useful Review information.
+        """
+        xocd = self.context.xocd_export_service
+        classes = self.context.engineering_class_service.get_classes(snapshot)
+        codes = xocd._value_code_map(snapshot)
+        digits = xocd._value_lengths(snapshot)
+        base_codes = xocd._base_codes(snapshot)
+        token_by_base = xocd._group_token_by_base(snapshot, classes)
+
+        scheme_rows, scheme_index, scheme_by_code = self._code_schemes(
+            snapshot, package_id, base_codes, classes, codes,
+            protos["tCOMd_CodeScheme"],
+        )
+        class_rows, class_index = self._classes(
+            classes, package_id, protos["tCOMd_Class"]
+        )
+        # No text generation is needed for Review. The property text reference
+        # is intentionally empty; Text workflow owns tCOMd_Text validation.
+        property_rows, prop_index = self._properties(
+            snapshot, classes, class_index, {}, digits,
+            protos["tCOMd_Property"],
+        )
+        # No relation-object generation is needed for Review. Relation workflow
+        # owns those records; PropValue still exposes the current value mapping.
+        propvalue_rows = self._property_values(
+            snapshot, classes, prop_index, {}, {}, codes,
+            protos["tCOMd_PropValue"],
+        )
+        article_rows, article_index = self._articles(
+            base_codes, comgroup_id, package_id, {}, scheme_index,
+            scheme_by_code, protos["tCOMd_Article"],
+        )
+        articleclass_rows = self._article_classes(
+            base_codes, token_by_base, classes, article_index, class_index,
+            protos["tCOMd_ArticleClass"],
+        )
+        artbase_rows = self._artbase(
+            snapshot, article_index, classes, codes, protos["tCOMd_ArtBase"]
+        )
+
+        sequence = [
+            ("tCOMd_CodeScheme", scheme_rows),
+            ("tCOMd_Class", class_rows),
+            ("tCOMd_Property", property_rows),
+            ("tCOMd_PropValue", propvalue_rows),
+            ("tCOMd_Article", article_rows),
+            ("tCOMd_ArticleClass", articleclass_rows),
+            ("tCOMd_ArtBase", artbase_rows),
+        ]
+        for table, rows in sequence:
+            if rows:
+                result.table_counts[table] = len(rows)
+        return sequence
 
     def _build(
         self, snapshot: Snapshot, package_id: Any, comgroup_id: Any,
