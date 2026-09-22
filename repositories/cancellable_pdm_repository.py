@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
 from typing import Any, Sequence
 
@@ -155,9 +156,54 @@ class CancellablePDMRepository(PDMRepository):
         if missing:
             # Keep the existing PDM stored-procedure call and result semantics;
             # only avoid executing it again for an item already completed.
-            rows = super().fetch_item_option_increment_prices(
-                missing, currency, mydate, site_id, connection=connection
-            )
+            #
+            # The PDM procedure accepts one item per execution, so application-
+            # side concurrency is the only way to reduce wall-clock time without
+            # changing the PDM procedure itself. Use three independent repository
+            # workers, each with its own connection/cancellation state, and keep
+            # the cache population on this thread.
+            worker_count = min(3, len(missing))
+            if worker_count > 1:
+                chunks = [
+                    missing[index::worker_count]
+                    for index in range(worker_count)
+                    if missing[index::worker_count]
+                ]
+
+                def fetch_chunk(chunk):
+                    worker_repo = CancellablePDMRepository(
+                        self.context,
+                        self._control,
+                        self._lookup_cache,
+                    )
+                    worker_conn = worker_repo.get_connection()
+                    try:
+                        return PDMRepository.fetch_item_option_increment_prices(
+                            worker_repo,
+                            chunk,
+                            currency,
+                            mydate,
+                            site_id,
+                            connection=worker_conn,
+                        )
+                    finally:
+                        worker_conn.close()
+                        self._control.unregister_cancel_handler(
+                            worker_repo.cancel_active_operation
+                        )
+
+                rows = []
+                with ThreadPoolExecutor(
+                    max_workers=len(chunks),
+                    thread_name_prefix="obx-pdm-option",
+                ) as executor:
+                    for chunk_rows in executor.map(fetch_chunk, chunks):
+                        rows.extend(chunk_rows)
+            else:
+                rows = super().fetch_item_option_increment_prices(
+                    missing, currency, mydate, site_id, connection=connection
+                )
+
             by_item = {}
             for row in rows:
                 by_item.setdefault(str(row.Item), []).append(row)
