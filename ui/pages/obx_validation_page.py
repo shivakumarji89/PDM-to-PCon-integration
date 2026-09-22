@@ -263,7 +263,7 @@ class ObxValidationPage(BasePage):
             ("completed", "Completed"), ("remaining", "Remaining"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
-            ("speed", "Speed"), ("currency", "Currency"), ("site", "PDM site"), ("recovery", "Recovery"),
+            ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
         ]
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
@@ -360,7 +360,8 @@ class ObxValidationPage(BasePage):
                 + "\n\nThe incomplete trailing portion was not loaded.",
             )
         label = Path(loaded_paths[0]).name if len(loaded_paths) == 1 else f"{len(loaded_paths)} OBX files"
-        self._file_label.setText(f"{label}  •  {len(lines)} lines")
+        currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
+        self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
@@ -479,8 +480,6 @@ class ObxValidationPage(BasePage):
             try:
                 detail = text.rsplit("(", 1)[1].split(")", 1)[0]
                 site_text, currency = [part.strip() for part in detail.split(",", 1)]
-                if currency:
-                    self._set_metric("currency", currency)
                 if site_text.lower().startswith("site "):
                     self._set_metric("site", f"{currency} / {site_text[5:].strip()}")
                 self._progress_state.setText(f"VALIDATING {currency}")
@@ -543,7 +542,7 @@ class ObxValidationPage(BasePage):
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
         self._recovery_attempt = 0
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "currency", "site"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
         self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
@@ -670,7 +669,7 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "currency", "site", "recovery"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
             self._set_metric(key, "-")
         self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
