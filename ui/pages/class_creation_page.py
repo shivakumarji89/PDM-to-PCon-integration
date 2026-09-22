@@ -1565,9 +1565,29 @@ class ClassCreationPage(BasePage):
             rs = ranges.get(str(pid))
             return (not rs) or any(r not in ignored for r in rs)
 
+        def _class_ordered_props(source_props, class_obj):
+            """Order visible properties by Class Creation assignment placement."""
+            if class_obj is None:
+                return list(source_props)
+            placement = {
+                str(a.property_id): (
+                    int(getattr(a, "placement", 0) or 0), index
+                )
+                for index, a in enumerate(getattr(class_obj, "properties", []) or [])
+            }
+            fallback = len(placement) + 10000
+            return sorted(
+                source_props,
+                key=lambda p: placement.get(str(p.id), (fallback, 0)),
+            )
+
         def _render_group(group, group_cls, group_node=None):
             """Render one split group's properties into the SAME Attribute tree."""
-            group_props = [p for p in props if str(p.id) in group.prop_ids and _prop_kept(p.id, props)]
+            group_props = _class_ordered_props(
+                [p for p in props
+                 if str(p.id) in group.prop_ids and _prop_kept(p.id, props)],
+                group_cls,
+            )
             group_widths = {a.property_id: a.width for a in group_cls.properties} if group_cls else {}
             group_ctx = (group_cls, service, remainings, config_codes, group_widths, expanded_props)
             # The split group itself is the grouping row. Keep all of that
@@ -1619,12 +1639,15 @@ class ClassCreationPage(BasePage):
                     gnode = self._make_group_node(
                         self._attr_tree, gname, gname, collapsed_groups
                     )
-                    for prop in props:
-                        if gname in ranges.get(str(prop.id), []):
-                            vids = {str(v.id) for v in prop.values if gname in value_range.get(str(v.id), [])}
-                            self._add_attr_property_node(
-                                gnode, prop, *ctx, value_ids=vids or None
-                            )
+                    group_cls = self._attribute_class_for_group(gname)
+                    for prop in _class_ordered_props(
+                        [p for p in props if gname in ranges.get(str(p.id), [])],
+                        group_cls,
+                    ):
+                        vids = {str(v.id) for v in prop.values if gname in value_range.get(str(v.id), [])}
+                        self._add_attr_property_node(
+                            gnode, prop, *ctx, value_ids=vids or None
+                        )
                 orphans = [p for p in props if not ranges.get(str(p.id))]
                 if orphans:
                     gnode = self._make_group_node(
@@ -1633,7 +1656,7 @@ class ClassCreationPage(BasePage):
                     for prop in orphans:
                         self._add_attr_property_node(gnode, prop, *ctx)
             else:
-                for prop in props:
+                for prop in _class_ordered_props(props, cls):
                     vids = None
                     if ignored:
                         vids = {str(v.id) for v in prop.values if _prop_kept(v.id, props)}
