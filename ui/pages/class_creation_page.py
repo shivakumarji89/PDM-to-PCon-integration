@@ -1501,20 +1501,6 @@ class ClassCreationPage(BasePage):
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
         )
-        missing_value_count = (
-            sum(len(self._missing_pdm_values(prop)) for prop in props)
-            if development and cls is not None
-            else 0
-        )
-        self._auto_btn.setEnabled(
-            development and (bool(unresolved) or missing_value_count > 0)
-        )
-        if development and (unresolved or missing_value_count):
-            self._auto_btn.setToolTip(
-                f"Resolve {len(unresolved)} unresolved code(s) and "
-                f"{missing_value_count} missing PDM value(s) in one pass."
-            )
-
         snapshot = self._context.active_snapshot
         # Value ids that will actually get a relation (subset-confined); generic
         # values get a blank Relation cell so the relation table stays clean.
