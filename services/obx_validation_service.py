@@ -232,7 +232,7 @@ class ObxValidationService(BaseService):
         if operation_control is None:
             return self.context.sif_validation_service
         from services.cancellable_sif_validation_service import CancellableSifValidationService
-        return CancellableSifValidationService(self.context)
+        return CancellableSifValidationService(self.context, self._lookup_cache())
 
     @staticmethod
     def _candidate_sites(currency: str, repo, conn) -> list[int]:
@@ -289,6 +289,14 @@ class ObxValidationService(BaseService):
                 unique.append(line)
             groups[key].append(line)
         return unique, groups
+
+    def _lookup_cache(self) -> dict:
+        """Return the in-memory PDM lookup cache shared across OBX runs."""
+        cache = getattr(self, "_obx_lookup_cache", None)
+        if cache is None:
+            cache = {"base_price": {}, "plc": {}, "option_increment": {}}
+            self._obx_lookup_cache = cache
+        return cache
 
     def _validation_cache(self) -> dict[tuple[str, str, str, int | None], SifResult]:
         """Return the in-memory validation-session result cache."""
