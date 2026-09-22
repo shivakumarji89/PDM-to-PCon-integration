@@ -858,8 +858,6 @@ class ClassCreationPage(BasePage):
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
         )
-        self._move_up_btn.setEnabled(development)
-        self._move_down_btn.setEnabled(development)
 
     def _on_attribute_master_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
