@@ -83,9 +83,10 @@ class CancellableSifValidationService(SifValidationService):
         repo = CancellablePDMRepository(self.context, operation_control, self._lookup_cache)
         conn = repo.get_connection()
         try:
-            server_date = self._server_date(repo, conn)
-            # Keep the cancellable path on the same pricing-date contract as SifValidationService.validate().
-            mydate = validation_date or server_date
+            # Only query PDM for the server date when no validation date was supplied.
+            # The OBX UI always supplies a date, so this avoids an unnecessary round trip
+            # while preserving the existing fallback for programmatic callers.
+            mydate = validation_date or self._server_date(repo, conn)
             groups: dict[str, list] = {}
             for line in lines:
                 groups.setdefault(line.currency or currency, []).append(line)
