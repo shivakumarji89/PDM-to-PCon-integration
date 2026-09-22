@@ -2811,7 +2811,7 @@ class ClassCreationPage(BasePage):
         rows = self._visual_master.selectionModel().selectedRows()
         if not rows:
             self._visual_values.setRowCount(0)
-                return
+            return
         meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
@@ -2820,11 +2820,10 @@ class ClassCreationPage(BasePage):
         # type-to-add placeholder.
         if isinstance(definition, str):
             self._visual_values.setRowCount(0)
-                self._visual_values_title.setText("Values")
+            self._visual_values_title.setText("Values")
             return
         self._populate_visible_visual_values(definition)
         self._visual_values_title.setText(f"Values — {definition.name}")
-        self._visual_add_value_btn.setEnabled(True)
 
     def _populate_visual_tables(self) -> None:
         self._populating = True
