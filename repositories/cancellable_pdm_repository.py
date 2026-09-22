@@ -81,6 +81,7 @@ class CancellablePDMRepository(PDMRepository):
         self._active_lock = RLock()
         self._active_cursor = None
         self._active_connection = None
+        self.last_skipped_option_items: list[str] = []
         self._control.register_cancel_handler(self.cancel_active_operation)
 
     def get_connection(self):
@@ -153,56 +154,60 @@ class CancellablePDMRepository(PDMRepository):
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
             if key not in cache:
                 missing.append(item)
+        self.last_skipped_option_items = []
         if missing:
-            # Keep the existing PDM stored-procedure call and result semantics;
-            # only avoid executing it again for an item already completed.
-            #
-            # The PDM procedure accepts one item per execution, so application-
-            # side concurrency is the only way to reduce wall-clock time without
-            # changing the PDM procedure itself. Use three independent repository
-            # workers, each with its own connection/cancellation state, and keep
-            # the cache population on this thread.
+            # Keep the existing PDM stored-procedure call and result semantics.
+            # Each worker processes its assigned items independently so one
+            # failed article can be recorded and retried without discarding the
+            # other articles in that worker.
             worker_count = min(3, len(missing))
-            if worker_count > 1:
-                chunks = [
-                    missing[index::worker_count]
-                    for index in range(worker_count)
-                    if missing[index::worker_count]
-                ]
+            chunks = [
+                missing[index::worker_count]
+                for index in range(worker_count)
+                if missing[index::worker_count]
+            ]
 
-                def fetch_chunk(chunk):
-                    worker_repo = CancellablePDMRepository(
-                        self.context,
-                        self._control,
-                        self._lookup_cache,
+            def fetch_chunk(chunk):
+                worker_repo = CancellablePDMRepository(
+                    self.context,
+                    self._control,
+                    self._lookup_cache,
+                )
+                worker_conn = worker_repo.get_connection()
+                successful_rows = []
+                skipped_items = []
+                try:
+                    for item in chunk:
+                        try:
+                            item_rows = PDMRepository.fetch_item_option_increment_prices(
+                                worker_repo,
+                                [item],
+                                currency,
+                                mydate,
+                                site_id,
+                                connection=worker_conn,
+                            )
+                            successful_rows.extend(item_rows)
+                        except Exception:
+                            skipped_items.append(item)
+                    return successful_rows, skipped_items
+                finally:
+                    worker_conn.close()
+                    self._control.unregister_cancel_handler(
+                        worker_repo.cancel_active_operation
                     )
-                    worker_conn = worker_repo.get_connection()
-                    try:
-                        return PDMRepository.fetch_item_option_increment_prices(
-                            worker_repo,
-                            chunk,
-                            currency,
-                            mydate,
-                            site_id,
-                            connection=worker_conn,
-                        )
-                    finally:
-                        worker_conn.close()
-                        self._control.unregister_cancel_handler(
-                            worker_repo.cancel_active_operation
-                        )
 
-                rows = []
+            rows = []
+            if worker_count > 1:
                 with ThreadPoolExecutor(
-                    max_workers=len(chunks),
+                    max_workers=worker_count,
                     thread_name_prefix="obx-pdm-option",
                 ) as executor:
-                    for chunk_rows in executor.map(fetch_chunk, chunks):
+                    for chunk_rows, chunk_skipped in executor.map(fetch_chunk, chunks):
                         rows.extend(chunk_rows)
+                        self.last_skipped_option_items.extend(chunk_skipped)
             else:
-                rows = super().fetch_item_option_increment_prices(
-                    missing, currency, mydate, site_id, connection=connection
-                )
+                rows, self.last_skipped_option_items = fetch_chunk(missing)
 
             by_item = {}
             for row in rows:
