@@ -160,7 +160,7 @@ class CancellablePDMRepository(PDMRepository):
             # Each worker processes its assigned items independently so one
             # failed article can be recorded and retried without discarding the
             # other articles in that worker.
-            worker_count = min(3, len(missing))
+            worker_count = min(2, len(missing))
             chunks = [
                 missing[index::worker_count]
                 for index in range(worker_count)
