@@ -20,6 +20,7 @@ from services.article_service import ArticleService
 from services.obx_service import OBXService
 from services.mdb_service import MDBService
 from services.xocd_export_service import XocdExportService
+from services.xocd_svn_service import XocdSvnService
 from services.ocd_export_service import OcdExportService
 from services.price_update_service import PriceUpdateService
 from services.version_update_service import VersionUpdateService
@@ -246,7 +247,7 @@ class ApplicationContext:
     @property
     def xocd_export_service(self) -> XocdExportService:
         return self.get_service(XocdExportService)
-
+\n    @property\n    def xocd_svn_service(self) -> XocdSvnService:\n        return XocdSvnService(self)\n
     @property
     def ocd_export_service(self) -> OcdExportService:
         return self.get_service(OcdExportService)
