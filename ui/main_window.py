@@ -11,7 +11,7 @@ behavior is page navigation.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QProcess
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -894,61 +894,198 @@ class MainWindow(QMainWindow):
         )
 
     def _on_export_xocd(self) -> None:
-        """Export the active product as an XOCD series into a package folder.
+        """Run the complete XOCD publish workflow.
 
-        A new series is written straight away; re-exporting an existing series
-        shows the row changes for confirmation before overwriting.
+        The user sees one action. Internally the order is:
+        Cleanup -> Update -> Export -> Review -> Commit -> final SVN validation.
+
+        SVN commit is always scoped to the configured Xocd folder; the parent
+        Catalogue folder is never used as a commit target.
         """
+        from pathlib import Path
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         if not self._context.snapshot_manager.has_snapshot():
             QMessageBox.information(self, "Export XOCD", "Load a product first.")
             return
-        directory = QFileDialog.getExistingDirectory(
-            self, "Export XOCD package to folder (the shared SVN set)"
-        )
-        if not directory:
+
+        xocd = Path(self._context.config.xocd_svn_path)
+        if not xocd.is_dir():
+            chosen = QFileDialog.getExistingDirectory(
+                self,
+                "Select the SVN XOCD folder",
+                str(xocd.parent if xocd.parent.is_dir() else Path.home()),
+            )
+            if not chosen:
+                return
+            xocd = Path(chosen)
+            self._context.config.xocd_svn_path = str(xocd)
+            QSettings().setValue("xocd/svnPath", str(xocd))
+
+        service = self._context.xocd_svn_service
+        wc_root = service.find_working_copy_root(xocd)
+        if wc_root is None:
+            QMessageBox.warning(
+                self,
+                "Export XOCD",
+                "The selected XOCD folder is not inside an SVN working copy.",
+            )
             return
 
-        snapshot = self._context.active_snapshot
-        service = self._context.xocd_export_service
-        # Standardise base article lengths to the base-length registry (CAD
-        # Maintenance) before publishing; no-op when the series has no overrides.
-        psvc = self._context.price_update_service
-        standardised = psvc.apply_registry(snapshot, psvc.registry_path())
-        result = service.export_series(snapshot, directory)
+        self._xocd_publish_path = xocd
+        self._xocd_publish_wc_root = wc_root
+        self._xocd_publish_service = service
+        self._xocd_publish_stage = "cleanup"
 
-        if result.error:
-            QMessageBox.warning(self, "Export XOCD", f"Export failed:\n{result.error}")
+        # Xocd was observed as unversioned in the current production setup.
+        # If it is versioned, update only Xocd. During initial setup, update its
+        # versioned parent so the parent working-copy metadata is current.
+        try:
+            status = service.read_status(xocd)
+            self._xocd_publish_update_path = (
+                xocd if status.revision else xocd.parent
+            )
+        except Exception:
+            self._xocd_publish_update_path = xocd.parent
+
+        self.statusBar().showMessage("XOCD publish: SVN cleanup...")
+        self._start_xocd_svn_process(service.cleanup_args(wc_root))
+
+    def _start_xocd_svn_process(self, args: list[str]) -> None:
+        """Run one TortoiseSVN command without blocking the Qt event loop."""
+        if not args:
+            return
+        process = QProcess(self)
+        self._xocd_publish_process = process
+        process.finished.connect(self._on_xocd_svn_finished)
+        process.setProgram(args[0])
+        process.setArguments(args[1:])
+        process.start()
+        if not process.waitForStarted(3000):
+            self._xocd_publish_process = None
+            QMessageBox.warning(
+                self,
+                "Export XOCD",
+                "Could not start TortoiseSVN. Check that TortoiseSVN is installed.",
+            )
+
+    def _on_xocd_svn_finished(self, exit_code: int, _exit_status) -> None:
+        """Advance the single-button XOCD publish workflow after each SVN step."""
+        from pathlib import Path
+        from PySide6.QtWidgets import QMessageBox
+
+        process = self._xocd_publish_process
+        self._xocd_publish_process = None
+        stage = getattr(self, "_xocd_publish_stage", "")
+        if process is None:
             return
 
-        if result.needs_validation:
-            changes = "\n".join(
-                f"  {name}: +{len(d['added'])} / -{len(d['removed'])}"
-                for name, d in sorted(result.diff.items())
+        error_text = bytes(process.readAllStandardError()).decode(
+            errors="replace"
+        ).strip()
+        if exit_code != 0:
+            QMessageBox.warning(
+                self,
+                "Export XOCD",
+                f"SVN {stage} failed."
+                + (f"\n\n{error_text}" if error_text else ""),
+            )
+            self.statusBar().showMessage(f"XOCD publish stopped: SVN {stage} failed")
+            return
+
+        service = self._xocd_publish_service
+        xocd: Path = self._xocd_publish_path
+
+        if stage == "cleanup":
+            self._xocd_publish_stage = "update"
+            self.statusBar().showMessage("XOCD publish: SVN update...")
+            self._start_xocd_svn_process(
+                service.update_args(self._xocd_publish_update_path)
+            )
+            return
+
+        if stage == "update":
+            snapshot = self._context.active_snapshot
+            psvc = self._context.price_update_service
+            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+            result = self._context.xocd_export_service.export_series(
+                snapshot, xocd, force=True
+            )
+            if result.error:
+                QMessageBox.warning(
+                    self, "Export XOCD", f"Export failed:\n{result.error}"
+                )
+                return
+
+            self._xocd_publish_standardised = standardised
+            self._xocd_publish_program = result.program
+            self._xocd_publish_stage = "commit"
+
+            total = sum(result.files.values())
+            message = (
+                f"XOCD export completed for '{result.program}'.\n\n"
+                f"{total} rows across {len(result.files)} file(s) were written to:\n"
+                f"{xocd}\n\n"
+                "The next step opens the SVN review. Only this Xocd folder "
+                "will be offered as the commit target."
             )
             answer = QMessageBox.question(
-                self, "Export XOCD - series exists",
-                f"Series '{result.program}' already exists in this package.\n\n"
-                f"Changes if you continue:\n{changes}\n\nOverwrite this series?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                self,
+                "Review XOCD",
+                message,
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Ok,
             )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-            result = service.export_series(snapshot, directory, force=True)
-            if result.error:
-                QMessageBox.warning(self, "Export XOCD", f"Export failed:\n{result.error}")
+            if answer != QMessageBox.StandardButton.Ok:
+                self.statusBar().showMessage("XOCD publish cancelled before commit")
                 return
 
-        total = sum(result.files.values())
-        QMessageBox.information(
-            self, "Export XOCD",
-            f"Exported series '{result.program}' ({total} rows across "
-            f"{len(result.files)} file(s)) into:\n{directory}\n\n"
-            + (f"Standardised {standardised} base article(s) to CAD Maintenance.\n"
-               if standardised else "")
-            + "Commit the folder to SVN to publish.",
-        )
+            comment = f"XOCD export - {result.program}"
+            self.statusBar().showMessage("XOCD publish: review and commit in TortoiseSVN...")
+            self._start_xocd_svn_process(
+                service.commit_args(xocd, comment)
+            )
+            return
+
+        if stage == "commit":
+            try:
+                status = service.read_status(xocd)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Export XOCD",
+                    f"Commit completed, but final SVN validation could not run:\n{exc}",
+                )
+                return
+
+            if status.revision and not status.modified and not status.unversioned:
+                standardised = getattr(self, "_xocd_publish_standardised", 0)
+                extra = (
+                    f"\nStandardised {standardised} base article(s)."
+                    if standardised else ""
+                )
+                QMessageBox.information(
+                    self,
+                    "Export XOCD",
+                    f"XOCD commit validated successfully.\n\n"
+                    f"Working-copy revision: {status.revision}{extra}",
+                )
+                self.statusBar().showMessage("XOCD publish completed and validated")
+            elif status.unversioned:
+                QMessageBox.warning(
+                    self,
+                    "Export XOCD",
+                    "The Xocd folder still contains unversioned items. "
+                    "The commit was not fully validated. Review the SVN commit "
+                    "dialog and make sure the generated XOCD files are selected.",
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Export XOCD",
+                    "The Xocd folder still has local SVN modifications. "
+                    "The commit was not fully validated.",
+                )
 
     def _on_export_mdb(self) -> None:
         """Export the active product directly as a ``pcr_data_com_ocd.mdb``.
