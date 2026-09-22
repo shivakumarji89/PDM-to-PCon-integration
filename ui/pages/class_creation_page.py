@@ -2850,6 +2850,13 @@ class ClassCreationPage(BasePage):
         if not meta:
             return
         definition = meta[0]
+        # Protect against accidental selection of the Visual table's
+        # type-to-add placeholder.
+        if isinstance(definition, str):
+            self._visual_values.setRowCount(0)
+            self._visual_add_value_btn.setEnabled(False)
+            self._visual_values_title.setText("Values")
+            return
         self._populate_visible_visual_values(definition)
         self._visual_values_title.setText(f"Values — {definition.name}")
         self._visual_add_value_btn.setEnabled(True)
@@ -2947,7 +2954,7 @@ class ClassCreationPage(BasePage):
         if not rows:
             return
         meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
-        if meta:
+        if meta and not isinstance(meta[0], str):
             self._add_visual_value(meta[0])
 
     def _populate_options(self) -> None:
