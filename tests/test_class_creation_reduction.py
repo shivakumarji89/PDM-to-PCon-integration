@@ -16,6 +16,7 @@ from services.engineering.engineering_class_service import EngineeringClassServi
 from services.engineering.engineering_reduction_service import (
     EngineeringReductionService,
 )
+from services.snapshot_serialization import snapshot_from_dict, snapshot_to_dict
 
 
 def _snapshot():
@@ -169,3 +170,28 @@ def test_development_reduction_uses_class_creation_sliced_code_not_article_value
     # for reduction. The PDM value id v0 must not force removal of 0.
     assert snapshot.engineering.families[0].members[0].reduced_article == "AL1C100S"
     assert snapshot.engineering.families[0].members[0].reduced_article != "AL1C102S"
+
+def test_manual_base_length_override_preserves_class_creation_property_relationships_and_ignore():
+    snapshot = _snapshot()
+    snapshot.config_ignore_overrides = {"p1": False}
+    snapshot.base_length_overrides = {"A1X100.S1": 3, "A1Y100.S2": 3}
+    service = _service(snapshot)
+
+    sets = service.materialize_class_creation_article_sets(snapshot)
+
+    assert snapshot.engineering.families[0].members[0].reduced_article == "A1X"
+    assert snapshot.engineering.families[0].members[1].reduced_article == "A1Y"
+    values = {v.id: v for v in sets[0].properties[0].values}
+    assert values["vx"].article_ids == ["a1"]
+    assert values["vy"].article_ids == ["a2"]
+    assert snapshot.config_ignore_overrides == {"p1": False}
+    assert snapshot.article_property_value_ids == {"a1": ["vx"], "a2": ["vy"]}
+
+
+def test_manual_base_length_override_round_trips_with_snapshot():
+    snapshot = _snapshot()
+    snapshot.base_length_overrides = {"A1X100.S1": 3}
+
+    restored = snapshot_from_dict(snapshot_to_dict(snapshot))
+
+    assert restored.base_length_overrides == {"A1X100.S1": 3}
