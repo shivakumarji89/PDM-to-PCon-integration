@@ -652,18 +652,36 @@ class ArticlesPage(BasePage):
         id_set = {str(a) for a in article_ids} if article_ids is not None else None
         article_service = self._context.article_service
         member_service = self._context.engineering_member_service
+        snapshot = self._context.active_snapshot
+        is_development = (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
         for _family, member, article in self._rows:
             if article is None:
                 continue
             if id_set is not None and str(article.id) not in id_set:
                 continue
             mid = getattr(member, "id", "")
+            code = str(getattr(article, "code", "") or "")
+            effective_value = value
+            if is_development:
+                # Development base articles never consume the PDM post-dot
+                # relationship/order-code suffix. The manual length is a
+                # boundary in the pre-dot article only.
+                effective_value = min(value, len(code.split(".", 1)[0]))
             if mid:
-                self._base_len_by_member[mid] = value
+                self._base_len_by_member[mid] = effective_value
+            if snapshot is not None and code:
+                # Persist the override separately from Class Creation Ignore.
+                # This lets the next Class Creation materialization reproduce
+                # the user's manual boundary without changing property/value
+                # relationships or the Ignore decision.
+                snapshot.base_length_overrides[code] = effective_value
             article_service.set_selected(article, True)
-            # Persist the split so it survives save/reload and feeds Class
-            # Creation slicing (reduced_article = base; remaining = the rest).
-            base, _remaining = self._split_base(article.code, value)
+            if is_development:
+                base = code.split(".", 1)[0][:effective_value]
+            else:
+                base, _remaining = self._split_base(code, effective_value)
             member_service.set_reduced_article(member, base)
         if busy is not None:
             busy.update_status("Grouping articles...")
@@ -1099,20 +1117,28 @@ class ArticlesPage(BasePage):
 
     # -- clear (per shown subset) ------------------------------------------
     def _on_clear_length(self) -> None:
-        """Clear manual Article reductions without destroying Development Class Creation output."""
-        if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
-            snapshot = self._context.active_snapshot
-            if snapshot is not None:
-                self._context.engineering_reduction_service.materialize_class_creation_article_sets(
-                    snapshot
-                )
-                self._context.snapshot_manager.mark_modified()
-                self.refresh()
-            return
+        """Clear manual base-length overrides for the shown Article rows."""
+        snapshot = self._context.active_snapshot
         member_service = self._context.engineering_member_service
-        for _family, member, _article in self._filtered:
+        is_development = (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
+        for _family, member, article in self._filtered:
             self._base_len_by_member.pop(getattr(member, "id", ""), None)
-            member_service.set_reduced_article(member, "")
+            if snapshot is not None and article is not None:
+                code = str(getattr(article, "code", "") or "")
+                if code:
+                    snapshot.base_length_overrides.pop(code, None)
+            if not is_development:
+                member_service.set_reduced_article(member, "")
+        if is_development and snapshot is not None:
+            # Re-run the unchanged Class Creation reduction now that the
+            # explicit boundary override is gone.
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
+        if snapshot is not None:
+            self._context.snapshot_manager.mark_modified()
         self._apply_filter()
 
     def _on_clear_long(self) -> None:
