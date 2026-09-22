@@ -884,6 +884,7 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "component_head_attrs": snapshot.component_head_attrs,
         "article_varcond_terms": snapshot.article_varcond_terms,
         "article_prefix_length": snapshot.article_prefix_length,
+        "base_length_overrides": snapshot.base_length_overrides,
         "option_increments": snapshot.option_increments,
         "attribute_value_exclusions": snapshot.attribute_value_exclusions,
         "attribute_option_dependencies": snapshot.attribute_option_dependencies,
