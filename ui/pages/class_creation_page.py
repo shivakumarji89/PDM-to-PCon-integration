@@ -299,16 +299,6 @@ class ClassCreationPage(BasePage):
         # Development Class Creation controls. These are deliberately visible
         # instead of being available only through a context menu so the
         # authoritative property/value editing workflow is discoverable.
-        self._move_up_btn = QPushButton("Move Up", box)
-        self._move_up_btn.clicked.connect(lambda: self._move_selected_attr_property(-1))
-        self._move_up_btn.setEnabled(False)
-        layout.addWidget(self._move_up_btn)
-
-        self._move_down_btn = QPushButton("Move Down", box)
-        self._move_down_btn.clicked.connect(lambda: self._move_selected_attr_property(1))
-        self._move_down_btn.setEnabled(False)
-        layout.addWidget(self._move_down_btn)
-
         # Amber hint shown when configuration codes were inferred (read-only
         # guesses the user must confirm before generation).
         self._inferred_hint = QLabel("", box)
@@ -397,15 +387,10 @@ class ClassCreationPage(BasePage):
             button.setProperty("active", i == index)
             button.style().unpolish(button)
             button.style().polish(button)
-        # Keep the toolbar relevant to the Attribute workspace. Options and
-        # Visual retain their own direct editing/context actions.
-        attribute = index == 0
-        for widget in (
-            self._move_up_btn, self._move_down_btn, self._remove_value_btn,
-            self._auto_btn,
-        ):
-            widget.setVisible(attribute)
-        self._inferred_hint.setVisible(attribute and self._inferred_hint.text() != "")
+        # Structural reordering is available contextually on an Attribute
+        # property rather than as a persistent toolbar action. Keep the toolbar
+        # focused on navigation and status information.
+        self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _rebalance_cards(self, *_args) -> None:
         # Retained as a compatibility hook for existing callers; the workspace
@@ -2130,11 +2115,6 @@ class ClassCreationPage(BasePage):
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
-
-    def _move_selected_attr_property(self, direction: int) -> None:
-        prop = self._selected_attr_prop
-        if prop is not None:
-            self._move_attr_property(prop, direction)
 
     def _on_attr_context_menu(self, pos) -> None:
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
