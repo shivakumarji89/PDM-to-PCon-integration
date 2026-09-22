@@ -543,11 +543,11 @@ class ClassCreationPage(BasePage):
 
         value_toolbar = QWidget(self)
         value_layout = QHBoxLayout(value_toolbar)
-        value_layout.setContentsMargins(0, 0, 0, 4)
-        value_layout.addWidget(QLabel("Values", value_toolbar))
+        value_layout.setContentsMargins(0, 0, 0, 2)
+        value_label = QLabel("Values", value_toolbar)
+        value_layout.addWidget(value_label)
         value_layout.addStretch(1)
-        self._remove_value_btn.setEnabled(False)
-        # Values are configured directly in the Sliced cell; no Add Value UI is needed.
+        # Values are configured directly in the Sliced cell.
         values_panel = QWidget(self)
         values_layout = QVBoxLayout(values_panel)
         values_layout.setContentsMargins(0, 0, 0, 0)
@@ -799,7 +799,6 @@ class ClassCreationPage(BasePage):
         rows = self._attr_values.selectionModel().selectedRows()
         if not rows:
             self._selected_attr_value = None
-            self._remove_value_btn.setEnabled(False)
             return
         meta = self._attr_values.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
@@ -818,7 +817,6 @@ class ClassCreationPage(BasePage):
         if not meta:
             return
         prop, value, cv, group_name = meta
-        self._set_active_group_from_attr_item(None)
         self._active_group_name = group_name or self._active_group_name
         new_code = item.text().strip()
         if cv is None:
@@ -2112,26 +2110,19 @@ class ClassCreationPage(BasePage):
             self._context.snapshot_manager.mark_modified()
 
     def _on_attr_selection_changed(self) -> None:
-        """Track the selected Attribute property/value for visible edit controls."""
-        item = self._attr_tree.currentItem()
-        self._set_active_group_from_attr_item(item)
+        """Synchronize the selected Attribute property from the visible table."""
+        if self._populating:
+            return
         self._selected_attr_prop = None
         self._selected_attr_value = None
-        if item is not None:
-            data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
-            if data:
-                kind, obj = data
-                if kind == _KIND_PROP:
-                    self._selected_attr_prop = obj
-                elif kind == _KIND_PROP_VALUE:
-                    self._selected_attr_value = obj
-                    parent = item.parent()
-                    pdata = (
-                        parent.data(_COL_NAME, Qt.ItemDataRole.UserRole)
-                        if parent is not None else None
-                    )
-                    if pdata and pdata[0] == _KIND_PROP:
-                        self._selected_attr_prop = pdata[1]
+        rows = self._attr_master.selectionModel().selectedRows()
+        if rows:
+            item = self._attr_master.item(rows[0].row(), 0)
+            meta = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if meta:
+                self._selected_attr_prop = meta[0]
+                self._active_group_name = meta[1] or self._active_group_name
+
         development = (
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
@@ -2144,17 +2135,6 @@ class ClassCreationPage(BasePage):
         prop = self._selected_attr_prop
         if prop is not None:
             self._move_attr_property(prop, direction)
-
-    def _add_selected_attr_value(self) -> None:
-        prop = self._selected_attr_prop
-        if prop is not None:
-            self._add_attr_value(prop)
-
-    def _remove_selected_attr_value(self) -> None:
-        prop = self._selected_attr_prop
-        value = self._selected_attr_value
-        if prop is not None and value is not None:
-            self._remove_attr_value(prop, value)
 
     def _on_attr_context_menu(self, pos) -> None:
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
