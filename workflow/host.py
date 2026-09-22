@@ -6,6 +6,8 @@ logic - it only drives workspace lifecycle methods and page switching.
 """
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
+
 from core.enums import WorkflowStep
 
 
@@ -35,6 +37,11 @@ class WorkspaceHost:
         self._stack.setCurrentWidget(page)  # triggers the page's own refresh
         page.activate()
         page.on_enter()
+
+        # Fit every visible table after refresh and layout have completed.
+        if hasattr(page, "auto_fit_tables"):
+            QTimer.singleShot(0, page.auto_fit_tables)
+
         self._current = step
 
     def is_ready(self, step: WorkflowStep) -> bool:
