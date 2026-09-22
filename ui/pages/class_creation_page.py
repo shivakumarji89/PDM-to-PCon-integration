@@ -296,9 +296,21 @@ class ClassCreationPage(BasePage):
         self._group_combo.setVisible(False)
         layout.addWidget(self._group_combo)
 
-        # Development Class Creation controls. These are deliberately visible
-        # instead of being available only through a context menu so the
-        # authoritative property/value editing workflow is discoverable.
+        # Property order remains a first-class Class Creation operation.
+        self._move_up_btn = QPushButton("Move Up", box)
+        self._move_up_btn.clicked.connect(
+            lambda: self._move_selected_attr_property(-1)
+        )
+        self._move_up_btn.setEnabled(False)
+        layout.addWidget(self._move_up_btn)
+
+        self._move_down_btn = QPushButton("Move Down", box)
+        self._move_down_btn.clicked.connect(
+            lambda: self._move_selected_attr_property(1)
+        )
+        self._move_down_btn.setEnabled(False)
+        layout.addWidget(self._move_down_btn)
+
         # Amber hint shown when configuration codes were inferred (read-only
         # guesses the user must confirm before generation).
         self._inferred_hint = QLabel("", box)
@@ -695,8 +707,13 @@ class ClassCreationPage(BasePage):
         self._selected_attr_prop = prop
         self._selected_attr_value = None
         self._populate_visible_values(prop, group_name, backing)
-        development = getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-        self._remove_value_btn.setEnabled(False)
+        development = (
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
+        )
+        has_prop = self._selected_attr_prop is not None
+        self._move_up_btn.setEnabled(development and has_prop)
+        self._move_down_btn.setEnabled(development and has_prop)
 
     def _populate_visible_values(self, prop, group_name, backing) -> None:
         self._populating = True
@@ -788,7 +805,6 @@ class ClassCreationPage(BasePage):
         meta = self._attr_values.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             self._selected_attr_value = None
-            self._remove_value_btn.setEnabled(False)
             return
         prop, value, _cv, group_name = meta
         self._selected_attr_prop = prop
@@ -2095,6 +2111,8 @@ class ClassCreationPage(BasePage):
             == WorkbenchModule.DEVELOPMENT
         )
         has_prop = self._selected_attr_prop is not None
+        self._move_up_btn.setEnabled(development and has_prop)
+        self._move_down_btn.setEnabled(development and has_prop)
 
     def _on_attr_context_menu(self, pos) -> None:
         if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
@@ -2143,8 +2161,16 @@ class ClassCreationPage(BasePage):
                 )
         menu.exec(self._attr_tree.viewport().mapToGlobal(pos))
 
+    def _move_selected_attr_property(self, direction: int) -> None:
+        """Move the property selected in the visible Attribute table."""
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            return
+        if self._selected_attr_prop is None:
+            return
+        self._move_attr_property(self._selected_attr_prop, direction)
+
     def _move_attr_property(self, prop, direction: int) -> None:
-        cls = self._attribute_class()
+        cls = self._attribute_class_for_group(self._active_group_name)
         snapshot = self._context.active_snapshot
         if cls is None or snapshot is None:
             return
