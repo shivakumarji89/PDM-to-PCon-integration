@@ -26,7 +26,9 @@ class AppConfig:
     workspace_path: str = "workspace/"
     snapshot_location: str = "workspace/snapshots/"
     temp_folder: str = "workspace/tmp/"
-    # SVN XOCD publish target. Only this folder is ever used as the commit boundary.\n    xocd_svn_path: str = r"C:\\HermanMillerOFMLSVN\\Staging\\HermanMiller\\WS\\Catalogue\\Xocd"\n
+    # SVN XOCD publish target. Only this folder is ever used as the commit boundary.
+    xocd_svn_path: str = r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Catalogue\Xocd"
+
     # PDM (SQL Server) connection parameters. Defaults mirror the proven V1
     # configuration; the connection string is assembled in PDMRepository.
     pdm_driver: str = "{SQL Server}"
