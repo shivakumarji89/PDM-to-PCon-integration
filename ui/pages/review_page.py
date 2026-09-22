@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -28,6 +28,24 @@ from PySide6.QtWidgets import (
 from ui import theme
 from ui.pages.base_page import BasePage
 from services.xocd_export_service import XocdExportService
+
+
+class _MdbPreviewWorker(QObject):
+    """Build MDB preview data away from the GUI thread."""
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, context, snapshot) -> None:
+        super().__init__()
+        self._context = context
+        self._snapshot = snapshot
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            self.finished.emit(self._context.ocd_export_service.preview(self._snapshot))
+        except Exception as error:
+            self.failed.emit(str(error))
 
 
 class ReviewPage(BasePage):
@@ -52,6 +70,9 @@ class ReviewPage(BasePage):
         self._mdb_preview_rows = {}
         self._mdb_retained_rows = {}
         self._mdb_preview_result = None
+        self._preview_thread: QThread | None = None
+        self._preview_worker: _MdbPreviewWorker | None = None
+        self._preview_running = False
         self.refresh()
 
     def _build_toolbar(self) -> QWidget:
@@ -186,6 +207,7 @@ class ReviewPage(BasePage):
         return rows
 
     def _refresh_mdb_preview(self) -> None:
+        """Refresh MDB/XOCD generation data without blocking the Qt event loop."""
         snapshot = self._context.active_snapshot
         if snapshot is None:
             self._mdb_preview_rows = {}
@@ -194,17 +216,31 @@ class ReviewPage(BasePage):
             self._mdb_preview_status.setText("Load a product first.")
             self._clear_generation_summary()
             return
-
-        try:
-            result = self._context.ocd_export_service.preview(snapshot)
-        except Exception as error:
-            self._mdb_preview_rows = {}
-            self._mdb_retained_rows = {}
-            self._mdb_preview_result = None
-            self._mdb_preview_status.setText(f"MDB generation data failed: {error}")
-            self._clear_generation_summary()
+        if self._preview_running:
             return
 
+        self._preview_running = True
+        self._refresh_btn.setEnabled(False)
+        self._mdb_preview_status.setText(
+            "Refreshing MDB/XOCD generation data… this may take a moment."
+        )
+
+        thread = QThread(self)
+        worker = _MdbPreviewWorker(self._context, snapshot)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_mdb_preview_finished)
+        worker.failed.connect(self._on_mdb_preview_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_mdb_preview_thread_finished)
+        self._preview_thread = thread
+        self._preview_worker = worker
+        thread.start()
+
+    @Slot(object)
+    def _on_mdb_preview_finished(self, result) -> None:
         self._mdb_preview_result = result
         self._mdb_preview_rows = result.preview_rows or {}
         self._mdb_retained_rows = result.retained_rows or {}
@@ -216,18 +252,21 @@ class ReviewPage(BasePage):
             self._clear_generation_summary()
             return
 
-        product = snapshot.product
-        program = self._safe_xocd_value("program_key", product)
-        series = self._safe_xocd_value("series_id", product)
+        snapshot = self._context.active_snapshot
+        product = snapshot.product if snapshot is not None else None
+        program = self._safe_xocd_value("program_key", product) if product else None
+        series = self._safe_xocd_value("series_id", product) if product else None
 
         self._generation_rows["Template"].setText(result.template or "-")
         self._generation_rows["Program"].setText(str(result.program_code or program or "-"))
         self._generation_rows["Series"].setText(str(result.series_id or series or "-"))
-        self._generation_rows["Manufacturer"].setText(
-            str(result.manufacturer_id or "-")
+        self._generation_rows["Manufacturer"].setText(str(result.manufacturer_id or "-"))
+        self._generation_rows["Package ID"].setText(
+            str(result.package_id if result.package_id is not None else "-")
         )
-        self._generation_rows["Package ID"].setText(str(result.package_id if result.package_id is not None else "-"))
-        self._generation_rows["COM Group ID"].setText(str(result.comgroup_id if result.comgroup_id is not None else "-"))
+        self._generation_rows["COM Group ID"].setText(
+            str(result.comgroup_id if result.comgroup_id is not None else "-")
+        )
         self._generation_rows["CAD Base-Length Overrides"].setText(
             str(len(result.registry_overrides))
         )
@@ -240,9 +279,7 @@ class ReviewPage(BasePage):
         self._generation_rows["Retained template tables"].setText(
             str(len(result.retained_rows))
         )
-        self._generation_rows["CAD Registry"].setText(
-            result.registry_path or "-"
-        )
+        self._generation_rows["CAD Registry"].setText(result.registry_path or "-")
         self._mdb_preview_status.setText(
             f"Generated {sum(result.table_counts.values())} backend/export rows "
             f"across {len(result.table_counts)} MDB tables. Read-only; nothing written."
@@ -260,8 +297,22 @@ class ReviewPage(BasePage):
         for tab_name, (selector, table) in self._backend_tables.items():
             if tab_name == "Package / Manufacturer":
                 continue
-            name = selector.currentText()
-            self._show_backend_table(name, table)
+            self._show_backend_table(selector.currentText(), table)
+
+    @Slot(str)
+    def _on_mdb_preview_failed(self, error: str) -> None:
+        self._mdb_preview_rows = {}
+        self._mdb_retained_rows = {}
+        self._mdb_preview_result = None
+        self._mdb_preview_status.setText(f"MDB generation data failed: {error}")
+        self._clear_generation_summary()
+
+    @Slot()
+    def _on_mdb_preview_thread_finished(self) -> None:
+        self._preview_running = False
+        self._preview_thread = None
+        self._preview_worker = None
+        self._refresh_btn.setEnabled(True)
 
     @staticmethod
     def _safe_xocd_value(method_name: str, product):
