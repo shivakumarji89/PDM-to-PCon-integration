@@ -240,7 +240,15 @@ class OcdExportService(BaseService):
                 preview_snapshot, registry_path
             )
         )
-        preview_snapshot.base_length_overrides = dict(result.registry_overrides)
+        # The CAD registry supplies the normal export defaults, but an explicit
+        # user override from the Article workflow must survive into Review/export.
+        # Do not replace the snapshot override map with the registry map: that
+        # would make Review display the old base even though Development already
+        # materialized the user's manual boundary.
+        manual_overrides = dict(getattr(snapshot, "base_length_overrides", {}) or {})
+        effective_overrides = dict(result.registry_overrides)
+        effective_overrides.update(manual_overrides)
+        preview_snapshot.base_length_overrides = effective_overrides
 
         pkg = self.context.mdb_service.read_table(
             template, "SELECT * FROM tCOMd_Package"
