@@ -669,12 +669,27 @@ class EngineeringReductionService(BaseService):
                         if remove_width > 0:
                             working = working[:pos] + working[pos + remove_width:]
                             matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
+                # A manual Article-workflow base-length override changes only
+                # the stored base boundary. The Class Creation reduction above is
+                # still run first so its Sliced/property-value matching remains
+                # authoritative and all property/value coverage is retained.
+                override_map = getattr(snapshot, "base_length_overrides", {}) or {}
+                override_key = str(original or "")
+                if override_key in override_map:
+                    try:
+                        override_length = max(0, int(override_map[override_key]))
+                    except (TypeError, ValueError):
+                        override_length = 0
+                    pre_dot = (original or "").split(".", 1)[0]
+                    working = pre_dot[:min(override_length, len(pre_dot))]
+
                 reduced_by_article[article_id] = working
                 member = member_by_article.get(article_id)
                 if member is not None:
                     # Development Articles reads this as the authoritative
                     # reduced/base article. The source PDM Article remains
-                    # untouched.
+                    # untouched. Manual length overrides do not change Ignore
+                    # or the Class Creation property/value relationships.
                     member.reduced_article = working
 
             # Make the ArticleSet reflect the Class Creation vocabulary without
