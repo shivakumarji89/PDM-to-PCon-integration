@@ -591,10 +591,11 @@ class ClassCreationPage(BasePage):
         splitter.setObjectName("classAttributeMasterDetail")
         splitter.addWidget(self._attr_master)
         splitter.addWidget(values_panel)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 5)
+        # Property table is intentionally wider than the value table.
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 4)
         splitter.setChildrenCollapsible(False)
-        splitter.setSizes([420, 680])
+        splitter.setSizes([600, 480])
 
         self._attr_box = _CollapsibleCard("Attribute", splitter, self)
         self._attr_box.setToolTip(
