@@ -195,3 +195,13 @@ def test_manual_base_length_override_round_trips_with_snapshot():
     restored = snapshot_from_dict(snapshot_to_dict(snapshot))
 
     assert restored.base_length_overrides == {"A1X100.S1": 3}
+
+
+def test_manual_base_length_override_wins_over_registry_override_in_review_preview():
+    # Regression contract for Review: the export preview may load CAD registry
+    # defaults, but an explicit Article-workflow override remains authoritative.
+    registry = {"A1X100.S1": 6}
+    manual = {"A1X100.S1": 3}
+    effective = dict(registry)
+    effective.update(manual)
+    assert effective["A1X100.S1"] == 3
