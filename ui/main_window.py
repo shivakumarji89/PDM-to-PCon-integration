@@ -70,8 +70,9 @@ class MainWindow(QMainWindow):
 
         # Shared application context (services + state) for the whole window.
         self._context = ApplicationContext()
-
-        self._pages: dict[WorkflowStep, BasePage] = {}
+        saved_xocd = QSettings().value("xocd/svnPath", "", type=str)
+        if saved_xocd:\n            self._context.config.xocd_svn_path = saved_xocd
+\n        self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
         self._active_module: WorkbenchModule | None = None
         self._stack = QStackedWidget(self)
