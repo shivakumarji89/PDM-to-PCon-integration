@@ -538,6 +538,7 @@ class SifValidationService(BaseService):
                     if any(o.ol for o in l.options)
                 })
             inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
+            skipped_option_items: set[str] = set()
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
             inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
