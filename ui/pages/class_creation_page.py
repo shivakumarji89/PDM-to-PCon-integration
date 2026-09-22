@@ -706,6 +706,7 @@ class ClassCreationPage(BasePage):
         self._active_group_name = group_name or self._active_group_name
         self._selected_attr_prop = prop
         self._selected_attr_value = None
+        self._selected_attr_group = group_name
         self._populate_visible_values(prop, group_name, backing)
         development = (
             getattr(self.window(), "_active_module", None)
@@ -742,10 +743,23 @@ class ClassCreationPage(BasePage):
                     ids.add(str(getattr(child_data[1], "id", "")))
             if ids:
                 allowed_ids = ids
-        displayed = [
-            v for v in (getattr(prop, "values", []) or [])
-            if allowed_ids is None or str(getattr(v, "id", "")) in allowed_ids
-        ]
+        # Render from the backing property node first. The backing tree is
+        # populated directly from PDM and therefore remains reliable even when
+        # the top-level property object's values collection is incomplete.
+        displayed = []
+        if backing is not None:
+            for i in range(backing.childCount()):
+                child = backing.child(i)
+                child_data = child.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                if child_data and child_data[0] == _KIND_PROP_VALUE:
+                    displayed.append(child_data[1])
+        if not displayed:
+            displayed = list(getattr(prop, "values", []) or [])
+        if allowed_ids is not None:
+            displayed = [
+                v for v in displayed
+                if str(getattr(v, "id", "")) in allowed_ids
+            ]
         for value in _by_display_order(displayed):
             cv = class_values.get(str(getattr(value, "id", "")))
             pdm_code = (getattr(value, "code", "") or "").strip()
@@ -852,28 +866,6 @@ class ClassCreationPage(BasePage):
             return
         self._active_group_name = group_name or self._active_group_name
         self._on_usage_selected(str(prop.id), usage, backing)
-
-    def _on_attribute_master_selected(self) -> None:
-        """Synchronize the visible Property selection with the legacy backing
-        selection used by movement/context-menu actions."""
-        if self._populating:
-            return
-        rows = self._attr_master.selectionModel().selectedRows()
-        self._selected_attr_prop = None
-        self._selected_attr_value = None
-        if not rows:
-            return
-        item = self._attr_master.item(rows[0].row(), 0)
-        meta = item.data(Qt.ItemDataRole.UserRole) if item else None
-        if not meta:
-            return
-        prop, group_name, _backing = meta
-        self._selected_attr_prop = prop
-        self._active_group_name = group_name or self._active_group_name
-        development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
-        )
 
     def _on_attribute_master_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
@@ -2167,10 +2159,16 @@ class ClassCreationPage(BasePage):
             return
         if self._selected_attr_prop is None:
             return
-        self._move_attr_property(self._selected_attr_prop, direction)
+        self._move_attr_property(
+            self._selected_attr_prop, direction, self._selected_attr_group
+        )
 
-    def _move_attr_property(self, prop, direction: int) -> None:
-        cls = self._attribute_class_for_group(self._active_group_name)
+    def _move_attr_property(
+        self, prop, direction: int, group_name: str | None = None
+    ) -> None:
+        cls = self._attribute_class_for_group(
+            group_name if group_name is not None else self._active_group_name
+        )
         snapshot = self._context.active_snapshot
         if cls is None or snapshot is None:
             return
