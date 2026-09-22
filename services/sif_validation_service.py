@@ -546,6 +546,7 @@ class SifValidationService(BaseService):
                 inc_rows = repo.fetch_item_option_increment_prices(
                     inc_items, currency, mydate, site, conn
                 )
+                skipped_option_items = set(getattr(repo, "last_skipped_option_items", []))
                 for r in inc_rows:
                     inc_price = getattr(r, "IncPrice", None)
                     item = str(r.Item)
@@ -569,6 +570,11 @@ class SifValidationService(BaseService):
                         quantity,
                     )
             for line in chunk:
+                # A worker can report an individual option lookup as skipped.
+                # Do not manufacture a pricing result for it; the OBX worker
+                # will retain that line as pending so it can be retried alone.
+                if line.base in skipped_option_items:
+                    continue
                 done[0] += 1
                 if progress:
                     progress(done[0], total, line.base)
