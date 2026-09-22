@@ -394,6 +394,12 @@ class ClassCreationPage(BasePage):
             return
         index = max(0, min(index, len(self._workspace_buttons) - 1))
         self._workspace_stack.setCurrentIndex(index)
+
+        # Re-fit the selected workspace every time the workflow is selected.
+        # This is intentionally done after switching the stack so Qt measures
+        # the currently visible tables, not a hidden table with stale widths.
+        self._fit_workspace_columns(index)
+
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
             button.setProperty("active", i == index)
@@ -403,6 +409,34 @@ class ClassCreationPage(BasePage):
         # property rather than as a persistent toolbar action. Keep the toolbar
         # focused on navigation and status information.
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
+
+    def _fit_workspace_columns(self, index: int) -> None:
+        """Auto-fit the visible workspace tables when its workflow is selected."""
+        tables = {
+            0: (getattr(self, "_attr_master", None),
+                getattr(self, "_attr_values", None)),
+            1: (getattr(self, "_opt_master", None),
+                getattr(self, "_opt_values", None)),
+            2: (getattr(self, "_visual_master", None),
+                getattr(self, "_visual_values", None)),
+        }.get(index, ())
+        for table in tables:
+            if table is None:
+                continue
+            header = table.horizontalHeader()
+            # Fit every column to its current contents, then let the first
+            # descriptive column consume any remaining workspace width.
+            header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+            table.resizeColumnsToContents()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+
+        # Keep the compact status column in the value tables.
+        for table in tables[1:]:
+            if table is not None and table.columnCount() >= 4:
+                table.horizontalHeader().setSectionResizeMode(
+                    3, QHeaderView.ResizeMode.Fixed
+                )
+                table.horizontalHeader().resizeSection(3, 26)
 
     def _rebalance_cards(self, *_args) -> None:
         # Retained as a compatibility hook for existing callers; the workspace
