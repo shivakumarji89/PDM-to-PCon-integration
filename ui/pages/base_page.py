@@ -6,11 +6,13 @@ logic lives here.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QLabel,
+    QTableWidget,
+    QTreeWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -125,6 +127,25 @@ class BasePage(QWidget):
         and perform that work before/while refreshing.
         """
         self.refresh()
+
+    def auto_fit_tables(self) -> None:
+        """Fit every visible table/tree in this workspace to its contents.
+
+        Centralized at the page level so workflow navigation gives every
+        workspace the same automatic column sizing behaviour. Existing resize
+        modes are preserved; only current content is measured.
+        """
+        for table in self.findChildren(QTableWidget):
+            if not table.isVisible():
+                continue
+            table.resizeColumnsToContents()
+
+        for tree in self.findChildren(QTreeWidget):
+            if not tree.isVisible():
+                continue
+            for column in range(tree.columnCount()):
+                if not tree.isColumnHidden(column):
+                    tree.resizeColumnToContents(column)
 
     def on_leave(self) -> None:
         """Called when the workspace is left."""
