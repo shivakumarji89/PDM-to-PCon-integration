@@ -78,7 +78,7 @@ class SifResult:
 class SifValidationService(BaseService):
     """Validate a CET SIF order file's prices against PDM."""
 
-    _PRICE_WINDOW = 10  # lines priced per PDM round-trip so results stream steadily
+    _PRICE_WINDOW = 16  # benchmark window: 2 workers x 8 items
 
     @staticmethod
     def _num(value: str) -> float:
