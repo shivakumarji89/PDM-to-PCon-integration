@@ -333,19 +333,6 @@ class ClassCreationPage(BasePage):
         self._auto_btn.clicked.connect(self._on_resolve_remaining)
         layout.addWidget(self._auto_btn)
 
-        separator = QFrame(box)
-        separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(separator)
-
-        self._expand_btn = QPushButton("Expand All", box)
-        self._expand_btn.clicked.connect(self._expand_all)
-        layout.addWidget(self._expand_btn)
-
-        self._collapse_btn = QPushButton("Collapse All", box)
-        self._collapse_btn.clicked.connect(self._collapse_all)
-        layout.addWidget(self._collapse_btn)
-
         return box
 
     def _build_body(self) -> QWidget:
@@ -573,13 +560,8 @@ class ClassCreationPage(BasePage):
         value_layout.setContentsMargins(0, 0, 0, 4)
         value_layout.addWidget(QLabel("Values", value_toolbar))
         value_layout.addStretch(1)
-        self._add_value_btn = QPushButton("Add Value", value_toolbar)
-        self._add_value_btn.clicked.connect(self._add_selected_attr_value)
-        self._add_value_btn.setEnabled(False)
-        value_layout.addWidget(self._add_value_btn)
         self._remove_value_btn.setEnabled(False)
-        # The existing toolbar Remove Value button is kept as the single remove action.
-        
+        # Values are configured directly in the Sliced cell; no Add Value UI is needed.
         values_panel = QWidget(self)
         values_layout = QVBoxLayout(values_panel)
         values_layout.setContentsMargins(0, 0, 0, 0)
@@ -732,7 +714,6 @@ class ClassCreationPage(BasePage):
             self._selected_attr_prop = None
             self._selected_attr_value = None
             self._attr_values.setRowCount(0)
-            self._add_value_btn.setEnabled(False)
             self._remove_value_btn.setEnabled(False)
             return
         row = rows[0].row()
@@ -745,7 +726,6 @@ class ClassCreationPage(BasePage):
         self._selected_attr_value = None
         self._populate_visible_values(prop, group_name, backing)
         development = getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-        self._add_value_btn.setEnabled(development)
         self._remove_value_btn.setEnabled(False)
 
     def _populate_visible_values(self, prop, group_name, backing) -> None:
@@ -803,8 +783,8 @@ class ClassCreationPage(BasePage):
             else:
                 sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             sliced_item.setToolTip(
-                "Development Class Creation reduction code. Edit this value to "
-                "change the pre-dot slice vocabulary."
+                "Development Class Creation reduction code. Edit this value directly to "
+                "change the pre-dot slice vocabulary. No Add Value action is required."
             )
             self._attr_values.setItem(row, 1, sliced_item)
 
@@ -974,10 +954,6 @@ class ClassCreationPage(BasePage):
         self._opt_values_title = QLabel("Values")
         value_head.addWidget(self._opt_values_title)
         value_head.addStretch(1)
-        self._opt_add_value_btn = QPushButton("Add Value")
-        self._opt_add_value_btn.clicked.connect(self._add_selected_option_value)
-        self._opt_add_value_btn.setEnabled(False)
-        value_head.addWidget(self._opt_add_value_btn)
         vl.addLayout(value_head)
         vl.addWidget(self._opt_values, 1)
 
@@ -1057,10 +1033,6 @@ class ClassCreationPage(BasePage):
         self._visual_values_title = QLabel("Values")
         value_head.addWidget(self._visual_values_title)
         value_head.addStretch(1)
-        self._visual_add_value_btn = QPushButton("Add Value")
-        self._visual_add_value_btn.clicked.connect(self._add_selected_visual_value)
-        self._visual_add_value_btn.setEnabled(False)
-        value_head.addWidget(self._visual_add_value_btn)
         vl.addLayout(value_head)
         vl.addWidget(self._visual_values, 1)
 
@@ -2661,15 +2633,13 @@ class ClassCreationPage(BasePage):
         rows = self._opt_master.selectionModel().selectedRows()
         if not rows:
             self._opt_values.setRowCount(0)
-            self._opt_add_value_btn.setEnabled(False)
-            return
+                return
         meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
         option, group_name = meta
         self._active_group_name = group_name or self._active_group_name
         self._populate_visible_option_values(option, group_name)
-        self._opt_add_value_btn.setEnabled(False)
         self._opt_values_title.setText(f"Values — {option.name}")
 
     def _populate_option_tables(self) -> None:
@@ -2876,8 +2846,7 @@ class ClassCreationPage(BasePage):
         rows = self._visual_master.selectionModel().selectedRows()
         if not rows:
             self._visual_values.setRowCount(0)
-            self._visual_add_value_btn.setEnabled(False)
-            return
+                return
         meta = self._visual_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
@@ -2886,8 +2855,7 @@ class ClassCreationPage(BasePage):
         # type-to-add placeholder.
         if isinstance(definition, str):
             self._visual_values.setRowCount(0)
-            self._visual_add_value_btn.setEnabled(False)
-            self._visual_values_title.setText("Values")
+                self._visual_values_title.setText("Values")
             return
         self._populate_visible_visual_values(definition)
         self._visual_values_title.setText(f"Values — {definition.name}")
