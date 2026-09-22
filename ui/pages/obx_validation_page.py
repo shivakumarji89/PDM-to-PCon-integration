@@ -485,15 +485,15 @@ class ObxValidationPage(BasePage):
                 self._progress_state.setText(f"VALIDATING {currency}")
             except (IndexError, ValueError):
                 pass
-        if text.startswith("PDM connection lost.") and "attempt" in text:
+        if text.startswith("PDM connection lost.") and "attempt " in text:
             try:
-                self._recovery_attempt = int(text.split("attempt ", 1)[1].split("/", 1)[0])
+                self._recovery_attempt = int(text.split("attempt ", 1)[1].split(")", 1)[0].rstrip("."))
             except (ValueError, IndexError):
                 pass
             self._set_metric("recovery", str(self._recovery_attempt))
 
     def _on_recovery(self, payload) -> None:
-        attempt, maximum, message = payload
+        attempt, _maximum, message = payload
         self._recovery_attempt = attempt
         self._set_metric("recovery", str(attempt))
         QMessageBox.warning(self, "OBX Validation - Recovery", message)
@@ -668,7 +668,6 @@ class ObxValidationPage(BasePage):
         self._progress_percent.setText("0%")
         for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
             self._set_metric(key, "-")
-        self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._toggle_btn.setChecked(True)
