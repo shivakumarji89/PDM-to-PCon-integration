@@ -105,6 +105,26 @@ _TYPE_OPTIONS = [
 _USAGE_OPTIONS = ["", "Configuration", "Graphic"]
 
 
+def _status_icon(ok: bool) -> QIcon:
+    """Compact green-check / red-cross status icon for value rows."""
+    size = 16
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    color = QColor("#2e9d50" if ok else "#c63d3d")
+    painter.setPen(color)
+    painter.setBrush(color)
+    if ok:
+        painter.drawLine(3, 8, 7, 12)
+        painter.drawLine(7, 12, 14, 4)
+    else:
+        painter.drawLine(4, 4, 12, 12)
+        painter.drawLine(12, 4, 4, 12)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def _by_display_order(values):
     """Values ordered by ``display_order``; unordered ones keep insertion order."""
     return sorted(values, key=lambda v: (
@@ -516,9 +536,9 @@ class ClassCreationPage(BasePage):
 
         self._attr_values = QTableWidget(self)
         self._attr_values.setObjectName("classAttributeValuesTable")
-        self._attr_values.setColumnCount(5)
+        self._attr_values.setColumnCount(4)
         self._attr_values.setHorizontalHeaderLabels(
-            ["Value", "Code", "Sliced", "Relation Object", "Status"]
+            ["Value", "Sliced", "Relation Object", ""]
         )
         self._attr_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._attr_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -537,15 +557,16 @@ class ClassCreationPage(BasePage):
 
         mh = self._attr_master.horizontalHeader()
         mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
-            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            mh.resizeSection(col, width)
+        for col in range(1, 6):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
 
         vh = self._attr_values.horizontalHeader()
         vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
-            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            vh.resizeSection(col, width)
+        for col in (1, 2, 3):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        vh.resizeSection(3, 26)
 
         value_toolbar = QWidget(self)
         value_layout = QHBoxLayout(value_toolbar)
@@ -633,6 +654,11 @@ class ClassCreationPage(BasePage):
             self._attr_master.setItem(row, 0, name_item)
 
             width = int(getattr(cls_prop, "width", 0) or 0)
+            if width <= 0 and backing is not None:
+                try:
+                    width = int((backing.text(_COL_SELECTED) or "0").strip())
+                except (TypeError, ValueError):
+                    width = 0
             width_item = QTableWidgetItem(str(width))
             width_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             width_item.setData(Qt.ItemDataRole.UserRole, (prop, group_name, backing))
@@ -765,11 +791,6 @@ class ClassCreationPage(BasePage):
             value_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
             self._attr_values.setItem(row, 0, value_item)
 
-            code_item = QTableWidgetItem(pdm_code)
-            code_item.setToolTip("PDM value code (source value).")
-            code_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            self._attr_values.setItem(row, 1, code_item)
-
             sliced_item = QTableWidgetItem(sliced)
             sliced_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
             if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
@@ -784,10 +805,10 @@ class ClassCreationPage(BasePage):
                 "Development Class Creation reduction code. Edit this value to "
                 "change the pre-dot slice vocabulary."
             )
-            self._attr_values.setItem(row, 2, sliced_item)
+            self._attr_values.setItem(row, 1, sliced_item)
 
             self._attr_values.setItem(
-                row, 3, QTableWidgetItem(self._value_relation_object(prop, value))
+                row, 2, QTableWidgetItem(self._value_relation_object(prop, value))
             )
             status = "PDM"
             if cv is not None and getattr(cv, "source", "pdm") != "pdm":
@@ -796,9 +817,13 @@ class ClassCreationPage(BasePage):
                 status = "Needs Sliced code"
             elif sliced_item.text() != pdm_code:
                 status = "Corrected"
-            status_item = QTableWidgetItem(status)
+            status_ok = status != "Needs Sliced code"
+            status_item = QTableWidgetItem()
+            status_item.setIcon(_status_icon(status_ok))
+            status_item.setToolTip(status)
             status_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-            self._attr_values.setItem(row, 4, status_item)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._attr_values.setItem(row, 3, status_item)
         self._attr_values.resizeRowsToContents()
         self._populating = False
 
@@ -824,7 +849,7 @@ class ClassCreationPage(BasePage):
         )
 
     def _on_attribute_value_changed(self, item: QTableWidgetItem) -> None:
-        if self._populating or item.column() != 2:
+        if self._populating or item.column() != 1:
             return
         meta = item.data(Qt.ItemDataRole.UserRole)
         if not meta:
@@ -913,9 +938,9 @@ class ClassCreationPage(BasePage):
         self._opt_master.itemChanged.connect(self._on_option_master_changed)
 
         self._opt_values = QTableWidget(self)
-        self._opt_values.setColumnCount(5)
+        self._opt_values.setColumnCount(4)
         self._opt_values.setHorizontalHeaderLabels(
-            ["Value", "Code", "Sliced", "Relation Object", "Status"]
+            ["Value", "Sliced", "Relation Object", ""]
         )
         self._opt_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._opt_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -932,14 +957,14 @@ class ClassCreationPage(BasePage):
 
         mh = self._opt_master.horizontalHeader()
         mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
-            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            mh.resizeSection(col, width)
+        for col in range(1, 6):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         vh = self._opt_values.horizontalHeader()
         vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
-            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            vh.resizeSection(col, width)
+        for col in (1, 2, 3):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        vh.resizeSection(3, 26)
 
         value_panel = QWidget(self)
         vl = QVBoxLayout(value_panel)
@@ -959,10 +984,10 @@ class ClassCreationPage(BasePage):
         split.setObjectName("classOptionsMasterDetail")
         split.addWidget(self._opt_master)
         split.addWidget(value_panel)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 5)
+        split.setStretchFactor(0, 5)
+        split.setStretchFactor(1, 4)
         split.setChildrenCollapsible(False)
-        split.setSizes([420, 680])
+        split.setSizes([600, 480])
 
         self._opt_box = _CollapsibleCard("Options", split, self)
         self._opt_box.setToolTip(
@@ -996,9 +1021,9 @@ class ClassCreationPage(BasePage):
         self._visual_master.itemDoubleClicked.connect(self._on_visual_master_double_clicked)
 
         self._visual_values = QTableWidget(self)
-        self._visual_values.setColumnCount(5)
+        self._visual_values.setColumnCount(4)
         self._visual_values.setHorizontalHeaderLabels(
-            ["Value", "Code", "Sliced", "Relation Object", "Status"]
+            ["Value", "Sliced", "Relation Object", ""]
         )
         self._visual_values.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._visual_values.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -1015,14 +1040,14 @@ class ClassCreationPage(BasePage):
 
         mh = self._visual_master.horizontalHeader()
         mh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 65), (2, 65), (3, 105), (4, 110), (5, 160)):
-            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            mh.resizeSection(col, width)
+        for col in range(1, 6):
+            mh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         vh = self._visual_values.horizontalHeader()
         vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for col, width in ((1, 90), (2, 100), (3, 170), (4, 110)):
-            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            vh.resizeSection(col, width)
+        for col in (1, 2, 3):
+            vh.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        vh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        vh.resizeSection(3, 26)
 
         value_panel = QWidget(self)
         vl = QVBoxLayout(value_panel)
@@ -1042,10 +1067,10 @@ class ClassCreationPage(BasePage):
         split.setObjectName("classVisualMasterDetail")
         split.addWidget(self._visual_master)
         split.addWidget(value_panel)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 5)
+        split.setStretchFactor(0, 5)
+        split.setStretchFactor(1, 4)
         split.setChildrenCollapsible(False)
-        split.setSizes([420, 680])
+        split.setSizes([600, 480])
 
         self._misc_box = _CollapsibleCard("Visual / Misc", split, self)
         self._misc_box.setToolTip(
@@ -2664,6 +2689,11 @@ class ClassCreationPage(BasePage):
             item = QTableWidgetItem(option.name or "-")
             item.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
             self._opt_master.setItem(row, 0, item)
+            cls = self._options_class()
+            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
+            stored_width = int(getattr(cls_prop, "width", 0) or 0)
+            if stored_width > 0:
+                width = stored_width
             wi = QTableWidgetItem(str(width))
             wi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             wi.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
@@ -2680,8 +2710,6 @@ class ClassCreationPage(BasePage):
             hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             hl.addWidget(ignore)
             self._opt_master.setCellWidget(row, 2, host)
-            cls = self._options_class()
-            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
             type_combo = QComboBox(self._opt_master)
             for code, desc in _TYPE_OPTIONS:
                 type_combo.addItem(f"{code} - {desc}" if code and desc else "", code)
@@ -2717,7 +2745,6 @@ class ClassCreationPage(BasePage):
             row = self._opt_values.rowCount()
             self._opt_values.insertRow(row)
             self._opt_values.setItem(row, 0, QTableWidgetItem(value.value or "-"))
-            self._opt_values.setItem(row, 1, QTableWidgetItem((value.code or "").strip()))
             sliced_item = QTableWidgetItem((value.code or "").strip())
             sliced_item.setToolTip("Option value code. Edit the Class Creation code in Development.")
             cls = self._options_class()
@@ -2725,15 +2752,19 @@ class ClassCreationPage(BasePage):
             cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
             if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
                 sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
-            self._opt_values.setItem(row, 2, sliced_item)
-            self._opt_values.setItem(row, 3, QTableWidgetItem(self._value_relation_object(option, value)))
+            self._opt_values.setItem(row, 1, sliced_item)
+            self._opt_values.setItem(row, 2, QTableWidgetItem(self._value_relation_object(option, value)))
             status = "Active" if (value.code or "").strip() else "Needs code"
-            self._opt_values.setItem(row, 4, QTableWidgetItem(status))
+            status_item = QTableWidgetItem()
+            status_item.setIcon(_status_icon(bool((value.code or "").strip())))
+            status_item.setToolTip(status)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._opt_values.setItem(row, 3, status_item)
         self._opt_values.resizeRowsToContents()
         self._populating = False
 
     def _on_option_value_changed(self, item: QTableWidgetItem) -> None:
-        if self._populating or item.column() != 2:
+        if self._populating or item.column() != 1:
             return
         rows = self._opt_master.selectionModel().selectedRows()
         if not rows:
@@ -2810,7 +2841,7 @@ class ClassCreationPage(BasePage):
             self.refresh()
 
     def _on_visual_value_changed(self, item: QTableWidgetItem) -> None:
-        if self._populating or item.column() not in (0, 1, 2):
+        if self._populating or item.column() not in (0, 1):
             return
         rows = self._visual_master.selectionModel().selectedRows()
         if not rows:
@@ -2940,12 +2971,15 @@ class ClassCreationPage(BasePage):
             self._visual_values.insertRow(row)
             self._visual_values.setItem(row, 0, QTableWidgetItem(cv.value or ""))
             self._visual_values.setItem(row, 1, QTableWidgetItem(cv.code or ""))
-            self._visual_values.setItem(row, 2, QTableWidgetItem(cv.code or ""))
             relation = self._relation_object(definition.name)
-            self._visual_values.setItem(row, 3, QTableWidgetItem(
+            self._visual_values.setItem(row, 2, QTableWidgetItem(
                 f"{relation}_{cv.code.strip()}" if (cv.code or "").strip() else ""
             ))
-            self._visual_values.setItem(row, 4, QTableWidgetItem("Active"))
+            status_item = QTableWidgetItem()
+            status_item.setIcon(_status_icon(bool((cv.code or "").strip())))
+            status_item.setToolTip("Active" if (cv.code or "").strip() else "Needs code")
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._visual_values.setItem(row, 3, status_item)
         self._visual_values.resizeRowsToContents()
         self._populating = False
 
