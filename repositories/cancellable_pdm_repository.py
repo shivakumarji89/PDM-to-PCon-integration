@@ -73,9 +73,10 @@ class CancellablePDMRepository(PDMRepository):
     pyodbc Cursor.cancel hook for user cancellation.
     """
 
-    def __init__(self, context, operation_control) -> None:
+    def __init__(self, context, operation_control, lookup_cache=None) -> None:
         super().__init__(context)
         self._control = operation_control
+        self._lookup_cache = lookup_cache if lookup_cache is not None else {}
         self._active_lock = RLock()
         self._active_cursor = None
         self._active_connection = None
@@ -112,6 +113,62 @@ class CancellablePDMRepository(PDMRepository):
                     conn.close()
                 except Exception:
                     pass
+
+    def fetch_item_base_prices(
+        self, items, currency, mydate, connection=None, site_id=1
+    ) -> list[Any]:
+        """Reuse completed OBX base-price lookups and query only missing items."""
+        cache = self._lookup_cache.setdefault("base_price", {})
+        vals = [str(i) for i in items if i]
+        missing = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+            if key not in cache:
+                missing.append(item)
+        if missing:
+            rows = super().fetch_item_base_prices(
+                missing, currency, mydate, connection=connection, site_id=site_id
+            )
+            by_item = {}
+            for row in rows:
+                by_item.setdefault(str(row.Item), []).append(row)
+            for item in missing:
+                key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+                cache[key] = by_item.get(item, [])
+        out = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+            out.extend(cache.get(key, []))
+        return out
+
+    def fetch_item_option_increment_prices(
+        self, items, currency, mydate, site_id, connection=None
+    ) -> list[Any]:
+        """Reuse completed per-item option-price procedure results for OBX."""
+        cache = self._lookup_cache.setdefault("option_increment", {})
+        vals = [str(i) for i in items if i]
+        missing = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+            if key not in cache:
+                missing.append(item)
+        if missing:
+            # Keep the existing PDM stored-procedure call and result semantics;
+            # only avoid executing it again for an item already completed.
+            rows = super().fetch_item_option_increment_prices(
+                missing, currency, mydate, site_id, connection=connection
+            )
+            by_item = {}
+            for row in rows:
+                by_item.setdefault(str(row.Item), []).append(row)
+            for item in missing:
+                key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+                cache[key] = by_item.get(item, [])
+        out = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
+            out.extend(cache.get(key, []))
+        return out
 
     def _set_active(self, cursor, connection) -> None:
         with self._active_lock:
