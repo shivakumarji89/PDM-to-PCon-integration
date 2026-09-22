@@ -28,7 +28,7 @@ class SvnStatus:
 class XocdSvnService:
     """Build and execute the small set of TortoiseSVN operations used by XOCD."""
 
-    _TORTOISE_CANDIDATES = (
+    def __init__(self, context=None) -> None:\n        self.context = context\n\n    _TORTOISE_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\TortoiseProc.exe"),
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\TortoiseProc.exe"),
     )
@@ -114,7 +114,7 @@ class XocdSvnService:
             template = Path(tmp) / "status.txt.in"
             output = Path(tmp) / "status.txt"
             template.write_text(
-                "$WCREV$|$WCMODS$|$WCUNVER$|$WCRANGE$",
+                "$WCREV$|$WCMODS?1:0$|$WCUNVER?1:0$|$WCRANGE$",
                 encoding="utf-8",
             )
             completed = subprocess.run(
