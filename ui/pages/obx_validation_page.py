@@ -29,7 +29,6 @@ class _ObxSignals(QObject):
 
 class _ObxWorker(QRunnable):
     """Run OBX validation off the UI thread with recovery and checkpoints."""
-    _MAX_RECOVERY_ATTEMPTS = 3
 
     def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals, control):
         super().__init__()
@@ -145,15 +144,10 @@ class _ObxWorker(QRunnable):
                     self._signals.failed.emit(str(exc))
                     return
                 pending = [line for line in pending if getattr(line, "seq", None) not in completed]
-                if recovery_attempts >= self._MAX_RECOVERY_ATTEMPTS:
-                    reason = f"PDM connection unavailable after {self._MAX_RECOVERY_ATTEMPTS} recovery attempts."
-                    self._reporter.pause(reason)
-                    self._signals.paused.emit((sites, pending, reason))
-                    return
                 recovery_attempts += 1
-                message = f"PDM connection lost. Reconnecting (attempt {recovery_attempts}/{self._MAX_RECOVERY_ATTEMPTS})..."
+                message = f"PDM connection lost. Reconnecting (attempt {recovery_attempts})..."
                 self._reporter.note(message)
-                self._signals.recovery.emit((recovery_attempts, self._MAX_RECOVERY_ATTEMPTS, message))
+                self._signals.recovery.emit((recovery_attempts, None, message))
 
         results = sorted(completed.values(), key=lambda result: self._seq_key(getattr(result, "seq", 0)))
         self._reporter.finish(True, f"{len(results)} line(s)")
@@ -366,8 +360,7 @@ class ObxValidationPage(BasePage):
                 + "\n\nThe incomplete trailing portion was not loaded.",
             )
         label = Path(loaded_paths[0]).name if len(loaded_paths) == 1 else f"{len(loaded_paths)} OBX files"
-        currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
-        self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
+        self._file_label.setText(f"{label}  •  {len(lines)} lines")
         self._launch_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
@@ -498,12 +491,12 @@ class ObxValidationPage(BasePage):
                 self._recovery_attempt = int(text.split("attempt ", 1)[1].split("/", 1)[0])
             except (ValueError, IndexError):
                 pass
-            self._set_metric("recovery", f"{self._recovery_attempt}/3")
+            self._set_metric("recovery", str(self._recovery_attempt))
 
     def _on_recovery(self, payload) -> None:
         attempt, maximum, message = payload
         self._recovery_attempt = attempt
-        self._set_metric("recovery", f"{attempt}/{maximum}")
+        self._set_metric("recovery", str(attempt))
         QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
@@ -555,7 +548,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("remaining", str(len(self._lines)))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._set_metric("recovery", "0/3")
+        self._set_metric("recovery", "0")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(False)
 
@@ -597,7 +590,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._set_metric("eta", "0:00")
-        self._set_metric("recovery", f"{self._recovery_attempt}/3")
+        self._set_metric("recovery", str(self._recovery_attempt))
         self._set_site_metrics(sites)
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
