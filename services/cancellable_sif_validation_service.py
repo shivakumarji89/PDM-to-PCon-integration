@@ -6,6 +6,54 @@ from services.sif_validation_service import SifValidationService
 class CancellableSifValidationService(SifValidationService):
     """Shared SIF pricing pipeline with an OBX-only cancellable repository."""
 
+    def __init__(self, context, lookup_cache=None) -> None:
+        super().__init__(context)
+        self._lookup_cache = lookup_cache if lookup_cache is not None else {}
+
+    def _fetch_plc(self, items, site, repo, conn) -> dict[str, str]:
+        """Reuse completed OBX PLC lookups and query only missing items."""
+        cache = self._lookup_cache.setdefault("plc", {})
+        vals = [str(i) for i in items if i]
+        missing = []
+        for item in vals:
+            key = (item, int(site) if site is not None else None)
+            if key not in cache:
+                missing.append(item)
+
+        if missing:
+            for chunk in repo._chunked(missing, repo._IN_CHUNK):
+                ph = repo._placeholders(len(chunk))
+                rows = repo._execute(
+                    "SELECT i.Item, pc.Product_Code AS Code, cat.Name AS Category "
+                    "FROM Item i "
+                    "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                    "LEFT JOIN Product_Code pc ON "
+                    "pc.ProductCodeId = CASE "
+                    "WHEN i.ProductCodeIdOverride IS NOT NULL "
+                    "THEN i.ProductCodeIdOverride "
+                    "ELSE p.ProductCodeId "
+                    "END "
+                    "AND pc.SiteId = ? "
+                    "LEFT JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                    "LEFT JOIN ProductCategory cat ON pr.ProductCategoryId = cat.ProductCategoryId "
+                    f"WHERE i.Item IN ({ph})",
+                    (site,) + tuple(chunk),
+                    conn,
+                )
+                for row in rows:
+                    item = str(row.Item)
+                    code = (row.Code or "").strip()
+                    category = (row.Category or "").strip()
+                    value = f"{category} ({code})" if code else category
+                    cache[(item, int(site) if site is not None else None)] = value
+            for item in missing:
+                cache.setdefault((item, int(site) if site is not None else None), "")
+
+        return {
+            item: cache.get((item, int(site) if site is not None else None), "")
+            for item in vals
+        }
+
     def validate(
         self,
         currency: str,
@@ -32,7 +80,7 @@ class CancellableSifValidationService(SifValidationService):
 
         from repositories.cancellable_pdm_repository import CancellablePDMRepository
 
-        repo = CancellablePDMRepository(self.context, operation_control)
+        repo = CancellablePDMRepository(self.context, operation_control, self._lookup_cache)
         conn = repo.get_connection()
         try:
             server_date = self._server_date(repo, conn)
