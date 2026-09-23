@@ -35,3 +35,6 @@ cache/
 
 # Temporary diagnostics and extracted files
 tmp/
+
+# Local Subversion CLI runtime downloaded for the Windows EXE build.
+tools/svn/
