@@ -116,6 +116,25 @@ class XocdSvnService:
         return cls._svn_args("info", path)
 
     @classmethod
+    def parse_status_items(cls, xml_text: str, base: Path) -> dict[Path, str]:
+        """Return {local_path: wc-status item} from svn status XML."""
+        if not xml_text.strip():
+            return {}
+        root = ET.fromstring(xml_text)
+        base = base.resolve()
+        result: dict[Path, str] = {}
+        for entry in root.findall(".//entry"):
+            raw = entry.get("path", "")
+            status = entry.find("wc-status")
+            if not raw or status is None:
+                continue
+            candidate = Path(raw)
+            if not candidate.is_absolute():
+                candidate = base / candidate
+            result[candidate.resolve()] = status.get("item", "")
+        return result
+
+    @classmethod
     def parse_unversioned_paths(cls, xml_text: str, base: Path) -> set[Path]:
         """Return local paths whose SVN status is unversioned."""
         if not xml_text.strip():
