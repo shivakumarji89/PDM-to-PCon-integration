@@ -1172,7 +1172,7 @@ class MainWindow(QMainWindow):
         if stage == "commit":
             revision = ""
             import re
-            match = re.search(r"Committed revision (\\d+)\\.", output + "\n" + error_text)
+            match = re.search(r"Committed revision (\d+)\.", output + "\n" + error_text)
             if match:
                 revision = match.group(1)
             self._xocd_publish_revision = revision
