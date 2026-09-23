@@ -460,7 +460,7 @@ class PricingService(BaseService):
             raw = row.IncPrice
             if raw is None or str(raw).strip() == "":
                 continue
-            code = str(row.Code).replace("#", "")
+            code = str(getattr(row, "Code", getattr(row, "OrderCodeValue2", ""))).replace("#", "")
             if item in super_codes:
                 # Super product increment -> global, full item code (no slicing),
                 # matching PDM: "DTWB1E3.C 3785=CD".
