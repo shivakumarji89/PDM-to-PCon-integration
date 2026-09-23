@@ -1,17 +1,16 @@
-"""TortoiseSVN integration used by the XOCD publish workflow.
+"""Subversion command-line integration used by the XOCD publish workflow.
 
-The application deliberately uses TortoiseProc.exe rather than a Git command
-or a repository-wide SVN commit. Every commit target passed by this service is
-the configured XOCD folder only.
-
-SubWCRev.exe is used for working-copy checks because it is installed with
-TortoiseSVN and can report whether the specific supplied entry is versioned.
+The application commits only the configured XOCD folder/files. TortoiseSVN is
+still supported for manual administration, while the official svn.exe client
+is used for the unattended cleanup/update/add/commit workflow.
 """
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,14 +25,16 @@ class SvnStatus:
 
 
 class XocdSvnService:
-    """Build and execute the small set of TortoiseSVN operations used by XOCD."""
-
-    def __init__(self, context=None) -> None:
-        self.context = context
+    """Locate and build the small set of SVN operations used by XOCD."""
 
     _TORTOISE_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\TortoiseProc.exe"),
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\TortoiseProc.exe"),
+    )
+    _SVN_CANDIDATES = (
+        Path(r"C:\Program Files\TortoiseSVN\bin\svn.exe"),
+        Path(r"C:\Program Files (x86)\TortoiseSVN\bin\svn.exe"),
+        Path(r"C:\Program Files\SlikSvn\bin\svn.exe"),
     )
     _SUBWCREV_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\SubWCRev.exe"),
@@ -51,6 +52,16 @@ class XocdSvnService:
         return None
 
     @classmethod
+    def svn_exe(cls) -> Path | None:
+        found = shutil.which("svn")
+        if found:
+            return Path(found)
+        for candidate in cls._SVN_CANDIDATES:
+            if candidate.is_file():
+                return candidate
+        return None
+
+    @classmethod
     def subwcrev(cls) -> Path | None:
         for candidate in cls._SUBWCREV_CANDIDATES:
             if candidate.is_file():
@@ -58,53 +69,83 @@ class XocdSvnService:
         return None
 
     @classmethod
-    def _args(cls, command: str, path: Path, *extra: str) -> list[str]:
-        proc = cls.tortoise_proc()
-        if proc is None:
+    def _svn_args(cls, command: str, path: Path, *extra: str) -> list[str]:
+        exe = cls.svn_exe()
+        if exe is None:
             raise FileNotFoundError(
-                "TortoiseSVN was not found. Install TortoiseSVN before using "
-                "Export to XOCD."
+                "svn.exe was not found. Install the TortoiseSVN command-line tools "
+                "before using automated XOCD commit."
             )
-        return [
-            str(proc),
-            f"/command:{command}",
-            f"/path:{path}",
-            *extra,
-        ]
+        return [str(exe), command, *extra, str(path)]
 
     @classmethod
     def cleanup_args(cls, working_copy_root: Path) -> list[str]:
-        # Cleanup is deliberately limited to the SVN working-copy maintenance
-        # operation. It never uses /revert, /delunversioned or /delignored.
-        return cls._args(
-            "cleanup",
-            working_copy_root,
-            "/cleanup",
-            "/nodlg",
-            "/noui",
-            "/noprogressui",
-        )
+        return cls._svn_args("cleanup", working_copy_root)
 
     @classmethod
     def update_args(cls, path: Path) -> list[str]:
-        return cls._args("update", path, "/closeonend:2")
+        return cls._svn_args("update", path)
 
     @classmethod
-    def add_args(cls, path: Path) -> list[str]:
-        # Mark a newly-created XOCD folder for version control. This only
-        # schedules the local add; the normal XOCD commit review remains the
-        # point where the user explicitly commits it.
-        return cls._args("add", path, "/closeonend:2")
+    def status_args(cls, path: Path, show_updates: bool = False) -> list[str]:
+        extra = ["--xml"]
+        if show_updates:
+            extra.insert(0, "--show-updates")
+        return cls._svn_args("status", path, *extra)
 
     @classmethod
-    def commit_args(cls, xocd_folder: Path, message: str) -> list[str]:
-        # The commit boundary is intentionally the XOCD folder itself.
-        return cls._args(
-            "commit",
-            xocd_folder,
-            f"/logmsg:{message}",
-            "/closeonend:2",
-        )
+    def add_args(cls, paths: list[Path]) -> list[str]:
+        exe = cls.svn_exe()
+        if exe is None:
+            raise FileNotFoundError(
+                "svn.exe was not found. Install the TortoiseSVN command-line tools."
+            )
+        return [str(exe), "add", "--parents", *[str(path) for path in paths]]
+
+    @classmethod
+    def commit_args(cls, paths: list[Path], message: str) -> list[str]:
+        exe = cls.svn_exe()
+        if exe is None:
+            raise FileNotFoundError(
+                "svn.exe was not found. Install the TortoiseSVN command-line tools."
+            )
+        return [str(exe), "commit", "--message", message, *[str(path) for path in paths]]
+
+    @classmethod
+    def info_args(cls, path: Path) -> list[str]:
+        return cls._svn_args("info", path)
+
+    @classmethod
+    def parse_unversioned_paths(cls, xml_text: str, base: Path) -> set[Path]:
+        """Return local paths whose SVN status is unversioned."""
+        if not xml_text.strip():
+            return set()
+        root = ET.fromstring(xml_text)
+        result: set[Path] = set()
+        base = base.resolve()
+        for entry in root.findall(".//entry"):
+            status = entry.find("wc-status")
+            if status is None or status.get("item") != "unversioned":
+                continue
+            raw = entry.get("path", "")
+            if not raw:
+                continue
+            candidate = Path(raw)
+            if not candidate.is_absolute():
+                candidate = base / candidate
+            result.add(candidate.resolve())
+        return result
+
+    @classmethod
+    def has_remote_updates(cls, xml_text: str) -> bool:
+        """Return True when svn status -u reports repository changes."""
+        if not xml_text.strip():
+            return False
+        root = ET.fromstring(xml_text)
+        for repos_status in root.findall(".//repos-status"):
+            if repos_status.get("item") not in (None, "none", "normal"):
+                return True
+        return False
 
     @classmethod
     def run_local(cls, args: list[str]) -> int:
