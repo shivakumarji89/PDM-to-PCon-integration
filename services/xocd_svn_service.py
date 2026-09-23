@@ -79,6 +79,29 @@ class XocdSvnService:
         return [str(exe), command, *extra, str(path)]
 
     @classmethod
+    def _tortoise_args(cls, command: str, path: Path, *extra: str) -> list[str]:
+        exe = cls.tortoise_proc()
+        if exe is None:
+            raise FileNotFoundError("TortoiseProc.exe was not found.")
+        return [str(exe), f"/command:{command}", f"/path:{path}", *extra]
+
+    @classmethod
+    def tortoise_cleanup_args(cls, root: Path) -> list[str]:
+        return cls._tortoise_args(
+            "cleanup", root, "/cleanup", "/nodlg", "/noui", "/noprogressui"
+        )
+
+    @classmethod
+    def tortoise_update_args(cls, path: Path) -> list[str]:
+        return cls._tortoise_args("update", path, "/closeonend:2")
+
+    @classmethod
+    def tortoise_commit_args(cls, path: Path, message: str) -> list[str]:
+        return cls._tortoise_args(
+            "commit", path, f"/logmsg:{message}", "/closeonend:2"
+        )
+
+    @classmethod
     def cleanup_args(cls, working_copy_root: Path) -> list[str]:
         return cls._svn_args("cleanup", working_copy_root)
 
