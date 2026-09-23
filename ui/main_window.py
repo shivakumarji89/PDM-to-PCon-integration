@@ -942,25 +942,17 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Do not use SubWCRev's WCINSVN result as a blocking directory check.
+        # TortoiseSVN already recognizes this folder as part of the working copy,
+        # and the actual SVN cleanup/update/commit operation is authoritative.
         try:
             status = service.read_status(xocd)
+            if status.raw:
+                self.statusBar().showMessage(
+                    f"XOCD SVN status: revision {status.revision or 'unknown'}"
+                )
         except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Export XOCD",
-                "The selected Xocd folder could not be verified as versioned.\n\n"
-                f"SVN status check: {exc}",
-            )
-            return
-
-        if not status.versioned:
-            QMessageBox.warning(
-                self,
-                "Export XOCD",
-                "The selected Xocd folder is not versioned in SVN.\n\n"
-                "Add the Xocd folder to SVN first, then run Export XOCD again.",
-            )
-            return
+            self.statusBar().showMessage(f"XOCD SVN status check skipped: {exc}")
 
         self._xocd_publish_path = xocd
         self._xocd_publish_wc_root = wc_root
