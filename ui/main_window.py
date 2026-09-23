@@ -1159,7 +1159,7 @@ class MainWindow(QMainWindow):
                 self._xocd_publish_failed("No generated XOCD files are available to commit.")
                 return
 
-            comment = f"XOCD export - {self._xocd_publish_program}"
+            comment = f"{self._xocd_publish_program} - Updating OAS"
             self._xocd_publish_stage = "commit"
             self._set_xocd_publish_stage(
                 5,
