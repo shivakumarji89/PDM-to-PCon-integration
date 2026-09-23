@@ -956,7 +956,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if not status.revision:
+        if not status.versioned:
             QMessageBox.warning(
                 self,
                 "Export XOCD",
