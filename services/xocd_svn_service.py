@@ -30,7 +30,8 @@ class XocdSvnService:
 
     def __init__(self, context=None) -> None:
         self.context = context
-\n    _TORTOISE_CANDIDATES = (
+
+    _TORTOISE_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\TortoiseProc.exe"),
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\TortoiseProc.exe"),
     )
