@@ -232,13 +232,13 @@ class PricingService(BaseService):
         batch_size: int = 10,
         reporter=None,
     ) -> PriceComputeResult:
-        """Like :meth:`compute`, but fetch and build in item batches so the UI
-        can show records as they arrive instead of waiting for the whole run.
+        """Compute prices while delivering each completed item to the UI.
 
-        Each batch pulls its own base + increment prices on one shared
-        connection and calls ``on_batch(records)`` with the freshly built
-        records. Byte-identical to :meth:`compute` (same SQL functions, same
-        classification) - only the delivery is incremental.
+        Base prices are fetched in small set-based batches to avoid extra base-price
+        round trips. Option upcharges are still obtained from the same PDM stored
+        procedure, one item at a time as that procedure already executes per item.
+        Each item's base + upcharge records are emitted immediately after that item
+        completes, so the UI does not wait for the whole 10-item batch.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
@@ -254,15 +254,16 @@ class PricingService(BaseService):
         prefix_by_item = self._prefix_by_item(snapshot)
         currencies = self.target_currencies(snapshot, params)
 
-        # Item -> owning product, so the popup can climb a "products priced"
-        # count alongside items and records.
         product_by_item = {
             a.code: str(a.product_id)
             for a in snapshot.articles
             if a.code is not None and a.product_id is not None
         }
-        total_products = len({str(a.product_id) for a in snapshot.articles
-                              if a.product_id is not None})
+        total_products = len({
+            str(a.product_id)
+            for a in snapshot.articles
+            if a.product_id is not None
+        })
         products_seen: set[str] = set()
 
         all_records: list[PriceRecord] = []
@@ -270,12 +271,11 @@ class PricingService(BaseService):
         n = len(items)
         step = max(1, batch_size)
         ncur = max(1, len(currencies))
-        # Start progress BEFORE opening the connection so the popup shows a live
-        # "Connecting..." step (and creeps) instead of sitting blank at 0% while
-        # the potentially slow PDM connection is established.
+
         if reporter is not None:
-            batches = (n + step - 1) // step
-            reporter.begin(batches * ncur, title="Computing Prices",
+            # Progress is now item-granular: every completed item advances the
+            # reporter and can be reflected in the table immediately.
+            reporter.begin(n * ncur, title="Computing Prices",
                            subject=" + ".join(currencies) or params.currency)
             reporter.note("Connecting to PDM...")
 
@@ -283,49 +283,84 @@ class PricingService(BaseService):
         conn = repo.get_connection()
         if reporter is not None:
             reporter.note("Connected to PDM.")
+
         try:
-            for cur in currencies:
+            for cur_index, cur in enumerate(currencies):
                 cparams = replace(params, currency=cur)
+
                 for start in range(0, n, step):
                     chunk = items[start:start + step]
+
                     if reporter is not None:
                         first = start + 1
                         last = min(start + len(chunk), n)
                         reporter.note(
                             f"Pricing {cur} {first}-{last}/{n}: fetching base prices..."
                         )
+
+                    # One set-based base-price query for the whole small chunk.
+                    # This preserves the low round-trip behaviour of the current
+                    # implementation.
                     base_rows = repo.fetch_item_base_prices(
-                        chunk, cur, params.mydate, conn,
+                        chunk,
+                        cur,
+                        params.mydate,
+                        conn,
                         site_id=params.site_id,
                     )
-                    if reporter is not None:
-                        reporter.note(
-                            f"Pricing {cur} {first}-{last}/{n}: fetching option upcharges..."
+                    base_by_item = {str(row.Item): row for row in base_rows}
+
+                    # The PDM option-price procedure is already executed once per
+                    # item internally. Calling it with one item here lets us emit
+                    # that item's completed records immediately without adding
+                    # any additional PDM procedure execution.
+                    for offset, item in enumerate(chunk):
+                        item_no = start + offset + 1
+
+                        if reporter is not None:
+                            reporter.note(
+                                f"Pricing {cur} {item_no}/{n}: "
+                                f"fetching option upcharges for {item}..."
+                            )
+
+                        inc_rows = repo.fetch_item_option_increment_prices(
+                            [item], cur, params.mydate, params.site_id, conn
                         )
-                    inc_rows = repo.fetch_item_option_increment_prices(
-                        chunk, cur, params.mydate, params.site_id, conn
-                    )
-                    recs, unres = self.build_records(
-                        base_rows, inc_rows, super_codes, prefix_by_item, cparams
-                    )
-                    all_records.extend(recs)
-                    unresolved.extend(unres)
-                    if on_batch is not None and recs:
-                        on_batch(recs)
-                    if reporter is not None:
-                        processed = min(start + step, n)
-                        for code in chunk:
-                            pid = product_by_item.get(code)
-                            if pid:
-                                products_seen.add(pid)
-                        reporter.advance(f"Pricing {cur} {processed}/{n} items...")
-                        reporter.set_metrics([
-                            ("items", "Items Priced", processed, f" / {n}"),
-                            ("records", "Price Records", len(all_records), ""),
-                            ("products", "Products", len(products_seen),
-                             f" / {total_products}"),
-                            ("unresolved", "Unresolved", len(unresolved), ""),
-                        ])
+                        base_row = base_by_item.get(str(item))
+                        records, unres = self.build_records(
+                            [base_row] if base_row is not None else [],
+                            inc_rows,
+                            super_codes,
+                            prefix_by_item,
+                            cparams,
+                        )
+
+                        all_records.extend(records)
+                        unresolved.extend(unres)
+
+                        # Deliver this item's completed records immediately.
+                        if on_batch is not None and records:
+                            on_batch(records)
+
+                        pid = product_by_item.get(item)
+                        if pid:
+                            products_seen.add(pid)
+
+                        if reporter is not None:
+                            overall_processed = cur_index * n + item_no
+                            reporter.advance(
+                                f"Pricing {cur} {item_no}/{n} items..."
+                            )
+                            reporter.set_metrics([
+                                ("items", "Items Priced",
+                                 overall_processed, f" / {n * ncur}"),
+                                ("records", "Price Records",
+                                 len(all_records), ""),
+                                ("products", "Products",
+                                 len(products_seen), f" / {total_products}"),
+                                ("unresolved", "Unresolved",
+                                 len(unresolved), ""),
+                            ])
         finally:
             conn.close()
 
@@ -340,7 +375,7 @@ class PricingService(BaseService):
             )
         if reporter is not None:
             reporter.finish(
-                True, f"Priced {n} items \u00b7 {len(all_records)} records"
+                True, f"Priced {n} items · {len(all_records)} records"
             )
         return result
 
