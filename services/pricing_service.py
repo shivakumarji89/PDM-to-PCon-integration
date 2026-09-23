@@ -190,6 +190,8 @@ class PricingService(BaseService):
         unresolved: list[str] = []
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
+        if reporter is not None:
+            reporter.note("Connected to PDM.")
         try:
             for cur in currencies:
                 cparams = replace(params, currency=cur)
@@ -229,7 +231,7 @@ class PricingService(BaseService):
         params: PriceParams,
         snapshot: Snapshot | None = None,
         on_batch=None,
-        batch_size: int = 250,
+        batch_size: int = 10,
         reporter=None,
     ) -> PriceComputeResult:
         """Like :meth:`compute`, but fetch and build in item batches so the UI
@@ -275,9 +277,9 @@ class PricingService(BaseService):
         # the potentially slow PDM connection is established.
         if reporter is not None:
             batches = (n + step - 1) // step
-            reporter.begin(batches * ncur + 1, title="Computing Prices",
+            reporter.begin(batches * ncur, title="Computing Prices",
                            subject=" + ".join(currencies) or params.currency)
-            reporter.advance("Connecting to PDM...")
+            reporter.note("Connecting to PDM...")
 
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
@@ -286,9 +288,20 @@ class PricingService(BaseService):
                 cparams = replace(params, currency=cur)
                 for start in range(0, n, step):
                     chunk = items[start:start + step]
+                    if reporter is not None:
+                        first = start + 1
+                        last = min(start + len(chunk), n)
+                        reporter.note(
+                            f"Pricing {cur} {first}-{last}/{n}: fetching base prices..."
+                        )
                     base_rows = repo.fetch_item_base_prices(
-                        chunk, cur, params.mydate, conn
+                        chunk, cur, params.mydate, conn,
+                        site_id=params.site_id,
                     )
+                    if reporter is not None:
+                        reporter.note(
+                            f"Pricing {cur} {first}-{last}/{n}: fetching option upcharges..."
+                        )
                     inc_rows = repo.fetch_item_option_increment_prices(
                         chunk, cur, params.mydate, params.site_id, conn
                     )
