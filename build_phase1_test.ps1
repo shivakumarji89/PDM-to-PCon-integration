@@ -32,6 +32,7 @@ $pyinstallerArgs = @(
     "--onefile",
     "--windowed",
     "--name", "MK_Workbench_Phase1_Test",
+    "--icon", "resources\millerknoll.ico",
     "--additional-hooks-dir", "build_hooks",
     "--add-data", "resources;resources",
     "main.py"
