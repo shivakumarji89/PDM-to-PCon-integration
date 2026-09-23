@@ -4,9 +4,8 @@ The application deliberately uses TortoiseProc.exe rather than a Git command
 or a repository-wide SVN commit. Every commit target passed by this service is
 the configured XOCD folder only.
 
-SubWCRev.exe is used for the final local working-copy check because it is
-installed with TortoiseSVN and can report local modifications/unversioned items
-without requiring the standalone svn.exe CLI.
+SubWCRev.exe is used for working-copy checks because it is installed with
+TortoiseSVN and can report whether the specific supplied entry is versioned.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ class SvnStatus:
     revision: str = ""
     modified: bool = False
     unversioned: bool = False
+    versioned: bool = False
     raw: str = ""
 
 
@@ -106,7 +106,7 @@ class XocdSvnService:
 
     @classmethod
     def read_status(cls, path: Path) -> SvnStatus:
-        """Read status for one working-copy path using SubWCRev."""
+        """Read status for the exact supplied entry using SubWCRev."""
         exe = cls.subwcrev()
         if exe is None:
             raise FileNotFoundError(
@@ -117,7 +117,8 @@ class XocdSvnService:
             template = Path(tmp) / "status.txt.in"
             output = Path(tmp) / "status.txt"
             template.write_text(
-                "$WCREV$|$WCMODS?1:0$|$WCUNVER?1:0$|$WCRANGE$",
+                "$WCREV$|$WCMODS?1:0$|$WCUNVER?1:0$|$WCRANGE$|"
+                "$WCINSVN?1:0$",
                 encoding="utf-8",
             )
             completed = subprocess.run(
@@ -127,7 +128,6 @@ class XocdSvnService:
                 check=False,
             )
             if completed.returncode == 10:
-                # The XOCD folder can be unversioned during initial setup.
                 return SvnStatus(raw=completed.stderr or completed.stdout)
             if completed.returncode != 0:
                 raise RuntimeError(
@@ -137,14 +137,15 @@ class XocdSvnService:
 
             value = output.read_text(encoding="utf-8", errors="replace").strip()
             parts = value.split("|")
-            if len(parts) != 4:
+            if len(parts) != 5:
                 raise RuntimeError(f"Unexpected SubWCRev output: {value}")
 
-            revision, modified, unversioned, _range = parts
+            revision, modified, unversioned, _range, versioned = parts
             return SvnStatus(
                 revision=revision,
-                modified=modified == "true",
-                unversioned=unversioned == "true",
+                modified=modified == "1",
+                unversioned=unversioned == "1",
+                versioned=versioned == "1",
                 raw=completed.stdout,
             )
 
