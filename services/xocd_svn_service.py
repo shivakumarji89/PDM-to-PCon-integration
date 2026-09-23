@@ -99,6 +99,7 @@ class XocdSvnService:
             raise FileNotFoundError(
                 "No SVN command-line client is available. The production MK Workbench "
                 "package should include its bundled SVN runtime; otherwise install "
+                "the TortoiseSVN command-line tools or set MK_WORKBENCH_SVN_EXE."
             )
         return [str(exe), command, "--non-interactive", *extra, str(path)]
 
