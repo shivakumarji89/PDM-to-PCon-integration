@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 from ui.main_window import MainWindow
@@ -13,6 +13,7 @@ from ui.main_window import MainWindow
 APP_NAME = "MK Product Workbench"
 APP_ORG = "MK Engineering"
 RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
+APP_ICON_PATH = RESOURCES_DIR / "millerknoll.ico"
 
 
 def load_stylesheet() -> str:
@@ -46,6 +47,9 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_ORG)
     app.setFont(QFont("Segoe UI", 9))
+
+    if APP_ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
 
     stylesheet = load_stylesheet()
     if stylesheet:
