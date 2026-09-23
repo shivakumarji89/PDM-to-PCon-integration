@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -36,6 +37,12 @@ class XocdSvnService:
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\svn.exe"),
         Path(r"C:\Program Files\SlikSvn\bin\svn.exe"),
     )
+    # The production EXE can carry the complete Subversion CLI runtime inside
+    # the PyInstaller bundle. Keeping the bundled path first means users do not
+    # need to install the command-line client separately.
+    _BUNDLED_SVN_RELATIVE = Path("tools") / "svn" / "bin" / "svn.exe"
+    _BUNDLED_SVN_RELATIVE_FROZEN = Path("svn") / "bin" / "svn.exe"
+
     _SUBWCREV_CANDIDATES = (
         Path(r"C:\Program Files\TortoiseSVN\bin\SubWCRev.exe"),
         Path(r"C:\Program Files (x86)\TortoiseSVN\bin\SubWCRev.exe"),
@@ -53,6 +60,23 @@ class XocdSvnService:
 
     @classmethod
     def svn_exe(cls) -> Path | None:
+        """Return the SVN CLI used for unattended XOCD publishing."""
+        override = os.environ.get("MK_WORKBENCH_SVN_EXE", "").strip()
+        if override:
+            candidate = Path(override).expanduser()
+            if candidate.is_file():
+                return candidate
+
+        module_root = Path(__file__).resolve().parents[1]
+        bundled = module_root / cls._BUNDLED_SVN_RELATIVE
+        if bundled.is_file():
+            return bundled
+
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            frozen_bundled = Path(sys._MEIPASS) / cls._BUNDLED_SVN_RELATIVE_FROZEN
+            if frozen_bundled.is_file():
+                return frozen_bundled
+
         found = shutil.which("svn")
         if found:
             return Path(found)
@@ -73,10 +97,10 @@ class XocdSvnService:
         exe = cls.svn_exe()
         if exe is None:
             raise FileNotFoundError(
-                "svn.exe was not found. Install the TortoiseSVN command-line tools "
-                "before using automated XOCD commit."
+                "No SVN command-line client is available. The production MK Workbench "
+                "package should include its bundled SVN runtime; otherwise install "
             )
-        return [str(exe), command, *extra, str(path)]
+        return [str(exe), command, "--non-interactive", *extra, str(path)]
 
     @classmethod
     def _tortoise_args(cls, command: str, path: Path, *extra: str) -> list[str]:
@@ -121,18 +145,18 @@ class XocdSvnService:
         exe = cls.svn_exe()
         if exe is None:
             raise FileNotFoundError(
-                "svn.exe was not found. Install the TortoiseSVN command-line tools."
+                "No SVN command-line client is available for automated XOCD publish."
             )
-        return [str(exe), "add", "--parents", *[str(path) for path in paths]]
+        return [str(exe), "add", "--non-interactive", "--parents", *[str(path) for path in paths]]
 
     @classmethod
     def commit_args(cls, paths: list[Path], message: str) -> list[str]:
         exe = cls.svn_exe()
         if exe is None:
             raise FileNotFoundError(
-                "svn.exe was not found. Install the TortoiseSVN command-line tools."
+                "No SVN command-line client is available for automated XOCD publish."
             )
-        return [str(exe), "commit", "--message", message, *[str(path) for path in paths]]
+        return [str(exe), "commit", "--non-interactive", "--message", message, *[str(path) for path in paths]]
 
     @classmethod
     def info_args(cls, path: Path) -> list[str]:
