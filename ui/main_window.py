@@ -940,16 +940,32 @@ class MainWindow(QMainWindow):
         self._xocd_publish_service = service
         self._xocd_publish_stage = "cleanup"
 
-        # Xocd was observed as unversioned in the current production setup.
-        # If it is versioned, update only Xocd. During initial setup, update its
-        # versioned parent so the parent working-copy metadata is current.
+        # The XOCD target itself must already be versioned. Do not fall back to
+        # updating the parent Catalogue folder and then writing into an
+        # unversioned Xocd directory: that would allow local files to be
+        # generated without an SVN-controlled publish target.
         try:
             status = service.read_status(xocd)
-            self._xocd_publish_update_path = (
-                xocd if status.revision else xocd.parent
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Export XOCD",
+                "The selected Xocd folder is not versioned in SVN.\n\n"
+                "Add the Xocd folder to SVN first, then run Export XOCD again.\n\n"
+                f"SVN status check: {exc}",
             )
-        except Exception:
-            self._xocd_publish_update_path = xocd.parent
+            return
+
+        if not status.revision:
+            QMessageBox.warning(
+                self,
+                "Export XOCD",
+                "The selected Xocd folder is not versioned in SVN.\n\n"
+                "Add the Xocd folder to SVN first, then run Export XOCD again.",
+            )
+            return
+
+        self._xocd_publish_update_path = xocd
 
         self.statusBar().showMessage("XOCD publish: SVN cleanup...")
         self._start_xocd_svn_process(service.cleanup_args(wc_root))
