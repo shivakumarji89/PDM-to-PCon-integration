@@ -231,11 +231,25 @@ class XocdSvnService:
                 raise RuntimeError(f"Unexpected SubWCRev output: {value}")
 
             revision, modified, unversioned, _range, versioned = parts
+
+            # Use svn info as the authoritative check for the exact XOCD
+            # folder instead of relying on SubWCRev's WCINSVN replacement.
+            versioned_flag = versioned == "1"
+            svn = cls.svn_exe()
+            if svn is not None:
+                info = subprocess.run(
+                    [str(svn), "info", str(path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                versioned_flag = info.returncode == 0
+
             return SvnStatus(
                 revision=revision,
                 modified=modified == "1",
                 unversioned=unversioned == "1",
-                versioned=versioned == "1",
+                versioned=versioned_flag,
                 raw=completed.stdout,
             )
 
