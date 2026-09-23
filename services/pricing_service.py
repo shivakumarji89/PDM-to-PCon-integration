@@ -190,8 +190,6 @@ class PricingService(BaseService):
         unresolved: list[str] = []
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
-        if reporter is not None:
-            reporter.note("Connected to PDM.")
         try:
             for cur in currencies:
                 cparams = replace(params, currency=cur)
@@ -283,6 +281,8 @@ class PricingService(BaseService):
 
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
+        if reporter is not None:
+            reporter.note("Connected to PDM.")
         try:
             for cur in currencies:
                 cparams = replace(params, currency=cur)
