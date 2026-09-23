@@ -90,6 +90,13 @@ class XocdSvnService:
         return cls._args("update", path, "/closeonend:2")
 
     @classmethod
+    def add_args(cls, path: Path) -> list[str]:
+        # Mark a newly-created XOCD folder for version control. This only
+        # schedules the local add; the normal XOCD commit review remains the
+        # point where the user explicitly commits it.
+        return cls._args("add", path, "/closeonend:2")
+
+    @classmethod
     def commit_args(cls, xocd_folder: Path, message: str) -> list[str]:
         # The commit boundary is intentionally the XOCD folder itself.
         return cls._args(
