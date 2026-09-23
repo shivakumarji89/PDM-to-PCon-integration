@@ -25,6 +25,16 @@ Write-Host "Cleaning previous build output..." -ForegroundColor Yellow
 if (Test-Path ".\build") { Remove-Item ".\build" -Recurse -Force }
 if (Test-Path ".\dist") { Remove-Item ".\dist" -Recurse -Force }
 
+Write-Host "Preparing bundled SVN command-line runtime..." -ForegroundColor Yellow
+& powershell -NoProfile -ExecutionPolicy Bypass -File ".\scripts\prepare_svn_cli.ps1"
+if ($LASTEXITCODE -ne 0) { throw "Bundled SVN CLI preparation failed." }
+
+$svnBin = (Resolve-Path ".\tools\svn\bin").Path
+$svnExe = Join-Path $svnBin "svn.exe"
+if (-not (Test-Path $svnExe)) {
+    throw "Bundled SVN CLI was not prepared at $svnExe"
+}
+
 Write-Host "Building single-file Windows executable..." -ForegroundColor Yellow
 $pyinstallerArgs = @(
     "--noconfirm",
@@ -34,6 +44,7 @@ $pyinstallerArgs = @(
     "--name", "MK_Workbench_Phase1_Test",
     "--additional-hooks-dir", "build_hooks",
     "--add-data", "resources;resources",
+    "--add-binary", "$svnBin\*;svn\bin",
     "main.py"
 )
 & python -m PyInstaller @pyinstallerArgs
