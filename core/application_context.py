@@ -250,7 +250,7 @@ class ApplicationContext:
 
     @property
     def xocd_svn_service(self) -> XocdSvnService:
-        return XocdSvnService(self)
+        return XocdSvnService()
 
     @property
     def ocd_export_service(self) -> OcdExportService:
