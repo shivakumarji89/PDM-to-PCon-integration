@@ -925,12 +925,11 @@ class MainWindow(QMainWindow):
             QSettings().setValue("xocd/svnPath", str(xocd))
 
         service = self._context.xocd_svn_service
-        if service.svn_exe() is None:
+        fallback_tortoise = service.svn_exe() is None
+        if fallback_tortoise and service.tortoise_proc() is None:
             QMessageBox.warning(
-                self,
-                "Export XOCD",
-                "Automated SVN commit requires svn.exe. Install the "
-                "TortoiseSVN command-line tools and run Export XOCD again.",
+                self, "Export XOCD",
+                "Neither svn.exe nor TortoiseProc.exe was found. Install TortoiseSVN.",
             )
             return
 
@@ -967,6 +966,7 @@ class MainWindow(QMainWindow):
         self._xocd_publish_wc_root = wc_root
         self._xocd_publish_service = service
         self._xocd_publish_stage = "cleanup"
+        self._xocd_publish_tortoise = fallback_tortoise
         self._xocd_publish_files = []
         self._xocd_publish_progress = XocdPublishProgress(self)
         self._xocd_publish_progress.show()
@@ -976,7 +976,14 @@ class MainWindow(QMainWindow):
         self._set_xocd_publish_stage(
             0, "1. SVN Cleanup", "Cleaning the working copy before export..."
         )
-        self._start_xocd_svn_process(service.cleanup_args(wc_root))
+        if fallback_tortoise:
+            self._xocd_publish_progress.append_output(
+                "Using TortoiseSVN fallback. Select and confirm generated files "
+                "in its commit dialog."
+            )
+            self._start_xocd_svn_process(service.tortoise_cleanup_args(wc_root))
+        else:
+            self._start_xocd_svn_process(service.cleanup_args(wc_root))
 
     def _set_xocd_publish_stage(
         self, number: int, title: str, detail: str = "", busy: bool = True
@@ -1040,6 +1047,10 @@ class MainWindow(QMainWindow):
 
         service = self._xocd_publish_service
         xocd: Path = self._xocd_publish_path
+
+        if getattr(self, "_xocd_publish_tortoise", False):
+            self._on_xocd_tortoise_finished(stage, exit_code)
+            return
 
         if exit_code != 0:
             detail = error_text.strip() or output.strip() or f"svn.exe exited with code {exit_code}."
@@ -1234,6 +1245,84 @@ class MainWindow(QMainWindow):
                 + extra,
             )
             return
+
+    def _on_xocd_tortoise_finished(self, stage: str, exit_code: int) -> None:
+        """TortoiseSVN fallback: the commit dialog requires user confirmation."""
+        service = self._xocd_publish_service
+        xocd = self._xocd_publish_path
+        dialog = self._xocd_publish_progress
+        if exit_code != 0:
+            self._xocd_publish_failed(
+                f"TortoiseSVN {stage} failed or was cancelled (exit {exit_code})."
+            )
+            return
+
+        if stage == "cleanup":
+            self._xocd_publish_stage = "update"
+            self._set_xocd_publish_stage(
+                1, "2. SVN Update", "Updating with TortoiseSVN..."
+            )
+            self._start_xocd_svn_process(service.tortoise_update_args(xocd))
+            return
+
+        if stage == "update":
+            try:
+                snapshot = self._context.active_snapshot
+                psvc = self._context.price_update_service
+                standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+                result = self._context.xocd_export_service.export_series(
+                    snapshot, xocd, force=True
+                )
+                if result.error:
+                    self._xocd_publish_failed(f"XOCD export failed: {result.error}")
+                    return
+                self._xocd_publish_standardised = standardised
+                self._xocd_publish_files = sorted(result.files.keys())
+                self._xocd_publish_program = result.program
+                if not self._xocd_publish_files:
+                    self._xocd_publish_failed("No XOCD files were generated.")
+                    return
+                dialog.set_files(self._xocd_publish_files)
+                dialog.append_output(
+                    f"Generated {len(self._xocd_publish_files)} file(s). "
+                    "Select only these generated files in the TortoiseSVN commit dialog."
+                )
+                comment = f"{result.program} - Updating OAS"
+                self._xocd_publish_stage = "commit"
+                self._set_xocd_publish_stage(
+                    5, "6. Commit to SVN",
+                    "Select the generated files in TortoiseSVN and click OK. "
+                    f"Comment: {comment}"
+                )
+                self._start_xocd_svn_process(
+                    service.tortoise_commit_args(xocd, comment)
+                )
+            except Exception as exc:
+                self._xocd_publish_failed(f"XOCD export failed: {exc}")
+            return
+
+        if stage == "commit":
+            try:
+                status = service.read_status(xocd)
+            except Exception as exc:
+                self._xocd_publish_failed(
+                    f"Commit dialog closed; SVN validation failed: {exc}"
+                )
+                return
+            if status.modified or status.unversioned:
+                self._xocd_publish_failed(
+                    "TortoiseSVN closed, but the XOCD folder still contains "
+                    "modified or unversioned files. Check the generated files "
+                    "and commit status in TortoiseSVN."
+                )
+                return
+            dialog.complete(
+                "TortoiseSVN closed and the XOCD working copy is clean. "
+                "Check the SVN log to verify the committed revision."
+            )
+            self.statusBar().showMessage(
+                "XOCD TortoiseSVN fallback finished; working copy clean"
+            )
 
     def _xocd_publish_failed(self, message: str) -> None:
         dialog = getattr(self, "_xocd_publish_progress", None)
