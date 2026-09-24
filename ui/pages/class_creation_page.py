@@ -603,6 +603,21 @@ class ClassCreationPage(BasePage):
         )
         return self._attr_box
 
+
+    def _insert_master_group_header(self, table: QTableWidget, title: str) -> None:
+        """Insert a non-editable class/group header into a master table."""
+        row = table.rowCount()
+        table.insertRow(row)
+        item = QTableWidgetItem(title)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+        item.setForeground(QBrush(QColor(theme.INK)))
+        item.setBackground(QBrush(QColor(theme.SURFACE_ALT)))
+        table.setItem(row, 0, item)
+        table.setSpan(row, 0, 1, table.columnCount())
+
     def _populate_attribute_tables(self) -> None:
         """Render the visible Property and Value tables from the backing tree."""
         self._populating = True
@@ -634,7 +649,12 @@ class ClassCreationPage(BasePage):
             if item.childCount():
                 walk(item, group)
 
+        last_group = None
         for prop, group_name, backing in self._visible_attr_records:
+            if group_name != last_group:
+                if group_name:
+                    self._insert_master_group_header(self._attr_master, group_name)
+                last_group = group_name
             cls = self._attribute_class_for_group(group_name)
             cls_prop = next(
                 (a for a in (cls.properties if cls else [])
@@ -643,8 +663,6 @@ class ClassCreationPage(BasePage):
             row = self._attr_master.rowCount()
             self._attr_master.insertRow(row)
             label = prop.name or "-"
-            if group_name and getattr(self._context.active_snapshot, "split_classes_by_group", False):
-                label = f"{label}  [{group_name}]"
             name_item = QTableWidgetItem(label)
             name_item.setData(Qt.ItemDataRole.UserRole, (prop, group_name, backing))
             name_item.setToolTip(
@@ -735,6 +753,9 @@ class ClassCreationPage(BasePage):
         row = rows[0].row()
         meta = self._attr_master.item(row, 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
+            self._attr_values.setRowCount(0)
+            self._selected_attr_prop = None
+            self._selected_attr_value = None
             return
         prop, group_name, backing = meta
         self._active_group_name = group_name or self._active_group_name
@@ -1312,6 +1333,18 @@ class ClassCreationPage(BasePage):
         group = self._group_name_for_attr_item(item)
         if group and getattr(self._context.active_snapshot, "split_classes_by_group", False):
             self._active_group_name = group
+
+    def _options_class_for_group(self, group_name: str | None):
+        """Return the Options class belonging to a displayed split group."""
+        if not group_name:
+            return self._options_class()
+        service = self._context.engineering_class_service
+        token = service._group_token(group_name)
+        name = f"{token}_Options"
+        for cls in service.get_classes(self._context.active_snapshot):
+            if cls.name == name:
+                return cls
+        return None
 
     def _options_class(self):
         """The active group's ``<Group>_Options`` class, or None."""
@@ -2662,6 +2695,8 @@ class ClassCreationPage(BasePage):
             return
         meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
+            self._opt_values.setRowCount(0)
+            self._opt_values_title.setText("Values")
             return
         option, group_name = meta
         self._active_group_name = group_name or self._active_group_name
@@ -2669,37 +2704,74 @@ class ClassCreationPage(BasePage):
         self._opt_values_title.setText(f"Values — {option.name}")
 
     def _populate_option_tables(self) -> None:
+        """Render the visible Option table grouped by the real class/group names."""
         self._populating = True
         self._opt_master.clearContents()
         self._opt_master.setRowCount(0)
-        options = list(self._context.option_service.get_options())
-        snapshot = self._context.active_snapshot
-        group = self._active_group() if getattr(snapshot, "split_classes_by_group", False) else None
-        if group is not None:
-            option_ids = set(str(x) for x in group.option_ids)
-            options = [o for o in options if str(o.id) in option_ids]
-        for option in options:
-            values = list(getattr(option, "values", []) or [])
-            width = max((len((getattr(v, "code", "") or "").strip()) for v in values), default=0)
+        self._visible_opt_records = []
+
+        def walk(parent, group_name=None):
+            for i in range(parent.childCount()):
+                item = parent.child(i)
+                data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+                current_group = group_name
+                if data and data[0] == _KIND_GROUP:
+                    current_group = str(data[1])
+                elif data and data[0] == _KIND_OPTION:
+                    self._visible_opt_records.append((data[1], current_group, item))
+                if item.childCount():
+                    walk(item, current_group)
+
+        for i in range(self._opt_tree.topLevelItemCount()):
+            item = self._opt_tree.topLevelItem(i)
+            data = item.data(_COL_NAME, Qt.ItemDataRole.UserRole)
+            group = str(data[1]) if data and data[0] == _KIND_GROUP else None
+            if data and data[0] == _KIND_OPTION:
+                self._visible_opt_records.append((data[1], group, item))
+            if item.childCount():
+                walk(item, group)
+
+        last_group = None
+        for option, group_name, backing in self._visible_opt_records:
+            if group_name != last_group:
+                if group_name:
+                    self._insert_master_group_header(self._opt_master, group_name)
+                last_group = group_name
+
             row = self._opt_master.rowCount()
             self._opt_master.insertRow(row)
             item = QTableWidgetItem(option.name or "-")
-            item.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
+            item.setData(Qt.ItemDataRole.UserRole, (option, group_name))
+            item.setToolTip(
+                "Select this option to edit its values."
+                + (f"\nClass: {group_name}" if group_name else "")
+            )
             self._opt_master.setItem(row, 0, item)
-            cls = self._options_class()
-            cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
+
+            try:
+                width = int((backing.text(_COL_SELECTED) or "0").strip())
+            except (TypeError, ValueError):
+                width = 0
+            cls = self._options_class_for_group(group_name)
+            cls_prop = next(
+                (a for a in (cls.properties if cls else [])
+                 if str(a.property_id) == str(option.id)), None
+            )
             stored_width = int(getattr(cls_prop, "width", 0) or 0)
             if stored_width > 0:
                 width = stored_width
+
             wi = QTableWidgetItem(str(width))
             wi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            wi.setData(Qt.ItemDataRole.UserRole, (option, self._active_group_name))
+            wi.setData(Qt.ItemDataRole.UserRole, (option, group_name))
             self._opt_master.setItem(row, 1, wi)
+
             ignore = QCheckBox()
             ignore.setChecked(self._ignore_state_for_property(option.id))
             ignore.setToolTip("Keep this option in the base and do not slice it.")
             ignore.toggled.connect(
-                lambda checked, oid=option.id: self._on_ignore_toggled(str(oid), checked, None)
+                lambda checked, oid=option.id:
+                self._on_ignore_toggled(str(oid), checked, None)
             )
             host = QWidget(self._opt_master)
             hl = QHBoxLayout(host)
@@ -2707,6 +2779,7 @@ class ClassCreationPage(BasePage):
             hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             hl.addWidget(ignore)
             self._opt_master.setCellWidget(row, 2, host)
+
             type_combo = QComboBox(self._opt_master)
             for code, desc in _TYPE_OPTIONS:
                 type_combo.addItem(f"{code} - {desc}" if code and desc else "", code)
@@ -2714,9 +2787,11 @@ class ClassCreationPage(BasePage):
                 idx = type_combo.findData(cls_prop.type)
                 type_combo.setCurrentIndex(max(0, idx))
             type_combo.currentIndexChanged.connect(
-                lambda _idx, oid=option.id, combo=type_combo: self._on_opt_type_selected(oid, combo.currentData())
+                lambda _idx, oid=option.id, combo=type_combo:
+                self._on_opt_type_selected(oid, combo.currentData())
             )
             self._opt_master.setCellWidget(row, 3, type_combo)
+
             usage_combo = QComboBox(self._opt_master)
             for usage in _USAGE_OPTIONS:
                 usage_combo.addItem(usage)
@@ -2724,15 +2799,22 @@ class ClassCreationPage(BasePage):
                 idx = usage_combo.findText(cls_prop.usage)
                 usage_combo.setCurrentIndex(max(0, idx))
             usage_combo.currentTextChanged.connect(
-                lambda text, oid=option.id: self._on_opt_usage_selected(oid, text)
+                lambda text, oid=option.id:
+                self._on_opt_usage_selected(oid, text)
             )
             self._opt_master.setCellWidget(row, 4, usage_combo)
-            self._opt_master.setItem(row, 5, QTableWidgetItem(self._prop_relation_object(option)))
+            self._opt_master.setItem(
+                row, 5, QTableWidgetItem(self._prop_relation_object(option))
+            )
+
         self._opt_master.resizeRowsToContents()
         self._opt_values.setRowCount(0)
         self._populating = False
-        if self._opt_master.rowCount():
-            self._opt_master.selectRow(0)
+        for row in range(self._opt_master.rowCount()):
+            item = self._opt_master.item(row, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole):
+                self._opt_master.selectRow(row)
+                break
 
     def _populate_visible_option_values(self, option, group_name=None) -> None:
         self._populating = True
@@ -2744,7 +2826,7 @@ class ClassCreationPage(BasePage):
             self._opt_values.setItem(row, 0, QTableWidgetItem(value.value or "-"))
             sliced_item = QTableWidgetItem((value.code or "").strip())
             sliced_item.setToolTip("Option value code. Edit the Class Creation code in Development.")
-            cls = self._options_class()
+            cls = self._options_class_for_group(group_name)
             cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
             cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
             if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
@@ -2769,12 +2851,12 @@ class ClassCreationPage(BasePage):
         meta = self._opt_master.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
-        option, _group_name = meta
+        option, group_name = meta
         values = _by_display_order(list(getattr(option, "values", []) or []))
         if item.row() >= len(values):
             return
         value = values[item.row()]
-        cls = self._options_class()
+        cls = self._options_class_for_group(group_name)
         cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
         cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
         if cv is not None:
