@@ -162,10 +162,10 @@ class _ObxWorker(QRunnable):
 
 
 class ObxValidationPage(BasePage):
-    """Validate a CET OBX file's prices against PDM."""
+    """Validate a PCon OBX file's prices against PDM."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
-        super().__init__(title="OBX Validation", description="Validate a CET OBX file's prices against PDM.", parent=parent, show_placeholder=False, content_stretch=True)
+        super().__init__(title="OBX Validation", description="Validate a PCon OBX file's prices against PDM.", parent=parent, show_placeholder=False, content_stretch=True)
         self._context = context
         self._currency = ""
         self._lines: list = []
