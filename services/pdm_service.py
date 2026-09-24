@@ -1532,6 +1532,13 @@ class PDMService(BaseService):
             items_by[str(row.ProductId)].append(row)
         info_by = {str(row.ProductId): row for row in info_rows}
 
+        # ProductRange is session-level metadata used by Class Creation to
+        # resolve the functional group/class name.  Keep the existing session
+        # mappings and extend them with the newly added products.
+        product_range = dict(snapshot.product_range or {})
+        for pid, row in info_by.items():
+            product_range[pid] = (getattr(row, "RangeName", "") or "").strip()
+
         # Seed the dedup sets from the EXISTING snapshot so shared properties/
         # options/values are unioned (added once), not duplicated.
         seen_props: dict[str, Property] = {p.id: p for p in snapshot.properties if p.id}
@@ -1597,6 +1604,49 @@ class PDMService(BaseService):
                   if r.OptionValueId is not None]
             for pid, rows in opts_by.items()
         })
+
+        # Extend the attribute functional groups for the added family.
+        # Existing mappings remain intact; only attributes present in the new
+        # PDM rows are added.
+        snapshot.attribute_category.update({
+            str(r.AttributeId): (getattr(r, "AttrCategory", "") or "").strip()
+            for r in attribute_rows
+            if getattr(r, "AttrCategory", None)
+        })
+
+        # Refresh the ProductRange-derived metadata across the COMPLETE
+        # session.  Add-family previously merged the properties/options and
+        # product links but left these maps unchanged, so newly added records
+        # had no range to resolve to and Class Creation could expose a None
+        # group name.  Derive the maps from the authoritative product/value
+        # links already held in the snapshot; do not invent a fallback group.
+        value_to_prop: dict[str, str] = {}
+        for prop in snapshot.properties:
+            for value in prop.values:
+                if value.id is not None:
+                    value_to_prop[str(value.id)] = str(prop.id)
+
+        prop_ranges: dict[str, set] = defaultdict(set)
+        value_ranges: dict[str, set] = defaultdict(set)
+        for pid, value_ids in snapshot.product_property_value_ids.items():
+            rng = (product_range.get(str(pid), "") or "").strip()
+            if not rng:
+                continue
+            for value_id in value_ids:
+                prop_id = value_to_prop.get(str(value_id))
+                if prop_id:
+                    prop_ranges[prop_id].add(rng)
+                    value_ranges[str(value_id)].add(rng)
+
+        snapshot.attribute_range = {
+            prop_id: sorted(ranges)
+            for prop_id, ranges in prop_ranges.items()
+        }
+        snapshot.value_range = {
+            value_id: sorted(ranges)
+            for value_id, ranges in value_ranges.items()
+        }
+        snapshot.product_range = product_range
 
         # Re-materialise the article-set table across ALL families in the session.
         if reporter is not None:
