@@ -285,23 +285,46 @@ class SifValidationService(BaseService):
         return 0.0
 
     @staticmethod
-    def _match_inc_groups(groups: dict[str, dict[str, float]], codes) -> float:
-        """OBX upcharge: each order code is resolved inside its own PDM option
-        group, and a group can only be consumed once (the same code appears in
-        several groups with different increments)."""
-        order = list(groups.values())
-        used: set[int] = set()
+    def _match_inc_groups(
+        groups: dict[str, dict[str, float]],
+        codes,
+        fabric_groups: dict[str, dict[str, float]] | None = None,
+        fabric_targets: dict[str, list[str]] | None = None,
+    ) -> float:
+        """OBX upcharge with legacy PDM fabric-band resolution."""
+        order = list(groups.items())
+        used: set[str] = set()
         total = 0.0
+        fabric_occurrence: dict[str, int] = {}
+
         for raw in codes:
             code = (raw or "").strip().upper()
             if not code:
                 continue
-            for index, values in enumerate(order):
-                if index in used or code not in values:
-                    continue
-                total += values[code]
-                used.add(index)
-                break
+            is_fabric_colour = bool(fabric_targets and code in fabric_targets)
+            if not is_fabric_colour:
+                for group_id, values in order:
+                    if group_id in used or code not in values:
+                        continue
+                    total += values[code]
+                    used.add(group_id)
+                    break
+                continue
+            if not fabric_groups:
+                continue
+            targets = fabric_targets.get(code, [])
+            occurrence = fabric_occurrence.get(code, 0)
+            target_group = targets[occurrence] if occurrence < len(targets) else None
+            if target_group is None:
+                continue
+            band_values = fabric_groups.get(str(target_group), {})
+            candidates = [(band_code, price) for band_code, price in band_values.items()
+                          if band_code.endswith("#") and code.startswith(band_code[:-1])]
+            fabric_occurrence[code] = occurrence + 1
+            used.add(str(target_group))
+            if candidates:
+                _, price = max(candidates, key=lambda pair: len(pair[0]))
+                total += price
         return total
 
     def _server_date(self, repo, conn) -> str:
@@ -541,7 +564,9 @@ class SifValidationService(BaseService):
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
             inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
-            
+            fabric_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
+            fabric_targets_by_item: dict[str, dict[str, list[str]]] = {}
+
             if inc_items:
                 inc_rows = repo.fetch_item_option_increment_prices(
                     inc_items, currency, mydate, site, conn
@@ -557,13 +582,20 @@ class SifValidationService(BaseService):
                         inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
                             0.0 if inc_price is None else float(inc_price)
                         )
-            
+                        is_fabric = int(r.IsFabric or 0)
+                        if is_fabric == 1 and code.endswith("#") and inc_price is not None:
+                            fabric_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = float(inc_price)
+                        elif is_fabric == 2:
+                            parent_group = str(getattr(r, "ParentOptId", "") or "")
+                            if parent_group and code:
+                                fabric_targets_by_item.setdefault(item, {}).setdefault(code, []).append(parent_group)
+
                     if inc_price is None:
                         continue
-                    
+
                     is_fabric = int(r.IsFabric or 0)
                     quantity = int(r.Quantity or 1)
-            
+
                     inc_by_item.setdefault(item, {})[code] = (
                         float(inc_price),
                         is_fabric,
@@ -591,7 +623,11 @@ class SifValidationService(BaseService):
                     continue
                 if obx:
                     upcharge = self._match_inc_groups(
-                        inc_groups_by_item.get(line.base, {}), [o.code for o in line.options])
+                        inc_groups_by_item.get(line.base, {}),
+                        [o.code for o in line.options],
+                        fabric_groups_by_item.get(line.base, {}),
+                        fabric_targets_by_item.get(line.base, {}),
+                    )
                 else:
                     inc = inc_by_item.get(line.base, {})
                     upcharge = sum(self._match_inc(inc, o.code) for o in line.options)
