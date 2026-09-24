@@ -25,7 +25,7 @@ class _IncPriceRow:
     """Wraps a PDMOptionDataReportWithIncList row, supplying ``Item`` (the
     proc is called per-item and never echoes it back as a column)."""
 
-    __slots__ = ("Item", "OptionId", "OrderCodeValue2", "IncPrice", "IsFabric", "Quantity")
+    __slots__ = ("Item", "OptionId", "OrderCodeValue2", "IncPrice", "IsFabric", "Quantity", "ParentOptId")
 
     def __init__(self, item: str, row: Any) -> None:
         self.Item = item
@@ -34,6 +34,7 @@ class _IncPriceRow:
         self.IncPrice = getattr(row, "IncPrice", None)
         self.IsFabric = getattr(row, "IsFabric", None)
         self.Quantity = getattr(row, "Quantity", None)
+        self.ParentOptId = getattr(row, "ParentOptId", None)
 
 
 class PDMRepository(BaseRepository):
