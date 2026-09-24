@@ -218,7 +218,7 @@ class ObxValidationPage(BasePage):
         self._validation_date.setCalendarPopup(True)
         self._validation_date.setDate(QDate.currentDate())
         layout.addWidget(self._validation_date)
-        self._export_btn = QPushButton("Export to CSV...", container)
+        self._export_btn = QPushButton("Export Individual CSVs...", container)
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         layout.addWidget(self._export_btn)
@@ -594,6 +594,11 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
         self._render_table()
+
+        # Automatic consolidated export happens only after the worker reports
+        # the complete validation result. Paused/partial results are not exported
+        # as the consolidated report.
+        self._export_consolidated()
         site_text = ", ".join(f"{cur}→site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
             QMessageBox.information(self, "OBX Validation", f"All {len(results)} line(s) match PDM ({site_text}).")
@@ -603,14 +608,34 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setText("Show errors only" if checked else "Show all lines")
         self._render_table()
 
-    def _on_export(self) -> None:
-        """Export the results accumulated so far beside the source OBX file(s).
+    def _export_consolidated(self) -> bool:
+        """Write one consolidated CSV after the complete validation finishes."""
+        results = sorted(list(self._results), key=lambda r: self._seq_key(getattr(r, "seq", 0)))
+        paths = getattr(self, "_paths", [])
+        if not results or not paths:
+            return False
 
-        Export is intentionally available while validation is running. In that
-        case the CSV contains the results completed at the moment Export is
-        clicked; clicking Export again overwrites the same CSV with the latest
-        accumulated results.
-        """
+        target = Path(paths[0]).parent / "OBX_Validation_Consolidated.csv"
+        try:
+            self._context.obx_validation_service.export_csv(
+                str(target),
+                self._currency,
+                results,
+                elapsed_seconds=self._validation_elapsed_seconds,
+            )
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "OBX Validation",
+                f"Validation completed, but the consolidated CSV could not be written:\n{exc}",
+            )
+            return False
+
+        self._progress_state.setText("COMPLETE — CSV EXPORTED")
+        return True
+
+    def _on_export(self) -> None:
+        """Export each loaded source OBX to its own CSV on explicit request."""
         results = list(self._results)
         if not results:
             return
