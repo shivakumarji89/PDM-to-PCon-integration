@@ -726,9 +726,14 @@ class ClassCreationPage(BasePage):
 
         self._attr_master.resizeRowsToContents()
         self._attr_values.setRowCount(0)
-        if self._attr_master.rowCount():
-            self._attr_master.selectRow(0)
-        else:
+        selected = False
+        for row in range(self._attr_master.rowCount()):
+            item = self._attr_master.item(row, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole):
+                self._attr_master.selectRow(row)
+                selected = True
+                break
+        if not selected:
             self._selected_attr_prop = None
             self._selected_attr_value = None
         self._populating = False
