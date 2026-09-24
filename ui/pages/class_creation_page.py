@@ -2867,7 +2867,7 @@ class ClassCreationPage(BasePage):
         if cv is not None:
             cv.code = item.text().strip()
             self._context.snapshot_manager.mark_modified()
-            self._populate_visible_option_values(option, self._active_group_name)
+            self._populate_visible_option_values(option, group_name)
 
     def _on_option_master_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 1:
@@ -2875,10 +2875,10 @@ class ClassCreationPage(BasePage):
         meta = item.data(Qt.ItemDataRole.UserRole)
         if not meta:
             return
-        option, _group_name = meta
+        option, group_name = meta
         text = item.text().strip()
         width = int(text) if text.isdigit() else 0
-        cls = self._options_class()
+        cls = self._options_class_for_group(group_name)
         if cls is not None:
             self._context.engineering_class_service.set_width(
                 self._context.active_snapshot, cls.id, str(option.id), width
@@ -3110,46 +3110,64 @@ class ClassCreationPage(BasePage):
                 rs |= optval_ranges.get(str(v.id), set())
             opt_ranges[str(option.id)] = rs
 
-        # When the split is on, show only the active group's options.
-        group = self._active_group() if getattr(
-            snapshot, "split_classes_by_group", False
-        ) else None
-        if group is not None:
-            gids = set(group.option_ids)
-            options = [o for o in options if str(o.id) in gids]
+        split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
+        groups = (
+            self._context.engineering_class_service.resolve_class_groups(
+                snapshot, self._category_label()
+            )
+            if split_checked else []
+        )
 
-        all_ranges = {
-            r for rs in opt_ranges.values() for r in rs if r not in ignored
-        }
-        if len(all_ranges) > 1:
-            def _group_rank(gname: str) -> int:
-                for i, o in enumerate(options):
-                    if gname in opt_ranges.get(str(o.id), set()):
-                        return i
-                return 10_000
-            for gname in sorted(all_ranges, key=_group_rank):
+        # When split classes are enabled, mirror the real generated class
+        # structure in the backing tree: one group header per class, with only
+        # that class's options underneath it. The visible master table then
+        # consumes this same tree, so no second grouping rule is introduced.
+        if split_checked and len(groups) > 1:
+            collapsed_groups = set()
+            for group in groups:
+                group_cls = self._options_class_for_group(group.name)
+                if group_cls is None:
+                    continue
                 gnode = self._make_group_node(
-                    self._opt_tree, gname, gname, collapsed_groups
+                    self._opt_tree, group.name, group.name, collapsed_groups
                 )
+                group_option_ids = set(str(x) for x in group.option_ids)
                 for option in options:
-                    if gname in opt_ranges.get(str(option.id), set()):
-                        vids = {
-                            str(v.id) for v in getattr(option, "values", [])
-                            if gname in optval_ranges.get(str(v.id), set())
-                        }
-                        self._add_option_node(
-                            gnode, option, cls, value_ids=vids or None
-                        )
-            orphans = [o for o in options if not opt_ranges.get(str(o.id))]
-            if orphans:
-                gnode = self._make_group_node(
-                    self._opt_tree, "General", "__none_opt__", collapsed_groups
-                )
-                for option in orphans:
-                    self._add_option_node(gnode, option, cls)
+                    if str(option.id) in group_option_ids:
+                        self._add_option_node(gnode, option, cls)
         else:
-            for option in options:
-                self._add_option_node(self._opt_tree, option, cls)
+            all_ranges = {
+                r for rs in opt_ranges.values() for r in rs if r not in ignored
+            }
+            if len(all_ranges) > 1:
+                def _group_rank(gname: str) -> int:
+                    for i, o in enumerate(options):
+                        if gname in opt_ranges.get(str(o.id), set()):
+                            return i
+                    return 10_000
+                for gname in sorted(all_ranges, key=_group_rank):
+                    gnode = self._make_group_node(
+                        self._opt_tree, gname, gname, collapsed_groups
+                    )
+                    for option in options:
+                        if gname in opt_ranges.get(str(option.id), set()):
+                            vids = {
+                                str(v.id) for v in getattr(option, "values", [])
+                                if gname in optval_ranges.get(str(v.id), set())
+                            }
+                            self._add_option_node(
+                                gnode, option, cls, value_ids=vids or None
+                            )
+                orphans = [o for o in options if not opt_ranges.get(str(o.id))]
+                if orphans:
+                    gnode = self._make_group_node(
+                        self._opt_tree, "General", "__none_opt__", collapsed_groups
+                    )
+                    for option in orphans:
+                        self._add_option_node(gnode, option, cls)
+            else:
+                for option in options:
+                    self._add_option_node(self._opt_tree, option, cls)
 
     def _add_option_node(self, parent, option, cls, value_ids=None) -> None:
         # Values shown under a range group are limited to the ones that range's
