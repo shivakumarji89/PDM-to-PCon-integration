@@ -582,6 +582,19 @@ class ProductPage(BasePage):
         source_layout.addWidget(source_note)
         layout.addWidget(source_section)
 
+        snapshot_section = QGroupBox("Snapshot", box)
+        snapshot_form = QFormLayout(snapshot_section)
+        snapshot_form.setContentsMargins(8, 6, 8, 8)
+        snapshot_form.setSpacing(4)
+        self._status_labels: dict[str, QLabel] = {}
+        for label, _attr in self._STATUS_ROWS:
+            value = QLabel("-", snapshot_section)
+            self._status_labels[label] = value
+            snapshot_form.addRow(f"{label}:", value)
+        self._readiness = QLabel("-", snapshot_section)
+        snapshot_form.addRow("Overall:", self._readiness)
+        layout.addWidget(snapshot_section)
+
         layout.addStretch(1)
         return box
 
