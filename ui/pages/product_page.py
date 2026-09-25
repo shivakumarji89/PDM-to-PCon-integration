@@ -144,15 +144,16 @@ class _RepositoryExtractWorker(QRunnable):
             self._reporter.advance("Reading MDB structural tables...")
             data = self._context.mdb_reverse_engineering_service.read(
                 repository["ocd_path"],
-                include_prices=False,
+                include_prices=True,
             )
 
-            self._reporter.advance("Indexing extracted data...")
+            self._reporter.advance("Mapping MDB data to Workbench workflows...")
+            snapshot = self._context.mdb_reverse_engineering_service.import_snapshot(data)
+            self._context.snapshot_manager.load_snapshot(snapshot)
+
+            self._reporter.advance("Activating Articles, Class Creation, Text, Relations and Pricing...")
             total_rows = sum(data.table_counts.values())
-            self._reporter.advance(
-                f"Repository extraction complete ({total_rows:,} rows)"
-            )
-            self._signals.finished.emit((repository, data))
+            self._signals.finished.emit((repository, data, snapshot, total_rows))
         except Exception as error:
             self._signals.failed.emit(str(error))
 
@@ -802,16 +803,15 @@ class ProductPage(BasePage):
         self._pool.start(worker)
 
     def _on_repository_extraction_finished(self, payload) -> None:
-        repository, data = payload
-        total_rows = sum(data.table_counts.values())
+        repository, data, snapshot, total_rows = payload
 
         self._repository_status.setText(
-            f"Loaded {repository['name']} | {total_rows:,} structural rows extracted."
+            f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
         )
         self._repository_path.setText(repository["path"])
         self._repository_extract_reporter.finish(
             True,
-            f"{repository['name']} loaded successfully.",
+            f"{repository['name']} loaded into Workbench.",
         )
 
     def _on_repository_extraction_failed(self, message: str) -> None:
