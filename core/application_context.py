@@ -30,6 +30,7 @@ from services.pip_service import PipService
 from services.price_list_service import PriceListService
 from services.mdb_reconcile_service import MdbReconcileService
 from services.mdb_reverse_engineering_service import MdbReverseEngineeringService
+from services.maintenance_repository_link_service import MaintenanceRepositoryLinkService
 from services.distribution_region_service import DistributionRegionService
 from services.option_service import OptionService
 from services.option_value_service import OptionValueService
@@ -87,6 +88,7 @@ class ApplicationContext:
             PDMService: PDMService,
             MDBService: MDBService,
             MdbReverseEngineeringService: MdbReverseEngineeringService,
+            MaintenanceRepositoryLinkService: MaintenanceRepositoryLinkService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
             PropertyValueService: PropertyValueService,
@@ -177,6 +179,11 @@ class ApplicationContext:
     @property
     def mdb_reverse_engineering_service(self) -> MdbReverseEngineeringService:
         return self.get_service(MdbReverseEngineeringService)
+
+    @property
+    @property
+    def maintenance_repository_link_service(self) -> MaintenanceRepositoryLinkService:
+        return self.get_service(MaintenanceRepositoryLinkService)
 
     @property
     def article_service(self) -> ArticleService:
