@@ -119,11 +119,14 @@ class TextPage(BasePage):
 
     # -- data --------------------------------------------------------------
     def on_enter(self) -> None:
-        """Rebuild derived text blocks automatically when entering Text."""
+        """Load imported MDB text as-is; derive text only for generated snapshots."""
         snapshot = self._context.active_snapshot
         service = self._context.engineering_text_service
-        service.rebuild_text_blocks(snapshot)
-        self._all_blocks = service.ensure_text_blocks(snapshot)
+        if snapshot is not None and snapshot.metadata.source == "MDB":
+            self._all_blocks = service.ensure_text_blocks(snapshot)
+        else:
+            service.rebuild_text_blocks(snapshot)
+            self._all_blocks = service.ensure_text_blocks(snapshot)
         self._apply_filter()
 
     def refresh(self) -> None:
