@@ -643,6 +643,84 @@ class ProductPage(BasePage):
         self._load_connected_repositories()
         return page
 
+    def _load_connected_repositories(self) -> None:
+        """Populate persisted repository connections in the Maintenance view."""
+        self._connected_repositories.clear()
+        try:
+            connections = self._context.maintenance_repository_link_service.list_connections()
+        except Exception as error:
+            self._repository_status.setText(
+                f"Unable to read connected repositories: {error}"
+            )
+            return
+
+        for connection in connections:
+            repository = connection.get("repository", {})
+            pdm = connection.get("pdm", {})
+            path = str(repository.get("path") or "")
+            if not path:
+                continue
+            product_code = str(pdm.get("product_code") or "")
+            product_name = str(pdm.get("product_name") or "")
+            label = (
+                f"{repository.get('name') or path}"
+                f"  —  {product_code or product_name or 'Unassigned'}"
+            )
+            item = QListWidgetItem(label)
+            item.setToolTip(path)
+            item.setData(Qt.ItemDataRole.UserRole, path)
+            self._connected_repositories.addItem(item)
+
+        count = self._connected_repositories.count()
+        if count:
+            self._repository_status.setText(
+                f"{count} connected repository location(s). Select one to open it."
+            )
+        else:
+            self._repository_status.setText(
+                "No connected repository locations. Add a repository to establish a link."
+            )
+
+    def _selected_connected_repository(self) -> str:
+        item = self._connected_repositories.currentItem()
+        return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
+
+    def _on_connected_repository_selected(self) -> None:
+        path = self._selected_connected_repository()
+        enabled = bool(path)
+        self._open_connected_repository_btn.setEnabled(enabled)
+        if enabled:
+            self._repository_path_value = path
+            self._repository_path.setText(path)
+        self._update_repository_actions()
+
+    def _on_connected_repository_double_clicked(self, _item) -> None:
+        self._on_open_connected_repository()
+
+    def _on_open_connected_repository(self) -> None:
+        """Open the selected persisted repository directly in Windows Explorer."""
+        path = self._selected_connected_repository()
+        if not path:
+            return
+        from pathlib import Path
+        import os
+
+        folder = Path(path)
+        if not folder.is_dir():
+            QMessageBox.warning(
+                self,
+                "Repository",
+                f"Repository folder is no longer available:\n{path}",
+            )
+            return
+        try:
+            os.startfile(str(folder))
+            self._context.maintenance_repository_link_service.touch(path)
+        except OSError as error:
+            QMessageBox.warning(
+                self, "Repository", f"Unable to open folder:\n{error}"
+            )
+
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
         self._context_module = module
