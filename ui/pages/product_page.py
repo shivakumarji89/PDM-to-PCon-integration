@@ -149,6 +149,8 @@ class _RepositoryExtractWorker(QRunnable):
 
             self._reporter.advance("Mapping MDB data to Workbench workflows...")
             snapshot = self._context.mdb_reverse_engineering_service.import_snapshot(data)
+            self._reporter.advance("Initializing engineering workspace...")
+            self._context.engineering_initialization_service.initialize(snapshot)
             self._context.snapshot_manager.load_snapshot(snapshot)
 
             self._reporter.advance("Activating Articles, Class Creation, Text, Relations and Pricing...")
@@ -813,6 +815,11 @@ class ProductPage(BasePage):
             True,
             f"{repository['name']} loaded into Workbench.",
         )
+        self._clear_repository_btn.setEnabled(True)
+        # Repository loading creates a new active Snapshot outside the normal
+        # PDM product-load path. Publish it explicitly so WorkflowManager
+        # recalculates readiness/unlocks the existing workspaces.
+        self.snapshot_changed.emit()
 
     def _on_repository_extraction_failed(self, message: str) -> None:
         self._repository_status.setText("Repository extraction failed.")
