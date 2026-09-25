@@ -40,6 +40,8 @@ class AppConfig:
     # (PDM ``Site.Site``) are fetched, so obsolete and non-region catalogues are
     # never stored. Default "UK".
     catalogue_region: str = "UK"
+    # Persistent Maintenance repository ↔ PDM connection registry.
+    repository_connection_registry: str = "workspace/repository_connections.json"
 
     def pdm_connection_string(self) -> str:
         """Assemble the pyodbc connection string for the PDM database."""
