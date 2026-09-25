@@ -1,0 +1,37 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+
+# IDE temporary files
+.vscode/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.log
+
+# Local project inspection file
+project_structure.txt
+
+# Runtime/generated cache
+cache/
+
+# Temporary diagnostics and extracted files
+tmp/

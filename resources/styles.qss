@@ -1,0 +1,538 @@
+/* MK Product Workbench - professional engineering theme.
+ * Consistent typography, spacing, colours and states across every workspace.
+ */
+
+/* ---- Base ---- */
+QWidget {
+    background-color: #f4f6f8;
+    color: #1f2733;
+    font-family: "Segoe UI", "Inter", Arial, sans-serif;
+    font-size: 13px;
+}
+
+QMainWindow {
+    background-color: #eef1f5;
+}
+
+/* ---- Menu bar ---- */
+QMenuBar {
+    background-color: #26324a;
+    color: #eef2f7;
+    padding: 2px 6px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+QMenuBar::item:selected {
+    background-color: #38486a;
+}
+
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #d3dae3;
+    padding: 4px;
+}
+
+QMenu::item {
+    padding: 6px 24px 6px 12px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background-color: #e2ecf7;
+}
+
+/* ---- Panels ---- */
+#leftPanel,
+#centerPanel,
+#rightPanel {
+    background-color: #ffffff;
+    border: 1px solid #dfe4ea;
+    border-radius: 10px;
+}
+
+#panelHeader {
+    font-size: 14px;
+    font-weight: 600;
+    color: #26324a;
+    padding: 4px 2px 8px 2px;
+}
+
+/* ---- Group boxes (workspace sections) ---- */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #e1e6ec;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 8px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 6px;
+    color: #45526b;
+}
+
+/* ---- Workflow navigator ---- */
+#workflowList {
+    background: transparent;
+    border: 0;
+    outline: 0;
+}
+
+#workflowList::item {
+    padding: 10px 12px;
+    margin: 3px 0;
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    color: #33404f;
+}
+
+#workflowList::item:hover {
+    background-color: #eef3f9;
+}
+
+#workflowList::item:selected {
+    background-color: #e9f1fd;
+    border-left: 3px solid #2f6fed;
+    color: #1f2733;
+}
+
+#workflowList::item:disabled {
+    color: #aab4c0;
+    background: transparent;
+}
+
+/* ---- Pages ---- */
+#pageTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2733;
+}
+
+#pageSubtitle {
+    font-size: 12px;
+    color: #63707e;
+}
+
+#pageDivider {
+    color: #e1e6ec;
+}
+
+#pagePlaceholder {
+    font-size: 14px;
+    color: #9aa6b2;
+    padding: 32px 24px;
+    border: 1px dashed #cfd7e0;
+    border-radius: 8px;
+    background-color: #fafbfc;
+}
+
+#emptyHint {
+    color: #63707e;
+    background-color: #f7f9fb;
+    border: 1px dashed #cfd7e0;
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+/* ---- Inputs ---- */
+QLineEdit,
+QComboBox {
+    padding: 5px 9px;
+    border: 1px solid #cfd7e0;
+    border-radius: 6px;
+    background-color: #ffffff;
+    selection-background-color: #2f6fed;
+    selection-color: #ffffff;
+}
+
+QLineEdit:focus,
+QComboBox:focus {
+    border-color: #2f6fed;
+}
+
+/* In-cell editors: flat + compact so they fill the row (not a floating
+   rounded box) and keep table/tree rows at their fixed height. Explicit
+   colours so the editor stays readable on a selected (blue) row. */
+QTableView QLineEdit,
+QTreeView QLineEdit {
+    border: 1px solid #2f6fed;
+    border-radius: 0;
+    padding: 2px 4px;
+    margin: 0;
+    background-color: #ffffff;
+    color: #1f2733;
+    selection-background-color: #2f6fed;
+    selection-color: #ffffff;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    border: 0;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #5b6b7f;
+    margin-right: 6px;
+}
+
+QComboBox::down-arrow:disabled {
+    border-top-color: #b7c0cc;
+}
+
+QComboBox QAbstractItemView {
+    border: 1px solid #cfd7e0;
+    background-color: #ffffff;
+    selection-background-color: #e2ecf7;
+    selection-color: #1f2733;
+}
+
+/* ---- Buttons ---- */
+QPushButton {
+    padding: 5px 12px;
+    border: 1px solid #cfd7e0;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #26324a;
+    font-weight: 600;
+    min-height: 18px;
+}
+
+QPushButton:hover {
+    background-color: #eef3f9;
+    border-color: #b9c4d1;
+}
+
+QPushButton:pressed {
+    background-color: #e2ecf7;
+}
+
+QPushButton:disabled {
+    color: #a9b3bf;
+    background-color: #f6f8fa;
+    border-color: #e1e6ec;
+}
+
+/* ---- Tables & trees ---- */
+QTableWidget,
+QTreeWidget {
+    background-color: #ffffff;
+    alternate-background-color: #f7f9fb;
+    border: 1px solid #e1e6ec;
+    border-radius: 6px;
+    gridline-color: #eef1f5;
+    selection-background-color: #dbe8fd;
+    selection-color: #1f2733;
+    outline: 0;
+}
+
+QTableWidget::item,
+QTreeWidget::item {
+    padding: 7px 6px;
+}
+
+QTableWidget::item:selected,
+QTreeWidget::item:selected {
+    background-color: #dbe8fd;
+    color: #1f2733;
+}
+
+QHeaderView::section {
+    background-color: #f0f3f7;
+    color: #45526b;
+    padding: 6px 8px;
+    border: 0;
+    border-right: 1px solid #e1e6ec;
+    border-bottom: 1px solid #dfe4ea;
+    font-weight: 600;
+}
+
+QHeaderView::section:hover {
+    background-color: #e7ecf3;
+}
+
+QTableCornerButton::section {
+    background-color: #f0f3f7;
+    border: 0;
+}
+
+/* ---- PDM explorer ---- */
+#pdmSearch {
+    padding: 6px 10px;
+    border: 1px solid #cfd7e0;
+    border-radius: 6px;
+    background-color: #ffffff;
+}
+
+#pdmSearch:focus {
+    border-color: #2f6fed;
+}
+
+#pdmTree {
+    border: 1px solid #e1e6ec;
+    border-radius: 6px;
+    background-color: #ffffff;
+}
+
+#productInfoPanel {
+    border: 1px solid #e1e6ec;
+    border-radius: 6px;
+    margin-top: 6px;
+}
+
+#infoValue {
+    font-weight: 400;
+    color: #33404f;
+}
+
+/* ---- Read-only outputs (Generate preview / logs) ---- */
+QPlainTextEdit,
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #e1e6ec;
+    border-radius: 6px;
+}
+
+/* ---- Status bar ---- */
+QStatusBar {
+    background-color: #26324a;
+    color: #eef2f7;
+}
+
+QStatusBar QLabel {
+    color: #eef2f7;
+    background: transparent;
+}
+
+#productStatus {
+    color: #c7d0dc;
+    padding-right: 8px;
+}
+
+/* ---- Scrollbars ---- */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+
+QScrollBar::handle:vertical {
+    background: #cfd7e0;
+    border-radius: 5px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #b9c4d1;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 2px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #cfd7e0;
+    border-radius: 5px;
+    min-width: 24px;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+
+/* ---- Tooltips ---- */
+QToolTip {
+    background-color: #26324a;
+    color: #ffffff;
+    border: 0;
+    padding: 6px 8px;
+    border-radius: 4px;
+}
+
+/* ---- Splitter handle ---- */
+QSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter::handle:horizontal {
+    width: @PANEL_GUTTER@px;
+}
+
+/* ---- Dock separators: match the splitter gutter so every panel gap is equal ---- */
+QMainWindow::separator {
+    background: transparent;
+    width: @PANEL_GUTTER@px;
+    height: @PANEL_GUTTER@px;
+}
+
+/* ---- Engineering Context tabs ---- */
+QTabWidget::pane {
+    border: 1px solid #e1e6ec;
+    border-radius: 6px;
+    top: -1px;
+    background-color: #ffffff;
+}
+
+QTabBar::tab {
+    background: #f0f3f7;
+    color: #45526b;
+    padding: 5px 12px;
+    margin-right: 2px;
+    border: 1px solid #e1e6ec;
+    border-bottom: 0;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    font-weight: 600;
+}
+
+QTabBar::tab:selected {
+    background: #ffffff;
+    color: #1f2733;
+    border-color: #d3dae3;
+}
+
+QTabBar::tab:hover:!selected {
+    background: #e7ecf3;
+}
+
+/* ---- Dock widgets (Engineering Assistant) ---- */
+QDockWidget {
+    titlebar-close-icon: none;
+    titlebar-normal-icon: none;
+}
+
+QDockWidget::title {
+    background-color: #ffffff;
+    color: #26324a;
+    padding: 2px 6px;
+    border-bottom: 1px solid #e1e6ec;
+    font-weight: 600;
+    text-align: left;
+}
+
+QDockWidget::close-button,
+QDockWidget::float-button {
+    background: transparent;
+    border: 0;
+    padding: 2px;
+}
+
+/* The assistant's own blocks are the cards, so the panel itself is frameless. */
+#assistantPanel {
+    background-color: #ffffff;
+}
+
+/* ---- Tree branches ---- */
+QTreeWidget::branch {
+    background: transparent;
+}
+
+QTreeView::item {
+    padding: 3px 4px;
+}
+
+/* ---- Checkboxes / radio buttons ---- */
+QCheckBox,
+QRadioButton {
+    spacing: 6px;
+    color: #1f2733;
+}
+
+QCheckBox::indicator,
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QCheckBox::indicator {
+    border: 1px solid #cfd7e0;
+    border-radius: 4px;
+    background: #ffffff;
+}
+
+QCheckBox::indicator:checked {
+    border-color: #2f6fed;
+    background: #2f6fed;
+}
+
+/* ---- Section headers (reusable) ---- */
+#sectionHeader {
+    font-size: 13px;
+    font-weight: 700;
+    color: #26324a;
+    padding: 2px 0;
+}
+
+/* ---- Engineering Assistant panel title ---- */
+#assistantTitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: #26324a;
+    padding: 0 2px 2px 2px;
+}
+
+/* ---- Dialogs (standard placement, spacing, typography) ---- */
+QDialog {
+    background-color: #f4f6f8;
+}
+
+QDialog QLabel {
+    color: #1f2733;
+}
+
+QDialogButtonBox {
+    button-layout: 0;
+}
+
+QDialogButtonBox QPushButton {
+    min-width: 84px;
+    padding: 5px 14px;
+}
+
+/* ---- Workspace navigation footer (Back / Continue) ---- */
+#navBackButton,
+#navContinueButton {
+    min-width: 96px;
+    padding: 7px 16px;
+}
+
+#navContinueButton {
+    background-color: #2f6fed;
+    color: #ffffff;
+    border-color: #2f6fed;
+}
+
+#navContinueButton:hover {
+    background-color: #2a63d4;
+    border-color: #2a63d4;
+}
+
+#navContinueButton:pressed {
+    background-color: #2456bd;
+}
+
+#navContinueButton:disabled {
+    background-color: #f6f8fa;
+    color: #a9b3bf;
+    border-color: #e1e6ec;
+}
+
+
