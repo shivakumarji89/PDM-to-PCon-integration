@@ -46,3 +46,5 @@ class RelationObject:
     # the real tCOMd_RelObj -> tCOMd_RelObjRel -> tCOMd_Relation links.
     rel_obj_id: str = ""
     relation_id: str = ""
+    # Defined relation name from tCOMd_Relation.com_RelationName.
+    relation_name: str = ""

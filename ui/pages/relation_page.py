@@ -39,12 +39,13 @@ from ui import theme
 from ui.pages.base_page import BasePage
 
 _COL_NAME = 0
-_COL_TYPE = 1
-_COL_DOMAIN = 2
-_COL_BOUND = 3
-_COL_REL_OBJ_ID = 4
-_COL_RELATION_ID = 5
-_COL_ORDER = 6
+_COL_RELATION = 1
+_COL_TYPE = 2
+_COL_DOMAIN = 3
+_COL_BOUND = 4
+_COL_REL_OBJ_ID = 5
+_COL_RELATION_ID = 6
+_COL_ORDER = 7
 
 _FILTER_ALL = "All types"
 _GROUP_NONE = "No grouping"
@@ -133,10 +134,10 @@ class RelationPage(BasePage):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self._table = QTableWidget(0, 7, row)
+        self._table = QTableWidget(0, 8, row)
         self._table.setObjectName("relationTable")
         self._table.setHorizontalHeaderLabels([
-            "Relation", "Type", "Domain", "Bound To", "RelObj ID", "Relation ID", "Order"
+            "Relation Object", "Relation", "Type", "Domain", "Bound To", "RelObj ID", "Relation ID", "Order"
         ])
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(28)
@@ -147,7 +148,7 @@ class RelationPage(BasePage):
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(_COL_NAME, QHeaderView.ResizeMode.Stretch)
         for col in (
-            _COL_TYPE, _COL_DOMAIN, _COL_BOUND,
+            _COL_RELATION, _COL_TYPE, _COL_DOMAIN, _COL_BOUND,
             _COL_REL_OBJ_ID, _COL_RELATION_ID, _COL_ORDER
         ):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
@@ -286,11 +287,15 @@ class RelationPage(BasePage):
                 header.setFont(font)
                 header.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 self._table.setItem(row, 0, header)
-                self._table.setSpan(row, 0, 1, 7)
+                self._table.setSpan(row, 0, 1, 8)
                 self._row_relations.append(None)
                 continue
             rel = entry
             self._table.setItem(row, _COL_NAME, QTableWidgetItem(rel.name))
+            self._table.setItem(
+                row, _COL_RELATION,
+                QTableWidgetItem(rel.relation_name or rel.name),
+            )
             self._table.setItem(
                 row, _COL_TYPE,
                 QTableWidgetItem(RELATION_TYPE_LABELS.get(rel.type_code, rel.type_code)),

@@ -672,7 +672,7 @@ class OcdExportService(BaseService):
                 "com_RelObjID": i, "com_RelObjName": rel.name, "com_PackageID": package_id,
             }))
             rel_rows.append(self._row(protos["tCOMd_Relation"], {
-                "com_RelationID": i, "com_RelationName": self._relation_name(rel.name),
+                "com_RelationID": i, "com_RelationName": rel.relation_name or self._relation_name(rel.name),
                 "com_RelationBody": rel.body or "", "com_PackageID": package_id,
             }))
             relrel_rows.append(self._row(protos["tCOMd_RelObjRel"], {
