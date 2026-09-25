@@ -288,8 +288,8 @@ class MdbReverseEngineeringService(BaseService):
         value_relobj = {str(r.get("com_RelObjID") or ""): str(r.get("com_ValueID") or "")
                         for r in data.rows("tCOMd_PropValue") if r.get("com_RelObjID")}
         for obj_id, obj_row in relobj_by_id.items():
-            rel = relation_by_id.get(obj_id)
             meta = relmeta_by_obj.get(obj_id, {})
+            rel = relation_by_id.get(str(meta.get("com_RelationID") or ""))
             if rel is None:
                 continue
             pmdb, vmdb = prop_relobj.get(obj_id, ""), value_relobj.get(obj_id, "")
@@ -302,6 +302,43 @@ class MdbReverseEngineeringService(BaseService):
                 property_id=prop_by_mdb[pmdb].id if pmdb in prop_by_mdb else "",
                 value_id=value_by_mdb[vmdb].id if vmdb in value_by_mdb else "",
             ))
+
+        # ArtBase is the MDB's base-article restriction model. Keep it in
+        # Snapshot so the existing Review/engineering workflows can consume the
+        # same base -> property -> value restriction information.
+        value_by_code: dict[tuple[str, str], str] = {}
+        for value in snapshot.property_values:
+            value_by_code[(str(value.property_id), value.code)] = str(value.id or "")
+        for row in data.rows("tCOMd_ArtBase"):
+            article_row_id = str(row.get("com_ArticleID") or "")
+            article = article_by_mdb.get(article_row_id)
+            if article is None:
+                continue
+            class_name = str(row.get("com_ClassName") or "")
+            prop_name = str(row.get("com_PropName") or "").strip()
+            code = str(row.get("com_PropValue") or "").strip()
+            prop = next(
+                (p for p in snapshot.properties
+                 if p.name == prop_name or p.code == prop_name),
+                None,
+            )
+            if prop is None:
+                # ArtBase property names are normalized identifiers; compare
+                # case-insensitively only as a mapping aid, never inventing a property.
+                prop = next(
+                    (p for p in snapshot.properties
+                     if p.name.casefold() == prop_name.casefold()
+                     or p.code.casefold() == prop_name.casefold()),
+                    None,
+                )
+            if prop is None:
+                continue
+            value_id = value_by_code.get((str(prop.id), code), "")
+            if not value_id:
+                continue
+            snapshot.art_base.setdefault(article.code, {}).setdefault(
+                str(prop.id), []
+            ).append(value_id)
 
         for row in data.rows("tCOMd_PriceList2"):
             snapshot.price_lists.append(PriceList(
