@@ -650,7 +650,9 @@ class OcdExportService(BaseService):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
         """tCOMd_RelObj + tCOMd_Relation + tCOMd_RelObjRel rows and the
         ``{value_id: relobj_id}`` back-reference for value preconditions."""
-        relation_objects = self.context.engineering_relation_service.build_relation_objects(snapshot)
+        # Preserve relation objects already imported or edited in the active
+        # snapshot. Derive canonical relations only when the snapshot has none.
+        relation_objects = self.context.engineering_relation_service.ensure_relation_objects(snapshot)
         obj_rows: list[dict[str, Any]] = []
         rel_rows: list[dict[str, Any]] = []
         relrel_rows: list[dict[str, Any]] = []
