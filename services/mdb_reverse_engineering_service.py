@@ -51,6 +51,7 @@ STRUCTURAL_TABLES: tuple[str, ...] = (
 )
 
 PRICE_TABLES: tuple[str, ...] = (
+    "tCOMd_PriceList2",
     "tCOMd_Price",
     "tCOMd_GlobalPrice",
 )
