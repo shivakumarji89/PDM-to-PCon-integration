@@ -28,7 +28,7 @@ from typing import Any
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.engineering.engineering_reduction_service import collapse_duplicate_values
-from services.engineering.engineering_text_service import LANGUAGES, text_block_name
+from services.engineering.engineering_text_service import text_block_name
 
 #: OCD CSV dialect: semicolon-delimited, CRLF, minimal quoting.
 _DELIM = ";"
@@ -747,8 +747,8 @@ class XocdExportService(BaseService):
             if filename is None:
                 continue
             rows = files.setdefault(filename, [])
-            for lang in LANGUAGES:
-                text = getattr(block, lang, "") or ""
+            for lang in self.context.engineering_text_service.languages_for_blocks(blocks):
+                text = block.get_language(lang) or ""
                 if not text:
                     continue
                 line_nr = 1
