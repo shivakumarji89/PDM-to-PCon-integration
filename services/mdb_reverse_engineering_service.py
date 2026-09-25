@@ -178,19 +178,35 @@ class MdbReverseEngineeringService(BaseService):
         snapshot.metadata.product_code = program
         snapshot.metadata.notes = f"Imported from {data.path}"
 
+        # Discover every language column exposed by this MDB instead of
+        # assuming the legacy four-language set. Access returns the actual
+        # columns through the shared MDB reader, so no language list is hard-coded.
+        text_rows = data.rows("tCOMd_Text")
+        language_columns = sorted({
+            str(column)[len("com_Text_1_"):].strip().lower()
+            for row in text_rows
+            for column in row.keys()
+            if str(column).lower().startswith("com_text_1_")
+            and str(column)[len("com_Text_1_"):].strip()
+        })
         text_by_id: dict[str, TextBlock] = {}
-        for row in data.rows("tCOMd_Text"):
+        for row in text_rows:
             tid = str(row.get("com_TextID") or "")
             if not tid:
                 continue
             type_code = str(row.get("com_TextTypeCode") or "").strip()
+            translations = {
+                language: str(row.get(f"com_Text_1_{language}") or "")
+                for language in language_columns
+            }
             text_by_id[tid] = TextBlock(
                 name=str(row.get("com_TextName") or ""),
                 type_code=type_code,
-                de=str(row.get("com_Text_1_de") or ""),
-                en=str(row.get("com_Text_1_en") or ""),
-                fr=str(row.get("com_Text_1_fr") or ""),
-                nl=str(row.get("com_Text_1_nl") or ""),
+                de=translations.get("de", ""),
+                en=translations.get("en", ""),
+                fr=translations.get("fr", ""),
+                nl=translations.get("nl", ""),
+                translations=translations,
             )
         snapshot.text_blocks = list(text_by_id.values())
 
