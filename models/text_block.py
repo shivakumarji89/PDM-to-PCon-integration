@@ -6,7 +6,7 @@ Fields only - no logic.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, field
+from dataclasses import dataclass, field
 
 #: Known OCD text-type codes (``tCOMd_Text.com_TextTypeCode``), in display order.
 TEXT_TYPE_CODES: tuple[str, ...] = (
