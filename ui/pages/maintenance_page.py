@@ -76,6 +76,10 @@ class MaintenancePage(BasePage):
             "Bulk-write the export version and today's date to OCD + ODB "
             "packages.",
             self._on_update_version))
+        row.addWidget(self._tool_card(
+            "Repository Link",
+            "Establish or reopen the persistent link between a published series repository and its PDM product.",
+            self._on_repository_link))
         layout.addLayout(row)
         return container
 
@@ -146,6 +150,11 @@ class MaintenancePage(BasePage):
         from ui.dialogs.base_length_check_dialog import BaseLengthCheckDialog
 
         BaseLengthCheckDialog(self._context, self._default_repo(), self).exec()
+
+    def _on_repository_link(self) -> None:
+        from ui.dialogs.maintenance_repository_link_dialog import MaintenanceRepositoryLinkDialog
+
+        MaintenanceRepositoryLinkDialog(self._context, self).exec()
 
     def _on_update_version(self) -> None:
         from ui.dialogs.version_update_dialog import VersionUpdateDialog
