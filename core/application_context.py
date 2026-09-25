@@ -181,7 +181,6 @@ class ApplicationContext:
         return self.get_service(MdbReverseEngineeringService)
 
     @property
-    @property
     def maintenance_repository_link_service(self) -> MaintenanceRepositoryLinkService:
         return self.get_service(MaintenanceRepositoryLinkService)
 
