@@ -52,25 +52,3 @@ class TextBlock:
         self.translations[language] = value
         if language in ("de", "en", "fr", "nl"):
             setattr(self, language, value)
-    # All language translations discovered in the source. The four legacy
-    # fields above remain for compatibility with existing PDM workflows.
-    translations: dict[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Keep legacy language fields and the dynamic translation map aligned."""
-        for language in ("de", "en", "fr", "nl"):
-            value = getattr(self, language, "")
-            if value and language not in self.translations:
-                self.translations[language] = value
-        for language, value in self.translations.items():
-            if language in ("de", "en", "fr", "nl"):
-                setattr(self, language, value or "")
-
-    def get_language(self, language: str) -> str:
-        return self.translations.get(language, getattr(self, language, "") or "")
-
-    def set_language(self, language: str, value: str) -> None:
-        value = "" if value is None else value
-        self.translations[language] = value
-        if language in ("de", "en", "fr", "nl"):
-            setattr(self, language, value)
