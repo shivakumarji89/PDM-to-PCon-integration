@@ -182,13 +182,13 @@ class MdbReverseEngineeringService(BaseService):
         # assuming the legacy four-language set. Access returns the actual
         # columns through the shared MDB reader, so no language list is hard-coded.
         text_rows = data.rows("tCOMd_Text")
-        language_columns = sorted({
-            str(column)[len("com_Text_1_"):].strip().lower()
+        language_columns = {
+            str(column)[len("com_Text_1_"):].strip().lower(): str(column)
             for row in text_rows
             for column in row.keys()
             if str(column).lower().startswith("com_text_1_")
             and str(column)[len("com_Text_1_"):].strip()
-        })
+        }
         text_by_id: dict[str, TextBlock] = {}
         for row in text_rows:
             tid = str(row.get("com_TextID") or "")
@@ -196,8 +196,8 @@ class MdbReverseEngineeringService(BaseService):
                 continue
             type_code = str(row.get("com_TextTypeCode") or "").strip()
             translations = {
-                language: str(row.get(f"com_Text_1_{language}") or "")
-                for language in language_columns
+                language: str(row.get(column) or "")
+                for language, column in language_columns.items()
             }
             text_by_id[tid] = TextBlock(
                 name=str(row.get("com_TextName") or ""),
