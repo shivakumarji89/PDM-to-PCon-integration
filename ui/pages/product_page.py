@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -36,6 +37,7 @@ from core.errors import PDMError
 from core.progress import ProgressReporter
 from core.activity import ActivityType, LogLevel
 from models.product import Product
+from core.modules import WorkbenchModule
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 
@@ -488,21 +490,15 @@ class ProductPage(BasePage):
         return box
 
     def _build_context(self) -> QWidget:
-        """Product-level Repository Workspace.
-
-        The Product step establishes the relationship between the selected PDM
-        product and its existing engineered repository. Repository inspection
-        and persistence are delegated to the shared repository-link service;
-        MDB loading remains a separate follow-up step.
-        """
-        box = QGroupBox("Repository Workspace", self)
+        """Product context panel whose content follows the active module."""
+        box = QGroupBox("Engineering Context", self)
         layout = QVBoxLayout(box)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
-        product_section = QGroupBox("Current Product", box)
+        product_section = QGroupBox("Product", box)
         product_form = QFormLayout(product_section)
-        product_form.setContentsMargins(8, 6, 8, 8)
+        product_form.setContentsMargins(8, 4, 8, 6)
         product_form.setSpacing(4)
 
         self._info_name = QLabel("-", product_section)
@@ -510,23 +506,62 @@ class ProductPage(BasePage):
         self._info_category = QLabel("-", product_section)
         self._info_catalogue = QLabel("-", product_section)
         self._info_range = QLabel("-", product_section)
+        self._info_status = QLabel("-", product_section)
+        self._info_super = QLabel("-", product_section)
+        self._info_new = QLabel("-", product_section)
         for widget in (
-            self._info_name,
-            self._info_code,
-            self._info_category,
-            self._info_catalogue,
-            self._info_range,
+            self._info_name, self._info_code, self._info_category,
+            self._info_catalogue, self._info_range,
         ):
             widget.setWordWrap(True)
 
-        product_form.addRow("Name:", self._info_name)
-        product_form.addRow("Code:", self._info_code)
+        product_form.addRow("Product Name:", self._info_name)
+        product_form.addRow("Product Code:", self._info_code)
         product_form.addRow("Category:", self._info_category)
         product_form.addRow("Catalogue:", self._info_catalogue)
         product_form.addRow("Product Range:", self._info_range)
+        product_form.addRow("Status:", self._info_status)
+        product_form.addRow("Super Product:", self._info_super)
+        product_form.addRow("New Product:", self._info_new)
         layout.addWidget(product_section)
 
-        repository_section = QGroupBox("Repository", box)
+        self._context_stack = QStackedWidget(box)
+        self._context_stack.addWidget(self._build_standard_context())
+        self._context_stack.addWidget(self._build_repository_context())
+        layout.addWidget(self._context_stack, 1)
+
+        self._context_module: WorkbenchModule | None = None
+        self.set_module(None)
+        return box
+
+    def _build_standard_context(self) -> QWidget:
+        """Original Engineering Context used outside Maintenance."""
+        page = QWidget(self)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        snapshot_section = QGroupBox("Snapshot", page)
+        snapshot_form = QFormLayout(snapshot_section)
+        snapshot_form.setContentsMargins(8, 4, 8, 8)
+        snapshot_form.setSpacing(4)
+        self._status_labels: dict[str, QLabel] = {}
+        for label, _attr in self._STATUS_ROWS:
+            value = QLabel("-", snapshot_section)
+            self._status_labels[label] = value
+            snapshot_form.addRow(f"{label}:", value)
+        self._readiness = QLabel("-", snapshot_section)
+        snapshot_form.addRow("Overall:", self._readiness)
+        layout.addWidget(snapshot_section)
+        layout.addStretch(1)
+        return page
+
+    def _build_repository_context(self) -> QWidget:
+        """Repository Workspace shown only in the Maintenance module."""
+        page = QWidget(self)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        repository_section = QGroupBox("Repository Workspace", page)
         repository_layout = QVBoxLayout(repository_section)
         repository_layout.setContentsMargins(8, 6, 8, 8)
         repository_layout.setSpacing(6)
@@ -588,14 +623,12 @@ class ProductPage(BasePage):
         self._clear_repository_btn.setEnabled(False)
         buttons.addWidget(self._clear_repository_btn)
         repository_layout.addLayout(buttons)
-
         layout.addWidget(repository_section)
 
-        source_section = QGroupBox("Data Sources", box)
+        source_section = QGroupBox("Data Sources", page)
         source_layout = QVBoxLayout(source_section)
         source_layout.setContentsMargins(8, 6, 8, 8)
         source_layout.setSpacing(6)
-
         source_note = QLabel(
             "Repository provides the existing engineered baseline. PDM remains "
             "the live source for product identity and targeted updates such as "
@@ -606,180 +639,18 @@ class ProductPage(BasePage):
         source_note.setWordWrap(True)
         source_layout.addWidget(source_note)
         layout.addWidget(source_section)
-
-        self._load_connected_repositories()
-
-        snapshot_section = QGroupBox("Snapshot", box)
-        snapshot_form = QFormLayout(snapshot_section)
-        snapshot_form.setContentsMargins(8, 6, 8, 8)
-        snapshot_form.setSpacing(4)
-        self._status_labels: dict[str, QLabel] = {}
-        for label, _attr in self._STATUS_ROWS:
-            value = QLabel("-", snapshot_section)
-            self._status_labels[label] = value
-            snapshot_form.addRow(f"{label}:", value)
-        self._readiness = QLabel("-", snapshot_section)
-        snapshot_form.addRow("Overall:", self._readiness)
-        layout.addWidget(snapshot_section)
-
         layout.addStretch(1)
-        return box
-
-    def _load_connected_repositories(self) -> None:
-        """Populate the Product workspace with persisted repository locations."""
-        self._connected_repositories.clear()
-        try:
-            connections = (
-                self._context.maintenance_repository_link_service.list_connections()
-            )
-        except Exception as error:
-            self._repository_status.setText(
-                f"Unable to read connected repositories: {error}"
-            )
-            return
-
-        for connection in connections:
-            repository = connection.get("repository", {})
-            pdm = connection.get("pdm", {})
-            path = str(repository.get("path") or "")
-            if not path:
-                continue
-            product_code = str(pdm.get("product_code") or "")
-            product_name = str(pdm.get("product_name") or "")
-            label = (
-                f"{repository.get('name') or path}"
-                f"  —  {product_code or product_name or 'Unassigned'}"
-            )
-            item = QListWidgetItem(label)
-            item.setToolTip(path)
-            item.setData(Qt.ItemDataRole.UserRole, path)
-            self._connected_repositories.addItem(item)
-
-        if self._connected_repositories.count():
-            self._repository_status.setText(
-                f"{self._connected_repositories.count()} connected repository "
-                "location(s). Select one to open it."
-            )
-        else:
-            self._repository_status.setText(
-                "No connected repository locations. Add a repository to establish a link."
-            )
-
-    def _selected_connected_repository(self) -> str:
-        item = self._connected_repositories.currentItem()
-        if item is None:
-            return ""
-        return str(item.data(Qt.ItemDataRole.UserRole) or "")
-
-    def _on_connected_repository_selected(self) -> None:
-        path = self._selected_connected_repository()
-        self._open_connected_repository_btn.setEnabled(bool(path))
-        if path:
-            self._repository_path_value = path
-            self._repository_path.setText(path)
-            self._update_repository_actions()
-
-    def _on_connected_repository_double_clicked(self, _item) -> None:
-        self._on_open_connected_repository()
-
-    def _on_open_connected_repository(self) -> None:
-        """Open the selected persisted repository directly in Windows Explorer."""
-        path = self._selected_connected_repository()
-        if not path:
-            return
-        from pathlib import Path
-        import os
-
-        folder = Path(path)
-        if not folder.is_dir():
-            QMessageBox.warning(
-                self,
-                "Repository",
-                f"Repository folder is no longer available:\n{path}",
-            )
-            return
-        try:
-            os.startfile(str(folder))
-            self._context.maintenance_repository_link_service.touch(path)
-        except OSError as error:
-            QMessageBox.warning(self, "Repository", f"Unable to open folder:\n{error}")
-
-    def _on_open_repository(self) -> None:
-        """Inspect and select a repository workspace for the active product."""
-        from PySide6.QtWidgets import QFileDialog
-
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select Repository Workspace"
-        )
-        if not directory:
-            return
-
-        try:
-            inspection = self._context.maintenance_repository_link_service.inspect_repository(
-                directory
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Repository", str(error))
-            return
-
-        self._repository_path_value = str(inspection["path"])
-        self._repository_path.setText(self._repository_path_value)
-        self._repository_status.setText(
-            f"Repository found: {inspection['name']} "
-            f"(code {inspection['code'] or '-'}, "
-            f"version {inspection['version'] or '-' })."
-        )
-        self._clear_repository_btn.setEnabled(True)
-        self._update_repository_actions()
-
-    def _on_establish_repository(self) -> None:
-        """Persist the Product <-> Repository relationship."""
-        product = self._selected_product()
-        if product is None:
-            QMessageBox.information(
-                self,
-                "Repository",
-                "Select a PDM product in Product Explorer before establishing the link.",
-            )
-            return
-        if not self._repository_path_value:
-            QMessageBox.information(
-                self,
-                "Repository",
-                "Open a repository workspace before establishing the link.",
-            )
-            return
-
-        try:
-            record = self._context.maintenance_repository_link_service.establish(
-                self._repository_path_value,
-                product,
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Repository", str(error))
-            return
-
-        self._repository_status.setText(
-            f"Linked to {record['pdm']['code'] or product.code} "
-            f"({record['repository']['name']})."
-        )
-
-    def _on_clear_repository(self) -> None:
-        self._repository_path_value = ""
-        self._repository_path.setText("Not connected")
-        self._connected_repositories.clearSelection()
-        self._open_connected_repository_btn.setEnabled(False)
         self._load_connected_repositories()
-        self._repository_status.setText(
-            "Select a PDM product, then open its existing repository workspace."
-        )
-        self._clear_repository_btn.setEnabled(False)
-        self._update_repository_actions()
+        return page
 
-    def _update_repository_actions(self) -> None:
-        self._establish_repository_btn.setEnabled(
-            bool(self._repository_path_value and self._selected_product())
-        )
+    def set_module(self, module: WorkbenchModule | None) -> None:
+        """Switch Product context presentation for the selected module."""
+        self._context_module = module
+        maintenance = module == WorkbenchModule.MAINTENANCE
+        self._context_stack.setCurrentIndex(1 if maintenance else 0)
+        if maintenance:
+            self._load_connected_repositories()
+        self._update_repository_actions()
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
@@ -1668,9 +1539,13 @@ class ProductPage(BasePage):
         self._repository_path_value = ""
         self._repository_path.setText("Not connected")
         self._repository_status.setText(
-            "Select a PDM product, then open its existing repository workspace."
+            "Select one of the connected repository locations below, or add a new one."
         )
+        self._connected_repositories.clearSelection()
+        self._open_connected_repository_btn.setEnabled(False)
         self._clear_repository_btn.setEnabled(False)
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            self._load_connected_repositories()
         self._update_repository_actions()
 
     # -- readiness (for navigation checks) --------------------------------
