@@ -182,10 +182,10 @@ class RelationPage(BasePage):
 
     # -- data --------------------------------------------------------------
     def on_enter(self) -> None:
-        """Rebuild derived relation objects automatically when entering."""
+        """Load preserved relations; derive them only when the snapshot has none."""
         snapshot = self._context.active_snapshot
         service = self._context.engineering_relation_service
-        service.rebuild_relation_objects(snapshot)
+        service.ensure_relation_objects(snapshot)
         self._context.engineering_value_table_service.rebuild_value_tables(snapshot)
         self.refresh()
 
