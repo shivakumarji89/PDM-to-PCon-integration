@@ -589,20 +589,30 @@ class OcdExportService(BaseService):
         blocks = self.context.engineering_text_service.ensure_text_blocks(snapshot)
         rows: list[dict[str, Any]] = []
         index: dict[tuple[str, str], int] = {}
-        tid = 0
+        # Only write language columns that actually exist in the destination
+        # MDB template. This preserves every imported language without inventing
+        # Access columns that the target schema does not contain.
+        language_columns = {
+            str(column)[len("com_Text_1_"):].strip().lower(): column
+            for column in proto
+            if str(column).lower().startswith("com_text_1_")
+            and str(column)[len("com_Text_1_"):].strip()
+        }
+        languages = self.context.engineering_text_service.languages_for_blocks(blocks)
         for block in blocks:
             tid += 1
             index[(block.type_code, block.name)] = tid
-            rows.append(self._row(proto, {
+            values = {
                 "com_TextID": tid,
                 "com_TextName": block.name,
                 "com_TextTypeCode": _TEXT_TYPE_OCD.get(block.type_code, block.type_code),
                 "com_PackageID": package_id,
-                "com_Text_1_de": getattr(block, "de", "") or None,
-                "com_Text_1_en": getattr(block, "en", "") or None,
-                "com_Text_1_fr": getattr(block, "fr", "") or None,
-                "com_Text_1_nl": getattr(block, "nl", "") or None,
-            }))
+            }
+            for language in languages:
+                column = language_columns.get(language)
+                if column is not None:
+                    values[column] = block.get_language(language) or None
+            rows.append(self._row(proto, values))
         for option_id, en in self._price_text_map(snapshot).items():
             tid += 1
             index[("price", option_id)] = tid
