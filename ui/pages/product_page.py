@@ -1715,12 +1715,15 @@ class ProductPage(BasePage):
             return
 
         self._loaded_product = product
-        # Initialize the Engineering model from the fully-loaded snapshot before
-        # any workspace reacts to snapshot_changed. Created only via the context.
-        self._context.engineering_initialization_service.initialize(
-            self._context.active_snapshot
-        )
-        self._context.register_pdm_snapshot(self._context.active_snapshot)
+        # PDMService creates the newly loaded PDM snapshot as active. Capture
+        # that snapshot explicitly before restoring a repository source used by
+        # Maintenance, so a PDM load can never replace the repository workspace
+        # or vice versa.
+        pdm_snapshot = self._context.active_snapshot
+        self._context.engineering_initialization_service.initialize(pdm_snapshot)
+        self._context.register_pdm_snapshot(pdm_snapshot)
+        if self._context.snapshot_source == "repository":
+            self._context.activate_snapshot_source("repository")
         self._refresh_display(product, duration, result.warnings)
         self._highlight_active_node(product)
         self.product_loaded.emit(f"Product: {product.code} - {product.name}")
