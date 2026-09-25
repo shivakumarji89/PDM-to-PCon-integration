@@ -609,20 +609,19 @@ class OcdExportService(BaseService):
                 "com_TextTypeCode": _TEXT_TYPE_OCD.get(block.type_code, block.type_code),
                 "com_PackageID": package_id,
             }
-            for language in languages:
-                column = language_columns.get(language)
-                if column is not None:
-                    values[column] = block.get_language(language) or None
+            for language, column in language_columns.items():
+                values[column] = block.get_language(language) or None
             rows.append(self._row(proto, values))
         for option_id, en in self._price_text_map(snapshot).items():
             tid += 1
             index[("price", option_id)] = tid
-            rows.append(self._row(proto, {
+            price_values = {
                 "com_TextID": tid, "com_TextName": option_id,
                 "com_TextTypeCode": "price", "com_PackageID": package_id,
-                "com_Text_1_de": None, "com_Text_1_en": en or None,
-                "com_Text_1_fr": None, "com_Text_1_nl": None,
-            }))
+            }
+            for language, column in language_columns.items():
+                price_values[column] = en or None if language == "en" else None
+            rows.append(self._row(proto, price_values))
         return rows, index
 
     def _price_text_map(self, snapshot: Snapshot) -> dict[str, str]:
