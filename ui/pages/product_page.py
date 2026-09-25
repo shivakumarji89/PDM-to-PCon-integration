@@ -721,6 +721,84 @@ class ProductPage(BasePage):
                 self, "Repository", f"Unable to open folder:\n{error}"
             )
 
+    def _on_open_repository(self) -> None:
+        """Inspect and select a repository workspace for the active product."""
+        from PySide6.QtWidgets import QFileDialog
+
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Repository Workspace"
+        )
+        if not directory:
+            return
+
+        try:
+            inspection = self._context.maintenance_repository_link_service.inspect_repository(
+                directory
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Repository", str(error))
+            return
+
+        self._repository_path_value = str(inspection["path"])
+        self._repository_path.setText(self._repository_path_value)
+        self._repository_status.setText(
+            f"Repository found: {inspection['name']} "
+            f"(code {inspection['code'] or '-'}, "
+            f"version {inspection['version'] or '-' })."
+        )
+        self._clear_repository_btn.setEnabled(True)
+        self._update_repository_actions()
+
+    def _on_establish_repository(self) -> None:
+        """Persist the Product <-> Repository relationship."""
+        product = self._selected_product()
+        if product is None:
+            QMessageBox.information(
+                self,
+                "Repository",
+                "Select a PDM product in Product Explorer before establishing the link.",
+            )
+            return
+        if not self._repository_path_value:
+            QMessageBox.information(
+                self,
+                "Repository",
+                "Open a repository workspace before establishing the link.",
+            )
+            return
+
+        try:
+            record = self._context.maintenance_repository_link_service.establish(
+                repository=self._context.maintenance_repository_link_service.inspect_repository(
+                    self._repository_path_value
+                ),
+                pdm_candidate=product,
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Repository", str(error))
+            return
+
+        self._repository_status.setText(
+            f"Linked to {record['pdm']['code'] or product.code} "
+            f"({record['repository']['name']})."
+        )
+
+    def _on_clear_repository(self) -> None:
+        self._repository_path_value = ""
+        self._repository_path.setText("Not connected")
+        self._connected_repositories.clearSelection()
+        self._open_connected_repository_btn.setEnabled(False)
+        self._repository_status.setText(
+            "Select one of the connected repository locations below, or add a new one."
+        )
+        self._clear_repository_btn.setEnabled(False)
+        self._update_repository_actions()
+
+    def _update_repository_actions(self) -> None:
+        self._establish_repository_btn.setEnabled(
+            bool(self._repository_path_value and self._selected_product())
+        )
+
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
         self._context_module = module
