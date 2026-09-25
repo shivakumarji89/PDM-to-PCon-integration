@@ -384,6 +384,8 @@ class MdbReverseEngineeringService(BaseService):
                     body=str(rel.get("com_RelationBody") or ""),
                     property_id=property_id,
                     value_id=value_id,
+                    rel_obj_id=obj_id,
+                    relation_id=relation_id,
                 ))
 
         # ArtBase is the MDB's base-article restriction model. Keep it in

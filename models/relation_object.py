@@ -42,3 +42,7 @@ class RelationObject:
     # derivation time: the property, plus the value for a value-level relation.
     property_id: str = ""
     value_id: str = ""
+    # Original MDB keys retained for imported repository relations. These are
+    # the real tCOMd_RelObj -> tCOMd_RelObjRel -> tCOMd_Relation links.
+    rel_obj_id: str = ""
+    relation_id: str = ""

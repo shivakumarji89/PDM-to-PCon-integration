@@ -42,7 +42,9 @@ _COL_NAME = 0
 _COL_TYPE = 1
 _COL_DOMAIN = 2
 _COL_BOUND = 3
-_COL_ORDER = 4
+_COL_REL_OBJ_ID = 4
+_COL_RELATION_ID = 5
+_COL_ORDER = 6
 
 _FILTER_ALL = "All types"
 _GROUP_NONE = "No grouping"
@@ -131,9 +133,11 @@ class RelationPage(BasePage):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self._table = QTableWidget(0, 5, row)
+        self._table = QTableWidget(0, 7, row)
         self._table.setObjectName("relationTable")
-        self._table.setHorizontalHeaderLabels(["Relation", "Type", "Domain", "Bound To", "Order"])
+        self._table.setHorizontalHeaderLabels([
+            "Relation", "Type", "Domain", "Bound To", "RelObj ID", "Relation ID", "Order"
+        ])
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(28)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -142,7 +146,10 @@ class RelationPage(BasePage):
         self._table.setSortingEnabled(True)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(_COL_NAME, QHeaderView.ResizeMode.Stretch)
-        for col in (_COL_TYPE, _COL_DOMAIN, _COL_BOUND, _COL_ORDER):
+        for col in (
+            _COL_TYPE, _COL_DOMAIN, _COL_BOUND,
+            _COL_REL_OBJ_ID, _COL_RELATION_ID, _COL_ORDER
+        ):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         layout.addWidget(self._table, 2)
@@ -279,7 +286,7 @@ class RelationPage(BasePage):
                 header.setFont(font)
                 header.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 self._table.setItem(row, 0, header)
-                self._table.setSpan(row, 0, 1, 5)
+                self._table.setSpan(row, 0, 1, 7)
                 self._row_relations.append(None)
                 continue
             rel = entry
@@ -293,6 +300,8 @@ class RelationPage(BasePage):
                 QTableWidgetItem(RELATION_DOMAIN_LABELS.get(rel.domain, rel.domain)),
             )
             self._table.setItem(row, _COL_BOUND, QTableWidgetItem(self._bound_to(rel)))
+            self._table.setItem(row, _COL_REL_OBJ_ID, QTableWidgetItem(rel.rel_obj_id))
+            self._table.setItem(row, _COL_RELATION_ID, QTableWidgetItem(rel.relation_id))
             order_item = QTableWidgetItem()
             order_item.setData(Qt.ItemDataRole.DisplayRole, rel.order)
             self._table.setItem(row, _COL_ORDER, order_item)
