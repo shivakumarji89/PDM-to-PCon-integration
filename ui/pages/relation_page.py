@@ -66,7 +66,8 @@ class RelationPage(BasePage):
         )
         self._context = context
         self._all_relations: list[RelationObject] = []
-        self._row_relations: list[RelationObject] = []
+        self._row_relations: list[RelationObject | None] = []
+        self._ui_relation_map: dict[int, RelationObject] = {}
         self._current: RelationObject | None = None
         self._populating = False
         self._entity_names: dict[str, str] = {}
@@ -277,6 +278,7 @@ class RelationPage(BasePage):
         self._table.clearSpans()
         self._table.setRowCount(0)
         self._row_relations = []
+        self._ui_relation_map = {}
         for entry in items:
             row = self._table.rowCount()
             self._table.insertRow(row)
@@ -291,7 +293,11 @@ class RelationPage(BasePage):
                 self._row_relations.append(None)
                 continue
             rel = entry
-            self._table.setItem(row, _COL_NAME, QTableWidgetItem(rel.name))
+            name_item = QTableWidgetItem(rel.name)
+            ui_key = id(rel)
+            name_item.setData(Qt.ItemDataRole.UserRole, ui_key)
+            self._ui_relation_map[ui_key] = rel
+            self._table.setItem(row, _COL_NAME, name_item)
             self._table.setItem(
                 row, _COL_RELATION,
                 QTableWidgetItem(rel.relation_name or rel.name),
@@ -320,7 +326,12 @@ class RelationPage(BasePage):
         if self._populating:
             return
         row = self._table.currentRow()
-        rel = self._row_relations[row] if 0 <= row < len(self._row_relations) else None
+        rel = None
+        if 0 <= row < self._table.rowCount():
+            item = self._table.item(row, _COL_NAME)
+            if item is not None:
+                key = item.data(Qt.ItemDataRole.UserRole)
+                rel = self._ui_relation_map.get(int(key)) if key is not None else None
         self._show_relation(rel)
 
     def _show_relation(self, rel: RelationObject | None) -> None:
@@ -416,8 +427,10 @@ class RelationPage(BasePage):
             self.refresh()
 
     def _select_relation(self, relation: RelationObject) -> None:
-        for row, rel in enumerate(self._row_relations):
-            if rel is relation:
+        key = id(relation)
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, _COL_NAME)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole) == key:
                 self._table.selectRow(row)
                 return
 

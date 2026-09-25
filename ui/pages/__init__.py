@@ -1,1 +1,0 @@
-"""Center workspace pages."""
