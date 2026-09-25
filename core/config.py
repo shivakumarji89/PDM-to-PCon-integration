@@ -43,6 +43,17 @@ class AppConfig:
     # Persistent Maintenance repository ↔ PDM connection registry.
     repository_connection_registry: str = "workspace/repository_connections.json"
 
+    # Published repository roots shown together in the Maintenance Repository Browser.
+    # Each root contributes its immediate series folders to one logical browser.
+    repository_browser_roots: dict[str, str] = None  # initialized in __post_init__
+
+    def __post_init__(self) -> None:
+        if self.repository_browser_roots is None:
+            self.repository_browser_roots = {
+                "Seating": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Seating",
+                "Tables": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables",
+            }
+
     def pdm_connection_string(self) -> str:
         """Assemble the pyodbc connection string for the PDM database."""
         parts = [
