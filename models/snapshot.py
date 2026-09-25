@@ -121,6 +121,11 @@ class Snapshot:
 
     metadata: SnapshotMetadata = field(default_factory=SnapshotMetadata)
 
+    # Repository/MDB class-purpose classification supplied by the user.
+    # Keyed by the stable imported MDB class id; values are Attribute, Option,
+    # Misc, or Unclassified. Kept separate from PDM class generation.
+    mdb_class_types: dict[str, str] = field(default_factory=dict)
+
     # Derived article-set table (property/option structure per article group).
     # Materialised from the product links above; feeds relation creation.
     article_sets: list[ArticleSet] = field(default_factory=list)
