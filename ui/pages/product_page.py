@@ -7,7 +7,6 @@ access goes through the service/repository layers.
 """
 from __future__ import annotations
 
-import os
 import re
 import time
 from pathlib import Path
@@ -724,7 +723,6 @@ class ProductPage(BasePage):
             return
 
         self._select_repository_path(path)
-        self._open_repository_folder(path)
 
     def _select_repository_path(self, path: str) -> None:
         """Set the selected series as the active Maintenance repository."""
@@ -745,23 +743,6 @@ class ProductPage(BasePage):
         )
         self._clear_repository_btn.setEnabled(True)
         self._update_repository_actions()
-
-    def _open_repository_folder(self, path: str) -> None:
-        """Open the selected published series in Windows Explorer."""
-        folder = Path(path)
-        if not folder.is_dir():
-            QMessageBox.warning(
-                self,
-                "Repository",
-                f"Repository folder is no longer available:\n{path}",
-            )
-            return
-        try:
-            os.startfile(str(folder))
-        except OSError as error:
-            QMessageBox.warning(
-                self, "Repository", f"Unable to open folder:\n{error}"
-            )
 
     def _on_establish_repository(self) -> None:
         """Persist the Product <-> Repository relationship."""
