@@ -805,7 +805,9 @@ class ProductPage(BasePage):
     def _on_repository_extraction_finished(self, payload) -> None:
         repository, data, snapshot, total_rows = payload
 
-        self._context.snapshot_manager.load_snapshot(snapshot)
+        self._context.register_repository_snapshot(snapshot)
+        if self._context_module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE):
+            self._context.activate_snapshot_source("repository")
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
         )
@@ -893,7 +895,10 @@ class ProductPage(BasePage):
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
         self._context_module = module
-        maintenance = module == WorkbenchModule.MAINTENANCE
+        maintenance = module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE)
+        self._context.activate_snapshot_source(
+            "repository" if maintenance else "pdm"
+        )
         self._context_stack.setCurrentIndex(1 if maintenance else 0)
         if maintenance:
             self._load_repository_browser()
@@ -1715,6 +1720,7 @@ class ProductPage(BasePage):
         self._context.engineering_initialization_service.initialize(
             self._context.active_snapshot
         )
+        self._context.register_pdm_snapshot(self._context.active_snapshot)
         self._refresh_display(product, duration, result.warnings)
         self._highlight_active_node(product)
         self.product_loaded.emit(f"Product: {product.code} - {product.name}")
@@ -1730,7 +1736,7 @@ class ProductPage(BasePage):
         self._refresh_hierarchy_btn.setEnabled(enabled)
 
     def _on_clear_snapshot(self) -> None:
-        self._context.snapshot_manager.clear_snapshot()
+        self._context.clear_active_snapshot()
         self._loaded_product = None
         self._clear_active_highlight()
         self._reset_display()
