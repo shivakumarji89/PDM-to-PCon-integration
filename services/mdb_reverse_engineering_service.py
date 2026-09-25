@@ -296,28 +296,95 @@ class MdbReverseEngineeringService(BaseService):
             snapshot.articles.append(article)
             product.articles.append(article)
 
-        relation_by_id = {str(r.get("com_RelationID") or ""): r for r in data.rows("tCOMd_Relation")}
-        relobj_by_id = {str(r.get("com_RelObjID") or ""): r for r in data.rows("tCOMd_RelObj")}
-        relmeta_by_obj = {str(r.get("com_RelObjID") or ""): r for r in data.rows("tCOMd_RelObjRel")}
-        prop_relobj = {str(r.get("com_RelObjID") or ""): str(r.get("com_PropertyID") or "")
-                       for r in data.rows("tCOMd_Property") if r.get("com_RelObjID")}
-        value_relobj = {str(r.get("com_RelObjID") or ""): str(r.get("com_ValueID") or "")
-                        for r in data.rows("tCOMd_PropValue") if r.get("com_RelObjID")}
-        for obj_id, obj_row in relobj_by_id.items():
-            meta = relmeta_by_obj.get(obj_id, {})
-            rel = relation_by_id.get(str(meta.get("com_RelationID") or ""))
-            if rel is None:
+        # Resolve the MDB relationship chain strictly through stored IDs.
+        #
+        #   tCOMd_RelObj.com_RelObjID
+        #       -> tCOMd_RelObjRel.com_RelObjID
+        #       -> tCOMd_RelObjRel.com_RelationID
+        #       -> tCOMd_Relation.com_RelationID
+        #
+        # Property/value bindings use their own RelObjID foreign key:
+        #
+        #   tCOMd_Property.com_RelObjID  -> tCOMd_RelObj.com_RelObjID
+        #   tCOMd_PropValue.com_RelObjID -> tCOMd_RelObj.com_RelObjID
+        #
+        # Never assume RelObjID == RelationID. Keep every RelObjRel row so
+        # multiple relation links on one relation object are not lost.
+        def _mdb_id(value: Any) -> str:
+            if value is None:
+                return ""
+            text = str(value).strip()
+            if not text:
+                return ""
+            # Access/ADO may expose an integer key as 125.0.
+            if text.endswith(".0"):
+                try:
+                    return str(int(float(text)))
+                except (TypeError, ValueError):
+                    pass
+            return text
+
+        relation_by_id = {
+            _mdb_id(r.get("com_RelationID")): r
+            for r in data.rows("tCOMd_Relation")
+            if _mdb_id(r.get("com_RelationID"))
+        }
+        relobj_by_id = {
+            _mdb_id(r.get("com_RelObjID")): r
+            for r in data.rows("tCOMd_RelObj")
+            if _mdb_id(r.get("com_RelObjID"))
+        }
+
+        relmeta_by_obj: dict[str, list[dict[str, Any]]] = {}
+        for row in data.rows("tCOMd_RelObjRel"):
+            obj_id = _mdb_id(row.get("com_RelObjID"))
+            relation_id = _mdb_id(row.get("com_RelationID"))
+            if not obj_id or not relation_id:
                 continue
-            pmdb, vmdb = prop_relobj.get(obj_id, ""), value_relobj.get(obj_id, "")
-            snapshot.relation_objects.append(RelationObject(
-                name=str(obj_row.get("com_RelObjName") or ""),
-                type_code=str(meta.get("com_RelObjTypeCode") or "1"),
-                domain=str(meta.get("com_RelObjDomainCode") or "C"),
-                order=int(meta.get("com_RelationOrder") or 100),
-                body=str(rel.get("com_RelationBody") or ""),
-                property_id=prop_by_mdb[pmdb].id if pmdb in prop_by_mdb else "",
-                value_id=value_by_mdb[vmdb].id if vmdb in value_by_mdb else "",
-            ))
+            relmeta_by_obj.setdefault(obj_id, []).append(row)
+
+        prop_relobj: dict[str, list[str]] = {}
+        for row in data.rows("tCOMd_Property"):
+            obj_id = _mdb_id(row.get("com_RelObjID"))
+            prop_id = _mdb_id(row.get("com_PropertyID"))
+            if obj_id and prop_id:
+                prop_relobj.setdefault(obj_id, []).append(prop_id)
+
+        value_relobj: dict[str, list[str]] = {}
+        for row in data.rows("tCOMd_PropValue"):
+            obj_id = _mdb_id(row.get("com_RelObjID"))
+            value_id = _mdb_id(row.get("com_ValueID"))
+            if obj_id and value_id:
+                value_relobj.setdefault(obj_id, []).append(value_id)
+
+        for obj_id, obj_row in relobj_by_id.items():
+            property_ids = prop_relobj.get(obj_id, [])
+            value_ids = value_relobj.get(obj_id, [])
+
+            for meta in relmeta_by_obj.get(obj_id, []):
+                relation_id = _mdb_id(meta.get("com_RelationID"))
+                rel = relation_by_id.get(relation_id)
+                if rel is None:
+                    continue
+
+                property_id = next(
+                    (prop_by_mdb[pid].id for pid in property_ids if pid in prop_by_mdb),
+                    "",
+                )
+                value_id = next(
+                    (value_by_mdb[vid].id for vid in value_ids if vid in value_by_mdb),
+                    "",
+                )
+
+                snapshot.relation_objects.append(RelationObject(
+                    name=str(obj_row.get("com_RelObjName") or ""),
+                    type_code=str(meta.get("com_RelObjTypeCode") or "1"),
+                    domain=str(meta.get("com_RelObjDomainCode") or "C"),
+                    order=int(meta.get("com_RelationOrder") or 100),
+                    body=str(rel.get("com_RelationBody") or ""),
+                    property_id=property_id,
+                    value_id=value_id,
+                ))
 
         # ArtBase is the MDB's base-article restriction model. Keep it in
         # Snapshot so the existing Review/engineering workflows can consume the
