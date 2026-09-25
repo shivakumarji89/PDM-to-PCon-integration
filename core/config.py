@@ -46,8 +46,8 @@ class AppConfig:
     # Published repository roots shown together in the Maintenance Repository Browser.
     # Each root contributes its immediate series folders to one logical browser.
     repository_browser_roots: dict[str, str] = field(default_factory=lambda: {
-        "Seating": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Seating",
-        "Tables": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables",
+        "Seating": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Seating\Seating",
+        "Tables": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables",
     })
 
     def pdm_connection_string(self) -> str:
