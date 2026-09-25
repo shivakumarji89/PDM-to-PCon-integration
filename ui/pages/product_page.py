@@ -1709,8 +1709,6 @@ class ProductPage(BasePage):
         self._repository_status.setText(
             "Select a series from the Seating or Tables repository roots."
         )
-        self._repository_browser.clearSelection()
-        self._open_connected_repository_btn.setEnabled(False)
         self._clear_repository_btn.setEnabled(False)
         if self._context_module == WorkbenchModule.MAINTENANCE:
             self._load_repository_browser()
