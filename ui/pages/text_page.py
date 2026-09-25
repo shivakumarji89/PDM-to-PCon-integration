@@ -190,9 +190,7 @@ class TextPage(BasePage):
         grouped = any(isinstance(e, tuple) for e in items)
         self._table.setSortingEnabled(False)
         self._table.clearSpans()
-        languages = self._context.engineering_text_service.languages_for_blocks(
-            [entry for entry in items if not isinstance(entry, tuple)]
-        )
+        languages = self._context.engineering_text_service.languages_for_blocks(self._all_blocks)
         self._language_columns = {
             index + 2: language for index, language in enumerate(languages)
         }
