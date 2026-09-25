@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
 
 from core.engines.filtering import text_match
 from models.text_block import TEXT_TYPE_CODES, TextBlock
-from services.engineering.engineering_text_service import LANGUAGES
 from ui import theme
 from ui.pages.base_page import BasePage
 
