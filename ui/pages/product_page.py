@@ -7,8 +7,10 @@ access goes through the service/repository layers.
 """
 from __future__ import annotations
 
+import os
 import re
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -572,30 +574,44 @@ class ProductPage(BasePage):
         repository_layout.addWidget(self._repository_path)
 
         self._repository_status = QLabel(
-            "Select one of the connected repository locations below, or add a new one.",
+            "Select a series from the Seating or Tables repository roots.",
             repository_section,
         )
         self._repository_status.setObjectName("pageSubtitle")
         self._repository_status.setWordWrap(True)
         repository_layout.addWidget(self._repository_status)
 
-        self._connected_repositories = QListWidget(repository_section)
-        self._connected_repositories.setMinimumHeight(90)
-        self._connected_repositories.setMaximumHeight(150)
-        self._connected_repositories.itemSelectionChanged.connect(
-            self._on_connected_repository_selected
+        self._repository_browser = QTreeWidget(repository_section)
+        self._repository_browser.setHeaderLabel("Repository / Series")
+        self._repository_browser.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
         )
-        self._connected_repositories.itemDoubleClicked.connect(
-            self._on_connected_repository_double_clicked
+        self._repository_browser.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
         )
-        repository_layout.addWidget(self._connected_repositories)
+        self._repository_browser.setMinimumHeight(150)
+        self._repository_browser.setUniformRowHeights(True)
+        self._repository_browser.itemSelectionChanged.connect(
+            self._on_repository_browser_selected
+        )
+        self._repository_browser.itemDoubleClicked.connect(
+            self._on_repository_browser_double_clicked
+        )
+        repository_layout.addWidget(self._repository_browser, 1)
 
         buttons = QHBoxLayout()
+        self._refresh_repository_btn = QPushButton("Refresh", repository_section)
+        self._refresh_repository_btn.setToolTip(
+            "Refresh the Seating and Tables series list from the configured repository roots"
+        )
+        self._refresh_repository_btn.clicked.connect(self._load_repository_browser)
+        buttons.addWidget(self._refresh_repository_btn)
+
         self._open_connected_repository_btn = QPushButton(
             "Open Folder", repository_section
         )
         self._open_connected_repository_btn.setToolTip(
-            "Open the selected connected repository folder in Windows Explorer"
+            "Open the selected series repository folder in Windows Explorer"
         )
         self._open_connected_repository_btn.setEnabled(False)
         self._open_connected_repository_btn.clicked.connect(
@@ -603,14 +619,9 @@ class ProductPage(BasePage):
         )
         buttons.addWidget(self._open_connected_repository_btn)
 
-        self._open_repository_btn = QPushButton("Add Repository", repository_section)
-        self._open_repository_btn.setToolTip(
-            "Select the existing repository/workspace root for this PDM product"
+        self._establish_repository_btn = QPushButton(
+            "Establish Link", repository_section
         )
-        self._open_repository_btn.clicked.connect(self._on_open_repository)
-        buttons.addWidget(self._open_repository_btn)
-
-        self._establish_repository_btn = QPushButton("Establish Link", repository_section)
         self._establish_repository_btn.setToolTip(
             "Persist the selected PDM product <-> repository relationship"
         )
@@ -640,70 +651,123 @@ class ProductPage(BasePage):
         source_layout.addWidget(source_note)
         layout.addWidget(source_section)
         layout.addStretch(1)
-        self._load_connected_repositories()
+        self._load_repository_browser()
         return page
 
-    def _load_connected_repositories(self) -> None:
-        """Populate persisted repository connections in the Maintenance view."""
-        self._connected_repositories.clear()
+    def _load_repository_browser(self) -> None:
+        """Show Seating and Tables series together in one logical browser."""
+        self._repository_browser.clear()
+        roots = getattr(self._context.config, "repository_browser_roots", {}) or {}
+        linked_paths = set()
         try:
             connections = self._context.maintenance_repository_link_service.list_connections()
-        except Exception as error:
-            self._repository_status.setText(
-                f"Unable to read connected repositories: {error}"
-            )
-            return
+            linked_paths = {
+                str(item.get("repository", {}).get("path") or "").casefold()
+                for item in connections
+            }
+        except Exception:
+            linked_paths = set()
 
-        for connection in connections:
-            repository = connection.get("repository", {})
-            pdm = connection.get("pdm", {})
-            path = str(repository.get("path") or "")
-            if not path:
+        total_series = 0
+        for source_name, root_text in roots.items():
+            root = Path(root_text)
+            root_item = QTreeWidgetItem([source_name])
+            root_item.setData(
+                0, Qt.ItemDataRole.UserRole, str(root)
+            )
+            root_item.setToolTip(0, str(root))
+            self._repository_browser.addTopLevelItem(root_item)
+
+            if not root.is_dir():
+                root_item.setText(0, f"{source_name} (path unavailable)")
+                root_item.setToolTip(
+                    0, f"Configured repository root is not available:\n{root}"
+                )
+                root_item.setDisabled(True)
                 continue
-            product_code = str(pdm.get("product_code") or "")
-            product_name = str(pdm.get("product_name") or "")
-            label = (
-                f"{repository.get('name') or path}"
-                f"  —  {product_code or product_name or 'Unassigned'}"
-            )
-            item = QListWidgetItem(label)
-            item.setToolTip(path)
-            item.setData(Qt.ItemDataRole.UserRole, path)
-            self._connected_repositories.addItem(item)
 
-        count = self._connected_repositories.count()
-        if count:
-            self._repository_status.setText(
-                f"{count} connected repository location(s). Select one to open it."
-            )
-        else:
-            self._repository_status.setText(
-                "No connected repository locations. Add a repository to establish a link."
-            )
+            try:
+                series_dirs = sorted(
+                    (item for item in root.iterdir() if item.is_dir()),
+                    key=lambda item: item.name.casefold(),
+                )
+            except OSError as error:
+                root_item.setText(0, f"{source_name} (unreadable)")
+                root_item.setToolTip(0, str(error))
+                root_item.setDisabled(True)
+                continue
 
-    def _selected_connected_repository(self) -> str:
-        item = self._connected_repositories.currentItem()
-        return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
+            for series in series_dirs:
+                label = series.name
+                if str(series.resolve()).casefold() in linked_paths:
+                    label = f"{label}  [Linked]"
+                item = QTreeWidgetItem([label])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(series))
+                item.setToolTip(0, str(series))
+                root_item.addChild(item)
+                total_series += 1
 
-    def _on_connected_repository_selected(self) -> None:
-        path = self._selected_connected_repository()
-        enabled = bool(path)
-        self._open_connected_repository_btn.setEnabled(enabled)
-        if enabled:
-            self._repository_path_value = path
-            self._repository_path.setText(path)
+            root_item.setExpanded(True)
+
+        self._repository_status.setText(
+            f"{total_series} series found across configured Seating and Tables roots."
+            if total_series
+            else "No repository series found. Check the configured repository roots."
+        )
+        self._repository_path_value = ""
+        self._repository_path.setText("Not connected")
+        self._open_connected_repository_btn.setEnabled(False)
+        self._clear_repository_btn.setEnabled(False)
         self._update_repository_actions()
 
-    def _on_connected_repository_double_clicked(self, _item) -> None:
+    def _selected_repository_browser_path(self) -> str:
+        item = self._repository_browser.currentItem()
+        if item is None or item.parent() is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "")
+
+    def _on_repository_browser_selected(self) -> None:
+        path = self._selected_repository_browser_path()
+        if not path:
+            self._open_connected_repository_btn.setEnabled(False)
+            self._clear_repository_btn.setEnabled(False)
+            self._update_repository_actions()
+            return
+
+        try:
+            inspection = self._context.maintenance_repository_link_service.inspect_repository(
+                path
+            )
+        except Exception as error:
+            self._repository_path_value = path
+            self._repository_path.setText(path)
+            self._repository_status.setText(
+                f"Repository folder selected, but it is not a published repository: {error}"
+            )
+            self._open_connected_repository_btn.setEnabled(Path(path).is_dir())
+            self._clear_repository_btn.setEnabled(True)
+            self._update_repository_actions()
+            return
+
+        self._repository_path_value = str(inspection["path"])
+        self._repository_path.setText(self._repository_path_value)
+        self._repository_status.setText(
+            f"Repository: {inspection['name']}  |  "
+            f"Code: {inspection['code'] or '-'}  |  "
+            f"Version: {inspection['version'] or '-'}"
+        )
+        self._open_connected_repository_btn.setEnabled(True)
+        self._clear_repository_btn.setEnabled(True)
+        self._update_repository_actions()
+
+    def _on_repository_browser_double_clicked(self, _item) -> None:
         self._on_open_connected_repository()
 
     def _on_open_connected_repository(self) -> None:
-        """Open the selected persisted repository directly in Windows Explorer."""
-        path = self._selected_connected_repository()
+        """Open the selected series directly in Windows Explorer."""
+        path = self._repository_path_value or self._selected_repository_browser_path()
         if not path:
             return
-        from pathlib import Path
-        import os
 
         folder = Path(path)
         if not folder.is_dir():
@@ -721,34 +785,6 @@ class ProductPage(BasePage):
                 self, "Repository", f"Unable to open folder:\n{error}"
             )
 
-    def _on_open_repository(self) -> None:
-        """Inspect and select a repository workspace for the active product."""
-        from PySide6.QtWidgets import QFileDialog
-
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select Repository Workspace"
-        )
-        if not directory:
-            return
-
-        try:
-            inspection = self._context.maintenance_repository_link_service.inspect_repository(
-                directory
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Repository", str(error))
-            return
-
-        self._repository_path_value = str(inspection["path"])
-        self._repository_path.setText(self._repository_path_value)
-        self._repository_status.setText(
-            f"Repository found: {inspection['name']} "
-            f"(code {inspection['code'] or '-'}, "
-            f"version {inspection['version'] or '-' })."
-        )
-        self._clear_repository_btn.setEnabled(True)
-        self._update_repository_actions()
-
     def _on_establish_repository(self) -> None:
         """Persist the Product <-> Repository relationship."""
         product = self._selected_product()
@@ -763,7 +799,7 @@ class ProductPage(BasePage):
             QMessageBox.information(
                 self,
                 "Repository",
-                "Open a repository workspace before establishing the link.",
+                "Select a repository series before establishing the link.",
             )
             return
 
@@ -779,17 +815,18 @@ class ProductPage(BasePage):
             return
 
         self._repository_status.setText(
-            f"Linked to {record['pdm']['code'] or product.code} "
+            f"Linked to {record['pdm']['product_code'] or product.code} "
             f"({record['repository']['name']})."
         )
+        self._load_repository_browser()
 
     def _on_clear_repository(self) -> None:
         self._repository_path_value = ""
         self._repository_path.setText("Not connected")
-        self._connected_repositories.clearSelection()
+        self._repository_browser.clearSelection()
         self._open_connected_repository_btn.setEnabled(False)
         self._repository_status.setText(
-            "Select one of the connected repository locations below, or add a new one."
+            "Select a series from the Seating or Tables repository roots."
         )
         self._clear_repository_btn.setEnabled(False)
         self._update_repository_actions()
@@ -805,7 +842,7 @@ class ProductPage(BasePage):
         maintenance = module == WorkbenchModule.MAINTENANCE
         self._context_stack.setCurrentIndex(1 if maintenance else 0)
         if maintenance:
-            self._load_connected_repositories()
+            self._load_repository_browser()
         self._update_repository_actions()
 
     # -- search ------------------------------------------------------------
@@ -1697,7 +1734,7 @@ class ProductPage(BasePage):
         self._repository_status.setText(
             "Select one of the connected repository locations below, or add a new one."
         )
-        self._connected_repositories.clearSelection()
+        self._repository_browser.clearSelection()
         self._open_connected_repository_btn.setEnabled(False)
         self._clear_repository_btn.setEnabled(False)
         if self._context_module == WorkbenchModule.MAINTENANCE:
