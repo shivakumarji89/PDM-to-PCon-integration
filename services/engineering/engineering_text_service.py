@@ -12,7 +12,9 @@ from models.snapshot import Snapshot
 from models.text_block import TextBlock
 from services.base_service import BaseService
 
-# Legacy/default language order. Repository MDB imports extend this from the\n# actual ``tCOMd_Text`` columns present in the source.\nLANGUAGES: tuple[str, ...] = ("de", "en", "fr", "nl")
+# Legacy/default language order. Repository MDB imports extend this from the
+# actual ``tCOMd_Text`` columns present in the source.
+LANGUAGES: tuple[str, ...] = ("de", "en", "fr", "nl")
 
 
 def text_block_name(name: str) -> str:
