@@ -15,6 +15,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+from datetime import datetime, timedelta
+
+from models.article import Article
+from models.engineering_class import ClassPropertyAssignment, ClassValue, EngineeringClass
+from models.product import Product
+from models.property import Property
+from models.property_value import PropertyValue
+from models.price_list import PriceList
+from models.price_record import PriceRecord
+from models.relation_object import RelationObject
+from models.snapshot import Snapshot
+from models.text_block import TextBlock
 
 from services.base_service import BaseService
 
@@ -146,6 +158,195 @@ class MdbReverseEngineeringService(BaseService):
             )
 
         return result
+
+    def import_snapshot(self, data: MdbPackageData) -> Snapshot:
+        """Map an extracted OCD MDB into the same Snapshot consumed by all workflows."""
+        package = data.package or {}
+        program = str(package.get("reg_ProgramCode") or "").strip()
+        label = str(package.get("reg_ProgramLabel") or "").strip()
+        product = Product(
+            id=f"mdb:package:{package.get('com_PackageID', program)}",
+            code=program,
+            name=label or program,
+            description=label,
+            range_name=program,
+            status="MDB",
+        )
+        snapshot = Snapshot(product=product)
+        snapshot.metadata.source = "MDB"
+        snapshot.metadata.product_code = program
+        snapshot.metadata.notes = f"Imported from {data.path}"
+
+        text_by_id: dict[str, TextBlock] = {}
+        for row in data.rows("tCOMd_Text"):
+            tid = str(row.get("com_TextID") or "")
+            if not tid:
+                continue
+            type_code = str(row.get("com_TextTypeCode") or "").strip()
+            text_by_id[tid] = TextBlock(
+                name=str(row.get("com_TextName") or ""),
+                type_code=type_code,
+                de=str(row.get("com_Text_1_de") or ""),
+                en=str(row.get("com_Text_1_en") or ""),
+                fr=str(row.get("com_Text_1_fr") or ""),
+                nl=str(row.get("com_Text_1_nl") or ""),
+            )
+        snapshot.text_blocks = list(text_by_id.values())
+
+        class_by_mdb: dict[str, EngineeringClass] = {}
+        for row in data.rows("tCOMd_Class"):
+            cid = str(row.get("com_ClassID") or "")
+            name = str(row.get("com_ClassName") or "").strip()
+            if not cid or not name:
+                continue
+            cls = EngineeringClass(id=f"mdb:class:{cid}", name=name)
+            class_by_mdb[cid] = cls
+            snapshot.engineering.classes.append(cls)
+
+        prop_by_mdb: dict[str, Property] = {}
+        for row in data.rows("tCOMd_Property"):
+            pid = str(row.get("com_PropertyID") or "")
+            name = str(row.get("com_PropName") or "").strip()
+            if not pid or not name:
+                continue
+            prop = Property(
+                id=f"mdb:property:{pid}",
+                code=name,
+                name=name,
+                data_type=str(row.get("com_PropTypeCode") or ""),
+                display_order=int(row.get("com_PropPosition") or 0),
+            )
+            prop_by_mdb[pid] = prop
+            snapshot.properties.append(prop)
+            cls = class_by_mdb.get(str(row.get("com_ClassID") or ""))
+            if cls is not None:
+                scope = str(row.get("com_PropScopeCode") or "").upper()
+                text = text_by_id.get(str(row.get("com_TextID") or ""))
+                cls.properties.append(ClassPropertyAssignment(
+                    property_id=prop.id or "",
+                    property_name=prop.name,
+                    width=int(row.get("com_PropDigits") or 0),
+                    placement=max(0, int(row.get("com_PropPosition") or 100) - 100),
+                    type=(str(row.get("com_PropTypeCode") or "C")[:1] or "C"),
+                    usage="Graphic" if scope == "RG" else "Configuration",
+                    text_block=text.name if text else "",
+                ))
+
+        value_by_mdb: dict[str, PropertyValue] = {}
+        for row in data.rows("tCOMd_PropValue"):
+            vid = str(row.get("com_ValueID") or "")
+            parent = str(row.get("com_PropertyID") or "")
+            if not vid or parent not in prop_by_mdb:
+                continue
+            text = text_by_id.get(str(row.get("com_TextID") or ""))
+            code = str(row.get("com_PropValueFrom") or "").strip()
+            value_text = (text.en if text else "") or (text.de if text else "") or code
+            value = PropertyValue(
+                id=f"mdb:value:{vid}",
+                property_id=prop_by_mdb[parent].id,
+                value=value_text,
+                code=code,
+                display_order=int(row.get("com_PropValPosition") or 0),
+            )
+            value_by_mdb[vid] = value
+            prop_by_mdb[parent].values.append(value)
+            snapshot.property_values.append(value)
+
+        for cls in snapshot.engineering.classes:
+            for assignment in cls.properties:
+                prop = next((p for p in snapshot.properties if p.id == assignment.property_id), None)
+                assignment.values = [
+                    ClassValue(value_id=str(v.id or ""), code=v.code or "",
+                               value=v.value or "", source="mdb")
+                    for v in (prop.values if prop else [])
+                ]
+
+        article_by_mdb: dict[str, Article] = {}
+        for row in data.rows("tCOMd_Article"):
+            aid = str(row.get("com_ArticleID") or "")
+            code = str(row.get("com_ArticleCode") or "").strip()
+            if not aid or not code:
+                continue
+            short = text_by_id.get(str(row.get("com_ShortTextID") or ""))
+            long = text_by_id.get(str(row.get("com_LongTextID") or ""))
+            article = Article(
+                id=f"mdb:article:{aid}", product_id=product.id, code=code,
+                name=(short.en if short else "") or code,
+                description=(long.en if long else "") or (short.en if short else ""),
+                source="MDB",
+            )
+            article_by_mdb[aid] = article
+            snapshot.articles.append(article)
+            product.articles.append(article)
+
+        relation_by_id = {str(r.get("com_RelationID") or ""): r for r in data.rows("tCOMd_Relation")}
+        relobj_by_id = {str(r.get("com_RelObjID") or ""): r for r in data.rows("tCOMd_RelObj")}
+        relmeta_by_obj = {str(r.get("com_RelObjID") or ""): r for r in data.rows("tCOMd_RelObjRel")}
+        prop_relobj = {str(r.get("com_RelObjID") or ""): str(r.get("com_PropertyID") or "")
+                       for r in data.rows("tCOMd_Property") if r.get("com_RelObjID")}
+        value_relobj = {str(r.get("com_RelObjID") or ""): str(r.get("com_ValueID") or "")
+                        for r in data.rows("tCOMd_PropValue") if r.get("com_RelObjID")}
+        for obj_id, obj_row in relobj_by_id.items():
+            rel = relation_by_id.get(obj_id)
+            meta = relmeta_by_obj.get(obj_id, {})
+            if rel is None:
+                continue
+            pmdb, vmdb = prop_relobj.get(obj_id, ""), value_relobj.get(obj_id, "")
+            snapshot.relation_objects.append(RelationObject(
+                name=str(obj_row.get("com_RelObjName") or ""),
+                type_code=str(meta.get("com_RelObjTypeCode") or "1"),
+                domain=str(meta.get("com_RelObjDomainCode") or "C"),
+                order=int(meta.get("com_RelationOrder") or 100),
+                body=str(rel.get("com_RelationBody") or ""),
+                property_id=prop_by_mdb[pmdb].id if pmdb in prop_by_mdb else "",
+                value_id=value_by_mdb[vmdb].id if vmdb in value_by_mdb else "",
+            ))
+
+        for row in data.rows("tCOMd_PriceList2"):
+            snapshot.price_lists.append(PriceList(
+                id=str(row.get("com_PriceListID") or ""),
+                label=str(row.get("com_PriceListLabel") or ""),
+                currency=str(row.get("sys_ISOCurrencyCode") or ""),
+                date_from=self._mdb_date(row.get("com_PriceValidFrom")),
+                date_to=self._mdb_date(row.get("com_PriceValidTo")),
+            ))
+        article_code_by_id = {aid: article.code for aid, article in article_by_mdb.items()}
+        for row in data.rows("tCOMd_Price"):
+            snapshot.price_records.append(PriceRecord(
+                is_global=False,
+                article_code=article_code_by_id.get(str(row.get("com_ArticleID") or ""), ""),
+                variant_condition=str(row.get("com_VariantCondition") or ""),
+                level=str(row.get("com_PriceLevelCode") or "B"),
+                value=float(row.get("com_PriceValue") or 0),
+                currency=str(row.get("sys_ISOCurrencyCode") or ""),
+                valid_from=self._mdb_date(row.get("com_PriceValidFrom")),
+                valid_to=self._mdb_date(row.get("com_PriceValidTo")),
+            ))
+        for row in data.rows("tCOMd_GlobalPrice"):
+            snapshot.price_records.append(PriceRecord(
+                is_global=True,
+                variant_condition=str(row.get("com_VariantCondition") or ""),
+                level=str(row.get("com_PriceLevelCode") or "B"),
+                value=float(row.get("com_PriceValue") or 0),
+                currency=str(row.get("sys_ISOCurrencyCode") or ""),
+                valid_from=self._mdb_date(row.get("com_PriceValidFrom")),
+                valid_to=self._mdb_date(row.get("com_PriceValidTo")),
+            ))
+        return snapshot
+
+    @staticmethod
+    def _mdb_date(value: Any) -> str:
+        raw = str(value or "")
+        if "/Date(" in raw:
+            import re
+            match = re.search(r"-?\d+", raw)
+            if match:
+                try:
+                    return (datetime(1970, 1, 1) + timedelta(milliseconds=int(match.group(0)))).strftime("%Y%m%d")
+                except (ValueError, OverflowError):
+                    pass
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        return digits[:8] if len(digits) >= 8 else ""
 
     def read_table(self, mdb_path: str | Path, table: str) -> MdbTableData:
         """Read one allow-listed table through the shared MDB service."""
