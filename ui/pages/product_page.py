@@ -1507,9 +1507,6 @@ class ProductPage(BasePage):
         self._info_category.setText(product.category or "-")
         self._info_catalogue.setText(product.description or "-")
         self._info_range.setText(product.range_name or "-")
-        self._info_status.setText(product.status or "-")
-        self._info_super.setText("Yes" if product.is_super_product else "No")
-        self._info_new.setText("Yes" if product.new_product else "No")
 
         # Snapshot status (loaded/empty + counts + readiness).
         self._update_status_rows(snapshot)
@@ -1542,8 +1539,7 @@ class ProductPage(BasePage):
     def _reset_display(self) -> None:
         for label in (
             self._info_name, self._info_code, self._info_category,
-            self._info_catalogue, self._info_range, self._info_status,
-            self._info_super, self._info_new,
+            self._info_catalogue, self._info_range,
         ):
             label.setText("-")
         self._update_status_rows(None)
