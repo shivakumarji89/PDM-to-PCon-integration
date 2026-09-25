@@ -31,10 +31,15 @@ from ui.pages.base_page import BasePage
 
 _COL_TYPE = 0
 _COL_NAME = 1
-_COL_DE = 2
-_COL_EN = 3
-_COL_FR = 4
-_COL_NL = 5
+
+_LANGUAGE_LABELS = {
+    "de": "German",
+    "en": "English",
+    "fr": "French",
+    "nl": "Dutch",
+    "it": "Italian",
+    "es": "Spanish",
+}
 
 _FILTER_ALL = "All types"
 _GROUP_NONE = "No grouping"
@@ -56,6 +61,7 @@ class TextPage(BasePage):
         self._all_blocks: list[TextBlock] = []
         self._row_blocks: list[TextBlock] = []
         self._populating = False
+        self._language_columns: dict[int, str] = {}
 
         # Debounce search typing so the table rebuilds once the user pauses.
         self._filter_timer = QTimer(self)
@@ -100,9 +106,7 @@ class TextPage(BasePage):
     def _build_table(self) -> QWidget:
         self._table = QTableWidget(0, 6, self)
         self._table.setObjectName("textTable")
-        self._table.setHorizontalHeaderLabels(
-            ["Type", "Text Name", "German", "English", "French", "Dutch"]
-        )
+        self._table.setHorizontalHeaderLabels(["Type", "Text Name"])
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(28)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -111,8 +115,6 @@ class TextPage(BasePage):
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(_COL_TYPE, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(_COL_NAME, QHeaderView.ResizeMode.ResizeToContents)
-        for col in (_COL_DE, _COL_EN, _COL_FR, _COL_NL):
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         self._table.itemChanged.connect(self._on_item_changed)
         return self._table
 
@@ -151,7 +153,7 @@ class TextPage(BasePage):
             if (type_filter == _FILTER_ALL or b.type_code == type_filter)
             and (
                 not query
-                or text_match(query, b.name, b.en, b.de, b.fr, b.nl)
+                or text_match(query, b.name, *b.translations.values())
             )
         ]
         # Option values rarely change - keep them at the bottom, out of the way
@@ -186,6 +188,18 @@ class TextPage(BasePage):
         grouped = any(isinstance(e, tuple) for e in items)
         self._table.setSortingEnabled(False)
         self._table.clearSpans()
+        languages = self._context.engineering_text_service.languages_for_blocks(
+            [entry for entry in items if not isinstance(entry, tuple)]
+        )
+        self._language_columns = {
+            index + 2: language for index, language in enumerate(languages)
+        }
+        self._table.setColumnCount(2 + len(languages))
+        headers = ["Type", "Text Name"] + [
+            _LANGUAGE_LABELS.get(language, language.upper())
+            for language in languages
+        ]
+        self._table.setHorizontalHeaderLabels(headers)
         self._table.setRowCount(0)
         self._row_blocks = []
         untranslated = self._context.engineering_text_service.is_untranslated
@@ -199,7 +213,7 @@ class TextPage(BasePage):
                 header.setFont(font)
                 header.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 self._table.setItem(row, 0, header)
-                self._table.setSpan(row, 0, 1, 6)
+                self._table.setSpan(row, 0, 1, 2 + len(languages))
                 self._row_blocks.append(None)
                 continue
             block = entry
@@ -212,10 +226,10 @@ class TextPage(BasePage):
                 name_item.setToolTip("Untranslated (a language is empty).")
             self._table.setItem(row, _COL_TYPE, type_item)
             self._table.setItem(row, _COL_NAME, name_item)
-            self._table.setItem(row, _COL_DE, QTableWidgetItem(block.de))
-            self._table.setItem(row, _COL_EN, QTableWidgetItem(block.en))
-            self._table.setItem(row, _COL_FR, QTableWidgetItem(block.fr))
-            self._table.setItem(row, _COL_NL, QTableWidgetItem(block.nl))
+            for column, language in self._language_columns.items():
+                self._table.setItem(
+                    row, column, QTableWidgetItem(block.get_language(language))
+                )
             self._row_blocks.append(block)
         # Default to the curated order (option values at the bottom); a header
         # click can still sort. Clearing the indicator keeps insertion order.
@@ -224,13 +238,12 @@ class TextPage(BasePage):
         self._populating = False
 
     # -- editing -----------------------------------------------------------
-    _LANG_COLUMNS = {_COL_DE: "de", _COL_EN: "en", _COL_FR: "fr", _COL_NL: "nl"}
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._populating:
             return
-        language = self._LANG_COLUMNS.get(item.column())
-        if language is None or language not in LANGUAGES:
+        language = self._language_columns.get(item.column())
+        if language is None:
             return
         row = item.row()
         if not (0 <= row < len(self._row_blocks)):
