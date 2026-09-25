@@ -74,6 +74,11 @@ class ApplicationContext:
         self.config: AppConfig = config or AppConfig()
         self.project: Project = Project()
         self.snapshot_manager: SnapshotManager = SnapshotManager()
+        # Keep PDM Development data and published-repository Maintenance data
+        # in separate snapshots so repository imports never overwrite Development.
+        self._pdm_snapshot: Snapshot | None = None
+        self._repository_snapshot: Snapshot | None = None
+        self._snapshot_source: str = "pdm"
         self._product_names: dict[str, str] = {}
         self._event_bus: EventBus | None = None
         self._activity_service: ActivityService | None = None
@@ -122,6 +127,51 @@ class ApplicationContext:
     @property
     def active_snapshot(self) -> Snapshot | None:
         return self.snapshot_manager.get_active_snapshot()
+
+    @property
+    def snapshot_source(self) -> str:
+        return self._snapshot_source
+
+    @property
+    def pdm_snapshot(self) -> Snapshot | None:
+        return self._pdm_snapshot
+
+    @property
+    def repository_snapshot(self) -> Snapshot | None:
+        return self._repository_snapshot
+
+    def register_pdm_snapshot(self, snapshot: Snapshot | None) -> None:
+        self._pdm_snapshot = snapshot
+        if self._snapshot_source == "pdm":
+            if snapshot is None:
+                self.snapshot_manager.clear_snapshot()
+            else:
+                self.snapshot_manager.load_snapshot(snapshot)
+
+    def register_repository_snapshot(self, snapshot: Snapshot | None) -> None:
+        self._repository_snapshot = snapshot
+        if self._snapshot_source == "repository":
+            if snapshot is None:
+                self.snapshot_manager.clear_snapshot()
+            else:
+                self.snapshot_manager.load_snapshot(snapshot)
+
+    def activate_snapshot_source(self, source: str) -> None:
+        if source not in {"pdm", "repository"}:
+            raise ValueError(f"Unknown snapshot source: {source}")
+        self._snapshot_source = source
+        snapshot = self._pdm_snapshot if source == "pdm" else self._repository_snapshot
+        if snapshot is None:
+            self.snapshot_manager.clear_snapshot()
+        else:
+            self.snapshot_manager.load_snapshot(snapshot)
+
+    def clear_active_snapshot(self) -> None:
+        if self._snapshot_source == "pdm":
+            self._pdm_snapshot = None
+        else:
+            self._repository_snapshot = None
+        self.snapshot_manager.clear_snapshot()
 
     def set_product_registry(self, products) -> None:
         for product in products:
