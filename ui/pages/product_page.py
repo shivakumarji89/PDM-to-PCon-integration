@@ -593,6 +593,20 @@ class ProductPage(BasePage):
         self._open_repository_btn.clicked.connect(self._on_open_repository)
         buttons.addWidget(self._open_repository_btn)
 
+        self._get_repository_details_btn = QPushButton(
+            "Get Details", repository_section
+        )
+        self._get_repository_details_btn.setEnabled(False)
+        self._get_repository_details_btn.clicked.connect(self._on_get_repository_details)
+        buttons.addWidget(self._get_repository_details_btn)
+
+        self._extract_repository_btn = QPushButton(
+            "Extract Data", repository_section
+        )
+        self._extract_repository_btn.setEnabled(False)
+        self._extract_repository_btn.clicked.connect(self._on_extract_repository_data)
+        buttons.addWidget(self._extract_repository_btn)
+
         self._establish_repository_btn = QPushButton(
             "Establish Link", repository_section
         )
@@ -724,6 +738,70 @@ class ProductPage(BasePage):
 
         self._select_repository_path(path)
 
+    def _set_repository_action_state(self, enabled: bool) -> None:
+        self._get_repository_details_btn.setEnabled(enabled)
+        self._extract_repository_btn.setEnabled(enabled)
+        self._clear_repository_btn.setEnabled(enabled)
+        self._update_repository_actions()
+
+    def _on_get_repository_details(self) -> None:
+        """Read package identity and structural table counts for the selected MDB."""
+        path = self._repository_path_value
+        if not path:
+            return
+        try:
+            repository = self._context.maintenance_repository_link_service.inspect_repository(path)
+            data = self._context.mdb_reverse_engineering_service.read(
+                repository["ocd_path"],
+                include_prices=False,
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Repository Details", str(error))
+            return
+
+        lines = [
+            f"Repository: {repository['name']}",
+            f"Program: {repository['code'] or '-'}",
+            f"Version: {repository['version'] or '-'}",
+            f"MDB: {repository['ocd_path']}",
+            "",
+            "Structural data:",
+        ]
+        for table, count in data.table_counts.items():
+            lines.append(f"  {table}: {count}")
+        if data.notes:
+            lines.extend(["", *data.notes])
+        QMessageBox.information(self, "Repository Details", "\n".join(lines))
+
+    def _on_extract_repository_data(self) -> None:
+        """Read the repository MDB into the non-mutating reverse-engineering model."""
+        path = self._repository_path_value
+        if not path:
+            return
+        try:
+            repository = self._context.maintenance_repository_link_service.inspect_repository(path)
+            data = self._context.mdb_reverse_engineering_service.read(
+                repository["ocd_path"],
+                include_prices=False,
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Extract Repository Data", str(error))
+            return
+
+        total_rows = sum(data.table_counts.values())
+        self._repository_status.setText(
+            f"Extracted structural MDB data from {repository['name']}: "
+            f"{total_rows:,} rows across {len(data.table_counts)} tables."
+        )
+        QMessageBox.information(
+            self,
+            "Extract Repository Data",
+            f"Structural repository data extracted from:\n{repository['name']}\n\n"
+            f"Tables read: {len(data.table_counts)}\n"
+            f"Rows read: {total_rows:,}\n\n"
+            "No changes were made to the MDB.",
+        )
+
     def _select_repository_path(self, path: str) -> None:
         """Set the selected series as the active Maintenance repository."""
         try:
@@ -741,8 +819,7 @@ class ProductPage(BasePage):
             f"Code: {inspection['code'] or '-'}  |  "
             f"Version: {inspection['version'] or '-'}"
         )
-        self._clear_repository_btn.setEnabled(True)
-        self._update_repository_actions()
+        self._set_repository_action_state(True)
 
     def _on_establish_repository(self) -> None:
         """Persist the Product <-> Repository relationship."""
@@ -784,8 +861,7 @@ class ProductPage(BasePage):
         self._repository_status.setText(
             "Click Open Repository to select a series from Seating or Tables."
         )
-        self._clear_repository_btn.setEnabled(False)
-        self._update_repository_actions()
+        self._set_repository_action_state(False)
 
     def _update_repository_actions(self) -> None:
         self._establish_repository_btn.setEnabled(
