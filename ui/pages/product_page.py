@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -535,15 +537,38 @@ class ProductPage(BasePage):
         repository_layout.addWidget(self._repository_path)
 
         self._repository_status = QLabel(
-            "Select a PDM product, then open its existing repository workspace.",
+            "Select one of the connected repository locations below, or add a new one.",
             repository_section,
         )
         self._repository_status.setObjectName("pageSubtitle")
         self._repository_status.setWordWrap(True)
         repository_layout.addWidget(self._repository_status)
 
+        self._connected_repositories = QListWidget(repository_section)
+        self._connected_repositories.setMinimumHeight(90)
+        self._connected_repositories.setMaximumHeight(150)
+        self._connected_repositories.itemSelectionChanged.connect(
+            self._on_connected_repository_selected
+        )
+        self._connected_repositories.itemDoubleClicked.connect(
+            self._on_connected_repository_double_clicked
+        )
+        repository_layout.addWidget(self._connected_repositories)
+
         buttons = QHBoxLayout()
-        self._open_repository_btn = QPushButton("Open Repository", repository_section)
+        self._open_connected_repository_btn = QPushButton(
+            "Open Folder", repository_section
+        )
+        self._open_connected_repository_btn.setToolTip(
+            "Open the selected connected repository folder in Windows Explorer"
+        )
+        self._open_connected_repository_btn.setEnabled(False)
+        self._open_connected_repository_btn.clicked.connect(
+            self._on_open_connected_repository
+        )
+        buttons.addWidget(self._open_connected_repository_btn)
+
+        self._open_repository_btn = QPushButton("Add Repository", repository_section)
         self._open_repository_btn.setToolTip(
             "Select the existing repository/workspace root for this PDM product"
         )
@@ -582,6 +607,8 @@ class ProductPage(BasePage):
         source_layout.addWidget(source_note)
         layout.addWidget(source_section)
 
+        self._load_connected_repositories()
+
         snapshot_section = QGroupBox("Snapshot", box)
         snapshot_form = QFormLayout(snapshot_section)
         snapshot_form.setContentsMargins(8, 6, 8, 8)
@@ -597,6 +624,85 @@ class ProductPage(BasePage):
 
         layout.addStretch(1)
         return box
+
+    def _load_connected_repositories(self) -> None:
+        """Populate the Product workspace with persisted repository locations."""
+        self._connected_repositories.clear()
+        try:
+            connections = (
+                self._context.maintenance_repository_link_service.list_connections()
+            )
+        except Exception as error:
+            self._repository_status.setText(
+                f"Unable to read connected repositories: {error}"
+            )
+            return
+
+        for connection in connections:
+            repository = connection.get("repository", {})
+            pdm = connection.get("pdm", {})
+            path = str(repository.get("path") or "")
+            if not path:
+                continue
+            product_code = str(pdm.get("product_code") or "")
+            product_name = str(pdm.get("product_name") or "")
+            label = (
+                f"{repository.get('name') or path}"
+                f"  —  {product_code or product_name or 'Unassigned'}"
+            )
+            item = QListWidgetItem(label)
+            item.setToolTip(path)
+            item.setData(Qt.ItemDataRole.UserRole, path)
+            self._connected_repositories.addItem(item)
+
+        if self._connected_repositories.count():
+            self._repository_status.setText(
+                f"{self._connected_repositories.count()} connected repository "
+                "location(s). Select one to open it."
+            )
+        else:
+            self._repository_status.setText(
+                "No connected repository locations. Add a repository to establish a link."
+            )
+
+    def _selected_connected_repository(self) -> str:
+        item = self._connected_repositories.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "")
+
+    def _on_connected_repository_selected(self) -> None:
+        path = self._selected_connected_repository()
+        self._open_connected_repository_btn.setEnabled(bool(path))
+        if path:
+            self._repository_path_value = path
+            self._repository_path.setText(path)
+            self._update_repository_actions()
+
+    def _on_connected_repository_double_clicked(self, _item) -> None:
+        self._on_open_connected_repository()
+
+    def _on_open_connected_repository(self) -> None:
+        """Open the selected persisted repository directly in Windows Explorer."""
+        path = self._selected_connected_repository()
+        if not path:
+            return
+        from pathlib import Path
+        import os
+
+        folder = Path(path)
+        if not folder.is_dir():
+            QMessageBox.warning(
+                self,
+                "Repository",
+                f"Repository folder is no longer available:\n{path}",
+            )
+            return
+        try:
+            os.startfile(str(folder))
+            self._context.maintenance_repository_link_service.touch(path)
+        except OSError as error:
+            QMessageBox.warning(self, "Repository", f"Unable to open folder:\n{error}")
 
     def _on_open_repository(self) -> None:
         """Inspect and select a repository workspace for the active product."""
@@ -661,6 +767,9 @@ class ProductPage(BasePage):
     def _on_clear_repository(self) -> None:
         self._repository_path_value = ""
         self._repository_path.setText("Not connected")
+        self._connected_repositories.clearSelection()
+        self._open_connected_repository_btn.setEnabled(False)
+        self._load_connected_repositories()
         self._repository_status.setText(
             "Select a PDM product, then open its existing repository workspace."
         )
