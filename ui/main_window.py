@@ -373,6 +373,7 @@ class MainWindow(QMainWindow):
     def _on_module_selected(self, module: WorkbenchModule) -> None:
         """Enter Level 2 and expose only the workflows for the selected module."""
         self._active_module = module
+        self._product_page.set_module(module)
         steps = list(module_workflows(module))
         self._active_module_label.setText(module_title(module))
 
