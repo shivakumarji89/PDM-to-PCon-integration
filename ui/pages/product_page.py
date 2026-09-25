@@ -117,6 +117,46 @@ class _LoadWorker(QRunnable):
                 self._token, (self._product, result, duration)
             )
 
+class _RepositoryExtractSignals(QObject):
+    """Signals emitted by the background repository extraction worker."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+
+class _RepositoryExtractWorker(QRunnable):
+    """Reads one selected repository MDB without blocking the UI."""
+
+    def __init__(self, context, repository_path: str, reporter, signals) -> None:
+        super().__init__()
+        self._context = context
+        self._repository_path = repository_path
+        self._reporter = reporter
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            self._reporter.advance("Inspecting repository package...")
+            repository = self._context.maintenance_repository_link_service.inspect_repository(
+                self._repository_path
+            )
+
+            self._reporter.advance("Reading MDB structural tables...")
+            data = self._context.mdb_reverse_engineering_service.read(
+                repository["ocd_path"],
+                include_prices=False,
+            )
+
+            self._reporter.advance("Indexing extracted data...")
+            total_rows = sum(data.table_counts.values())
+            self._reporter.advance(
+                f"Repository extraction complete ({total_rows:,} rows)"
+            )
+            self._signals.finished.emit((repository, data))
+        except Exception as error:
+            self._signals.failed.emit(str(error))
+
+
 class _FamilyLoadSignals(QObject):
     """Signals emitted from the background family-load worker."""
 
@@ -593,20 +633,6 @@ class ProductPage(BasePage):
         self._open_repository_btn.clicked.connect(self._on_open_repository)
         buttons.addWidget(self._open_repository_btn)
 
-        self._get_repository_details_btn = QPushButton(
-            "Get Details", repository_section
-        )
-        self._get_repository_details_btn.setEnabled(False)
-        self._get_repository_details_btn.clicked.connect(self._on_get_repository_details)
-        buttons.addWidget(self._get_repository_details_btn)
-
-        self._extract_repository_btn = QPushButton(
-            "Extract Data", repository_section
-        )
-        self._extract_repository_btn.setEnabled(False)
-        self._extract_repository_btn.clicked.connect(self._on_extract_repository_data)
-        buttons.addWidget(self._extract_repository_btn)
-
         self._establish_repository_btn = QPushButton(
             "Establish Link", repository_section
         )
@@ -738,69 +764,60 @@ class ProductPage(BasePage):
 
         self._select_repository_path(path)
 
-    def _set_repository_action_state(self, enabled: bool) -> None:
-        self._get_repository_details_btn.setEnabled(enabled)
-        self._extract_repository_btn.setEnabled(enabled)
-        self._clear_repository_btn.setEnabled(enabled)
-        self._update_repository_actions()
+    def _start_repository_extraction(self, path: str) -> None:
+        """Automatically inspect and extract the selected repository."""
+        reporter = ProgressReporter(self)
+        dialog = self._progress_monitor()
+        dialog.bind(reporter)
 
-    def _on_get_repository_details(self) -> None:
-        """Read package identity and structural table counts for the selected MDB."""
-        path = self._repository_path_value
-        if not path:
-            return
-        try:
-            repository = self._context.maintenance_repository_link_service.inspect_repository(path)
-            data = self._context.mdb_reverse_engineering_service.read(
-                repository["ocd_path"],
-                include_prices=False,
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Repository Details", str(error))
-            return
+        main = self.window()
+        if hasattr(main, "log_activity"):
+            reporter.activity.connect(main.log_activity)
 
-        lines = [
-            f"Repository: {repository['name']}",
-            f"Program: {repository['code'] or '-'}",
-            f"Version: {repository['version'] or '-'}",
-            f"MDB: {repository['ocd_path']}",
-            "",
-            "Structural data:",
-        ]
-        for table, count in data.table_counts.items():
-            lines.append(f"  {table}: {count}")
-        if data.notes:
-            lines.extend(["", *data.notes])
-        QMessageBox.information(self, "Repository Details", "\n".join(lines))
+        self._repository_extract_reporter = reporter
+        self._repository_extract_dialog = dialog
+        self._repository_extract_signals = _RepositoryExtractSignals()
+        self._repository_extract_signals.finished.connect(
+            self._on_repository_extraction_finished
+        )
+        self._repository_extract_signals.failed.connect(
+            self._on_repository_extraction_failed
+        )
 
-    def _on_extract_repository_data(self) -> None:
-        """Read the repository MDB into the non-mutating reverse-engineering model."""
-        path = self._repository_path_value
-        if not path:
-            return
-        try:
-            repository = self._context.maintenance_repository_link_service.inspect_repository(path)
-            data = self._context.mdb_reverse_engineering_service.read(
-                repository["ocd_path"],
-                include_prices=False,
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Extract Repository Data", str(error))
-            return
+        reporter.begin(
+            4,
+            title="Open Repository",
+            subject=Path(path).name,
+        )
+        reporter.log("info", f"Opening repository {Path(path).name}")
 
+        worker = _RepositoryExtractWorker(
+            self._context,
+            path,
+            reporter,
+            self._repository_extract_signals,
+        )
+        dialog.show()
+        dialog.raise_()
+        self._pool.start(worker)
+
+    def _on_repository_extraction_finished(self, payload) -> None:
+        repository, data = payload
         total_rows = sum(data.table_counts.values())
+
         self._repository_status.setText(
-            f"Extracted structural MDB data from {repository['name']}: "
-            f"{total_rows:,} rows across {len(data.table_counts)} tables."
+            f"Loaded {repository['name']} | {total_rows:,} structural rows extracted."
         )
-        QMessageBox.information(
-            self,
-            "Extract Repository Data",
-            f"Structural repository data extracted from:\n{repository['name']}\n\n"
-            f"Tables read: {len(data.table_counts)}\n"
-            f"Rows read: {total_rows:,}\n\n"
-            "No changes were made to the MDB.",
+        self._repository_path.setText(repository["path"])
+        self._repository_extract_reporter.finish(
+            True,
+            f"{repository['name']} loaded successfully.",
         )
+
+    def _on_repository_extraction_failed(self, message: str) -> None:
+        self._repository_status.setText("Repository extraction failed.")
+        self._repository_extract_reporter.finish(False, "Repository extraction failed.")
+        QMessageBox.warning(self, "Open Repository", message)
 
     def _select_repository_path(self, path: str) -> None:
         """Set the selected series as the active Maintenance repository."""
@@ -819,7 +836,7 @@ class ProductPage(BasePage):
             f"Code: {inspection['code'] or '-'}  |  "
             f"Version: {inspection['version'] or '-'}"
         )
-        self._set_repository_action_state(True)
+        self._start_repository_extraction(self._repository_path_value)
 
     def _on_establish_repository(self) -> None:
         """Persist the Product <-> Repository relationship."""
@@ -861,7 +878,6 @@ class ProductPage(BasePage):
         self._repository_status.setText(
             "Click Open Repository to select a series from Seating or Tables."
         )
-        self._set_repository_action_state(False)
 
     def _update_repository_actions(self) -> None:
         self._establish_repository_btn.setEnabled(
