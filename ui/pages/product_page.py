@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QDialog,
     QDialogButtonBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -30,6 +31,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -122,6 +125,77 @@ class _RepositoryExtractSignals(QObject):
 
     finished = Signal(object)
     failed = Signal(str)
+
+
+class _RepositoryClassTypeDialog(QDialog):
+    """Let the user classify imported MDB classes before repository activation."""
+
+    TYPES = ("Attribute", "Option", "Misc", "Unclassified")
+
+    def __init__(self, snapshot, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Classify Repository Classes")
+        self.resize(720, 560)
+        self._snapshot = snapshot
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(
+            "Classify the imported MDB classes so Class Creation can distinguish "
+            "Attribute, Option and Misc classes. No class names are hardcoded.",
+            self,
+        ))
+
+        self._table = QTableWidget(self)
+        self._table.setColumnCount(2)
+        self._table.setHorizontalHeaderLabels(["Class Name", "Class Type"])
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self._table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+
+        classes = list(snapshot.engineering.classes if snapshot.engineering else [])
+        self._table.setRowCount(len(classes))
+        existing = getattr(snapshot, "mdb_class_types", {}) or {}
+        for row, cls in enumerate(classes):
+            name_item = QTableWidgetItem(cls.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, str(cls.id))
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._table.setItem(row, 0, name_item)
+
+            combo = QComboBox(self._table)
+            combo.addItems(self.TYPES)
+            current = existing.get(str(cls.id), "Unclassified")
+            combo.setCurrentText(current if current in self.TYPES else "Unclassified")
+            self._table.setCellWidget(row, 1, combo)
+
+        layout.addWidget(self._table, 1)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            self,
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Apply Classification")
+        buttons.accepted.connect(self._apply)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _apply(self) -> None:
+        mapping: dict[str, str] = {}
+        for row in range(self._table.rowCount()):
+            name_item = self._table.item(row, 0)
+            combo = self._table.cellWidget(row, 1)
+            if name_item is None or combo is None:
+                continue
+            class_id = str(name_item.data(Qt.ItemDataRole.UserRole) or "")
+            if class_id:
+                mapping[class_id] = combo.currentText()
+        self._snapshot.mdb_class_types = mapping
+        self.accept()
 
 
 class _RepositoryExtractWorker(QRunnable):
@@ -804,6 +878,12 @@ class ProductPage(BasePage):
 
     def _on_repository_extraction_finished(self, payload) -> None:
         repository, data, snapshot, total_rows = payload
+
+        classification_dialog = _RepositoryClassTypeDialog(snapshot, self)
+        if classification_dialog.exec() != QDialog.DialogCode.Accepted:
+            self._repository_extract_reporter.finish(False, "Repository class classification cancelled.")
+            self._repository_status.setText("Repository loaded; class classification cancelled.")
+            return
 
         self._context.register_repository_snapshot(snapshot)
         if self._context_module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE):
