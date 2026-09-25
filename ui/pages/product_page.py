@@ -151,8 +151,6 @@ class _RepositoryExtractWorker(QRunnable):
             snapshot = self._context.mdb_reverse_engineering_service.import_snapshot(data)
             self._reporter.advance("Initializing engineering workspace...")
             self._context.engineering_initialization_service.initialize(snapshot)
-            self._context.snapshot_manager.load_snapshot(snapshot)
-
             self._reporter.advance("Activating Articles, Class Creation, Text, Relations and Pricing...")
             total_rows = sum(data.table_counts.values())
             self._signals.finished.emit((repository, data, snapshot, total_rows))
@@ -807,6 +805,7 @@ class ProductPage(BasePage):
     def _on_repository_extraction_finished(self, payload) -> None:
         repository, data, snapshot, total_rows = payload
 
+        self._context.snapshot_manager.load_snapshot(snapshot)
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
         )
