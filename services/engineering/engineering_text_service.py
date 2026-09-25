@@ -12,8 +12,7 @@ from models.snapshot import Snapshot
 from models.text_block import TextBlock
 from services.base_service import BaseService
 
-# The four OCD language columns (``com_Text_1_<lang>``), authoritative order.
-LANGUAGES: tuple[str, ...] = ("de", "en", "fr", "nl")
+# Legacy/default language order. Repository MDB imports extend this from the\n# actual ``tCOMd_Text`` columns present in the source.\nLANGUAGES: tuple[str, ...] = ("de", "en", "fr", "nl")
 
 
 def text_block_name(name: str) -> str:
@@ -109,13 +108,29 @@ class EngineeringTextService(BaseService):
 
         return blocks
 
+    @staticmethod
+    def languages_for_block(block: TextBlock | None) -> tuple[str, ...]:
+        """Return all languages carried by a text block, standard languages first."""
+        if block is None:
+            return LANGUAGES
+        extras = [lang for lang in block.translations if lang not in LANGUAGES]
+        return LANGUAGES + tuple(sorted(extras))
+
+    @classmethod
+    def languages_for_blocks(cls, blocks) -> tuple[str, ...]:
+        """Return the union of all languages present in the supplied blocks."""
+        extras: set[str] = set()
+        for block in blocks or []:
+            extras.update(lang for lang in block.translations if lang not in LANGUAGES)
+        return LANGUAGES + tuple(sorted(extras))
+
     def set_language(
         self, block: TextBlock | None, language: str, value: str
     ) -> bool:
-        """Set one language string on a text block. Returns True on change."""
-        if block is None or language not in LANGUAGES:
+        """Set any language carried by the active text source."""
+        if block is None or not language:
             return False
-        setattr(block, language, "" if value is None else value)
+        block.set_language(language, value)
         return True
 
     def fill_empty_from_en(self, blocks) -> int:
@@ -125,14 +140,16 @@ class EngineeringTextService(BaseService):
         for block in blocks or []:
             if not block.en:
                 continue
-            for language in ("de", "fr", "nl"):
-                if not getattr(block, language):
-                    setattr(block, language, block.en)
+            for language in self.languages_for_block(block):
+                if language == "en":
+                    continue
+                if not block.get_language(language):
+                    block.set_language(language, block.en)
                     filled += 1
         return filled
 
     @staticmethod
     def is_untranslated(block: TextBlock) -> bool:
         """True when any of the four language strings is empty."""
-        return not (block.de and block.en and block.fr and block.nl)
+        return any(not block.get_language(language) for language in EngineeringTextService.languages_for_block(block))
 
