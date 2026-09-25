@@ -1732,13 +1732,13 @@ class ProductPage(BasePage):
         self._repository_path_value = ""
         self._repository_path.setText("Not connected")
         self._repository_status.setText(
-            "Select one of the connected repository locations below, or add a new one."
+            "Select a series from the Seating or Tables repository roots."
         )
         self._repository_browser.clearSelection()
         self._open_connected_repository_btn.setEnabled(False)
         self._clear_repository_btn.setEnabled(False)
         if self._context_module == WorkbenchModule.MAINTENANCE:
-            self._load_connected_repositories()
+            self._load_repository_browser()
         self._update_repository_actions()
 
     # -- readiness (for navigation checks) --------------------------------
