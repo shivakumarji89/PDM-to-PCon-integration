@@ -151,12 +151,15 @@ class _RepositoryClassTypeDialog(QDialog):
         self._table.setHorizontalHeaderLabels(["Class Name", "Class Type"])
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
-        )
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(1, 190)
+
+        # Keep the selected classification fully readable instead of allowing
+        # the combo box to collapse to the width of its current text.
+        self._table.setColumnWidth(1, 190)
+        self._table.verticalHeader().setDefaultSectionSize(34)
 
         classes = list(snapshot.engineering.classes if snapshot.engineering else [])
         self._table.setRowCount(len(classes))
@@ -169,6 +172,11 @@ class _RepositoryClassTypeDialog(QDialog):
 
             combo = QComboBox(self._table)
             combo.addItems(self.TYPES)
+            combo.setMinimumWidth(170)
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            combo.view().setMinimumWidth(170)
             current = existing.get(str(cls.id), "Unclassified")
             combo.setCurrentText(current if current in self.TYPES else "Unclassified")
             self._table.setCellWidget(row, 1, combo)
