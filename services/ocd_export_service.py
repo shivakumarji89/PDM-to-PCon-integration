@@ -589,6 +589,7 @@ class OcdExportService(BaseService):
         blocks = self.context.engineering_text_service.ensure_text_blocks(snapshot)
         rows: list[dict[str, Any]] = []
         index: dict[tuple[str, str], int] = {}
+        tid = 0
         # Only write language columns that actually exist in the destination
         # MDB template. This preserves every imported language without inventing
         # Access columns that the target schema does not contain.
