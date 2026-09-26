@@ -1887,7 +1887,11 @@ class ProductPage(BasePage):
             "Select a series from the Seating or Tables repository roots."
         )
         self._clear_repository_btn.setEnabled(False)
-        if self._context_module == WorkbenchModule.MAINTENANCE:
+        if self._context_module in (
+            WorkbenchModule.MAINTENANCE,
+            WorkbenchModule.BULK_UPDATE,
+            WorkbenchModule.QA_VALIDATION,
+        ):
             self._load_repository_browser()
         self._update_repository_actions()
 
