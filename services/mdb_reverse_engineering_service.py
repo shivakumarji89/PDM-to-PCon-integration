@@ -324,8 +324,12 @@ class MdbReverseEngineeringService(BaseService):
         # repository configuration model. Keep every ArticleClass link; the
         # permutation builder uses the linked class properties as dimensions.
         for row in data.rows("tCOMd_ArticleClass"):
-            article_row_id = _mdb_id(row.get("com_ArticleID")) if "_mdb_id" in locals() else str(row.get("com_ArticleID") or "")
-            class_row_id = _mdb_id(row.get("com_ClassID")) if "_mdb_id" in locals() else str(row.get("com_ClassID") or "")
+            article_row_id = str(row.get("com_ArticleID") or "").strip()
+            class_row_id = str(row.get("com_ClassID") or "").strip()
+            if article_row_id.endswith(".0"):
+                article_row_id = article_row_id[:-2]
+            if class_row_id.endswith(".0"):
+                class_row_id = class_row_id[:-2]
             if article_row_id and class_row_id:
                 article_key = f"mdb:article:{article_row_id}"
                 class_key = f"mdb:class:{class_row_id}"
