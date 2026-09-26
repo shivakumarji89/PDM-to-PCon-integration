@@ -124,6 +124,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRODUCT,
     ),
     WorkbenchModule.ARTICLE_OBX_GENERATOR: (
+        WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLE_OBX_GENERATOR,
     ),
 }
