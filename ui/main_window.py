@@ -114,7 +114,14 @@ class MainWindow(QMainWindow):
 
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
-        if step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
+        if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
+            if self._context.repository_snapshot is None:
+                self.statusBar().showMessage(
+                    "Article OBX Generator - load a repository snapshot first"
+                )
+            else:
+                self.statusBar().showMessage("Ready - Article OBX Generator workspace")
+        elif step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
             self.statusBar().showMessage(
                 f"{title} - load a product on the Product page first"
             )
