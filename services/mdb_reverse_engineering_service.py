@@ -287,6 +287,18 @@ class MdbReverseEngineeringService(BaseService):
                     for v in (prop.values if prop else [])
                 ]
 
+        # Repository code schemes define how each base article's variant code
+        # is assembled. Keep the source definition in the Snapshot so later
+        # permutation generation never needs to reopen the MDB.
+        for row in data.rows("tCOMd_CodeScheme"):
+            scheme_id = str(row.get("com_CodeSchemeID") or "").strip()
+            if not scheme_id:
+                continue
+            snapshot.code_schemes[scheme_id] = {
+                "name": str(row.get("com_CodeSchemeName") or "").strip(),
+                "body": str(row.get("com_CodeSchemeBody") or "").strip(),
+            }
+
         article_by_mdb: dict[str, Article] = {}
         for row in data.rows("tCOMd_Article"):
             aid = str(row.get("com_ArticleID") or "")
@@ -304,6 +316,20 @@ class MdbReverseEngineeringService(BaseService):
             article_by_mdb[aid] = article
             snapshot.articles.append(article)
             product.articles.append(article)
+            scheme_id = str(row.get("com_CodeSchemeID") or "").strip()
+            if scheme_id:
+                snapshot.article_code_scheme_ids[article.id] = scheme_id
+
+        # Base Article -> PropertyClass membership is the other half of the
+        # repository configuration model. Keep every ArticleClass link; the
+        # permutation builder uses the linked class properties as dimensions.
+        for row in data.rows("tCOMd_ArticleClass"):
+            article_row_id = _mdb_id(row.get("com_ArticleID")) if "_mdb_id" in locals() else str(row.get("com_ArticleID") or "")
+            class_row_id = _mdb_id(row.get("com_ClassID")) if "_mdb_id" in locals() else str(row.get("com_ClassID") or "")
+            if article_row_id and class_row_id:
+                article_key = f"mdb:article:{article_row_id}"
+                class_key = f"mdb:class:{class_row_id}"
+                snapshot.article_class_ids.setdefault(article_key, []).append(class_key)
 
         # Resolve the MDB relationship chain strictly through stored IDs.
         #
