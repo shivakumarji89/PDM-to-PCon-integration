@@ -73,13 +73,12 @@ class ArticleObxGeneratorPage(BasePage):
         permutation_layout = QVBoxLayout(permutation_box)
 
         self._table = QTableWidget(self)
-        self._table.setColumnCount(7)
+        self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels([
             "#",
             "Base Article",
             "Generated Article",
-            "Properties",
-            "Options",
+            "Variant Code",
             "Configuration",
             "Status",
         ])
@@ -93,10 +92,9 @@ class ArticleObxGeneratorPage(BasePage):
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         permutation_layout.addWidget(self._table)
 
         parameters = QGroupBox("OBX Parameters", self)
@@ -144,12 +142,12 @@ class ArticleObxGeneratorPage(BasePage):
                 f"{value.name}={value.value}"
                 for value in (*permutation.properties, *permutation.options)
             ) or "—"
+            variant_code = permutation.final_article[len(permutation.base_code):]
             values = [
                 str(row),
                 permutation.base_code,
                 permutation.final_article,
-                self._values_text(permutation.properties),
-                self._values_text(permutation.options),
+                variant_code or "—",
                 configuration,
                 "Valid",
             ]
