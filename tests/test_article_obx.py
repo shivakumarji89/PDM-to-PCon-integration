@@ -145,6 +145,49 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertEqual(permutations[0].options, ())
 
 
+class ArticleObxPriceTests(unittest.TestCase):
+    def test_super_item_is_priced_as_concrete_pdm_item(self):
+        from services.article_obx.article_price_service import ArticlePriceRequest, ArticlePriceService
+
+        class _Repo:
+            def get_connection(self):
+                return object()
+
+        # The repository/service interaction is patched at the service class
+        # boundary so this remains a pure unit test.
+        import services.article_obx.article_price_service as price_module
+
+        original_repo = price_module.PDMRepository
+        class _FakeRepo:
+            def __init__(self, context):
+                pass
+            def get_connection(self):
+                return object()
+            def fetch_item_base_prices(self, items, currency, effective_date, connection=None, site_id=1):
+                class Row:
+                    Item = "SUPER-1"
+                    price = 250
+                return [Row()]
+            def fetch_item_option_increment_prices(self, *args, **kwargs):
+                return []
+        price_module.PDMRepository = _FakeRepo
+        try:
+            permutation = ArticlePermutationService(_Context()).build(
+                Snapshot(
+                    product=Product(id="p1", name="Test"),
+                    articles=[Article(id="a1", product_id="p1", code="SUPER-1", is_super_item=True)],
+                )
+            )[0]
+            prices = ArticlePriceService(_Context()).resolve(
+                [permutation],
+                ArticlePriceRequest(currency="EUR", effective_date="03-Sep-2026"),
+            )
+            self.assertEqual(prices[0].total_price, 250.0)
+            self.assertEqual(prices[0].unresolved_reason, "")
+        finally:
+            price_module.PDMRepository = original_repo
+
+
 class ArticleObxXmlTests(unittest.TestCase):
     def test_render_contains_effective_price_date(self):
         snapshot = Snapshot(product=Product(id="p1", name="Test"))
