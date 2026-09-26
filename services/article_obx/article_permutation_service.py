@@ -284,21 +284,26 @@ class ArticlePermutationService(BaseService):
         }
 
         for relation in getattr(snapshot, "relation_objects", []) or []:
-            if str(getattr(relation, "type_code", "")) != "1":
-                continue
             if str(getattr(relation, "domain", "")) != "C":
                 continue
 
-            value_id = str(getattr(relation, "value_id", "") or "")
-            if not value_id or value_id not in selected_ids:
-                continue
+            type_code = str(getattr(relation, "type_code", "") or "")
+            body = str(getattr(relation, "body", "") or "")
 
-            if not ArticlePermutationService._relation_body_matches(
-                str(getattr(relation, "body", "") or ""),
-                base_code,
-                selected,
-            ):
-                return False
+            if type_code in {"1", "2"}:
+                value_id = str(getattr(relation, "value_id", "") or "")
+                if not value_id or value_id not in selected_ids:
+                    continue
+                if not ArticlePermutationService._relation_body_matches(
+                    body, base_code, selected
+                ):
+                    return False
+
+            elif type_code == "4" and "TABLE" in body.upper():
+                if not ArticlePermutationService._table_constraint_matches(
+                    snapshot, body, base_code, selected
+                ):
+                    return False
 
         return True
 
@@ -323,6 +328,69 @@ class ArticlePermutationService(BaseService):
                 if term.strip()
             ):
                 return True
+        return False
+
+    @staticmethod
+    def _table_constraint_matches(
+        snapshot: Snapshot,
+        body: str,
+        base_code: str,
+        selected: dict[str, str],
+    ) -> bool:
+        match = re.search(
+            r"TABLE\s+([A-Za-z0-9_]+)\s*\((.*?)\)",
+            body,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            return True
+
+        table_name = match.group(1).upper()
+        table = next(
+            (
+                value_table
+                for value_table in (getattr(snapshot, "value_tables", []) or [])
+                if str(value_table.name or "").upper() == table_name
+            ),
+            None,
+        )
+        if table is None:
+            # Relation exists but its table is not available in the repository
+            # snapshot. Do not invent a restriction.
+            return True
+
+        access = {}
+        for parameter in match.group(2).split(","):
+            if "=" not in parameter:
+                continue
+            column, expression = parameter.split("=", 1)
+            access[column.strip().upper()] = expression.strip()
+
+        for line in table.lines:
+            valid = True
+            for column, expected in line.items():
+                expression = access.get(str(column).upper())
+                if expression is None:
+                    continue
+                expression = expression.strip()
+                if expression.upper() == "$BAN":
+                    actual = base_code
+                else:
+                    prop_match = re.search(
+                        r"x\.([A-Za-z0-9_]+)", expression, re.IGNORECASE
+                    )
+                    if not prop_match:
+                        continue
+                    actual = selected.get(prop_match.group(1).upper())
+                allowed = expected if isinstance(expected, (list, tuple)) else [expected]
+                if str(actual or "").upper() not in {
+                    str(value).upper() for value in allowed
+                }:
+                    valid = False
+                    break
+            if valid:
+                return True
+
         return False
 
     @staticmethod
