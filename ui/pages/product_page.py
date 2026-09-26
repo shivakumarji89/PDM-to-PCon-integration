@@ -887,7 +887,7 @@ class ProductPage(BasePage):
             return
 
         self._context.register_repository_snapshot(snapshot)
-        if self._context_module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE):
+        if self._context_module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE, WorkbenchModule.ARTICLE_OBX_GENERATOR):
             self._context.activate_snapshot_source("repository")
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
@@ -976,7 +976,7 @@ class ProductPage(BasePage):
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
         self._context_module = module
-        maintenance = module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE)
+        maintenance = module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE, WorkbenchModule.ARTICLE_OBX_GENERATOR)
         self._context.activate_snapshot_source(
             "repository" if maintenance else "pdm"
         )
