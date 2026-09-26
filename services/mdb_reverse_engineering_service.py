@@ -141,8 +141,18 @@ class MdbReverseEngineeringService(BaseService):
         if invalid:
             raise ValueError(f"Unsupported MDB table(s): {', '.join(invalid)}")
 
-        package_rows = self._read(path, "tCOMd_Package")
-        group_rows = self._read(path, "tCOMd_ComGroup")
+        # Read the complete requested structural scope in one MDB/ADODB
+        # session.  The bridge is comparatively expensive to start, so doing
+        # one process per table makes large MDB imports unnecessarily slow.
+        table_names = ("tCOMd_Package", "tCOMd_ComGroup") + tuple(requested)
+        sql_by_name = {
+            table: f"SELECT * FROM [{table}]"
+            for table in dict.fromkeys(table_names)
+        }
+        rows_by_table = self.context.mdb_service.read_tables(path, sql_by_name)
+
+        package_rows = rows_by_table.get("tCOMd_Package", [])
+        group_rows = rows_by_table.get("tCOMd_ComGroup", [])
         result.package = package_rows[0] if package_rows else None
         result.com_group = group_rows[0] if group_rows else None
 
@@ -152,10 +162,9 @@ class MdbReverseEngineeringService(BaseService):
             result.notes.append("tCOMd_ComGroup is empty.")
 
         for table in requested:
-            rows = self._read(path, table)
             result.tables[table] = MdbTableData(
                 name=table,
-                rows=tuple(rows),
+                rows=tuple(rows_by_table.get(table, [])),
             )
 
         return result
