@@ -1,4 +1,4 @@
-"""Orchestrate article permutation, PDM pricing, and OBX generation."""
+"""Orchestrate repository article permutation, pricing, and OBX generation."""
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
@@ -12,7 +12,7 @@ from services.xocd_export_service import XocdExportService
 
 
 class ArticleObxService(BaseService):
-    """Generate an OBX from real Snapshot articles at a specified price date."""
+    """Generate an OBX from repository Snapshot articles at a specified price date."""
 
     def generate(self, currency: str, effective_date: str, site_id: int = 1,
                  manufacturer_id: str = "HM", series_id: str | None = None,
