@@ -576,15 +576,23 @@ class PDMService(BaseService):
         snapshot.article_components = self._index_item_components(component_rows)
         snapshot.component_head_attrs = component_head_attrs
         snapshot.option_increments = option_increments
+        attribute_deps: dict[str, set[str]] = defaultdict(set)
+        for row in attribute_dependency_rows:
+            if row.AttributeValueId is not None and row.AdditionalOptionValueId is not None:
+                attribute_deps[str(row.AttributeValueId)].add(
+                    str(row.AdditionalOptionValueId)
+                )
+        option_deps: dict[str, set[str]] = defaultdict(set)
+        for row in option_dependency_rows:
+            if row.OptionValueId is not None and row.AdditionalOptionValueId is not None:
+                option_deps[str(row.OptionValueId)].add(
+                    str(row.AdditionalOptionValueId)
+                )
         snapshot.attribute_option_dependencies = {
-            str(row.AttributeValueId): [str(row.AdditionalOptionValueId)]
-            for row in attribute_dependency_rows
-            if row.AttributeValueId is not None and row.AdditionalOptionValueId is not None
+            key: sorted(values) for key, values in attribute_deps.items()
         }
         snapshot.option_option_dependencies = {
-            str(row.OptionValueId): [str(row.AdditionalOptionValueId)]
-            for row in option_dependency_rows
-            if row.OptionValueId is not None and row.AdditionalOptionValueId is not None
+            key: sorted(values) for key, values in option_deps.items()
         }
         snapshot.article_prefix_length = self._index_article_prefix_lengths(
             prefix_rows, master_rows
