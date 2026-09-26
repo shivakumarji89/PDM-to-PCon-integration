@@ -27,6 +27,7 @@ from models.price_record import PriceRecord
 from models.relation_object import RelationObject
 from models.snapshot import Snapshot
 from models.text_block import TextBlock
+from models.value_table import ValueCombinationTable
 
 from services.base_service import BaseService
 
@@ -427,6 +428,57 @@ class MdbReverseEngineeringService(BaseService):
                     relation_id=relation_id,
                     relation_name=str(rel.get("com_RelationName") or ""),
                 ))
+
+        # Repository value-combination tables are persisted validity
+        # constraints. Import them so TABLE() relations can be evaluated offline.
+        table_rows = {
+            str(row.get("com_TableID") or ""): row
+            for row in data.rows("tCOMd_Table")
+            if str(row.get("com_TableID") or "")
+        }
+        column_rows = {
+            str(row.get("com_TableColumnID") or ""): row
+            for row in data.rows("tCOMd_TableColumn")
+            if str(row.get("com_TableColumnID") or "")
+        }
+        grouped_lines = {}
+        for row in data.rows("tCOMd_TableLine"):
+            column = column_rows.get(str(row.get("com_TableColumnID") or ""))
+            if column is None:
+                continue
+            table_id = str(column.get("com_TableID") or "")
+            line_nr = str(row.get("com_TableLineNr") or "")
+            name = str(column.get("com_ColumnName") or "").strip()
+            value = str(row.get("com_TableLineValue") or "").strip()
+            if not table_id or not line_nr or not name:
+                continue
+            grouped_lines.setdefault((table_id, line_nr), {}).setdefault(name, []).append(value)
+
+        for table_id, table_row in table_rows.items():
+            name = str(table_row.get("com_TableName") or "").strip()
+            if not name:
+                continue
+            columns = [
+                str(row.get("com_ColumnName") or "").strip()
+                for row in column_rows.values()
+                if str(row.get("com_TableID") or "") == table_id
+                and str(row.get("com_ColumnName") or "").strip()
+            ]
+            lines = [
+                {
+                    column: values[0] if len(values) == 1 else list(values)
+                    for column, values in cells.items()
+                }
+                for (tid, _line_nr), cells in sorted(grouped_lines.items())
+                if tid == table_id
+            ]
+            snapshot.value_tables.append(
+                ValueCombinationTable(
+                    name=name,
+                    property_names=columns,
+                    lines=lines,
+                )
+            )
 
         # ArtBase is the MDB's base-article restriction model. Keep it in
         # Snapshot so the existing Review/engineering workflows can consume the
