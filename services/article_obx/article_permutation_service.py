@@ -307,17 +307,6 @@ class ArticlePermutationService(BaseService):
     ) -> bool:
         """Validate the complete selected option set against dependency edges."""
         selected = {str(v) for v in selected_value_ids}
-        for source, destinations in dependencies.items():
-            source = str(source)
-            if source not in selected:
-                continue
-            # Selecting a parent does not force every dependent value; the
-            # dependency graph only establishes which child values are valid.
-            # A selected child, however, must have at least one selected parent.
-            for destination in destinations or []:
-                if str(destination) in selected:
-                    continue
-
         incoming: dict[str, set[str]] = {}
         for source, destinations in dependencies.items():
             for destination in destinations or []:
