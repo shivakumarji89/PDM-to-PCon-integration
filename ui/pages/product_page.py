@@ -887,7 +887,11 @@ class ProductPage(BasePage):
             return
 
         self._context.register_repository_snapshot(snapshot)
-        if self._context_module in (\n            WorkbenchModule.MAINTENANCE,\n            WorkbenchModule.BULK_UPDATE,\n            WorkbenchModule.QA_VALIDATION,\n        ):
+        if self._context_module in (
+            WorkbenchModule.MAINTENANCE,
+            WorkbenchModule.BULK_UPDATE,
+            WorkbenchModule.QA_VALIDATION,
+        ):
             self._context.activate_snapshot_source("repository")
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
