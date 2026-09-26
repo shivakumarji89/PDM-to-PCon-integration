@@ -1,97 +1,99 @@
-"""Build Article OBX permutations from repository configuration data.
+"""Generate Article OBX permutations from repository configuration data.
 
-A permutation is a generated configuration, not an existing PDM Article row.
-The repository Snapshot supplies the available values, base/article-set scope,
-encoding codes, dependency/exclusion rules and relation restrictions.
+In the repository/MDB model an Article is a *base article*. A permutation is a
+runtime configuration built from that base article's classes/properties,
+property values, relations, ArtBase restrictions and code scheme. Existing
+Article rows are therefore inputs (base identities), never generated variants.
 """
 from __future__ import annotations
 
 import itertools
 import re
 from dataclasses import dataclass
-from typing import Iterable
 
-from services.base_service import BaseService
 from models.snapshot import Snapshot
 from services.article_obx.article_obx_models import (
     ArticleConfigurationValue,
     ArticlePermutation,
 )
+from services.base_service import BaseService
 
 
 @dataclass(frozen=True)
 class _Dimension:
-    kind: str
-    entity_id: str
+    property_id: str
     name: str
     display_order: int
     values: tuple[object, ...]
-    required: bool
 
 
 class ArticlePermutationService(BaseService):
-    """Generate valid article-number permutations from repository data."""
+    """Build valid final article numbers from a repository Snapshot."""
 
     def build(self, snapshot: Snapshot | None = None) -> list[ArticlePermutation]:
-        snapshot = snapshot if snapshot is not None else self.context.repository_snapshot
+        snapshot = (
+            snapshot
+            if snapshot is not None
+            else self.context.repository_snapshot
+        )
         if snapshot is None:
             return []
 
-        decoded = self._decoded_codes(snapshot)
         results: list[ArticlePermutation] = []
         seen: set[str] = set()
 
-        for article_set in sorted(
-            snapshot.article_sets,
-            key=lambda item: (item.base_code or "", item.id or ""),
+        for article in sorted(
+            snapshot.articles,
+            key=lambda item: ((item.code or "").strip(), str(item.id or "")),
         ):
-            base_code = (article_set.base_code or "").strip()
+            base_code = (article.code or "").strip()
             if not base_code:
                 continue
 
-            dimensions = self._dimensions(snapshot, article_set)
-            combinations = itertools.product(
-                *(self._choices(d) for d in dimensions)
-            ) if dimensions else [()]
+            dimensions = self._dimensions_for_article(snapshot, article.id, base_code)
+            if not dimensions:
+                final_article = base_code
+                if final_article not in seen:
+                    seen.add(final_article)
+                    results.append(
+                        self._make_permutation(
+                            snapshot, article, base_code, (), (), final_article
+                        )
+                    )
+                continue
 
-            for selected in combinations:
-                properties, options = self._materialize_values(
-                    snapshot, dimensions, selected, decoded
+            for selected_values in itertools.product(
+                *(dimension.values for dimension in dimensions)
+            ):
+                properties = self._materialize_properties(
+                    dimensions, selected_values
                 )
-                selected_ids = {
-                    value.value_id
-                    for value in (*properties, *options)
-                    if value.value_id
-                }
+                selected_ids = {value.value_id for value in properties}
 
-                if not self._valid_exclusions(snapshot, selected_ids):
-                    continue
-                if not self._valid_dependencies(snapshot, selected_ids):
-                    continue
                 if not self._valid_art_base(snapshot, base_code, selected_ids):
                     continue
-                if not self._valid_relations(snapshot, base_code, selected_ids, properties, options):
+                if not self._valid_exclusions(snapshot, selected_ids):
+                    continue
+                if not self._valid_relations(
+                    snapshot, base_code, selected_ids, properties
+                ):
                     continue
 
                 final_article = self._encode_article(
-                    snapshot, article_set, properties, options, base_code, decoded
+                    snapshot, article.id, base_code, properties
                 )
                 if not final_article or final_article in seen:
                     continue
-                seen.add(final_article)
 
+                seen.add(final_article)
                 results.append(
-                    ArticlePermutation(
-                        article_id="",
-                        product_id=str(snapshot.product.id or "") if snapshot.product else "",
-                        base_code=base_code,
-                        final_article=final_article,
-                        name="",
-                        description="",
-                        quantity=1,
-                        is_super_item=bool(snapshot.product.is_super_product) if snapshot.product else False,
-                        properties=tuple(properties),
-                        options=tuple(options),
+                    self._make_permutation(
+                        snapshot,
+                        article,
+                        base_code,
+                        properties,
+                        (),
+                        final_article,
                     )
                 )
 
@@ -99,210 +101,186 @@ class ArticlePermutationService(BaseService):
             key=lambda item: (
                 item.base_code,
                 item.final_article,
-                tuple(v.value_id for v in item.properties),
-                tuple(v.value_id for v in item.options),
+                tuple(value.value_id for value in item.properties),
             )
         )
         return results
 
-    @staticmethod
-    def _choices(dimension: _Dimension) -> tuple[object | None, ...]:
-        if dimension.required:
-            return dimension.values
-        return (None, *dimension.values)
+    def _dimensions_for_article(
+        self,
+        snapshot: Snapshot,
+        article_id: str | None,
+        base_code: str,
+    ) -> tuple[_Dimension, ...]:
+        property_ids = self._article_property_ids(snapshot, article_id)
+        if not property_ids:
+            property_ids = {
+                str(prop.id)
+                for prop in snapshot.properties
+                if prop.id is not None
+            }
 
-    @staticmethod
-    def _dimensions(snapshot: Snapshot, article_set) -> tuple[_Dimension, ...]:
+        restrictions = (getattr(snapshot, "art_base", {}) or {}).get(base_code, {})
         dimensions: list[_Dimension] = []
-        all_article_ids = {str(a) for a in article_set.article_ids}
 
-        for kind, attributes in (
-            ("property", article_set.properties),
-            ("option", article_set.options),
-        ):
-            for attr in attributes:
-                values = tuple(
-                    sorted(
-                        attr.values,
-                        key=lambda value: (
-                            value.code == "",
-                            value.code or "",
-                            value.value or "",
-                            value.id or "",
-                        ),
-                    )
+        for prop in snapshot.properties:
+            prop_id = str(prop.id or "")
+            if not prop_id or prop_id not in property_ids:
+                continue
+
+            allowed_ids = {
+                str(value_id)
+                for value_id in restrictions.get(prop_id, [])
+            }
+            source_values = [
+                value
+                for value in prop.values
+                if not allowed_ids or str(value.id) in allowed_ids
+            ]
+            source_values.sort(
+                key=lambda value: (
+                    value.display_order is None,
+                    value.display_order or 0,
+                    value.value or "",
+                    str(value.id or ""),
                 )
-                if not values:
-                    continue
+            )
+            if not source_values:
+                continue
 
-                coverage = {
-                    str(article_id)
-                    for value in values
-                    for article_id in value.article_ids
-                }
-                required = bool(all_article_ids) and coverage >= all_article_ids
-                dimensions.append(
-                    _Dimension(
-                        kind=kind,
-                        entity_id=str(attr.id),
-                        name=attr.name or "",
-                        display_order=ArticlePermutationService._display_order(
-                            snapshot, kind, str(attr.id)
-                        ),
-                        values=values,
-                        required=required,
-                    )
+            dimensions.append(
+                _Dimension(
+                    property_id=prop_id,
+                    name=prop.name or prop.code or prop_id,
+                    display_order=(
+                        int(prop.display_order)
+                        if prop.display_order is not None
+                        else 10**9
+                    ),
+                    values=tuple(source_values),
                 )
+            )
 
-        dimensions.sort(key=lambda d: (d.display_order, d.name, d.entity_id))
+        scheme_order = self._scheme_property_order(snapshot, article_id)
+        if scheme_order:
+            rank = {name: index for index, name in enumerate(scheme_order)}
+            dimensions.sort(
+                key=lambda item: (
+                    rank.get(self._normalise_name(item.name), 10**6),
+                    item.display_order,
+                    item.name,
+                )
+            )
+        else:
+            dimensions.sort(
+                key=lambda item: (
+                    item.display_order,
+                    item.name,
+                    item.property_id,
+                )
+            )
+
         return tuple(dimensions)
 
     @staticmethod
-    def _display_order(snapshot: Snapshot, kind: str, entity_id: str) -> int:
-        collection = snapshot.properties if kind == "property" else snapshot.options
-        entity = next(
-            (item for item in collection if str(item.id) == entity_id), None
+    def _article_property_ids(snapshot: Snapshot, article_id: str | None) -> set[str]:
+        links = (getattr(snapshot, "article_class_ids", {}) or {}).get(
+            str(article_id or ""), []
         )
-        value = getattr(entity, "display_order", None) if entity else None
-        return int(value) if value is not None else 10**9
+        if not links:
+            return set()
+
+        class_ids = {str(value) for value in links}
+        property_ids: set[str] = set()
+        for engineering_class in getattr(snapshot.engineering, "classes", []) or []:
+            if str(engineering_class.id) not in class_ids:
+                continue
+            for assignment in engineering_class.properties:
+                if assignment.property_id:
+                    property_ids.add(str(assignment.property_id))
+        return property_ids
 
     @classmethod
-    def _materialize_values(
-        cls, snapshot: Snapshot, dimensions, selected, decoded
-    ) -> tuple[list[ArticleConfigurationValue], list[ArticleConfigurationValue]]:
-        properties: list[ArticleConfigurationValue] = []
-        options: list[ArticleConfigurationValue] = []
+    def _scheme_property_order(
+        cls, snapshot: Snapshot, article_id: str | None
+    ) -> list[str]:
+        scheme_id = (
+            getattr(snapshot, "article_code_scheme_ids", {}) or {}
+        ).get(str(article_id or ""))
+        if not scheme_id:
+            return []
 
-        for dimension, value in zip(dimensions, selected):
-            if value is None:
-                continue
+        scheme = (getattr(snapshot, "code_schemes", {}) or {}).get(str(scheme_id), {})
+        body = str(scheme.get("body") or "")
+        if not body:
+            return []
 
-            if dimension.kind == "property":
-                code = (getattr(value, "code", "") or "").replace("#", "")
-                if not code:
-                    code = decoded.get(dimension.entity_id, {}).get(str(value.id), "")
-                item = ArticleConfigurationValue(
+        # Current MK Workbench code-scheme rows use a compact body:
+        # @,@,...,Class:Property Class:Property ...
+        # The @ characters represent the base portion; the property tokens
+        # define the deterministic variant-code property order.
+        tokens = re.findall(r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)", body)
+        return [cls._normalise_name(prop) for _class_name, prop in tokens]
+
+    @staticmethod
+    def _normalise_name(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_]+", "_", value or "").strip("_").upper()
+
+    @staticmethod
+    def _materialize_properties(
+        dimensions: tuple[_Dimension, ...],
+        selected_values: tuple[object, ...],
+    ) -> tuple[ArticleConfigurationValue, ...]:
+        values: list[ArticleConfigurationValue] = []
+        for dimension, source in zip(dimensions, selected_values):
+            values.append(
+                ArticleConfigurationValue(
                     kind="property",
-                    entity_id=dimension.entity_id,
-                    value_id=str(value.id),
+                    entity_id=dimension.property_id,
+                    value_id=str(source.id),
                     name=dimension.name,
-                    value=value.value or "",
-                    code=code,
+                    value=source.value or "",
+                    code=(source.code or "").replace("#", ""),
                     display_order=dimension.display_order,
                 )
-                properties.append(item)
-            else:
-                code = (getattr(value, "code", "") or "").replace("#", "")
-                item = ArticleConfigurationValue(
-                    kind="option",
-                    entity_id=dimension.entity_id,
-                    value_id=str(value.id),
-                    name=dimension.name,
-                    value=value.value or "",
-                    code=code,
-                    display_order=dimension.display_order,
-                )
-                options.append(item)
+            )
+        return tuple(values)
 
-        return properties, options
+    @staticmethod
+    def _valid_art_base(
+        snapshot: Snapshot, base_code: str, selected_ids: set[str]
+    ) -> bool:
+        restrictions = (getattr(snapshot, "art_base", {}) or {}).get(base_code, {})
+        if not restrictions:
+            return True
 
-    def _decoded_codes(self, snapshot: Snapshot) -> dict[str, dict[str, str]]:
-        try:
-            cached = snapshot.config_value_codes or {}
-        except AttributeError:
-            cached = {}
-        if cached:
-            return cached
-        service = getattr(self.context, "engineering_class_service", None)
-        if service is not None:
-            try:
-                return service.resolve_config_codes(snapshot)
-            except Exception:
-                pass
-        return {}
+        for allowed_values in restrictions.values():
+            allowed = {str(value_id) for value_id in allowed_values or ()}
+            if not (selected_ids & allowed):
+                return False
+        return True
 
     @staticmethod
     def _valid_exclusions(snapshot: Snapshot, selected_ids: set[str]) -> bool:
         exclusions = getattr(snapshot, "attribute_value_exclusions", {}) or {}
         for value_id in selected_ids:
-            if any(str(other) in selected_ids for other in exclusions.get(str(value_id), ())):
+            if any(
+                str(other) in selected_ids
+                for other in exclusions.get(str(value_id), ())
+            ):
                 return False
         return True
 
     @staticmethod
-    def _valid_dependencies(snapshot: Snapshot, selected_ids: set[str]) -> bool:
-        """A selected dependent value requires its enabling parent selection."""
-        incoming: dict[str, set[str]] = {}
-        for source, destinations in (
-            list((getattr(snapshot, "attribute_option_dependencies", {}) or {}).items())
-            + list((getattr(snapshot, "option_option_dependencies", {}) or {}).items())
-        ):
-            for destination in destinations or ():
-                incoming.setdefault(str(destination), set()).add(str(source))
-
-        return all(
-            not incoming.get(value_id) or bool(incoming[value_id] & selected_ids)
-            for value_id in selected_ids
-        )
-
-    @staticmethod
-    def _valid_art_base(snapshot: Snapshot, base_code: str, selected_ids: set[str]) -> bool:
-        art_base = getattr(snapshot, "art_base", {}) or {}
-        restrictions = art_base.get(base_code) or {}
-        for entity_id, allowed in restrictions.items():
-            allowed_ids = {str(value) for value in allowed or ()}
-            selected_for_entity = {
-                value_id
-                for value_id in selected_ids
-                if value_id in allowed_ids
-            }
-            # If this entity has a restriction and a value was selected for it,
-            # it must belong to the allowed set. An absent optional selection is
-            # valid unless the source relation makes it mandatory.
-            if allowed_ids and selected_for_entity:
-                continue
-            if allowed_ids and not selected_for_entity:
-                # Only reject when the entity has no selectable value in the
-                # allowed set but a candidate value from that entity is selected.
-                # The latter is checked by the membership test below.
-                continue
-        selected_entities = ArticlePermutationService._selected_entity_values(snapshot, selected_ids)
-        for entity_id, value_ids in restrictions.items():
-            allowed_ids = {str(v) for v in value_ids or ()}
-            for value_id in selected_entities.get(str(entity_id), ()):
-                if value_id not in allowed_ids:
-                    return False
-        return True
-
-    @staticmethod
-    def _selected_entity_values(snapshot: Snapshot, selected_ids: set[str]) -> dict[str, set[str]]:
-        result: dict[str, set[str]] = {}
-        for prop in snapshot.properties:
-            result[str(prop.id)] = {
-                str(value.id) for value in prop.values if str(value.id) in selected_ids
-            }
-        for option in snapshot.options:
-            result[str(option.id)] = {
-                str(value.id) for value in option.values if str(value.id) in selected_ids
-            }
-        return result
-
-    @classmethod
     def _valid_relations(
-        cls,
         snapshot: Snapshot,
         base_code: str,
         selected_ids: set[str],
-        properties: list[ArticleConfigurationValue],
-        options: list[ArticleConfigurationValue],
+        properties: tuple[ArticleConfigurationValue, ...],
     ) -> bool:
-        selected_by_name = {
-            value.name: value.value
-            for value in (*properties, *options)
-        }
-        selected_by_name_upper = {
-            key.upper(): value.upper()
-            for key, value in selected_by_name.items()
+        selected = {
+            ArticlePermutationService._normalise_name(value.name): value.value.upper()
+            for value in properties
         }
 
         for relation in getattr(snapshot, "relation_objects", []) or []:
@@ -310,28 +288,33 @@ class ArticlePermutationService(BaseService):
                 continue
             if str(getattr(relation, "domain", "")) != "C":
                 continue
+
             value_id = str(getattr(relation, "value_id", "") or "")
             if not value_id or value_id not in selected_ids:
                 continue
-            if not cls._relation_body_matches(
+
+            if not ArticlePermutationService._relation_body_matches(
                 str(getattr(relation, "body", "") or ""),
                 base_code,
-                selected_by_name_upper,
+                selected,
             ):
                 return False
+
         return True
 
     @staticmethod
     def _relation_body_matches(
-        body: str, base_code: str, selected: dict[str, str]
+        body: str,
+        base_code: str,
+        selected: dict[str, str],
     ) -> bool:
         restrictions = body.split("Restrictions:", 1)[-1].strip()
         if not restrictions:
             return True
 
-        branches = re.split(r"\s+OR\s+", restrictions, flags=re.IGNORECASE)
+        branches = re.split(r"\\s+OR\\s+", restrictions, flags=re.IGNORECASE)
         for branch in branches:
-            terms = re.split(r"\s+AND\s+", branch, flags=re.IGNORECASE)
+            terms = re.split(r"\\s+AND\\s+", branch, flags=re.IGNORECASE)
             if all(
                 ArticlePermutationService._relation_term_matches(
                     term.strip(), base_code, selected
@@ -343,73 +326,107 @@ class ArticlePermutationService(BaseService):
         return False
 
     @staticmethod
-    def _relation_term_matches(term: str, base_code: str, selected: dict[str, str]) -> bool:
+    def _relation_term_matches(
+        term: str,
+        base_code: str,
+        selected: dict[str, str],
+    ) -> bool:
         term = term.strip(" ()")
-        ban = re.search(r"\$BAN\s+IN\s*\(\s*'([^']*)'", term, re.IGNORECASE)
+
+        ban = re.search(
+            r"\\$BAN\\s+IN\\s*\\(\\s*'([^']*)'",
+            term,
+            re.IGNORECASE,
+        )
         if ban:
             return ban.group(1).upper() == base_code.upper()
 
-        specified = re.search(r"SPECIFIED\s+([A-Z0-9_]+)", term, re.IGNORECASE)
-        if specified:
-            name = specified.group(1).upper()
-            if name not in selected:
-                return False
+        specified = re.search(
+            r"SPECIFIED\\s+([A-Z0-9_]+)",
+            term,
+            re.IGNORECASE,
+        )
+        if specified and specified.group(1).upper() not in selected:
+            return False
 
         value_match = re.search(
-            r"([A-Z0-9_]+)\s+IN\s*\((.*?)\)",
+            r"([A-Z0-9_]+)\\s+IN\\s*\\((.*?)\\)",
             term,
             re.IGNORECASE | re.DOTALL,
         )
         if value_match:
             name = value_match.group(1).upper()
-            values = {
+            allowed = {
                 item.strip().strip("'").upper()
                 for item in value_match.group(2).split(",")
             }
-            return selected.get(name) in values
+            return selected.get(name) in allowed
 
         return True
 
-    @staticmethod
+    @classmethod
     def _encode_article(
+        cls,
         snapshot: Snapshot,
-        article_set,
-        properties: list[ArticleConfigurationValue],
-        options: list[ArticleConfigurationValue],
+        article_id: str | None,
         base_code: str,
-        decoded: dict[str, dict[str, str]],
+        properties: tuple[ArticleConfigurationValue, ...],
     ) -> str:
-        head_tokens: list[str] = []
-        tail_tokens: list[str] = []
+        scheme_id = (
+            getattr(snapshot, "article_code_scheme_ids", {}) or {}
+        ).get(str(article_id or ""))
+        scheme = (
+            (getattr(snapshot, "code_schemes", {}) or {}).get(str(scheme_id), {})
+            if scheme_id
+            else {}
+        )
+        body = str(scheme.get("body") or "")
 
-        for value in sorted(properties, key=lambda item: (item.display_order, item.name, item.value_id)):
-            prop = next(
-                (p for p in snapshot.properties if str(p.id) == value.entity_id), None
+        if not body:
+            ordered = properties
+        else:
+            order = cls._scheme_property_order(snapshot, article_id)
+            rank = {name: index for index, name in enumerate(order)}
+            ordered = tuple(
+                sorted(
+                    properties,
+                    key=lambda value: (
+                        rank.get(cls._normalise_name(value.name), 10**6),
+                        value.display_order,
+                        value.name,
+                    ),
+                )
             )
-            if prop is None:
-                continue
-            source = next(
-                (v for v in prop.values if str(v.id) == value.value_id), None
-            )
-            if source is None:
-                continue
-            token = value.code.strip()
+
+        tokens: list[str] = []
+        for value in ordered:
+            token = (value.code or "").strip()
             if not token:
                 return ""
-            if source.code:
-                tail_tokens.append(token)
-            else:
-                head_tokens.append(token)
+            tokens.append(token)
 
-        for value in sorted(options, key=lambda item: (item.display_order, item.name, item.value_id)):
-            if not value.code.strip():
-                return ""
-            head_tokens.append(value.code.strip())
+        # The repository's current code-scheme writer uses the base article as
+        # the fixed @ portion and property values as the variant-code portion.
+        return base_code + "".join(tokens)
 
-        base = base_code.rstrip(".")
-        article = base + "".join(head_tokens)
-
-        if tail_tokens:
-            article += "." + "".join(tail_tokens)
-
-        return article
+    @staticmethod
+    def _make_permutation(
+        snapshot: Snapshot,
+        article,
+        base_code: str,
+        properties,
+        options,
+        final_article: str,
+    ) -> ArticlePermutation:
+        return ArticlePermutation(
+            article_id=str(article.id or ""),
+            product_id=str(article.product_id or ""),
+            base_code=base_code,
+            final_article=final_article,
+            name=article.name or "",
+            description=article.description or "",
+            quantity=1,
+            is_super_item=False,
+            properties=tuple(properties),
+            options=tuple(options),
+        )
