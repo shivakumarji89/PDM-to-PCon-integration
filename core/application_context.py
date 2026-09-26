@@ -27,6 +27,7 @@ from services.version_update_service import VersionUpdateService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
 from services.obx_validation_service import ObxValidationService
 from services.article_obx.article_obx_service import ArticleObxService
+from services.article_obx.article_permutation_service import ArticlePermutationService
 from services.pip_service import PipService
 from services.price_list_service import PriceListService
 from services.mdb_reconcile_service import MdbReconcileService
@@ -118,6 +119,7 @@ class ApplicationContext:
             EngineeringValidationService: EngineeringValidationService,
             MaterialPickingService: MaterialPickingService,
             ArticleObxService: ArticleObxService,
+            ArticlePermutationService: ArticlePermutationService,
         }
 
     def get_service(self, service_type: type[TService]) -> TService:
@@ -341,6 +343,10 @@ class ApplicationContext:
     @property
     def article_obx_service(self) -> ArticleObxService:
         return self.get_service(ArticleObxService)
+
+    @property
+    def article_permutation_service(self) -> ArticlePermutationService:
+        return self.get_service(ArticlePermutationService)
 
     @property
     def engineering_initialization_service(self) -> EngineeringInitializationService:
