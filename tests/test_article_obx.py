@@ -108,6 +108,32 @@ class ArticleObxPermutationTests(unittest.TestCase):
 
         self.assertEqual([v.value_id for v in permutations[0].options], ["ov1"])
 
+    def test_option_dependency_allows_child_only_with_selected_parent(self):
+        parent = Option(id="o1", name="Fabric", display_order=1)
+        parent.values = [
+            OptionValue(id="p1", option_id="o1", value="Standard", code="STD"),
+        ]
+        child = Option(id="o2", name="Finish", display_order=2)
+        child.values = [
+            OptionValue(id="c1", option_id="o2", value="Special", code="SPC"),
+        ]
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[Article(id="a1", product_id="p1", code="BASESTDSPC")],
+            article_sets=[ArticleSet(id="set1", base_code="BASE", article_ids=["a1"])],
+            options=[parent, child],
+            option_values=parent.values + child.values,
+            product_option_value_ids={"p1": ["p1", "c1"]},
+            option_option_dependencies={"p1": ["c1"]},
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [v.value_id for v in permutations[0].options],
+            ["p1", "c1"],
+        )
+
     def test_ambiguous_option_code_does_not_guess(self):
         option = Option(id="o1", name="Finish", display_order=1)
         option.values = [
