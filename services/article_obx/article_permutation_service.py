@@ -121,11 +121,15 @@ class ArticlePermutationService(BaseService):
             }
 
         restrictions = (getattr(snapshot, "art_base", {}) or {}).get(base_code, {})
+        scheme_order = self._scheme_property_order(snapshot, article_id)
+        scheme_names = set(scheme_order)
         dimensions: list[_Dimension] = []
 
         for prop in snapshot.properties:
             prop_id = str(prop.id or "")
             if not prop_id or prop_id not in property_ids:
+                continue
+            if scheme_names and self._normalise_name(prop.name or prop.code) not in scheme_names:
                 continue
 
             allowed_ids = {
@@ -161,7 +165,6 @@ class ArticlePermutationService(BaseService):
                 )
             )
 
-        scheme_order = self._scheme_property_order(snapshot, article_id)
         if scheme_order:
             rank = {name: index for index, name in enumerate(scheme_order)}
             dimensions.sort(
