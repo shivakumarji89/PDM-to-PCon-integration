@@ -237,35 +237,43 @@ class ArticlePermutationService(BaseService):
         @lru_cache(maxsize=None)
         def match(position: int, index: int, selected: tuple[str, ...]):
             if position == len(suffix):
-                return (selected,) if index == len(option_ids) else ()
+                if cls._dependencies_are_valid(selected, option_deps):
+                    return (selected,)
+                return ()
             if index >= len(option_ids):
                 return ()
 
             option_id = option_ids[index]
             results = []
+
+            # An option is not necessarily selected. Skipping an option is valid
+            # when its code is absent from the concrete article number.
+            results.extend(match(position, index + 1, selected))
+
             for value in candidates_by_option[option_id]:
                 code = (value.code or "").replace("#", "")
                 if not code or not suffix.startswith(code, position):
                     continue
-
-                # Parent option dependency: if this value is a dependent child,
-                # it is valid only when its source parent value is already
-                # selected. This is enforced by checking all known incoming edges.
-                if not cls._dependency_allows_value(
-                    str(value.id), selected, option_deps
-                ):
-                    continue
-
                 next_selected = selected + (str(value.id),)
                 results.extend(
                     match(position + len(code), index + 1, next_selected)
                 )
                 if len(results) > 2:
                     return tuple(results[:3])
-            return tuple(results)
+            # De-duplicate equivalent selections reached through different paths.
+            unique = []
+            seen = set()
+            for result in results:
+                if result in seen:
+                    continue
+                seen.add(result)
+                unique.append(result)
+                if len(unique) >= 3:
+                    break
+            return tuple(unique)
 
-        # One value per option is the normal option-selector model. If the
-        # suffix can be resolved in exactly one way, it is safe to materialize.
+        # Optional options may be omitted. If the suffix resolves to exactly one
+        # valid selection set, materialize it; ambiguous matches remain empty.
         matches = match(0, 0, ())
         if len(matches) != 1:
             return []
