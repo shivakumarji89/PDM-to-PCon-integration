@@ -301,19 +301,33 @@ class ArticlePermutationService(BaseService):
         return resolved
 
     @staticmethod
-    def _dependency_allows_value(
-        candidate_value_id: str,
+    def _dependencies_are_valid(
         selected_value_ids: tuple[str, ...],
         dependencies: dict,
     ) -> bool:
-        incoming = []
+        """Validate the complete selected option set against dependency edges."""
+        selected = {str(v) for v in selected_value_ids}
         for source, destinations in dependencies.items():
-            if candidate_value_id in {str(v) for v in destinations or []}:
-                incoming.append(str(source))
-        if not incoming:
-            return True
-        selected = set(selected_value_ids)
-        return any(source in selected for source in incoming)
+            source = str(source)
+            if source not in selected:
+                continue
+            # Selecting a parent does not force every dependent value; the
+            # dependency graph only establishes which child values are valid.
+            # A selected child, however, must have at least one selected parent.
+            for destination in destinations or []:
+                if str(destination) in selected:
+                    continue
+
+        incoming: dict[str, set[str]] = {}
+        for source, destinations in dependencies.items():
+            for destination in destinations or []:
+                incoming.setdefault(str(destination), set()).add(str(source))
+
+        for value_id in selected:
+            parents = incoming.get(value_id)
+            if parents and not (parents & selected):
+                return False
+        return True
 
     @staticmethod
     def _dedupe_values(
