@@ -7,6 +7,7 @@ from models.price_record import PriceRecord
 from models.product import Product
 from models.property import Property, PropertyValue
 from models.snapshot import Snapshot
+from models.engineering import Engineering
 from models.engineering_class import EngineeringClass, ClassPropertyAssignment
 from services.article_obx.article_obx_models import ArticleObxRow, ArticlePrice
 from services.article_obx.article_obx_service import ArticleObxService
@@ -58,11 +59,7 @@ def _base_snapshot() -> Snapshot:
                 "body": "@,@,Article:Finish Article:Color",
             }
         },
-        engineering=type(
-            "Engineering",
-            (),
-            {"classes": [engineering_class], "families": []},
-        )(),
+        engineering=Engineering(classes=[engineering_class]),
     )
 
 
