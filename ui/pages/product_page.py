@@ -976,12 +976,16 @@ class ProductPage(BasePage):
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
         self._context_module = module
-        maintenance = module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE, WorkbenchModule.ARTICLE_OBX_GENERATOR)
-        self._context.activate_snapshot_source(
-            "repository" if maintenance else "pdm"
+        repository_context = module in (
+            WorkbenchModule.MAINTENANCE,
+            WorkbenchModule.BULK_UPDATE,
+            WorkbenchModule.QA_VALIDATION,
         )
-        self._context_stack.setCurrentIndex(1 if maintenance else 0)
-        if maintenance:
+        self._context.activate_snapshot_source(
+            "repository" if repository_context else "pdm"
+        )
+        self._context_stack.setCurrentIndex(1 if repository_context else 0)
+        if repository_context:
             self._load_repository_browser()
         self._update_repository_actions()
 
