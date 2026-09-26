@@ -28,6 +28,8 @@ class WorkflowStep(Enum):
     CET_SIF_VALIDATION = "cet_sif_validation"
     #: Standalone OBX validation tool.
     OBX_VALIDATION = "obx_validation"
+    #: Standalone Article OBX generation workflow driven by repository data.
+    ARTICLE_OBX_GENERATOR = "article_obx_generator"
 
 
 class SnapshotStatus(Enum):

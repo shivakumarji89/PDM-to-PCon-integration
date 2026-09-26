@@ -1,17 +1,16 @@
-"""Resolve Article OBX prices from PDM for an explicit effective date."""
+"""Resolve Article OBX prices from repository Snapshot data for an explicit date."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
-from repositories.pdm_repository import PDMRepository
 from services.base_service import BaseService
-from services.sif_validation_service import SifValidationService
 from services.article_obx.article_obx_models import ArticlePermutation, ArticlePrice
 
 
 @dataclass(frozen=True)
 class ArticlePriceRequest:
-    """PDM pricing inputs for an Article OBX run."""
+    """Repository pricing inputs for an Article OBX run."""
 
     currency: str
     effective_date: str
@@ -19,7 +18,57 @@ class ArticlePriceRequest:
 
 
 class ArticlePriceService(BaseService):
-    """Resolve prices without changing the Snapshot price baseline."""
+    """Resolve prices exclusively from the active repository Snapshot.
+
+    The generator must not query PDM during OBX generation. Repository import
+    is responsible for materialising Snapshot.price_records.
+    """
+
+    @staticmethod
+    def _ymd(value: str) -> str:
+        return "".join(ch for ch in str(value or "") if ch.isdigit())[:8]
+
+    @classmethod
+    def _valid_on(cls, record, effective_date: str) -> bool:
+        date = cls._ymd(effective_date)
+        start = cls._ymd(getattr(record, "valid_from", "")) or "00000000"
+        end = cls._ymd(getattr(record, "valid_to", "")) or "99991231"
+        return start <= date <= end
+
+    @staticmethod
+    def _condition_tokens(condition: str) -> list[tuple[str, str]]:
+        """Extract simple VARCOND name=value terms from a repository row."""
+        return [
+            (match.group(1).strip().upper(), match.group(2).strip().upper())
+            for match in re.finditer(r"([A-Za-z0-9_.-]+)\s*=\s*([^\s;]+)", condition or "")
+        ]
+
+    @classmethod
+    def _condition_matches(cls, condition: str, codes: set[str]) -> bool:
+        if not condition.strip():
+            return True
+        tokens = cls._condition_tokens(condition)
+        if not tokens:
+            return False
+        return all(
+            key in codes or value in codes or f"{key}={value}" in codes
+            for key, value in tokens
+        )
+
+    @classmethod
+    def _select_rows(cls, records, article_code: str, currency: str, effective_date: str):
+        currency = currency.upper()
+        rows = [
+            record for record in records
+            if str(getattr(record, "article_code", "") or "") == article_code
+            and str(getattr(record, "currency", "") or "").upper() == currency
+            and cls._valid_on(record, effective_date)
+        ]
+        return sorted(
+            rows,
+            key=lambda record: cls._ymd(getattr(record, "valid_from", "")),
+            reverse=True,
+        )
 
     def resolve(
         self,
@@ -31,114 +80,91 @@ class ArticlePriceService(BaseService):
         if not request.effective_date.strip():
             raise ValueError("effective_date is required")
 
-        # PDM exposes list pricing for Items, including super-items. The
-        # existing SIF/OBX pricing path resolves the concrete Item code directly;
-        # do not invent component-price aggregation here.
-        direct = [p for p in permutations if p.final_article]
-        results_by_id: dict[str, ArticlePrice] = {}
-
-        if direct:
-            repo = PDMRepository(self.context)
-            conn = repo.get_connection()
-            try:
-                items = [p.final_article for p in direct if p.final_article]
-                base_rows = repo.fetch_item_base_prices(
-                    items,
-                    request.currency.upper(),
-                    request.effective_date,
-                    connection=conn,
+        snapshot = self.context.repository_snapshot or self.context.active_snapshot
+        if snapshot is None:
+            return [
+                ArticlePrice(
+                    article_id=p.article_id,
+                    article_code=p.final_article,
+                    currency=request.currency.upper(),
+                    effective_date=request.effective_date,
                     site_id=request.site_id,
+                    unresolved_reason="No repository snapshot is loaded",
                 )
-                base_by_item = {
-                    str(row.Item): (
-                        None if row.price is None else float(row.price)
-                    )
-                    for row in base_rows
-                }
+                for p in permutations
+            ]
 
-                option_items = sorted({
-                    p.final_article for p in direct if p.options and p.final_article
-                })
-                inc_rows = (
-                    repo.fetch_item_option_increment_prices(
-                        option_items,
-                        request.currency.upper(),
-                        request.effective_date,
-                        request.site_id,
-                        conn,
-                    )
-                    if option_items
-                    else []
-                )
-                inc_by_item: dict[str, dict[str, dict[str, float]]] = {}
-                fabric_by_item: dict[str, dict[str, dict[str, float]]] = {}
-                fabric_targets_by_item: dict[str, dict[str, list[str]]] = {}
-
-                for row in inc_rows:
-                    item = str(row.Item)
-                    group = str(getattr(row, "OptionId", "") or "")
-                    code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
-                    if not code:
-                        continue
-                    value = getattr(row, "IncPrice", None)
-                    price = 0.0 if value is None else float(value)
-                    inc_by_item.setdefault(item, {}).setdefault(group, {})[code] = price
-
-                    is_fabric = int(getattr(row, "IsFabric", 0) or 0)
-                    if is_fabric == 1 and code.endswith("#") and value is not None:
-                        fabric_by_item.setdefault(item, {}).setdefault(group, {})[code] = price
-                    elif is_fabric == 2:
-                        parent_group = str(getattr(row, "ParentOptId", "") or "")
-                        if parent_group:
-                            fabric_targets_by_item.setdefault(item, {}).setdefault(
-                                code, []
-                            ).append(parent_group)
-
-                for permutation in direct:
-                    item = permutation.final_article
-                    base = base_by_item.get(item)
-                    if base is None:
-                        results_by_id[permutation.article_id] = ArticlePrice(
-                            article_id=permutation.article_id,
-                            article_code=item,
-                            currency=request.currency.upper(),
-                            effective_date=request.effective_date,
-                            site_id=request.site_id,
-                            unresolved_reason="PDM base price could not be resolved",
-                        )
-                        continue
-
-                    codes = [value.code for value in permutation.options if value.code]
-                    upcharge = SifValidationService._match_inc_groups(
-                        inc_by_item.get(item, {}),
-                        codes,
-                        fabric_by_item.get(item, {}),
-                        fabric_targets_by_item.get(item, {}),
-                    )
-
-                    results_by_id[permutation.article_id] = ArticlePrice(
-                        article_id=permutation.article_id,
-                        article_code=item,
-                        currency=request.currency.upper(),
-                        effective_date=request.effective_date,
-                        site_id=request.site_id,
-                        base_price=base,
-                        option_increments=tuple(),
-                        total_price=round(base + upcharge, 2),
-                    )
-            finally:
-                conn.close()
-
+        results: list[ArticlePrice] = []
         for permutation in permutations:
-            if permutation.article_id in results_by_id:
+            rows = self._select_rows(
+                snapshot.price_records,
+                permutation.final_article,
+                request.currency,
+                request.effective_date,
+            )
+
+            if not rows:
+                results.append(ArticlePrice(
+                    article_id=permutation.article_id,
+                    article_code=permutation.final_article,
+                    currency=request.currency.upper(),
+                    effective_date=request.effective_date,
+                    site_id=request.site_id,
+                    unresolved_reason="Repository price could not be resolved for article/date/currency",
+                ))
                 continue
-            results_by_id[permutation.article_id] = ArticlePrice(
+
+            codes = {
+                str(value.code or value.value or "").strip().upper()
+                for value in permutation.all_values
+                if str(value.code or value.value or "").strip()
+            }
+
+            base_rows = [
+                row for row in rows
+                if str(getattr(row, "level", "") or "B").upper() == "B"
+                and self._condition_matches(
+                    str(getattr(row, "variant_condition", "") or ""), codes
+                )
+            ]
+            if not base_rows:
+                results.append(ArticlePrice(
+                    article_id=permutation.article_id,
+                    article_code=permutation.final_article,
+                    currency=request.currency.upper(),
+                    effective_date=request.effective_date,
+                    site_id=request.site_id,
+                    unresolved_reason="Repository base price could not be resolved",
+                ))
+                continue
+
+            base = float(base_rows[0].value)
+            increment_rows = [
+                row for row in rows
+                if str(getattr(row, "level", "") or "").upper() != "B"
+                and self._condition_matches(
+                    str(getattr(row, "variant_condition", "") or ""), codes
+                )
+            ]
+
+            increments = tuple(
+                (
+                    str(getattr(row, "variant_condition", "") or ""),
+                    float(row.value),
+                )
+                for row in increment_rows
+            )
+            total = round(base + sum(value for _, value in increments), 2)
+
+            results.append(ArticlePrice(
                 article_id=permutation.article_id,
                 article_code=permutation.final_article,
                 currency=request.currency.upper(),
                 effective_date=request.effective_date,
                 site_id=request.site_id,
-                unresolved_reason="Article has no direct price",
-            )
+                base_price=base,
+                option_increments=increments,
+                total_price=total,
+            ))
 
-        return [results_by_id[p.article_id] for p in permutations if p.article_id in results_by_id]
+        return results

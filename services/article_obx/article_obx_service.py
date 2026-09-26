@@ -1,4 +1,4 @@
-"""Orchestrate article permutation, PDM pricing, and OBX generation."""
+"""Orchestrate repository article permutation, pricing, and OBX generation."""
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
@@ -12,13 +12,14 @@ from services.xocd_export_service import XocdExportService
 
 
 class ArticleObxService(BaseService):
-    """Generate an OBX from real Snapshot articles at a specified price date."""
+    """Generate an OBX from repository Snapshot articles at a specified price date."""
 
     def generate(self, currency: str, effective_date: str, site_id: int = 1,
                  manufacturer_id: str = "HM", series_id: str | None = None,
                  ofml_class_suffix: str = "_OPT",
                  exclude_features: set[str] | None = None) -> ArticleObxResult:
-        snapshot = self.context.active_snapshot
+        # Article OBX is repository-driven. Never fall back to a PDM snapshot.
+        snapshot = self.context.repository_snapshot
         result = ArticleObxResult()
         if snapshot is None or snapshot.product is None:
             result.warnings.append("No active snapshot.")

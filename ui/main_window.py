@@ -44,6 +44,7 @@ from ui.pages.text_page import TextPage
 from ui.pages.maintenance_page import MaintenancePage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
 from ui.pages.obx_validation_page import ObxValidationPage
+from ui.pages.article_obx_generator_page import ArticleObxGeneratorPage
 from ui.pages.module_home_page import ModuleHomePage
 from ui.pages.module_placeholder_page import ModulePlaceholderPage
 from workflow.host import WorkspaceHost
@@ -113,7 +114,14 @@ class MainWindow(QMainWindow):
 
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
-        if step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
+        if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
+            if self._context.repository_snapshot is None:
+                self.statusBar().showMessage(
+                    "Article OBX Generator - load a repository snapshot first"
+                )
+            else:
+                self.statusBar().showMessage("Ready - Article OBX Generator workspace")
+        elif step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
             self.statusBar().showMessage(
                 f"{title} - load a product on the Product page first"
             )
@@ -286,6 +294,7 @@ class MainWindow(QMainWindow):
             # CET SIF Validation - unused when the step is disconnected in core.workflow.
             WorkflowStep.CET_SIF_VALIDATION: CetSifValidationPage,
             WorkflowStep.OBX_VALIDATION: ObxValidationPage,
+            WorkflowStep.ARTICLE_OBX_GENERATOR: ArticleObxGeneratorPage,
         }
 
         self._refreshable_pages: list[BasePage] = []

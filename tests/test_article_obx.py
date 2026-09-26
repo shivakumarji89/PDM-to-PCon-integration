@@ -10,6 +10,7 @@ from models.product import Product
 from models.property import Property
 from models.property_value import PropertyValue
 from models.snapshot import Snapshot
+from models.price_record import PriceRecord
 from services.article_obx.article_obx_models import ArticleObxRow, ArticlePrice
 from services.article_obx.article_obx_service import ArticleObxService
 from services.article_obx.article_permutation_service import ArticlePermutationService
@@ -17,6 +18,7 @@ from services.article_obx.article_permutation_service import ArticlePermutationS
 
 class _Context:
     active_snapshot = None
+    repository_snapshot = None
 
 
 class ArticleObxPermutationTests(unittest.TestCase):
@@ -172,46 +174,39 @@ class ArticleObxPermutationTests(unittest.TestCase):
 
 
 class ArticleObxPriceTests(unittest.TestCase):
-    def test_super_item_is_priced_as_concrete_pdm_item(self):
-        from services.article_obx.article_price_service import ArticlePriceRequest, ArticlePriceService
+    def test_resolves_price_from_repository_snapshot(self):
+        from services.article_obx.article_price_service import (
+            ArticlePriceRequest,
+            ArticlePriceService,
+        )
 
-        class _Repo:
-            def get_connection(self):
-                return object()
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[
+                Article(id="a1", product_id="p1", code="SUPER-1", is_super_item=True)
+            ],
+            price_records=[
+                PriceRecord(
+                    article_code="SUPER-1",
+                    level="B",
+                    value=250.0,
+                    currency="EUR",
+                    valid_from="20260901",
+                    valid_to="99991231",
+                ),
+            ],
+        )
 
-        # The repository/service interaction is patched at the service class
-        # boundary so this remains a pure unit test.
-        import services.article_obx.article_price_service as price_module
+        context = _Context()
+        context.repository_snapshot = snapshot
+        permutation = ArticlePermutationService(context).build(snapshot)[0]
+        prices = ArticlePriceService(context).resolve(
+            [permutation],
+            ArticlePriceRequest(currency="EUR", effective_date="20260903"),
+        )
 
-        original_repo = price_module.PDMRepository
-        class _FakeRepo:
-            def __init__(self, context):
-                pass
-            def get_connection(self):
-                return object()
-            def fetch_item_base_prices(self, items, currency, effective_date, connection=None, site_id=1):
-                class Row:
-                    Item = "SUPER-1"
-                    price = 250
-                return [Row()]
-            def fetch_item_option_increment_prices(self, *args, **kwargs):
-                return []
-        price_module.PDMRepository = _FakeRepo
-        try:
-            permutation = ArticlePermutationService(_Context()).build(
-                Snapshot(
-                    product=Product(id="p1", name="Test"),
-                    articles=[Article(id="a1", product_id="p1", code="SUPER-1", is_super_item=True)],
-                )
-            )[0]
-            prices = ArticlePriceService(_Context()).resolve(
-                [permutation],
-                ArticlePriceRequest(currency="EUR", effective_date="03-Sep-2026"),
-            )
-            self.assertEqual(prices[0].total_price, 250.0)
-            self.assertEqual(prices[0].unresolved_reason, "")
-        finally:
-            price_module.PDMRepository = original_repo
+        self.assertEqual(prices[0].total_price, 250.0)
+        self.assertEqual(prices[0].unresolved_reason, "")
 
 
 class ArticleObxXmlTests(unittest.TestCase):
