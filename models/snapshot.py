@@ -76,6 +76,14 @@ class Snapshot:
     # offered by that product (the product-level option config).
     product_option_value_ids: dict[str, list[str]] = field(default_factory=dict)
 
+    # Repository/MDB links: base Article -> its property classes and code scheme.
+    # These are the authoritative inputs for repository-driven permutation generation.
+    article_class_ids: dict[str, list[str]] = field(default_factory=dict)
+    article_code_scheme_ids: dict[str, str] = field(default_factory=dict)
+    # CodeScheme id -> repository code-scheme definition (name/body and any
+    # additional columns preserved by the importer).
+    code_schemes: dict[str, dict[str, str]] = field(default_factory=dict)
+
     # Super-product BOM from PDM ``ItemComponents``: article/ItemId -> the
     # sub-items it is composed of, each ``{sub_item, quantity, sequence}``.
     article_components: dict[str, list[dict]] = field(default_factory=dict)
