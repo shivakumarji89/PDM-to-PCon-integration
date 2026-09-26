@@ -86,6 +86,28 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertEqual([v.value_id for v in permutations[0].options], ["ov1"])
         self.assertEqual(permutations[0].options[0].code, "BLU")
 
+    def test_optional_unselected_option_is_allowed(self):
+        finish = Option(id="o1", name="Finish", display_order=1)
+        finish.values = [
+            OptionValue(id="ov1", option_id="o1", value="Blue", code="BLU"),
+        ]
+        frame = Option(id="o2", name="Frame", display_order=2)
+        frame.values = [
+            OptionValue(id="ov2", option_id="o2", value="Black", code="BLK"),
+        ]
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[Article(id="a1", product_id="p1", code="BASEBLU")],
+            article_sets=[ArticleSet(id="set1", base_code="BASE", article_ids=["a1"])],
+            options=[finish, frame],
+            option_values=finish.values + frame.values,
+            product_option_value_ids={"p1": ["ov1", "ov2"]},
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual([v.value_id for v in permutations[0].options], ["ov1"])
+
     def test_ambiguous_option_code_does_not_guess(self):
         option = Option(id="o1", name="Finish", display_order=1)
         option.values = [
