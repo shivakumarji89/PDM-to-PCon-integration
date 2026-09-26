@@ -130,6 +130,24 @@ class MDBService(BaseService):
             return []
         return batch.results[0].rows
 
+    def read_tables(self, mdb_path: str | Path, sql_by_name: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
+        """Run multiple SELECTs in one MDB/ADODB session.
+
+        This is substantially faster than calling ``read_table`` repeatedly,
+        because the 32-bit PowerShell/ACE bridge is started only once.
+        """
+        if not sql_by_name:
+            return {}
+        ops = [{"op": "query", "sql": sql} for sql in sql_by_name.values()]
+        batch = self.execute_batch(mdb_path, ops)
+        if not batch.results:
+            return {name: [] for name in sql_by_name}
+        names = list(sql_by_name)
+        return {
+            name: batch.results[index].rows if index < len(batch.results) and batch.results[index].ok else []
+            for index, name in enumerate(names)
+        }
+
     def clear_tables(self, mdb_path: str | Path, tables: list[str]) -> MDBBatchResult:
         """DELETE all rows from each named table."""
         return self.execute_batch(mdb_path, [{"op": "delete", "table": t} for t in tables])
