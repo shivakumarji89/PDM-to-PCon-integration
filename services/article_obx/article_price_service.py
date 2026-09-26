@@ -31,7 +31,10 @@ class ArticlePriceService(BaseService):
         if not request.effective_date.strip():
             raise ValueError("effective_date is required")
 
-        direct = [p for p in permutations if not p.is_super_item]
+        # PDM exposes list pricing for Items, including super-items. The
+        # existing SIF/OBX pricing path resolves the concrete Item code directly;
+        # do not invent component-price aggregation here.
+        direct = [p for p in permutations if p.final_article]
         results_by_id: dict[str, ArticlePrice] = {}
 
         if direct:
@@ -135,12 +138,7 @@ class ArticlePriceService(BaseService):
                 currency=request.currency.upper(),
                 effective_date=request.effective_date,
                 site_id=request.site_id,
-                unresolved_reason=(
-                    "Super-item component pricing is not yet resolved by the "
-                    "Article OBX module"
-                    if permutation.is_super_item
-                    else "Article has no direct price"
-                ),
+                unresolved_reason="Article has no direct price",
             )
 
         return [results_by_id[p.article_id] for p in permutations if p.article_id in results_by_id]
