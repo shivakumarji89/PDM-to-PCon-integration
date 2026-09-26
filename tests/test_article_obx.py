@@ -3,12 +3,11 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from models.article import Article
-from models.article_set import ArticleSet, SetAttribute, SetValue
 from models.price_record import PriceRecord
 from models.product import Product
 from models.property import Property, PropertyValue
-from models.option import Option, OptionValue
 from models.snapshot import Snapshot
+from models.engineering_class import EngineeringClass, ClassPropertyAssignment
 from services.article_obx.article_obx_models import ArticleObxRow, ArticlePrice
 from services.article_obx.article_obx_service import ArticleObxService
 from services.article_obx.article_permutation_service import ArticlePermutationService
@@ -22,107 +21,102 @@ class _Context:
 def _base_snapshot() -> Snapshot:
     finish = Property(id="finish", name="Finish", display_order=1)
     finish.values = [
-        PropertyValue(id="oak", property_id="finish", value="Oak"),
-        PropertyValue(id="walnut", property_id="finish", value="Walnut"),
+        PropertyValue(id="oak", property_id="finish", value="Oak", code="A"),
+        PropertyValue(id="walnut", property_id="finish", value="Walnut", code="B"),
     ]
 
-    fabric = Option(id="fabric", name="Fabric", display_order=2)
-    fabric.values = [
-        OptionValue(id="blue", option_id="fabric", value="Blue", code="BLU"),
-        OptionValue(id="red", option_id="fabric", value="Red", code="RED"),
+    color = Property(id="color", name="Color", display_order=2)
+    color.values = [
+        PropertyValue(id="blue", property_id="color", value="Blue", code="C"),
+        PropertyValue(id="red", property_id="color", value="Red", code="D"),
+    ]
+
+    engineering_class = EngineeringClass(id="mdb:class:1", name="Article")
+    engineering_class.properties = [
+        ClassPropertyAssignment(property_id="finish", property_name="Finish"),
+        ClassPropertyAssignment(property_id="color", property_name="Color"),
     ]
 
     return Snapshot(
-        product=Product(id="p1", code="BASE", name="Test"),
-        properties=[finish],
-        property_values=finish.values,
-        options=[fabric],
-        option_values=fabric.values,
-        config_value_codes={
-            "finish": {
-                "oak": "A",
-                "walnut": "B",
-            }
-        },
-        article_sets=[
-            ArticleSet(
-                id="set1",
-                base_code="BASE",
-                article_ids=["evidence-a", "evidence-b"],
-                properties=[
-                    SetAttribute(
-                        id="finish",
-                        name="Finish",
-                        values=[
-                            SetValue(id="oak", value="Oak", article_ids=["evidence-a"]),
-                            SetValue(id="walnut", value="Walnut", article_ids=["evidence-b"]),
-                        ],
-                    )
-                ],
-                options=[
-                    SetAttribute(
-                        id="fabric",
-                        name="Fabric",
-                        values=[
-                            SetValue(id="blue", value="Blue", code="BLU", article_ids=["evidence-a"]),
-                            SetValue(id="red", value="Red", code="RED", article_ids=["evidence-b"]),
-                        ],
-                    )
-                ],
+        product=Product(id="mdb:package:1", code="TEST", name="Test"),
+        articles=[
+            Article(
+                id="mdb:article:100",
+                product_id="mdb:package:1",
+                code="BASE",
+                name="Base article",
+                source="MDB",
             )
         ],
+        properties=[finish, color],
+        property_values=finish.values + color.values,
+        article_class_ids={"mdb:article:100": ["mdb:class:1"]},
+        article_code_scheme_ids={"mdb:article:100": "scheme-1"},
+        code_schemes={
+            "scheme-1": {
+                "name": "BASE",
+                "body": "@,@,Article:Finish Article:Color",
+            }
+        },
+        engineering=type(
+            "Engineering",
+            (),
+            {"classes": [engineering_class], "families": []},
+        )(),
     )
 
 
 class ArticleObxPermutationTests(unittest.TestCase):
-    def test_generates_permutations_from_values_not_existing_articles(self):
+    def test_generates_permutations_from_repository_values(self):
         snapshot = _base_snapshot()
-        snapshot.articles = [
-            Article(id="a1", product_id="p1", code="EXISTING-ONLY")
-        ]
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
         self.assertEqual(
             [p.final_article for p in permutations],
-            ["BASEABLU", "BASEARED", "BASEBBLU", "BASEBRED"],
+            ["BASEAC", "BASEAD", "BASEBC", "BASEBD"],
         )
         self.assertEqual(len(permutations), 4)
-        self.assertTrue(all(p.article_id == "" for p in permutations))
+        self.assertEqual(permutations[0].article_id, "mdb:article:100")
 
-    def test_property_encoding_uses_repository_configuration_code(self):
+    def test_uses_code_scheme_property_order_for_encoding(self):
         snapshot = _base_snapshot()
-        permutations = ArticlePermutationService(_Context()).build(snapshot)
-
-        oak_blue = next(p for p in permutations if p.final_article == "BASEABLU")
-        self.assertEqual(oak_blue.properties[0].code, "A")
-        self.assertEqual(oak_blue.options[0].code, "BLU")
-
-    def test_option_dependency_requires_parent_selection(self):
-        snapshot = _base_snapshot()
-        snapshot.option_option_dependencies = {"blue": ["red"]}
+        snapshot.code_schemes["scheme-1"]["body"] = "@,@,Article:Color Article:Finish"
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
-        # The dependency is intentionally contradictory for this test: red can
-        # only be selected when blue is selected. Since the option is single-
-        # selection in a permutation, red-only is removed.
-        self.assertNotIn("BASEARED", [p.final_article for p in permutations])
-        self.assertIn("BASEABLU", [p.final_article for p in permutations])
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASECA", "BASECB", "BASEDA", "BASEDB"],
+        )
+
+    def test_artbase_restriction_limits_values(self):
+        snapshot = _base_snapshot()
+        snapshot.art_base = {
+            "BASE": {
+                "finish": ["oak"],
+                "color": ["blue", "red"],
+            }
+        }
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASEAC", "BASEAD"],
+        )
 
     def test_attribute_exclusion_removes_invalid_combination(self):
         snapshot = _base_snapshot()
-        snapshot.attribute_value_exclusions = {"oak": ["walnut"], "walnut": ["oak"]}
+        snapshot.attribute_value_exclusions = {
+            "oak": ["red"],
+            "red": ["oak"],
+        }
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
-        self.assertEqual(len(permutations), 4)
-        # The exclusion is between two values of the same property, so it does
-        # not remove any valid one-of-two property selection.
-        self.assertEqual(
-            {p.final_article for p in permutations},
-            {"BASEABLU", "BASEARED", "BASEBBLU", "BASEBRED"},
-        )
+        self.assertNotIn("BASEAD", [p.final_article for p in permutations])
+        self.assertIn("BASEAC", [p.final_article for p in permutations])
 
     def test_relation_precondition_is_applied(self):
         snapshot = _base_snapshot()
@@ -141,18 +135,8 @@ class ArticleObxPermutationTests(unittest.TestCase):
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
-        self.assertNotIn("BASEARED", [p.final_article for p in permutations])
-        self.assertNotIn("BASEBRED", [p.final_article for p in permutations])
-
-    def test_optional_option_produces_unselected_permutation(self):
-        snapshot = _base_snapshot()
-        snapshot.article_sets[0].options[0].values[1].article_ids = []
-        snapshot.article_sets[0].options[0].values[0].article_ids = ["evidence-a", "evidence-b"]
-
-        permutations = ArticlePermutationService(_Context()).build(snapshot)
-
-        self.assertIn("BASEA", [p.final_article for p in permutations])
-        self.assertIn("BASEB", [p.final_article for p in permutations])
+        self.assertNotIn("BASEAD", [p.final_article for p in permutations])
+        self.assertNotIn("BASEBD", [p.final_article for p in permutations])
 
 
 class ArticleObxPriceTests(unittest.TestCase):
@@ -165,7 +149,7 @@ class ArticleObxPriceTests(unittest.TestCase):
         snapshot = _base_snapshot()
         snapshot.price_records = [
             PriceRecord(
-                article_code="BASEABLU",
+                article_code="BASEAC",
                 level="B",
                 value=250.0,
                 currency="EUR",
@@ -182,7 +166,7 @@ class ArticleObxPriceTests(unittest.TestCase):
             ArticlePriceRequest(currency="EUR", effective_date="20260903"),
         )
 
-        self.assertEqual(prices[0].article_code, "BASEABLU")
+        self.assertEqual(prices[0].article_code, "BASEAC")
         self.assertEqual(prices[0].total_price, 250.0)
         self.assertEqual(prices[0].unresolved_reason, "")
 
@@ -193,7 +177,7 @@ class ArticleObxXmlTests(unittest.TestCase):
         service = ArticleObxService(_Context())
         permutation = ArticlePermutationService(_Context()).build(snapshot)[0]
         price = ArticlePrice(
-            article_id="",
+            article_id=permutation.article_id,
             article_code=permutation.final_article,
             currency="EUR",
             effective_date="03-Sep-2026",
