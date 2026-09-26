@@ -66,6 +66,45 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertEqual(permutations[0].base_code, "BASE123")
         self.assertEqual(permutations[0].final_article, "BASE123-OAK")
 
+    def test_resolves_unique_option_selection_from_article_suffix(self):
+        option = Option(id="o1", name="Finish", display_order=1)
+        option.values = [
+            OptionValue(id="ov1", option_id="o1", value="Blue", code="BLU"),
+            OptionValue(id="ov2", option_id="o1", value="Red", code="RED"),
+        ]
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[Article(id="a1", product_id="p1", code="BASEBLU")],
+            article_sets=[ArticleSet(id="set1", base_code="BASE", article_ids=["a1"])],
+            options=[option],
+            option_values=list(option.values),
+            product_option_value_ids={"p1": ["ov1", "ov2"]},
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual([v.value_id for v in permutations[0].options], ["ov1"])
+        self.assertEqual(permutations[0].options[0].code, "BLU")
+
+    def test_ambiguous_option_code_does_not_guess(self):
+        option = Option(id="o1", name="Finish", display_order=1)
+        option.values = [
+            OptionValue(id="ov1", option_id="o1", value="Blue 1", code="BLU"),
+            OptionValue(id="ov2", option_id="o1", value="Blue 2", code="BLU"),
+        ]
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[Article(id="a1", product_id="p1", code="BASEBLU")],
+            article_sets=[ArticleSet(id="set1", base_code="BASE", article_ids=["a1"])],
+            options=[option],
+            option_values=list(option.values),
+            product_option_value_ids={"p1": ["ov1", "ov2"]},
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(permutations[0].options, ())
+
     def test_does_not_treat_product_option_offers_as_selected_options(self):
         option = Option(id="o1", name="Finish")
         option.values = [
