@@ -206,12 +206,20 @@ class ArticlePermutationService(BaseService):
 
         return properties, options
 
-    @staticmethod
-    def _decoded_codes(snapshot: Snapshot) -> dict[str, dict[str, str]]:
+    def _decoded_codes(self, snapshot: Snapshot) -> dict[str, dict[str, str]]:
         try:
-            return snapshot.config_value_codes or {}
+            cached = snapshot.config_value_codes or {}
         except AttributeError:
-            return {}
+            cached = {}
+        if cached:
+            return cached
+        service = getattr(self.context, "engineering_class_service", None)
+        if service is not None:
+            try:
+                return service.resolve_config_codes(snapshot)
+            except Exception:
+                pass
+        return {}
 
     @staticmethod
     def _valid_exclusions(snapshot: Snapshot, selected_ids: set[str]) -> bool:
@@ -224,19 +232,6 @@ class ArticlePermutationService(BaseService):
     @staticmethod
     def _valid_dependencies(snapshot: Snapshot, selected_ids: set[str]) -> bool:
         """A selected dependent value requires its enabling parent selection."""
-        edges: dict[str, Iterable[str]] = {}
-        for source, destinations in (
-            (getattr(snapshot, "attribute_option_dependencies", {}) or {}).items(),
-            (getattr(snapshot, "option_option_dependencies", {}) or {}).items(),
-        ):
-            edges.setdefault(str(source), ())
-            edges[str(source)] = tuple(
-                set(edges[str(source)]) | {str(destination)}
-                for destination in destinations or ()
-            ) if False else tuple(
-                set(edges.get(str(source), ())) | {str(destination)}
-                for destination in destinations or ()
-            )
         incoming: dict[str, set[str]] = {}
         for source, destinations in (
             list((getattr(snapshot, "attribute_option_dependencies", {}) or {}).items())
