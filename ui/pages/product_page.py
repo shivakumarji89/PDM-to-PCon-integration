@@ -674,7 +674,7 @@ class ProductPage(BasePage):
         return page
 
     def _build_repository_context(self) -> QWidget:
-        """Repository Workspace shown only in the Maintenance module."""
+        """Repository Workspace shown for modules that operate on published repositories."""
         page = QWidget(self)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -887,7 +887,7 @@ class ProductPage(BasePage):
             return
 
         self._context.register_repository_snapshot(snapshot)
-        if self._context_module in (WorkbenchModule.MAINTENANCE, WorkbenchModule.BULK_UPDATE, WorkbenchModule.ARTICLE_OBX_GENERATOR):
+        if self._context_module in (\n            WorkbenchModule.MAINTENANCE,\n            WorkbenchModule.BULK_UPDATE,\n            WorkbenchModule.QA_VALIDATION,\n        ):
             self._context.activate_snapshot_source("repository")
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
