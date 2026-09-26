@@ -560,6 +560,12 @@ class PDMService(BaseService):
                     [a.code for a in snapshot.articles], component_rows
                 ), conn
             )
+            attribute_dependency_rows = self.repository.fetch_attribute_option_dependencies(
+                str(snapshot.product.id), connection=conn
+            )
+            option_dependency_rows = self.repository.fetch_option_option_dependencies(
+                str(snapshot.product.id), connection=conn
+            )
         finally:
             if own and conn is not None:
                 conn.close()
@@ -570,6 +576,16 @@ class PDMService(BaseService):
         snapshot.article_components = self._index_item_components(component_rows)
         snapshot.component_head_attrs = component_head_attrs
         snapshot.option_increments = option_increments
+        snapshot.attribute_option_dependencies = {
+            str(row.AttributeValueId): [str(row.AdditionalOptionValueId)]
+            for row in attribute_dependency_rows
+            if row.AttributeValueId is not None and row.AdditionalOptionValueId is not None
+        }
+        snapshot.option_option_dependencies = {
+            str(row.OptionValueId): [str(row.AdditionalOptionValueId)]
+            for row in option_dependency_rows
+            if row.OptionValueId is not None and row.AdditionalOptionValueId is not None
+        }
         snapshot.article_prefix_length = self._index_article_prefix_lengths(
             prefix_rows, master_rows
         )
