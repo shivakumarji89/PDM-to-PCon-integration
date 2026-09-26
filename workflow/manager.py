@@ -89,7 +89,18 @@ class WorkflowManager(QObject):
             WorkflowStep.CET_SIF_VALIDATION,
             WorkflowStep.OBX_VALIDATION,
         }
+
+        # Article OBX Generator works from the published repository snapshot,
+        # not from the active PDM product snapshot. Loading the repository must
+        # therefore unlock this workflow even when no PDM product is selected.
+        repository_ready = (
+            WorkflowStep.ARTICLE_OBX_GENERATOR in self._steps
+            and self._context.repository_snapshot is not None
+        )
         always = {self._steps[0]} | (standalone & set(self._steps))
+        if repository_ready:
+            always.add(WorkflowStep.ARTICLE_OBX_GENERATOR)
+
         if self._product_loaded():
             return set(self._steps)
         return always
