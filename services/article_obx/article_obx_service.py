@@ -18,7 +18,8 @@ class ArticleObxService(BaseService):
                  manufacturer_id: str = "HM", series_id: str | None = None,
                  ofml_class_suffix: str = "_OPT",
                  exclude_features: set[str] | None = None) -> ArticleObxResult:
-        snapshot = self.context.active_snapshot
+        # Article OBX is repository-driven. Never fall back to a PDM snapshot.
+        snapshot = self.context.repository_snapshot
         result = ArticleObxResult()
         if snapshot is None or snapshot.product is None:
             result.warnings.append("No active snapshot.")
