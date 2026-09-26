@@ -880,6 +880,9 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "article_property_value_ids": snapshot.article_property_value_ids,
         "product_property_value_ids": snapshot.product_property_value_ids,
         "product_option_value_ids": snapshot.product_option_value_ids,
+        "article_class_ids": snapshot.article_class_ids,
+        "article_code_scheme_ids": snapshot.article_code_scheme_ids,
+        "code_schemes": snapshot.code_schemes,
         "article_components": snapshot.article_components,
         "component_head_attrs": snapshot.component_head_attrs,
         "article_varcond_terms": snapshot.article_varcond_terms,
@@ -963,6 +966,18 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
         product_option_value_ids={
             str(k): [str(v) for v in vals]
             for k, vals in (data.get("product_option_value_ids") or {}).items()
+        },
+        article_class_ids={
+            str(k): [str(v) for v in vals]
+            for k, vals in (data.get("article_class_ids") or {}).items()
+        },
+        article_code_scheme_ids={
+            str(k): str(v)
+            for k, v in (data.get("article_code_scheme_ids") or {}).items()
+        },
+        code_schemes={
+            str(k): {str(f): str(value) for f, value in (row or {}).items()}
+            for k, row in (data.get("code_schemes") or {}).items()
         },
         article_components={
             str(k): list(v or [])
