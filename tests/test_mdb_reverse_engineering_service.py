@@ -25,6 +25,13 @@ class FakeMDB:
         table = sql.split("[")[-1].split("]")[0]
         return self.rows.get(table, [])
 
+    def read_tables(self, path, sql_by_name):
+        self.calls.append((Path(path), sql_by_name))
+        return {
+            name: self.rows.get(name, [])
+            for name in sql_by_name
+        }
+
 
 class FakeContext:
     def __init__(self):
@@ -50,7 +57,7 @@ class MdbReverseEngineeringServiceTests(unittest.TestCase):
         self.assertEqual(result.first("tCOMd_Article")["com_ArticleCode"], "A100")
         self.assertNotIn("tCOMd_Price", result.tables)
         self.assertEqual(set(result.tables), set(STRUCTURAL_TABLES))
-        self.assertTrue(self.context.mdb_service.calls)
+        self.assertEqual(len(self.context.mdb_service.calls), 1)
 
     def test_read_can_explicitly_include_prices(self):
         result = self.service.read(self.mdb, include_prices=True)
