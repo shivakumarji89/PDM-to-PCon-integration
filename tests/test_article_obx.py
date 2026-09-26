@@ -3,6 +3,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from models.article import Article
+from models.article_set import ArticleSet
 from models.option import Option
 from models.option_value import OptionValue
 from models.product import Product
@@ -21,7 +22,7 @@ class _Context:
 class ArticleObxPermutationTests(unittest.TestCase):
     def test_uses_real_articles_not_cartesian_product(self):
         snapshot = Snapshot(
-            product=Product(id="p1", name="Test", product="TEST"),
+            product=Product(id="p1", name="Test"),
             articles=[
                 Article(id="a1", product_id="p1", code="BASE-A"),
                 Article(id="a2", product_id="p1", code="BASE-B"),
@@ -45,10 +46,47 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertEqual(permutations[0].properties[0].code, "OAK")
         self.assertEqual(permutations[1].properties[0].code, "WAL")
 
+    def test_uses_materialized_article_set_base_code(self):
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[
+                Article(id="a1", product_id="p1", code="BASE123-OAK"),
+            ],
+            article_sets=[
+                ArticleSet(
+                    id="set1",
+                    base_code="BASE123",
+                    article_ids=["a1"],
+                )
+            ],
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(permutations[0].base_code, "BASE123")
+        self.assertEqual(permutations[0].final_article, "BASE123-OAK")
+
+    def test_does_not_treat_product_option_offers_as_selected_options(self):
+        option = Option(id="o1", name="Finish")
+        option.values = [
+            OptionValue(id="ov1", option_id="o1", value="Blue", code="BLU")
+        ]
+        snapshot = Snapshot(
+            product=Product(id="p1", name="Test"),
+            articles=[Article(id="a1", product_id="p1", code="BASE-A")],
+            options=[option],
+            option_values=list(option.values),
+            product_option_value_ids={"p1": ["ov1"]},
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(permutations[0].options, ())
+
 
 class ArticleObxXmlTests(unittest.TestCase):
     def test_render_contains_effective_price_date(self):
-        snapshot = Snapshot(product=Product(id="p1", name="Test", product="TEST"))
+        snapshot = Snapshot(product=Product(id="p1", name="Test"))
         service = ArticleObxService(_Context())
         permutation = ArticlePermutationService(_Context()).build(
             Snapshot(
