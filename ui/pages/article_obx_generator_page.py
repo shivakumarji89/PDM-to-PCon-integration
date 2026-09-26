@@ -187,7 +187,7 @@ class ArticleObxGeneratorPage(BasePage):
             if str(price.currency or "").strip()
         })
         self._currency.addItems(currencies)
-        self._build_button.setEnabled(bool(snapshot.article_sets))
+        self._build_button.setEnabled(bool(snapshot.articles))
         self._build_permutations()
 
     def is_ready(self) -> bool:
