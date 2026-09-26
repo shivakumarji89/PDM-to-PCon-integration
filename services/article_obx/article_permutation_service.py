@@ -10,7 +10,17 @@ from services.article_obx.article_obx_models import (
 
 
 class ArticlePermutationService(BaseService):
-    """Build one configuration record for each real Snapshot article."""
+    """Build deterministic permutations from the concrete PDM article set.
+
+    The Snapshot already contains the materialised PDM Items (Articles). Those
+    Items are the authoritative proof that a configuration exists. This service
+    therefore does not invent a Cartesian product of product-level values.
+
+    Product-level option values are availability data, not article selections.
+    They are intentionally not copied into ArticlePermutation.options unless
+    the same value id is explicitly present in the article's concrete value
+    links. This prevents every offered option from being priced as selected.
+    """
 
     def build(self, snapshot: Snapshot | None = None) -> list[ArticlePermutation]:
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
@@ -39,19 +49,34 @@ class ArticlePermutationService(BaseService):
             if option.id is not None
         }
 
+        # Materialised ArticleSet is the established source for the reduced/base
+        # article number. It is a derived view of the same Snapshot, not a new
+        # domain entity.
+        base_by_article: dict[str, str] = {}
+        for article_set in getattr(snapshot, "article_sets", []) or []:
+            base = (article_set.base_code or "").strip()
+            for article_id in article_set.article_ids:
+                article_id = str(article_id)
+                if article_id not in base_by_article and base:
+                    base_by_article[article_id] = base
+
         permutations: list[ArticlePermutation] = []
+        seen_article_ids: set[str] = set()
+
         for article in snapshot.articles:
             article_id = str(article.id or "")
-            if not article_id or not article.code:
+            article_code = (article.code or "").strip()
+            if not article_id or not article_code or article_id in seen_article_ids:
                 continue
+            seen_article_ids.add(article_id)
 
             property_values: list[ArticleConfigurationValue] = []
             option_values: list[ArticleConfigurationValue] = []
 
-            # BaseAttributeValues are the concrete article configuration. Do not
-            # expand product-level values into combinations: the article itself
-            # is the authoritative proof that this configuration exists.
-            value_ids = [
+            # BaseAttributeValues are the concrete article configuration.
+            # Product-level values are only a fallback when PDM supplied no
+            # article-level rows for this Item.
+            selected_ids = [
                 str(value_id)
                 for value_id in (
                     snapshot.article_property_value_ids.get(article_id, [])
@@ -61,7 +86,7 @@ class ArticlePermutationService(BaseService):
                 )
             ]
 
-            for value_id in value_ids:
+            for value_id in selected_ids:
                 pv = property_by_value.get(value_id)
                 if pv is not None:
                     prop = property_by_id.get(str(pv.property_id or ""))
@@ -79,6 +104,9 @@ class ArticlePermutationService(BaseService):
                         )
                     continue
 
+                # This branch is intentionally narrow: only an ID explicitly
+                # attached to the concrete article can become a selected option.
+                # ProductOptionValues are never treated as article selections.
                 ov = option_by_value.get(value_id)
                 if ov is not None:
                     option = option_by_id.get(str(ov.option_id or ""))
@@ -95,15 +123,21 @@ class ArticlePermutationService(BaseService):
                             )
                         )
 
-            property_values.sort(key=lambda x: (x.display_order, x.name, x.value_id))
-            option_values.sort(key=lambda x: (x.display_order, x.name, x.value_id))
+            property_values = self._dedupe_values(property_values)
+            option_values = self._dedupe_values(option_values)
+            property_values.sort(
+                key=lambda x: (x.display_order, x.name, x.value_id)
+            )
+            option_values.sort(
+                key=lambda x: (x.display_order, x.name, x.value_id)
+            )
 
             permutations.append(
                 ArticlePermutation(
                     article_id=article_id,
                     product_id=str(article.product_id or ""),
-                    base_code=article.code,
-                    final_article=article.code,
+                    base_code=base_by_article.get(article_id, article_code),
+                    final_article=article_code,
                     name=article.name or "",
                     description=article.description or "",
                     quantity=article.quantity or 1,
@@ -114,3 +148,18 @@ class ArticlePermutationService(BaseService):
             )
 
         return permutations
+
+    @staticmethod
+    def _dedupe_values(
+        values: list[ArticleConfigurationValue],
+    ) -> list[ArticleConfigurationValue]:
+        """Keep one deterministic row per configuration value id."""
+        result: list[ArticleConfigurationValue] = []
+        seen: set[str] = set()
+        for value in values:
+            key = f"{value.kind}:{value.entity_id}:{value.value_id}"
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(value)
+        return result
