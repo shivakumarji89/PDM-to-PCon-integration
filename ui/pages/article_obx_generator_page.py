@@ -19,12 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui import theme
-from ui.components import SectionHeader, StatisticsGrid
-from ui.components._styles import primary_button_qss, secondary_button_qss
+from ui.components import SectionHeader
+from ui.components._styles import primary_button_qss
 from ui.pages.base_page import BasePage
-from core.modules import WorkbenchModule
-from core.enums import WorkflowStep
 
 
 class ArticleObxGeneratorPage(BasePage):
@@ -77,7 +74,6 @@ class ArticleObxGeneratorPage(BasePage):
 
         self.add_content(source)
         self.add_content(options)
-        self.add_content(QWidget(self))
         self._content.addLayout(actions)
 
     def refresh(self) -> None:
@@ -89,12 +85,6 @@ class ArticleObxGeneratorPage(BasePage):
                 for price in snapshot.price_records
                 if str(price.currency or "").strip()
             })
-            if not currencies:
-                currencies = sorted({
-                    str(price.currency or "").upper()
-                    for price in snapshot.price_records
-                    if str(price.currency or "").strip()
-                })
             self._currency.addItems(currencies)
 
             self._status.setText(
