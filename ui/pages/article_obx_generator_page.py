@@ -1,8 +1,8 @@
 """Article OBX Generator workspace.
 
-The workspace first exposes the repository-backed article permutations. OBX
-generation is intentionally a separate later action so the user can inspect
-the resolved article list before producing a file.
+The first stage is an inspectable permutation builder. Pricing and OBX
+generation remain a later action after the generated article numbers are
+reviewed.
 """
 from __future__ import annotations
 
@@ -22,19 +22,19 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components import SectionHeader
-from ui.components._styles import primary_button_qss, secondary_button_qss
+from ui.components._styles import secondary_button_qss
 from ui.pages.base_page import BasePage
 
 
 class ArticleObxGeneratorPage(BasePage):
-    """Inspect repository article permutations before OBX generation."""
+    """Inspect repository-generated article permutations."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Article OBX Generator",
             description=(
-                "Review article permutations from the repository, then use the "
-                "selected effective date and currency for OBX generation."
+                "Generate and review valid article permutations from repository "
+                "configuration data. Pricing and OBX generation follow after review."
             ),
             parent=parent,
             show_placeholder=False,
@@ -47,14 +47,15 @@ class ArticleObxGeneratorPage(BasePage):
         self._date.setCalendarPopup(True)
         self._date.setDisplayFormat("yyyy-MM-dd")
         self._date.setDate(QDate.currentDate())
+
         self._status = QLabel("No repository snapshot loaded.", self)
         self._status.setWordWrap(True)
 
-        self._refresh_button = QPushButton("Refresh Permutations", self)
-        self._refresh_button.setStyleSheet(
-            secondary_button_qss("articleObxRefreshButton")
+        self._build_button = QPushButton("Build Permutations", self)
+        self._build_button.setStyleSheet(
+            secondary_button_qss("articleObxBuildButton")
         )
-        self._refresh_button.clicked.connect(self._load_permutations)
+        self._build_button.clicked.connect(self._build_permutations)
 
         self._build_content()
         self.refresh()
@@ -64,22 +65,22 @@ class ArticleObxGeneratorPage(BasePage):
         source_layout = QVBoxLayout(source)
         source_layout.addWidget(SectionHeader(
             "Repository Snapshot",
-            "Article permutations are derived only from the repository snapshot loaded by the workbench."
+            "Only the repository snapshot is used. Existing materialized articles are not the permutation output."
         ))
         source_layout.addWidget(self._status)
 
-        permutation_box = QGroupBox("Article Permutations", self)
+        permutation_box = QGroupBox("Generated Article Permutations", self)
         permutation_layout = QVBoxLayout(permutation_box)
 
         self._table = QTableWidget(self)
         self._table.setColumnCount(7)
         self._table.setHorizontalHeaderLabels([
-            "Article",
+            "#",
             "Base Article",
-            "Type",
+            "Generated Article",
             "Properties",
             "Options",
-            "Quantity",
+            "Configuration",
             "Status",
         ])
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -87,32 +88,33 @@ class ArticleObxGeneratorPage(BasePage):
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
+
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
         permutation_layout.addWidget(self._table)
 
-        generation = QGroupBox("OBX Parameters", self)
-        generation_layout = QHBoxLayout(generation)
-        generation_layout.addWidget(QLabel("Currency:"))
-        generation_layout.addWidget(self._currency)
-        generation_layout.addSpacing(20)
-        generation_layout.addWidget(QLabel("Effective date:"))
-        generation_layout.addWidget(self._date)
-        generation_layout.addStretch(1)
+        parameters = QGroupBox("OBX Parameters", self)
+        parameter_layout = QHBoxLayout(parameters)
+        parameter_layout.addWidget(QLabel("Currency:"))
+        parameter_layout.addWidget(self._currency)
+        parameter_layout.addSpacing(24)
+        parameter_layout.addWidget(QLabel("Effective date:"))
+        parameter_layout.addWidget(self._date)
+        parameter_layout.addStretch(1)
 
         actions = QHBoxLayout()
-        actions.addWidget(self._refresh_button)
+        actions.addWidget(self._build_button)
         actions.addStretch(1)
 
         self.add_content(source)
         self.add_content(permutation_box)
-        self.add_content(generation)
+        self.add_content(parameters)
         self._content.addLayout(actions)
 
     @staticmethod
@@ -125,7 +127,7 @@ class ArticleObxGeneratorPage(BasePage):
             for value in values
         )
 
-    def _load_permutations(self) -> None:
+    def _build_permutations(self) -> None:
         snapshot = self._context.repository_snapshot
         self._table.setRowCount(0)
         self._permutations = []
@@ -134,30 +136,33 @@ class ArticleObxGeneratorPage(BasePage):
             self._status.setText("No repository snapshot is loaded.")
             return
 
-        service = self._context.article_permutation_service
-        self._permutations = service.build(snapshot)
+        self._permutations = self._context.article_permutation_service.build(snapshot)
 
         self._table.setRowCount(len(self._permutations))
-        for row, permutation in enumerate(self._permutations):
+        for row, permutation in enumerate(self._permutations, start=1):
+            configuration = "; ".join(
+                f"{value.name}={value.value}"
+                for value in (*permutation.properties, *permutation.options)
+            ) or "—"
             values = [
-                permutation.final_article,
+                str(row),
                 permutation.base_code,
-                "Super Item" if permutation.is_super_item else "Article",
+                permutation.final_article,
                 self._values_text(permutation.properties),
                 self._values_text(permutation.options),
-                str(permutation.quantity),
-                "Resolved",
+                configuration,
+                "Valid",
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
-                self._table.setItem(row, column, item)
+                self._table.setItem(row - 1, column, item)
 
         self._status.setText(
             f"Repository snapshot loaded: "
             f"{snapshot.product.code or snapshot.product.name} "
-            f"| Articles: {len(snapshot.articles)} "
-            f"| Permutations: {len(self._permutations)} "
+            f"| Repository articles: {len(snapshot.articles)} "
+            f"| Generated permutations: {len(self._permutations)} "
             f"| Properties: {len(snapshot.properties)} "
             f"| Options: {len(snapshot.options)} "
             f"| Prices: {len(snapshot.price_records)}"
@@ -172,7 +177,7 @@ class ArticleObxGeneratorPage(BasePage):
                 "No repository snapshot is loaded. Load/select the published repository "
                 "through the existing repository workflow, then return here."
             )
-            self._refresh_button.setEnabled(False)
+            self._build_button.setEnabled(False)
             self._table.setRowCount(0)
             return
 
@@ -182,8 +187,8 @@ class ArticleObxGeneratorPage(BasePage):
             if str(price.currency or "").strip()
         })
         self._currency.addItems(currencies)
-        self._refresh_button.setEnabled(bool(snapshot.articles))
-        self._load_permutations()
+        self._build_button.setEnabled(bool(snapshot.article_sets))
+        self._build_permutations()
 
     def is_ready(self) -> bool:
         return self._context.repository_snapshot is not None
