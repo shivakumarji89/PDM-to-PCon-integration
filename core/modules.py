@@ -21,7 +21,6 @@ class WorkbenchModule(Enum):
     METATYPE = "metatype"
     OAP = "oap"
     BULK_UPDATE = "bulk_update"
-    ARTICLE_OBX_GENERATOR = "article_obx_generator"
 
 
 @dataclass(frozen=True)
@@ -63,11 +62,6 @@ MODULE_ITEMS: tuple[ModuleItem, ...] = (
         WorkbenchModule.BULK_UPDATE,
         "Bulk Update",
         "Run bulk maintenance operations on published product packages.",
-    ),
-    ModuleItem(
-        WorkbenchModule.ARTICLE_OBX_GENERATOR,
-        "Article OBX Generator",
-        "Build article permutations, resolve repository prices, and generate OBX for a specified date.",
     ),
 )
 
@@ -112,20 +106,19 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.BULK_UPDATE: (
         WorkflowStep.MAINTENANCE,
     ),
+    # QA owns the complete OBX validation flow: build the article
+    # permutations/OBX first, then validate the generated deliverable.
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
-        WorkflowStep.CET_SIF_VALIDATION,
+        WorkflowStep.ARTICLE_OBX_GENERATOR,
         WorkflowStep.OBX_VALIDATION,
+        WorkflowStep.CET_SIF_VALIDATION,
     ),
     WorkbenchModule.METATYPE: (
         WorkflowStep.PRODUCT,
     ),
     WorkbenchModule.OAP: (
         WorkflowStep.PRODUCT,
-    ),
-    WorkbenchModule.ARTICLE_OBX_GENERATOR: (
-        WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLE_OBX_GENERATOR,
     ),
 }
 
