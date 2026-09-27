@@ -219,6 +219,19 @@ class ArticlePermutationService(BaseService):
                 for v in (snapshot.attribute_option_dependencies or {}).get(value_id, [])
             )
 
+        # Resolve option dependency chains (A -> B -> C) before creating
+        # option dimensions. Child option values are derived from the selected
+        # parent configuration; they do not create an independent Cartesian
+        # dimension unless the repository exposes them as such.
+        pending = list(dependent_ids)
+        while pending:
+            current = pending.pop()
+            for child in (snapshot.option_option_dependencies or {}).get(current, []):
+                child = str(child)
+                if child not in dependent_ids:
+                    dependent_ids.add(child)
+                    pending.append(child)
+
         candidate_ids = (dependent_ids or offered_ids) & offered_ids
         restrictions = (snapshot.art_base or {}).get(base_code, {})
         dimensions: list[_Dimension] = []
