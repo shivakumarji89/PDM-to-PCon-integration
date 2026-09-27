@@ -89,9 +89,10 @@ class MDBService(BaseService):
             )
 
         payload = {"mdb": str(Path(mdb_path)), "ops": ops, "transaction": bool(transaction)}
-        with tempfile.TemporaryDirectory(prefix="mdb_bridge_") as tmp:
-            in_path = Path(tmp) / "in.json"
-            out_path = Path(tmp) / "out.json"
+        tmp_path = Path(tempfile.mkdtemp(prefix="mdb_bridge_"))
+        in_path = tmp_path / "in.json"
+        out_path = tmp_path / "out.json"
+        try:
             in_path.write_text(json.dumps(payload), encoding="utf-8")
 
             proc = subprocess.run(
@@ -102,24 +103,39 @@ class MDBService(BaseService):
                 ],
                 capture_output=True, text=True,
             )
+
+            # The PowerShell/ADODB process can keep the output file handle
+            # alive briefly after exiting. Read the file before cleanup and let
+            # the OS/process finish independently of TemporaryDirectory teardown.
             if not out_path.is_file():
                 err = (proc.stderr or proc.stdout or "no bridge output").strip()
-                return MDBBatchResult(ok=False, results=[MDBOpResult(op="bridge", ok=False, error=err[:500])])
+                return MDBBatchResult(
+                    ok=False,
+                    results=[MDBOpResult(op="bridge", ok=False, error=err[:500])],
+                )
 
             data = json.loads(out_path.read_text(encoding="utf-8-sig"))
 
-        results = [
-            MDBOpResult(
-                op=r.get("op", ""),
-                ok=bool(r.get("ok")),
-                error=r.get("error"),
-                rows=r.get("rows") or [],
-                inserted=int(r.get("inserted") or 0),
-                updated=int(r.get("updated") or 0),
-            )
-            for r in (data.get("results") or [])
-        ]
-        return MDBBatchResult(ok=bool(data.get("ok")), results=results)
+            results = [
+                MDBOpResult(
+                    op=item.get("op", ""),
+                    ok=bool(item.get("ok")),
+                    error=item.get("error"),
+                    rows=item.get("rows") or [],
+                    inserted=int(item.get("inserted") or 0),
+                    updated=int(item.get("updated") or 0),
+                )
+                for item in (data.get("results") or [])
+            ]
+            return MDBBatchResult(ok=bool(data.get("ok")), results=results)
+        finally:
+            # Best-effort cleanup. Windows may briefly retain ADODB/PowerShell
+            # handles to out.json; failure to delete the temp file must not
+            # interfere with the actual MDB result.
+            try:
+                shutil.rmtree(tmp_path, ignore_errors=True)
+            except OSError:
+                pass
 
     # -- Convenience wrappers -------------------------------------------
 
