@@ -205,8 +205,8 @@ class ArticleObxGeneratorPage(BasePage):
 
     def _context_window_progress_monitor(self) -> ProgressDialog:
         main = self.window()
-        if hasattr(main, "_product_page"):
-            return main._product_page.progress_monitor()
+        if hasattr(main, "progress_monitor"):
+            return main.progress_monitor()
         dialog = getattr(self, "_progress_dialog", None)
         if dialog is None:
             dialog = ProgressDialog(self)
