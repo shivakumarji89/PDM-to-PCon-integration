@@ -140,11 +140,31 @@ class MDBService(BaseService):
             return {}
         ops = [{"op": "query", "sql": sql} for sql in sql_by_name.values()]
         batch = self.execute_batch(mdb_path, ops)
-        if not batch.results:
-            return {name: [] for name in sql_by_name}
         names = list(sql_by_name)
+        if not batch.results:
+            raise RuntimeError(
+                f"MDB batch read returned no results for {Path(mdb_path).name}."
+            )
+
+        # Do not silently convert a failed table query into an empty table.
+        # Empty and failed are materially different during repository import.
+        failures = []
+        for index, name in enumerate(names):
+            if index >= len(batch.results):
+                failures.append(f"{name}: no bridge result returned")
+                continue
+            result = batch.results[index]
+            if not result.ok:
+                failures.append(f"{name}: {result.error or 'query failed'}")
+
+        if failures:
+            raise RuntimeError(
+                f"MDB read failed for {Path(mdb_path).name}: "
+                + "; ".join(failures)
+            )
+
         return {
-            name: batch.results[index].rows if index < len(batch.results) and batch.results[index].ok else []
+            name: batch.results[index].rows
             for index, name in enumerate(names)
         }
 
