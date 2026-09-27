@@ -481,6 +481,15 @@ class ArticlePermutationService(BaseService):
             if not code:
                 return ""
             by_name[cls._normalise_name(value.name)] = code
+            prop = next(
+                (
+                    item for item in snapshot.properties
+                    if str(item.id or "") == str(value.entity_id)
+                ),
+                None,
+            )
+            if prop is not None:
+                by_name[cls._normalise_name(prop.code or "")] = code
 
         if not body:
             return base_code + "".join(
