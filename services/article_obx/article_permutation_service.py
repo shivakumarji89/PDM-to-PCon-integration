@@ -38,7 +38,11 @@ class _EvaluatedConfiguration:
 class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
-    def build(self, snapshot: Snapshot | None = None) -> list[ArticlePermutation]:
+    def build(
+        self,
+        snapshot: Snapshot | None = None,
+        reporter=None,
+    ) -> list[ArticlePermutation]:
         snapshot = snapshot or self.context.repository_snapshot
         if snapshot is None:
             return []
@@ -57,7 +61,12 @@ class ArticlePermutationService(BaseService):
         ):
             base_code = (article.code or "").strip()
             if not base_code:
+                if reporter is not None:
+                    reporter.advance("Skipping article without base article code")
                 continue
+
+            if reporter is not None:
+                reporter.note(f"Building permutations for {base_code}")
 
             dimensions = self._property_dimensions(snapshot, article.id, base_code)
             products = self._property_combinations(dimensions, relation_objects)
@@ -117,6 +126,11 @@ class ArticlePermutationService(BaseService):
                             self._scheme_id(snapshot, article.id),
                         )
                     )
+
+            if reporter is not None:
+                reporter.advance(
+                    f"Completed {base_code} — {len(results)} permutation(s)"
+                )
 
         results.sort(
             key=lambda item: (
