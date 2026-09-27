@@ -478,7 +478,7 @@ class ArticlePermutationService(BaseService):
 
         # The repository's current code-scheme writer uses the base article as
         # the fixed @ portion and property values as the variant-code portion.
-        return base_code + "".join(tokens)
+        # pCon article encoding separates the fixed base article from the\n        # encoded variant portion with a single space.\n        return base_code + (" " if tokens else "") + "".join(tokens)
 
     @staticmethod
     def _make_permutation(
