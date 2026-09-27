@@ -34,7 +34,11 @@ class WorkspaceHost:
                 previous.deactivate()
 
         page = self._pages[step]
-        self._stack.setCurrentWidget(page)  # triggers the page's own refresh
+        self._stack.setCurrentWidget(page)
+        # QStackedWidget does not call the workspace's refresh hook when the
+        # page becomes current. Refresh on activation so workflows always
+        # reflect the latest shared ApplicationContext snapshot.
+        page.refresh()
         page.activate()
         page.on_enter()
 
