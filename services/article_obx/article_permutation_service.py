@@ -129,8 +129,18 @@ class ArticlePermutationService(BaseService):
             prop_id = str(prop.id or "")
             if not prop_id or prop_id not in property_ids:
                 continue
-            if scheme_names and self._normalise_name(prop.name or prop.code) not in scheme_names:
-                continue
+            # A CodeScheme is authoritative for encoding order, but its
+            # property references are not guaranteed to use the same display
+            # name as the imported MDB property. Only narrow the dimensions
+            # when the scheme actually resolves to one or more known
+            # properties; otherwise retain the article/class property set.
+            if scheme_names:
+                property_names = {
+                    self._normalise_name(prop.name or ""),
+                    self._normalise_name(prop.code or ""),
+                }
+                if not property_names & scheme_names:
+                    continue
 
             allowed_ids = {
                 str(value_id)
@@ -218,12 +228,13 @@ class ArticlePermutationService(BaseService):
         if not body:
             return []
 
-        # Current MK Workbench code-scheme rows use a compact body:
-        # @,@,...,Class:Property Class:Property ...
-        # The @ characters represent the base portion; the property tokens
-        # define the deterministic variant-code property order.
-        tokens = re.findall(r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)", body)
-        return [cls._normalise_name(prop) for _class_name, prop in tokens]
+        # The scheme body is the encoding rule. Property references are
+        # class:property tokens; their order is significant.
+        tokens = re.findall(r"([^\s,;|:@]+):([^\s,;|:@]+)", body)
+        return [
+            cls._normalise_name(prop)
+            for _class_name, prop in tokens
+        ]
 
     @staticmethod
     def _normalise_name(value: str) -> str:
@@ -453,33 +464,44 @@ class ArticlePermutationService(BaseService):
         )
         body = str(scheme.get("body") or "")
 
+        by_name: dict[str, str] = {}
+        for value in properties:
+            code = (value.code or "").strip()
+            if not code:
+                return ""
+            by_name[cls._normalise_name(value.name)] = code
+
         if not body:
-            ordered = properties
-        else:
-            order = cls._scheme_property_order(snapshot, article_id)
-            rank = {name: index for index, name in enumerate(order)}
-            ordered = tuple(
-                sorted(
+            return base_code + "".join(
+                value.code.strip()
+                for value in sorted(
                     properties,
-                    key=lambda value: (
-                        rank.get(cls._normalise_name(value.name), 10**6),
-                        value.display_order,
-                        value.name,
-                    ),
+                    key=lambda item: (item.display_order, item.name, item.value_id),
                 )
             )
 
-        tokens: list[str] = []
-        for value in ordered:
-            token = (value.code or "").strip()
-            if not token:
-                return ""
-            tokens.append(token)
+        # Render the repository's actual encoding rule instead of inventing
+        # separators. The complete class:property token is replaced by the
+        # selected value code, while every literal character in the scheme
+        # (including spaces, separators and grouping) is preserved.
+        token_pattern = re.compile(
+            r"([^\s,;|:@]+):([^\s,;|:@]+)"
+        )
 
-        # The repository's current code-scheme writer uses the base article as
-        # the fixed @ portion and property values as the variant-code portion.
-        return base_code + "".join(tokens)
+        def replace_token(match: re.Match[str]) -> str:
+            property_name = cls._normalise_name(match.group(2))
+            return by_name.get(property_name, "")
 
+        rendered = token_pattern.sub(replace_token, body)
+        if "@" in rendered:
+            rendered = rendered.replace("@", base_code, 1)
+
+        # If the scheme contained property references but none could be
+        # resolved, do not silently emit the raw scheme or a made-up encoding.
+        if token_pattern.search(body) and rendered == body:
+            return ""
+
+        return rendered
     @staticmethod
     def _make_permutation(
         snapshot: Snapshot,
