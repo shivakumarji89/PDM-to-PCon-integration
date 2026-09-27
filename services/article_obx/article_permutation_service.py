@@ -125,16 +125,27 @@ class ArticlePermutationService(BaseService):
         scheme_names = set(scheme_order)
         dimensions: list[_Dimension] = []
 
+        # Only use the scheme as a property filter when at least one scheme
+        # reference resolves to a known property. A naming mismatch must not
+        # collapse the article to a base-only permutation.
+        scheme_resolves = False
+        if scheme_names:
+            for prop in snapshot.properties:
+                if str(prop.id or "") not in property_ids:
+                    continue
+                property_names = {
+                    self._normalise_name(prop.name or ""),
+                    self._normalise_name(prop.code or ""),
+                }
+                if property_names & scheme_names:
+                    scheme_resolves = True
+                    break
+
         for prop in snapshot.properties:
             prop_id = str(prop.id or "")
             if not prop_id or prop_id not in property_ids:
                 continue
-            # A CodeScheme is authoritative for encoding order, but its
-            # property references are not guaranteed to use the same display
-            # name as the imported MDB property. Only narrow the dimensions
-            # when the scheme actually resolves to one or more known
-            # properties; otherwise retain the article/class property set.
-            if scheme_names:
+            if scheme_resolves:
                 property_names = {
                     self._normalise_name(prop.name or ""),
                     self._normalise_name(prop.code or ""),
