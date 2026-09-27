@@ -209,7 +209,8 @@ class ArticleObxPriceTests(unittest.TestCase):
         snapshot = _base_snapshot()
         snapshot.price_records = [
             PriceRecord(
-                article_code="BASEAC",
+                article_code="BASE",
+                variant_condition="",
                 level="B",
                 value=250.0,
                 currency="EUR",
