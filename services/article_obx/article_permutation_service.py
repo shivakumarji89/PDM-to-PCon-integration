@@ -61,7 +61,7 @@ class ArticlePermutationService(BaseService):
                 properties = self._materialize_values(dimensions, selected)
                 property_ids = {v.value_id for v in properties}
 
-                if not self._valid_art_base(snapshot, base_code, property_ids):
+                if not self._valid_art_base(snapshot, base_code, property_ids, {v.entity_id for v in properties}):
                     continue
                 if not self._valid_exclusions(snapshot, property_ids):
                     continue
@@ -78,7 +78,7 @@ class ArticlePermutationService(BaseService):
                     options = self._materialize_values(option_dimensions, selected_options)
                     all_ids = {v.value_id for v in (*properties, *options)}
 
-                    if not self._valid_art_base(snapshot, base_code, all_ids):
+                    if not self._valid_art_base(snapshot, base_code, all_ids, {v.entity_id for v in (*properties, *options)}):
                         continue
                     if not self._valid_exclusions(snapshot, all_ids):
                         continue
@@ -138,16 +138,15 @@ class ArticlePermutationService(BaseService):
 
         restrictions = (getattr(snapshot, "art_base", {}) or {}).get(base_code, {})
         scheme_order = self._scheme_property_order(snapshot, article_id)
-        scheme_names = set(scheme_order)
         dimensions: list[_Dimension] = []
 
         for prop in snapshot.properties:
             prop_id = str(prop.id or "")
             if not prop_id or prop_id not in property_ids:
                 continue
-            if scheme_names and self._normalise_name(prop.name or prop.code) not in scheme_names:
-                continue
-
+            # CodeScheme controls encoding/order; it does not define the
+            # configurable dimension set. Article -> Class -> Property is
+            # authoritative for that.
             allowed_ids = {
                 str(value_id)
                 for value_id in restrictions.get(prop_id, [])
@@ -482,15 +481,21 @@ class ArticlePermutationService(BaseService):
 
     @staticmethod
     def _valid_art_base(
-        snapshot: Snapshot, base_code: str, selected_ids: set[str]
+        snapshot: Snapshot,
+        base_code: str,
+        selected_ids: set[str],
+        selected_property_ids: set[str] | None = None,
     ) -> bool:
         restrictions = (getattr(snapshot, "art_base", {}) or {}).get(base_code, {})
         if not restrictions:
             return True
 
-        for allowed_values in restrictions.values():
+        selected_property_ids = selected_property_ids or set()
+        for property_id, allowed_values in restrictions.items():
+            if selected_property_ids and str(property_id) not in selected_property_ids:
+                continue
             allowed = {str(value_id) for value_id in allowed_values or ()}
-            if not (selected_ids & allowed):
+            if allowed and not (selected_ids & allowed):
                 return False
         return True
 
