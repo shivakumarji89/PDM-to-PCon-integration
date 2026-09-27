@@ -44,16 +44,12 @@ class ArticlePriceService(BaseService):
         ]
 
     @classmethod
-    def _condition_matches(cls, condition: str, codes: set[str]) -> bool:
-        if not condition.strip():
-            return True
-        tokens = cls._condition_tokens(condition)
-        if not tokens:
-            return False
-        return all(
-            key in codes or value in codes or f"{key}={value}" in codes
-            for key, value in tokens
-        )
+    def _condition_matches(cls, condition: str, variant_condition: str) -> bool:
+        condition = str(condition or "").strip()
+        variant_condition = str(variant_condition or "").strip()
+        if not condition:
+            return not variant_condition
+        return condition.upper() == variant_condition.upper()
 
     @classmethod
     def _select_rows(cls, records, article_code: str, currency: str, effective_date: str):
@@ -98,7 +94,7 @@ class ArticlePriceService(BaseService):
         for permutation in permutations:
             rows = self._select_rows(
                 snapshot.price_records,
-                permutation.final_article,
+                permutation.base_code,
                 request.currency,
                 request.effective_date,
             )
@@ -124,7 +120,8 @@ class ArticlePriceService(BaseService):
                 row for row in rows
                 if str(getattr(row, "level", "") or "B").upper() == "B"
                 and self._condition_matches(
-                    str(getattr(row, "variant_condition", "") or ""), codes
+                    str(getattr(row, "variant_condition", "") or ""),
+                    permutation.variant_condition,
                 )
             ]
             if not base_rows:
@@ -143,7 +140,8 @@ class ArticlePriceService(BaseService):
                 row for row in rows
                 if str(getattr(row, "level", "") or "").upper() != "B"
                 and self._condition_matches(
-                    str(getattr(row, "variant_condition", "") or ""), codes
+                    str(getattr(row, "variant_condition", "") or ""),
+                    permutation.variant_condition,
                 )
             ]
 
