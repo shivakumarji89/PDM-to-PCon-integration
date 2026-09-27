@@ -295,20 +295,10 @@ class MdbReverseEngineeringService(BaseService):
             scheme_id = str(row.get("com_CodeSchemeID") or "").strip()
             if not scheme_id:
                 continue
-            # Preserve the complete CodeScheme row. Article encoding can
-            # depend on separator/display fields in addition to the Scheme body;
-            # dropping those fields here would force the permutation builder to
-            # invent spacing or grouping later.
             snapshot.code_schemes[scheme_id] = {
-                str(key): str(value or "").strip()
-                for key, value in row.items()
+                "name": str(row.get("com_CodeSchemeName") or "").strip(),
+                "body": str(row.get("com_CodeSchemeBody") or "").strip(),
             }
-            snapshot.code_schemes[scheme_id]["name"] = str(
-                row.get("com_CodeSchemeName") or ""
-            ).strip()
-            snapshot.code_schemes[scheme_id]["body"] = str(
-                row.get("com_CodeSchemeBody") or ""
-            ).strip()
 
         article_by_mdb: dict[str, Article] = {}
         for row in data.rows("tCOMd_Article"):
