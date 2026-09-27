@@ -701,12 +701,13 @@ class ArticlePermutationService(BaseService):
             variant = value_sep.join(parts)
             return base_code + var_sep + variant, variant
 
-        # User-defined schemes are evaluated left-to-right. Commas delimit
-        # encoding segments; they are structural and are not emitted.
-        # Class:Property resolves the selected value's encoded token.
-        # @ consumes one base-article character. Literal text is preserved.
-        rendered: list[str] = []
-        base_index = 0
+        # In a user-defined scheme '@' is a final-article placeholder for the
+        # base article. It is NOT part of the variant code. Other segments
+        # contribute to the variant portion and are rendered after/beside the
+        # base according to the scheme.
+        final_parts: list[str] = []
+        variant_parts: list[str] = []
+        has_base_placeholder = False
         recognised = False
 
         for segment in body.split(","):
@@ -714,9 +715,8 @@ class ArticlePermutationService(BaseService):
 
             if token == "@":
                 recognised = True
-                if base_index < len(base_code):
-                    rendered.append(base_code[base_index])
-                    base_index += 1
+                has_base_placeholder = True
+                final_parts.append(base_code)
                 continue
 
             ref = re.fullmatch(
@@ -728,12 +728,11 @@ class ArticlePermutationService(BaseService):
                 value = values.get(name)
                 if value is None:
                     return None
-                rendered.append(
-                    codes.get(name) or value.code or value.value
-                )
+                encoded = codes.get(name) or value.code or value.value
+                final_parts.append(encoded)
+                variant_parts.append(encoded)
                 continue
 
-            # A segment can mix literal text and property references.
             def replace_reference(match):
                 nonlocal recognised
                 recognised = True
@@ -743,24 +742,29 @@ class ArticlePermutationService(BaseService):
                     return ""
                 return codes.get(name) or value.code or value.value
 
-            rendered.append(
-                re.sub(
-                    r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)",
-                    replace_reference,
-                    token,
-                )
+            rendered = re.sub(
+                r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)",
+                replace_reference,
+                token,
             )
+            final_parts.append(rendered)
+            if rendered:
+                variant_parts.append(rendered)
 
         if not recognised:
             return None
 
-        variant = "".join(rendered)
+        final_article = "".join(final_parts)
+        variant = "".join(variant_parts)
+
+        if has_base_placeholder:
+            # The scheme already emitted the base article through '@'.
+            return final_article, variant
+
         lowered = {str(k).lower(): str(v) for k, v in scheme.items()}
         var_sep = lowered.get("varcodesep", lowered.get("var_code_sep", ""))
+        return base_code + var_sep + final_article, variant
 
-        # A user-defined scheme body is itself the variant-code grammar.
-        # VarCodeSep is used only when explicitly supplied by the repository.
-        return base_code + var_sep + variant, variant
 
     @staticmethod
     def _make_permutation(
