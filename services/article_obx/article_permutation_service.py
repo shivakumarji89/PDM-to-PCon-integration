@@ -122,7 +122,7 @@ class ArticlePermutationService(BaseService):
         )
         return results
 
-    def _dimensions_for_article(
+    def _property_dimensions(
         self,
         snapshot: Snapshot,
         article_id: str | None,
@@ -170,7 +170,8 @@ class ArticlePermutationService(BaseService):
 
             dimensions.append(
                 _Dimension(
-                    property_id=prop_id,
+                    kind="property",
+                    entity_id=prop_id,
                     name=prop.name or prop.code or prop_id,
                     display_order=(
                         int(prop.display_order)
@@ -200,6 +201,202 @@ class ArticlePermutationService(BaseService):
             )
 
         return tuple(dimensions)
+
+    def _option_dimensions(
+        self, snapshot: Snapshot, article, selected_property_ids: set[str], base_code: str
+    ) -> tuple[_Dimension, ...]:
+        product_id = str(article.product_id or "")
+        offered_ids = {
+            str(v) for v in (snapshot.product_option_value_ids or {}).get(product_id, [])
+        }
+        if not offered_ids:
+            return ()
+
+        dependent_ids: set[str] = set()
+        for value_id in selected_property_ids:
+            dependent_ids.update(
+                str(v)
+                for v in (snapshot.attribute_option_dependencies or {}).get(value_id, [])
+            )
+
+        candidate_ids = (dependent_ids or offered_ids) & offered_ids
+        restrictions = (snapshot.art_base or {}).get(base_code, {})
+        dimensions: list[_Dimension] = []
+
+        for option in snapshot.options:
+            oid = str(option.id or "")
+            allowed = {str(v) for v in restrictions.get(oid, [])}
+            values = [
+                v for v in option.values
+                if str(v.id) in candidate_ids
+                and (not allowed or str(v.id) in allowed)
+            ]
+            values.sort(
+                key=lambda value: (
+                    value.display_order is None,
+                    value.display_order or 0,
+                    value.value or "",
+                    str(value.id or ""),
+                )
+            )
+            if values:
+                dimensions.append(
+                    _Dimension(
+                        kind="option",
+                        entity_id=oid,
+                        name=option.name or option.code or oid,
+                        display_order=int(option.display_order or 10**9),
+                        values=tuple(values),
+                    )
+                )
+
+        dimensions.sort(key=lambda d: (d.display_order, d.name, d.entity_id))
+        return tuple(dimensions)
+
+    @classmethod
+    def _scheme_id(cls, snapshot: Snapshot, article_id: str | None) -> str:
+        return str((snapshot.article_code_scheme_ids or {}).get(str(article_id or "")) or "")
+
+    @classmethod
+    def _scheme(cls, snapshot: Snapshot, article_id: str | None) -> dict:
+        sid = cls._scheme_id(snapshot, article_id)
+        return (snapshot.code_schemes or {}).get(sid, {}) if sid else {}
+
+    @classmethod
+    def _scheme_body(cls, snapshot: Snapshot, article_id: str | None) -> str:
+        scheme = cls._scheme(snapshot, article_id)
+        return str(
+            scheme.get("body")
+            or scheme.get("Scheme")
+            or scheme.get("scheme")
+            or ""
+        )
+
+    @classmethod
+    def _evaluate_configuration(
+        cls,
+        snapshot: Snapshot,
+        base_code: str,
+        properties: tuple[ArticleConfigurationValue, ...],
+        options: tuple[ArticleConfigurationValue, ...],
+    ) -> _EvaluatedConfiguration | None:
+        values = (*properties, *options)
+        selected_ids = {v.value_id for v in values}
+        selected = {
+            cls._normalise_name(v.name): (v.value or "").upper()
+            for v in values
+        }
+        computed_codes = {
+            cls._normalise_name(v.name): v.code
+            for v in values if v.code
+        }
+        varconds: list[str] = []
+
+        for relation in sorted(
+            getattr(snapshot, "relation_objects", []) or [],
+            key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
+        ):
+            domain = str(getattr(relation, "domain", "") or "")
+            type_code = str(getattr(relation, "type_code", "") or "")
+            body = str(getattr(relation, "body", "") or "")
+
+            if domain == "C" and type_code in {"1", "2"}:
+                value_id = str(getattr(relation, "value_id", "") or "")
+                if value_id in selected_ids and not cls._relation_body_matches(
+                    body, base_code, selected
+                ):
+                    return None
+
+            if domain == "C" and type_code == "4":
+                if not cls._constraint_matches(snapshot, body, base_code, selected):
+                    return None
+
+            if type_code == "3":
+                cls._apply_action_body(body, selected, computed_codes, varconds)
+
+            if domain == "P" and type_code == "3":
+                cls._extract_varconds(body, varconds)
+
+        return _EvaluatedConfiguration(
+            properties=properties,
+            options=options,
+            computed_codes=computed_codes,
+            variant_condition=" ".join(dict.fromkeys(x for x in varconds if x)),
+        )
+
+    @staticmethod
+    def _apply_action_body(body, selected, computed_codes, varconds) -> None:
+        for match in re.finditer(
+            r"Code([A-Za-z0-9_]+)\s*=\s*'([^']*)'\s+IF\s+"
+            r"([A-Za-z0-9_]+)\s*=\s*'?([^'\r\n,}]+)'?",
+            body,
+            re.IGNORECASE,
+        ):
+            _code_name, code, prop, expected = match.groups()
+            if selected.get(prop.upper()) == expected.strip().upper():
+                computed_codes[ArticlePermutationService._normalise_name(prop)] = code
+        ArticlePermutationService._extract_varconds(body, varconds)
+
+    @staticmethod
+    def _extract_varconds(body, target) -> None:
+        for match in re.finditer(r"\$VARCOND\s*=\s*'([^']*)'", body, re.IGNORECASE):
+            target.append(match.group(1))
+
+    @classmethod
+    def _constraint_matches(cls, snapshot, body, base_code, selected) -> bool:
+        match = re.search(
+            r"TABLE\s+([A-Za-z0-9_]+)\s*\((.*?)\)",
+            body, re.IGNORECASE | re.DOTALL
+        )
+        if match:
+            return cls._table_constraint_matches(
+                snapshot, match.group(1), match.group(2), base_code, selected
+            )
+        restrictions = body.split("Restrictions:", 1)[-1].strip()
+        return True if restrictions == body else cls._relation_body_matches(
+            restrictions, base_code, selected
+        )
+
+    @classmethod
+    def _table_constraint_matches(
+        cls, snapshot, table_name, arguments, base_code, selected
+    ) -> bool:
+        table = next(
+            (
+                t for t in (getattr(snapshot, "value_tables", []) or [])
+                if str(t.name or "").upper() == table_name.upper()
+            ),
+            None,
+        )
+        if table is None:
+            return True
+
+        access = {}
+        for parameter in arguments.split(","):
+            if "=" in parameter:
+                column, expression = parameter.split("=", 1)
+                access[column.strip().upper()] = expression.strip()
+
+        for line in table.lines:
+            valid = True
+            for column, expected in line.items():
+                expression = access.get(str(column).upper())
+                if expression is None:
+                    continue
+                if expression.upper() == "$BAN":
+                    actual = base_code
+                else:
+                    prop = re.search(r"x\.([A-Za-z0-9_]+)", expression, re.IGNORECASE)
+                    if not prop:
+                        continue
+                    actual = selected.get(prop.group(1).upper())
+                allowed = expected if isinstance(expected, (list, tuple)) else [expected]
+                if str(actual or "").upper() not in {str(v).upper() for v in allowed}:
+                    valid = False
+                    break
+            if valid:
+                return True
+        return False
 
     @staticmethod
     def _article_property_ids(snapshot: Snapshot, article_id: str | None) -> set[str]:
