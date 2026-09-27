@@ -99,6 +99,22 @@ class ArticleObxPermutationTests(unittest.TestCase):
         )
         self.assertEqual(permutations[0].variant_code, "A-C")
 
+    def test_predefined_codescheme_uses_repository_separators(self):
+        snapshot = _base_snapshot()
+        snapshot.code_schemes["scheme-1"] = {
+            "name": "PREDEFINED",
+            "VarCodeSep": " ",
+            "ValueSep": ".",
+        }
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASE A.C", "BASE A.D", "BASE B.C", "BASE B.D"],
+        )
+        self.assertEqual(permutations[0].variant_code, "A.C")
+
     def test_relation_action_changes_encoded_code(self):
         snapshot = _base_snapshot()
         snapshot.relation_objects = [
@@ -119,7 +135,7 @@ class ArticleObxPermutationTests(unittest.TestCase):
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
         self.assertIn("BASEZC", [p.final_article for p in permutations])
-        self.assertIn("BASEZ-D" if False else "BASEZD", [p.final_article for p in permutations])
+        self.assertIn("BASEZD", [p.final_article for p in permutations])
 
     def test_dependent_option_values_follow_selected_property(self):
         from models.option import Option
