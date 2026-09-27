@@ -125,33 +125,12 @@ class ArticlePermutationService(BaseService):
         scheme_names = set(scheme_order)
         dimensions: list[_Dimension] = []
 
-        # Only use the scheme as a property filter when at least one scheme
-        # reference resolves to a known property. A naming mismatch must not
-        # collapse the article to a base-only permutation.
-        scheme_resolves = False
-        if scheme_names:
-            for prop in snapshot.properties:
-                if str(prop.id or "") not in property_ids:
-                    continue
-                property_names = {
-                    self._normalise_name(prop.name or ""),
-                    self._normalise_name(prop.code or ""),
-                }
-                if property_names & scheme_names:
-                    scheme_resolves = True
-                    break
-
         for prop in snapshot.properties:
             prop_id = str(prop.id or "")
             if not prop_id or prop_id not in property_ids:
                 continue
-            if scheme_resolves:
-                property_names = {
-                    self._normalise_name(prop.name or ""),
-                    self._normalise_name(prop.code or ""),
-                }
-                if not property_names & scheme_names:
-                    continue
+            if scheme_names and self._normalise_name(prop.name or prop.code) not in scheme_names:
+                continue
 
             allowed_ids = {
                 str(value_id)
@@ -239,13 +218,12 @@ class ArticlePermutationService(BaseService):
         if not body:
             return []
 
-        # The scheme body is the encoding rule. Property references are
-        # class:property tokens; their order is significant.
-        tokens = re.findall(r"([^\s,;|:@]+):([^\s,;|:@]+)", body)
-        return [
-            cls._normalise_name(prop)
-            for _class_name, prop in tokens
-        ]
+        # Current MK Workbench code-scheme rows use a compact body:
+        # @,@,...,Class:Property Class:Property ...
+        # The @ characters represent the base portion; the property tokens
+        # define the deterministic variant-code property order.
+        tokens = re.findall(r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)", body)
+        return [cls._normalise_name(prop) for _class_name, prop in tokens]
 
     @staticmethod
     def _normalise_name(value: str) -> str:
@@ -475,53 +453,33 @@ class ArticlePermutationService(BaseService):
         )
         body = str(scheme.get("body") or "")
 
-        by_name: dict[str, str] = {}
-        for value in properties:
-            code = (value.code or "").strip()
-            if not code:
-                return ""
-            by_name[cls._normalise_name(value.name)] = code
-            prop = next(
-                (
-                    item for item in snapshot.properties
-                    if str(item.id or "") == str(value.entity_id)
-                ),
-                None,
-            )
-            if prop is not None:
-                by_name[cls._normalise_name(prop.code or "")] = code
-
         if not body:
-            return base_code + "".join(
-                value.code.strip()
-                for value in sorted(
+            ordered = properties
+        else:
+            order = cls._scheme_property_order(snapshot, article_id)
+            rank = {name: index for index, name in enumerate(order)}
+            ordered = tuple(
+                sorted(
                     properties,
-                    key=lambda item: (item.display_order, item.name, item.value_id),
+                    key=lambda value: (
+                        rank.get(cls._normalise_name(value.name), 10**6),
+                        value.display_order,
+                        value.name,
+                    ),
                 )
             )
 
-        # Render the repository's actual encoding rule instead of inventing
-        # separators. The complete class:property token is replaced by the
-        # selected value code, while every literal character in the scheme
-        # (including spaces, separators and grouping) is preserved.
-        token_pattern = re.compile(
-            r"([^\s,;|:@]+):([^\s,;|:@]+)"
-        )
+        tokens: list[str] = []
+        for value in ordered:
+            token = (value.code or "").strip()
+            if not token:
+                return ""
+            tokens.append(token)
 
-        def replace_token(match: re.Match[str]) -> str:
-            property_name = cls._normalise_name(match.group(2))
-            return by_name.get(property_name, "")
+        # The repository's current code-scheme writer uses the base article as
+        # the fixed @ portion and property values as the variant-code portion.
+        return base_code + "".join(tokens)
 
-        rendered = token_pattern.sub(replace_token, body)
-        if "@" in rendered:
-            rendered = rendered.replace("@", base_code, 1)
-
-        # If the scheme contained property references but none could be
-        # resolved, do not silently emit the raw scheme or a made-up encoding.
-        if token_pattern.search(body) and rendered == body:
-            return ""
-
-        return rendered
     @staticmethod
     def _make_permutation(
         snapshot: Snapshot,
