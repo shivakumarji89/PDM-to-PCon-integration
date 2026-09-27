@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class ArticleConfigurationValue:
-    """One property/option value selected by a real PDM article."""
+    """One property/option value selected in an evaluated configuration."""
 
     kind: str
     entity_id: str
@@ -19,16 +19,19 @@ class ArticleConfigurationValue:
 
 @dataclass(frozen=True)
 class ArticlePermutation:
-    """One valid article configuration sourced from an existing Snapshot article.
+    """One valid generated configuration for a Snapshot base Article.
 
-    A permutation is never manufactured by Cartesian-product expansion. The
-    source article itself proves that this exact combination exists in PDM.
+    The source Article supplies identity; the permutation is generated from
+    repository configuration definitions and retains evaluated encoding state.
     """
 
     article_id: str
     product_id: str
     base_code: str
     final_article: str
+    variant_code: str = ""
+    variant_condition: str = ""
+    code_scheme_id: str = ""
     name: str = ""
     description: str = ""
     quantity: int = 1
