@@ -572,11 +572,19 @@ class ArticlePermutationService(BaseService):
         codes = dict(configuration.computed_codes)
 
         if not body:
-            variant = "".join(
-                (codes.get(cls._normalise_name(v.name)) or v.code or v.value).strip()
-                for v in configuration.properties
-            )
-            return base_code + variant, variant
+            lowered = {str(k).lower(): str(v) for k, v in scheme.items()}
+            value_sep = lowered.get("valuesep", lowered.get("value_sep", ""))
+            var_sep = lowered.get("varcodesep", lowered.get("var_code_sep", ""))
+
+            parts = []
+            for value in configuration.properties:
+                token = codes.get(cls._normalise_name(value.name)) or value.code or value.value
+                if cls._truthy(lowered.get("trim", "")):
+                    token = token.strip()
+                parts.append(token)
+
+            variant = value_sep.join(parts)
+            return base_code + var_sep + variant, variant
 
         # User-defined schemes are evaluated left-to-right. Commas delimit
         # encoding segments; they are structural and are not emitted.
