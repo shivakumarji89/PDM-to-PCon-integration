@@ -143,8 +143,19 @@ class _RepositoryExtractWorker(QRunnable):
             self._signals.finished.emit(
                 self._token, (repository, data, snapshot, total_rows)
             )
+        except RuntimeError as error:
+            message = str(error)
+            try:
+                self._signals.failed.emit(self._token, message)
+            except RuntimeError:
+                # The widget may have been destroyed while the worker was
+                # finishing. There is nothing left to update on the UI.
+                pass
         except Exception as error:
-            self._signals.failed.emit(self._token, str(error))
+            try:
+                self._signals.failed.emit(self._token, str(error))
+            except RuntimeError:
+                pass
 
 
 
