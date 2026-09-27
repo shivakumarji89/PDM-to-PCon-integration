@@ -35,8 +35,8 @@ from core.progress import ProgressReporter
 class _RepositoryExtractSignals(QObject):
     """Signals emitted by the background repository extraction worker."""
 
-    finished = Signal(object)
-    failed = Signal(str)
+    finished = Signal(int, object)  # (load token, payload)
+    failed = Signal(int, str)      # (load token, message)
 
 
 class _RepositoryClassTypeDialog(QDialog):
@@ -113,12 +113,13 @@ class _RepositoryClassTypeDialog(QDialog):
 class _RepositoryExtractWorker(QRunnable):
     """Reads one selected repository MDB without blocking the UI."""
 
-    def __init__(self, context, repository_path: str, reporter, signals) -> None:
+    def __init__(self, context, repository_path: str, reporter, signals, token: int) -> None:
         super().__init__()
         self._context = context
         self._repository_path = repository_path
         self._reporter = reporter
         self._signals = signals
+        self._token = token
 
     def run(self) -> None:
         try:
@@ -139,9 +140,11 @@ class _RepositoryExtractWorker(QRunnable):
             self._context.engineering_initialization_service.initialize(snapshot)
             self._reporter.advance("Activating Articles, Class Creation, Text, Relations and Pricing...")
             total_rows = sum(data.table_counts.values())
-            self._signals.finished.emit((repository, data, snapshot, total_rows))
+            self._signals.finished.emit(
+                self._token, (repository, data, snapshot, total_rows)
+            )
         except Exception as error:
-            self._signals.failed.emit(str(error))
+            self._signals.failed.emit(self._token, str(error))
 
 
 
@@ -157,6 +160,7 @@ class RepositoryWorkspace(QWidget):
         self._context = context
         self._pool = QThreadPool.globalInstance()
         self._repository_path_value = ""
+        self._repository_load_token = 0
         self._build_ui()
 
     @property
@@ -300,6 +304,13 @@ class RepositoryWorkspace(QWidget):
             self._select_repository_path(path)
 
     def _select_repository_path(self, path: str) -> None:
+        # Invalidate the previous repository immediately. Otherwise downstream
+        # workflows can display the old snapshot while the new repository is
+        # still being extracted in the background.
+        self._repository_load_token += 1
+        token = self._repository_load_token
+        self._context.register_repository_snapshot(None)
+        self.repository_cleared.emit()
         try:
             inspection = self._context.maintenance_repository_link_service.inspect_repository(path)
         except Exception as error:
@@ -309,13 +320,13 @@ class RepositoryWorkspace(QWidget):
         self._repository_path_value = str(inspection["path"])
         self._repository_path.setText(self._repository_path_value)
         self._repository_status.setText(
-            f"Selected: {inspection['name']}  |  "
+            f"Loading: {inspection['name']}  |  "
             f"Code: {inspection['code'] or '-'}  |  "
             f"Version: {inspection['version'] or '-'}"
         )
-        self._start_repository_extraction(self._repository_path_value)
+        self._start_repository_extraction(self._repository_path_value, token)
 
-    def _start_repository_extraction(self, path: str) -> None:
+    def _start_repository_extraction(self, path: str, token: int) -> None:
         reporter = ProgressReporter(self)
         self._repository_extract_reporter = reporter
         self._repository_extract_signals = _RepositoryExtractSignals()
@@ -329,11 +340,14 @@ class RepositoryWorkspace(QWidget):
         reporter.log("info", f"Opening repository {Path(path).name}")
 
         worker = _RepositoryExtractWorker(
-            self._context, path, reporter, self._repository_extract_signals
+            self._context, path, reporter, self._repository_extract_signals, token
         )
         self._pool.start(worker)
 
-    def _on_repository_extraction_finished(self, payload) -> None:
+    def _on_repository_extraction_finished(self, token: int, payload) -> None:
+        # Ignore a late worker result if the user selected another repository.
+        if token != self._repository_load_token:
+            return
         repository, _data, snapshot, total_rows = payload
         classification_dialog = _RepositoryClassTypeDialog(snapshot, self)
         if classification_dialog.exec() != QDialog.DialogCode.Accepted:
@@ -357,12 +371,15 @@ class RepositoryWorkspace(QWidget):
         self._clear_repository_btn.setEnabled(True)
         self.repository_loaded.emit(snapshot)
 
-    def _on_repository_extraction_failed(self, message: str) -> None:
+    def _on_repository_extraction_failed(self, token: int, message: str) -> None:
+        if token != self._repository_load_token:
+            return
         self._repository_status.setText("Repository extraction failed.")
         self._repository_extract_reporter.finish(False, "Repository extraction failed.")
         QMessageBox.warning(self, "Open Repository", message)
 
     def clear_repository(self) -> None:
+        self._repository_load_token += 1
         self._repository_path_value = ""
         self._repository_path.setText("Not connected")
         self._repository_status.setText(
