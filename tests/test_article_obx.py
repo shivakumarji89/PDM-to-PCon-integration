@@ -56,7 +56,7 @@ def _base_snapshot() -> Snapshot:
         code_schemes={
             "scheme-1": {
                 "name": "BASE",
-                "body": "@,@,Article:Finish Article:Color",
+                "body": "Article:Finish,Article:Color",
             }
         },
         engineering=Engineering(classes=[engineering_class]),
@@ -78,7 +78,7 @@ class ArticleObxPermutationTests(unittest.TestCase):
 
     def test_uses_code_scheme_property_order_for_encoding(self):
         snapshot = _base_snapshot()
-        snapshot.code_schemes["scheme-1"]["body"] = "@,@,Article:Color Article:Finish"
+        snapshot.code_schemes["scheme-1"]["body"] = "Article:Color,Article:Finish"
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
 
@@ -86,6 +86,69 @@ class ArticleObxPermutationTests(unittest.TestCase):
             [p.final_article for p in permutations],
             ["BASECA", "BASECB", "BASEDA", "BASEDB"],
         )
+
+    def test_codescheme_preserves_literal_separator(self):
+        snapshot = _base_snapshot()
+        snapshot.code_schemes["scheme-1"]["body"] = "Article:Finish,-,Article:Color"
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASEA-C", "BASEA-D", "BASEB-C", "BASEB-D"],
+        )
+        self.assertEqual(permutations[0].variant_code, "A-C")
+
+    def test_relation_action_changes_encoded_code(self):
+        snapshot = _base_snapshot()
+        snapshot.relation_objects = [
+            type(
+                "Relation",
+                (),
+                {
+                    "type_code": "3",
+                    "domain": "C",
+                    "value_id": "",
+                    "order": 10,
+                    "body": "CodeFinish = 'Z' IF Finish = 'Oak'",
+                    "name": "A_Code_Finish",
+                },
+            )()
+        ]
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertIn("BASEZC", [p.final_article for p in permutations])
+        self.assertIn("BASEZ-D" if False else "BASEZD", [p.final_article for p in permutations])
+
+    def test_dependent_option_values_follow_selected_property(self):
+        from models.option import Option
+        from models.option_value import OptionValue
+
+        snapshot = _base_snapshot()
+        fabric = Option(id="fabric", name="Fabric", display_order=3)
+        fabric.values = [
+            OptionValue(id="fabric-a", option_id="fabric", value="Fabric A", code="F1"),
+            OptionValue(id="fabric-b", option_id="fabric", value="Fabric B", code="F2"),
+        ]
+        snapshot.options = [fabric]
+        snapshot.product_option_value_ids = {
+            "mdb:package:1": ["fabric-a", "fabric-b"]
+        }
+        snapshot.attribute_option_dependencies = {
+            "oak": ["fabric-a"],
+            "walnut": ["fabric-b"],
+        }
+        snapshot.code_schemes["scheme-1"]["body"] = "Article:Finish,Article:Color,Article:Fabric"
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        finals = [p.final_article for p in permutations]
+        self.assertEqual(
+            finals,
+            ["BASEACF1", "BASEADF1", "BASEBCF2", "BASEBDF2"],
+        )
+        self.assertTrue(all(p.options for p in permutations))
 
     def test_artbase_restriction_limits_values(self):
         snapshot = _base_snapshot()
