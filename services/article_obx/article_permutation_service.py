@@ -38,13 +38,12 @@ class _EvaluatedConfiguration:
 class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
-    def build(
-        self,
-        snapshot: Snapshot | None = None,
-        reporter=None,
-    ) -> list[ArticlePermutation]:
+    def build(self, snapshot: Snapshot | None = None, *, reporter=None) -> list[ArticlePermutation]:
         snapshot = snapshot or self.context.repository_snapshot
         if snapshot is None:
+            if reporter is not None:
+                reporter.begin(1, title="Building Article Permutations")
+                reporter.finish(True, "No repository snapshot is loaded")
             return []
 
         results: list[ArticlePermutation] = []
@@ -52,21 +51,27 @@ class ArticlePermutationService(BaseService):
 
         relation_objects = tuple(sorted(
             getattr(snapshot, "relation_objects", []) or [],
-            key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
+            key=lambda r: (int(getattr(r, "order", 100) or 100), getattr(r, "name", "") or ""),
         ))
 
-        for article in sorted(
+        articles = sorted(
             snapshot.articles,
             key=lambda item: ((item.code or "").strip(), str(item.id or "")),
-        ):
+        )
+        if reporter is not None:
+            reporter.begin(len(articles) or 1, title="Building Article Permutations")
+
+        for article in articles:
             base_code = (article.code or "").strip()
             if not base_code:
                 if reporter is not None:
-                    reporter.advance("Skipping article without base article code")
+                    reporter.advance()
                 continue
 
             if reporter is not None:
-                reporter.note(f"Building permutations for {base_code}")
+                reporter.advance(f"Building {base_code}")
+
+            article_permutation_count = 0
 
             dimensions = self._property_dimensions(snapshot, article.id, base_code)
             products = self._property_combinations(dimensions, relation_objects)
@@ -126,6 +131,9 @@ class ArticlePermutationService(BaseService):
                             self._scheme_id(snapshot, article.id),
                         )
                     )
+                    article_permutation_count += 1
+                    if reporter is not None:
+                        reporter.note(f"Building {base_code} — {article_permutation_count} permutations")
 
             if reporter is not None:
                 reporter.advance(
@@ -140,6 +148,8 @@ class ArticlePermutationService(BaseService):
                 tuple(v.value_id for v in item.options),
             )
         )
+        if reporter is not None:
+            reporter.finish(True, f"Generated {len(results)} permutations")
         return results
 
     def _property_dimensions(
@@ -426,7 +436,7 @@ class ArticlePermutationService(BaseService):
             if relation_objects is not None
             else tuple(sorted(
                 getattr(snapshot, "relation_objects", []) or [],
-                key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
+                key=lambda r: (int(getattr(r, "order", 100) or 100), getattr(r, "name", "") or ""),
             ))
         )
         for relation in relations:
@@ -593,6 +603,10 @@ class ArticlePermutationService(BaseService):
         return [cls._normalise_name(prop) for _class_name, prop in tokens]
 
     @staticmethod
+    def _truthy(value: str) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "y"}
+
+    @staticmethod
     def _normalise_name(value: str) -> str:
         return re.sub(r"[^A-Za-z0-9_]+", "_", value or "").strip("_").upper()
 
@@ -735,7 +749,7 @@ class ArticlePermutationService(BaseService):
             for value in configuration.properties:
                 token = codes.get(cls._normalise_name(value.name)) or value.code or value.value
                 if cls._truthy(lowered.get("trim", "")):
-                    token = token.strip()
+                    token = str(token).strip()
                 parts.append(token)
 
             variant = value_sep.join(parts)

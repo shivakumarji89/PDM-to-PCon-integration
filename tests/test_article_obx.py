@@ -244,6 +244,31 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertNotIn("BASEAD", [p.final_article for p in permutations])
         self.assertIn("BASEAC", [p.final_article for p in permutations])
 
+    def test_user_defined_scheme_base_placeholder_encodes_base_characters(self):
+        snapshot = _base_snapshot()
+        # '@' placeholders consume base-article characters one at a time; the
+        # remaining segments carry the variant-code property references.
+        snapshot.code_schemes["scheme-1"]["body"] = "@,@,@,@,Article:Finish,Article:Color"
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASEAC", "BASEAD", "BASEBC", "BASEBD"],
+        )
+        self.assertEqual(permutations[0].variant_code, "AC")
+
+    def test_user_defined_scheme_preserves_literal_space_segment(self):
+        snapshot = _base_snapshot()
+        snapshot.code_schemes["scheme-1"]["body"] = "Article:Finish, ,Article:Color"
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            ["BASEA C", "BASEA D", "BASEB C", "BASEB D"],
+        )
+
     def test_relation_precondition_is_applied(self):
         snapshot = _base_snapshot()
         snapshot.relation_objects = [

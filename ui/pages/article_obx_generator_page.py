@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -147,7 +148,11 @@ class ArticleObxGeneratorPage(BasePage):
         actions.addStretch(1)
 
         self.add_content(source)
-        self.add_content(permutation_box)
+        # Only the table area is allowed to expand (stretch=1); the OBX
+        # parameters and the Build Permutations action stay stretch=0, so a
+        # large result set can never push them out of the visible workspace.
+        self._normalize_group_boxes(permutation_box)
+        self._content.addWidget(permutation_box, 1)
         self.add_content(parameters)
         self._content.addLayout(actions)
 
@@ -242,6 +247,9 @@ class ArticleObxGeneratorPage(BasePage):
         self._build_button.setEnabled(True)
         self._build_reporter = None
         self._build_signals = None
+        QMessageBox.critical(
+            self, "Build Permutations", f"Permutation build failed:\n\n{message}"
+        )
 
     def _populate_permutation_table(self) -> None:
         self._table.setRowCount(len(self._permutations))
