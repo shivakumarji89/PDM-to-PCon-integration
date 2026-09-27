@@ -654,63 +654,106 @@ class ArticlePermutationService(BaseService):
         snapshot: Snapshot,
         article_id: str | None,
         base_code: str,
-        properties: tuple[ArticleConfigurationValue, ...],
-    ) -> str:
-        scheme_id = (
-            getattr(snapshot, "article_code_scheme_ids", {}) or {}
-        ).get(str(article_id or ""))
-        scheme = (
-            (getattr(snapshot, "code_schemes", {}) or {}).get(str(scheme_id), {})
-            if scheme_id
-            else {}
-        )
-        body = str(scheme.get("body") or "")
+        configuration: _EvaluatedConfiguration,
+    ) -> tuple[str, str] | None:
+        scheme = cls._scheme(snapshot, article_id)
+        body = cls._scheme_body(snapshot, article_id)
+
+        values = {
+            cls._normalise_name(v.name): v
+            for v in (*configuration.properties, *configuration.options)
+        }
+        codes = dict(configuration.computed_codes)
 
         if not body:
-            ordered = properties
-        else:
-            order = cls._scheme_property_order(snapshot, article_id)
-            rank = {name: index for index, name in enumerate(order)}
-            ordered = tuple(
-                sorted(
-                    properties,
-                    key=lambda value: (
-                        rank.get(cls._normalise_name(value.name), 10**6),
-                        value.display_order,
-                        value.name,
-                    ),
+            variant = "".join(
+                (codes.get(cls._normalise_name(v.name)) or v.code or v.value).strip()
+                for v in configuration.properties
+            )
+            return base_code + variant, variant
+
+        # User-defined schemes are evaluated left-to-right. Commas delimit
+        # encoding segments; they are structural and are not emitted.
+        # Class:Property resolves the selected value's encoded token.
+        # @ consumes one base-article character. Literal text is preserved.
+        rendered: list[str] = []
+        base_index = 0
+        recognised = False
+
+        for segment in body.split(","):
+            token = segment
+
+            if token == "@":
+                recognised = True
+                if base_index < len(base_code):
+                    rendered.append(base_code[base_index])
+                    base_index += 1
+                continue
+
+            ref = re.fullmatch(
+                r"\s*([A-Za-z0-9_]+):([A-Za-z0-9_]+)\s*", token
+            )
+            if ref:
+                recognised = True
+                name = cls._normalise_name(ref.group(2))
+                value = values.get(name)
+                if value is None:
+                    return None
+                rendered.append(
+                    codes.get(name) or value.code or value.value
+                )
+                continue
+
+            # A segment can mix literal text and property references.
+            def replace_reference(match):
+                nonlocal recognised
+                recognised = True
+                name = cls._normalise_name(match.group(2))
+                value = values.get(name)
+                if value is None:
+                    return ""
+                return codes.get(name) or value.code or value.value
+
+            rendered.append(
+                re.sub(
+                    r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)",
+                    replace_reference,
+                    token,
                 )
             )
 
-        tokens: list[str] = []
-        for value in ordered:
-            token = (value.code or "").strip()
-            if not token:
-                return ""
-            tokens.append(token)
+        if not recognised:
+            return None
 
-        # The repository's current code-scheme writer uses the base article as
-        # the fixed @ portion and property values as the variant-code portion.
-        return base_code + "".join(tokens)
+        variant = "".join(rendered)
+        lowered = {str(k).lower(): str(v) for k, v in scheme.items()}
+        var_sep = lowered.get("varcodesep", lowered.get("var_code_sep", ""))
+
+        # A user-defined scheme body is itself the variant-code grammar.
+        # VarCodeSep is used only when explicitly supplied by the repository.
+        return base_code + var_sep + variant, variant
 
     @staticmethod
     def _make_permutation(
-        snapshot: Snapshot,
         article,
         base_code: str,
-        properties,
-        options,
+        configuration: _EvaluatedConfiguration,
         final_article: str,
+        variant_code: str,
+        scheme_id: str,
     ) -> ArticlePermutation:
         return ArticlePermutation(
             article_id=str(article.id or ""),
             product_id=str(article.product_id or ""),
             base_code=base_code,
             final_article=final_article,
+            variant_code=variant_code,
+            variant_condition=configuration.variant_condition,
+            code_scheme_id=scheme_id,
             name=article.name or "",
             description=article.description or "",
             quantity=1,
-            is_super_item=False,
-            properties=tuple(properties),
-            options=tuple(options),
+            is_super_item=bool(getattr(article, "is_super_item", False)),
+            properties=configuration.properties,
+            options=configuration.options,
         )
