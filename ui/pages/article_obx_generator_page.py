@@ -186,7 +186,6 @@ class ArticleObxGeneratorPage(BasePage):
         })
         self._currency.addItems(currencies)
         self._build_button.setEnabled(bool(snapshot.articles))
-        self._build_permutations()
 
     def is_ready(self) -> bool:
         return self._context.repository_snapshot is not None
