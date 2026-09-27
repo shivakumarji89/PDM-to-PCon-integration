@@ -443,7 +443,7 @@ class ArticlePermutationService(BaseService):
         return re.sub(r"[^A-Za-z0-9_]+", "_", value or "").strip("_").upper()
 
     @staticmethod
-    def _materialize_properties(
+    def _materialize_values(
         dimensions: tuple[_Dimension, ...],
         selected_values: tuple[object, ...],
     ) -> tuple[ArticleConfigurationValue, ...]:
@@ -451,12 +451,12 @@ class ArticlePermutationService(BaseService):
         for dimension, source in zip(dimensions, selected_values):
             values.append(
                 ArticleConfigurationValue(
-                    kind="property",
-                    entity_id=dimension.property_id,
+                    kind=dimension.kind,
+                    entity_id=dimension.entity_id,
                     value_id=str(source.id),
                     name=dimension.name,
                     value=source.value or "",
-                    code=(source.code or "").replace("#", ""),
+                    code=(getattr(source, "code", "") or getattr(source, "supplier_code", "") or "").replace("#", ""),
                     display_order=dimension.display_order,
                 )
             )
@@ -533,9 +533,9 @@ class ArticlePermutationService(BaseService):
         if not restrictions:
             return True
 
-        branches = re.split(r"\\s+OR\\s+", restrictions, flags=re.IGNORECASE)
+        branches = re.split(r"\s+OR\s+", restrictions, flags=re.IGNORECASE)
         for branch in branches:
-            terms = re.split(r"\\s+AND\\s+", branch, flags=re.IGNORECASE)
+            terms = re.split(r"\s+AND\s+", branch, flags=re.IGNORECASE)
             if all(
                 ArticlePermutationService._relation_term_matches(
                     term.strip(), base_code, selected
