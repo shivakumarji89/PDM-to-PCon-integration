@@ -405,7 +405,7 @@ class ArticlePermutationService(BaseService):
         term = term.strip(" ()")
 
         ban = re.search(
-            r"\\$BAN\\s+IN\\s*\\(\\s*'([^']*)'",
+            r"\$BAN\s+IN\s*\(\s*'([^']*)'",
             term,
             re.IGNORECASE,
         )
@@ -413,7 +413,7 @@ class ArticlePermutationService(BaseService):
             return ban.group(1).upper() == base_code.upper()
 
         specified = re.search(
-            r"SPECIFIED\\s+([A-Z0-9_]+)",
+            r"SPECIFIED\s+([A-Z0-9_]+)",
             term,
             re.IGNORECASE,
         )
@@ -421,7 +421,7 @@ class ArticlePermutationService(BaseService):
             return False
 
         value_match = re.search(
-            r"([A-Z0-9_]+)\\s+IN\\s*\\((.*?)\\)",
+            r"([A-Z0-9_]+)\s+IN\s*\((.*?)\)",
             term,
             re.IGNORECASE | re.DOTALL,
         )
