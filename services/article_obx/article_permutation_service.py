@@ -46,6 +46,11 @@ class ArticlePermutationService(BaseService):
         results: list[ArticlePermutation] = []
         seen: set[tuple[str, str]] = set()
 
+        relation_objects = tuple(sorted(
+            getattr(snapshot, "relation_objects", []) or [],
+            key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
+        ))
+
         for article in sorted(
             snapshot.articles,
             key=lambda item: ((item.code or "").strip(), str(item.id or "")),
@@ -84,7 +89,8 @@ class ArticlePermutationService(BaseService):
                         continue
 
                     evaluated = self._evaluate_configuration(
-                        snapshot, base_code, properties, options
+                        snapshot, base_code, properties, options,
+                        relation_objects=relation_objects,
                     )
                     if evaluated is None:
                         continue
@@ -291,6 +297,8 @@ class ArticlePermutationService(BaseService):
         base_code: str,
         properties: tuple[ArticleConfigurationValue, ...],
         options: tuple[ArticleConfigurationValue, ...],
+        *,
+        relation_objects=None,
     ) -> _EvaluatedConfiguration | None:
         values = (*properties, *options)
         selected_ids = {v.value_id for v in values}
@@ -304,10 +312,15 @@ class ArticlePermutationService(BaseService):
         }
         varconds: list[str] = []
 
-        for relation in sorted(
-            getattr(snapshot, "relation_objects", []) or [],
-            key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
-        ):
+        relations = (
+            relation_objects
+            if relation_objects is not None
+            else tuple(sorted(
+                getattr(snapshot, "relation_objects", []) or [],
+                key=lambda r: (int(getattr(r, "order", 100) or 100), r.name or ""),
+            ))
+        )
+        for relation in relations:
             domain = str(getattr(relation, "domain", "") or "")
             type_code = str(getattr(relation, "type_code", "") or "")
             body = str(getattr(relation, "body", "") or "")
