@@ -338,7 +338,7 @@ class RepositoryWorkspace(QWidget):
         self._start_repository_extraction(self._repository_path_value, token)
 
     def _start_repository_extraction(self, path: str, token: int) -> None:
-        reporter = ProgressReporter(self)
+        # Keep the reporter independent of the widget lifetime. Repository extraction\n        # runs in QThreadPool and may finish after the workspace is replaced.\n        reporter = ProgressReporter()
         self._repository_extract_reporter = reporter
         self._repository_extract_signals = _RepositoryExtractSignals()
         self._repository_extract_signals.finished.connect(
