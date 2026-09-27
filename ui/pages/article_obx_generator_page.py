@@ -142,7 +142,7 @@ class ArticleObxGeneratorPage(BasePage):
                 f"{value.name}={value.value}"
                 for value in (*permutation.properties, *permutation.options)
             ) or "—"
-            variant_code = permutation.final_article[len(permutation.base_code):]
+            variant_code = permutation.variant_code
             values = [
                 str(row),
                 permutation.base_code,
