@@ -716,7 +716,9 @@ class ArticlePermutationService(BaseService):
             if token == "@":
                 recognised = True
                 has_base_placeholder = True
-                final_parts.append(base_code)
+                if base_index < len(base_code):
+                    final_parts.append(base_code[base_index])
+                    base_index += 1
                 continue
 
             ref = re.fullmatch(
@@ -758,12 +760,13 @@ class ArticlePermutationService(BaseService):
         variant = "".join(variant_parts)
 
         if has_base_placeholder:
-            # The scheme already emitted the base article through '@'.
+            # The user-defined scheme explicitly emitted the base characters
+            # through '@'. VarCodeSep is a predefined-scheme field and must
+            # not be added to a user-defined scheme.
             return final_article, variant
 
-        lowered = {str(k).lower(): str(v) for k, v in scheme.items()}
-        var_sep = lowered.get("varcodesep", lowered.get("var_code_sep", ""))
-        return base_code + var_sep + final_article, variant
+        # No '@' means the user-defined body describes only the variant part.
+        return base_code + final_article, variant
 
 
     @staticmethod
