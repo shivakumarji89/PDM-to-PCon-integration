@@ -60,7 +60,7 @@ class ArticlePermutationService(BaseService):
                 continue
 
             dimensions = self._property_dimensions(snapshot, article.id, base_code)
-            products = itertools.product(*(d.values for d in dimensions)) if dimensions else [()]
+            products = self._property_combinations(dimensions, relation_objects)
 
             for selected in products:
                 properties = self._materialize_values(dimensions, selected)
@@ -207,6 +207,90 @@ class ArticlePermutationService(BaseService):
 
         return tuple(dimensions)
 
+    @classmethod
+    def _property_combinations(cls, dimensions, relation_objects):
+        """Generate property combinations while applying simple hierarchy relations."""
+        if not dimensions:
+            return [()]
+        constraints = cls._hierarchy_constraints(relation_objects)
+        ordered = cls._order_dimensions_by_dependencies(dimensions, constraints)
+        results = []
+        def visit(index, selected, selected_by_name):
+            if index >= len(ordered):
+                results.append(tuple(selected)); return
+            dimension = ordered[index]
+            name = cls._normalise_name(dimension.name)
+            for value in dimension.values:
+                value_id = str(getattr(value, "id", ""))
+                if not cls._value_satisfies_hierarchy(value_id, constraints, selected_by_name):
+                    continue
+                selected.append(value)
+                selected_by_name[name] = str(getattr(value, "value", "") or "").upper()
+                visit(index + 1, selected, selected_by_name)
+                selected_by_name.pop(name, None); selected.pop()
+        visit(0, [], {})
+        index_by_id = {d.entity_id: i for i, d in enumerate(dimensions)}
+        return [tuple(combo[index_by_id[d.entity_id]] for d in dimensions) for combo in results]
+
+    @classmethod
+    def _hierarchy_constraints(cls, relation_objects):
+        constraints = {}
+        for relation in relation_objects:
+            domain = str(getattr(relation, "domain", "") or "")
+            type_code = str(getattr(relation, "type_code", "") or "")
+            value_id = str(getattr(relation, "value_id", "") or "")
+            body = str(getattr(relation, "body", "") or "")
+            if domain != "C" or type_code not in {"1", "2"} or not value_id:
+                continue
+            parsed = cls._single_parent_condition(body)
+            if parsed is not None:
+                parent, allowed = parsed
+                constraints.setdefault(value_id, []).append((parent, frozenset(x.upper() for x in allowed)))
+        return constraints
+
+    @staticmethod
+    def _single_parent_condition(body):
+        text = body.split("Restrictions:", 1)[-1].strip()
+        if not text or re.search(r"\bOR\b", text, re.IGNORECASE):
+            return None
+        specified = re.search(r"SPECIFIED\s+([A-Za-z0-9_]+)", text, re.IGNORECASE)
+        value_match = re.search(r"([A-Za-z0-9_]+)\s+IN\s*\(\s*([^)]*)\)", text, re.IGNORECASE | re.DOTALL)
+        if specified and value_match and specified.group(1).upper() == value_match.group(1).upper():
+            values = [x.strip().strip("'").strip('"') for x in value_match.group(2).split(',') if x.strip()]
+            return specified.group(1), values
+        equality = re.fullmatch(r"\(?\s*([A-Za-z0-9_]+)\s*=\s*['\"]([^'\"]+)['\"]\s*\)?", text, re.IGNORECASE)
+        return (equality.group(1), [equality.group(2)]) if equality else None
+
+    @classmethod
+    def _order_dimensions_by_dependencies(cls, dimensions, constraints):
+        by_name = {cls._normalise_name(d.name): d for d in dimensions}
+        dependencies = {}
+        for dimension in dimensions:
+            parents = set()
+            for value in dimension.values:
+                for parent, _allowed in constraints.get(str(getattr(value, "id", "")), ()):
+                    parent = cls._normalise_name(parent)
+                    if parent in by_name and parent != cls._normalise_name(dimension.name):
+                        parents.add(parent)
+            dependencies[cls._normalise_name(dimension.name)] = parents
+        ordered, remaining, placed = [], list(dimensions), set()
+        while remaining:
+            progress = False
+            for dimension in list(remaining):
+                name = cls._normalise_name(dimension.name)
+                if dependencies.get(name, set()).issubset(placed):
+                    ordered.append(dimension); remaining.remove(dimension); placed.add(name); progress = True
+            if not progress:
+                ordered.extend(remaining); break
+        return tuple(ordered)
+
+    @classmethod
+    def _value_satisfies_hierarchy(cls, value_id, constraints, selected_by_name):
+        for parent, allowed in constraints.get(value_id, ()):
+            selected = selected_by_name.get(cls._normalise_name(parent))
+            if selected is not None and selected not in allowed:
+                return False
+        return True
     def _option_dimensions(
         self, snapshot: Snapshot, article, selected_property_ids: set[str], base_code: str
     ) -> tuple[_Dimension, ...]:
