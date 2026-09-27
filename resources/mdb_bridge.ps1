@@ -39,6 +39,7 @@ function Format-SqlValue($v) {
 
 $result = [ordered]@{ ok = $true; results = @() }
 $conn = $null
+$rs = $null
 try {
     $payload = Get-Content -Raw -LiteralPath $InputPath | ConvertFrom-Json
     $conn = New-Object -ComObject ADODB.Connection
@@ -117,6 +118,8 @@ try {
                             $rs.MoveNext()
                         }
                         $rs.Close()
+                        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+                        $rs = $null
                     }
                     $r.rows = $rows
                 }
@@ -143,7 +146,16 @@ catch {
     $result.results += [pscustomobject]@{ op = "connect"; ok = $false; error = "$($_.Exception.Message)" }
 }
 finally {
-    if ($conn -and $conn.State -eq 1) { $conn.Close() }
+    if ($rs) {
+        try { $rs.Close() } catch {}
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null } catch {}
+        $rs = $null
+    }
+    if ($conn) {
+        try { if ($conn.State -eq 1) { $conn.Close() } } catch {}
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($conn) | Out-Null } catch {}
+        $conn = $null
+    }
 }
 
 $json = $result | ConvertTo-Json -Depth 8
