@@ -21,26 +21,30 @@ from services.base_service import BaseService
 
 @dataclass(frozen=True)
 class _Dimension:
-    property_id: str
+    kind: str
+    entity_id: str
     name: str
     display_order: int
     values: tuple[object, ...]
+
+@dataclass(frozen=True)
+class _EvaluatedConfiguration:
+    properties: tuple[ArticleConfigurationValue, ...]
+    options: tuple[ArticleConfigurationValue, ...]
+    computed_codes: dict[str, str]
+    variant_condition: str = ""
 
 
 class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
     def build(self, snapshot: Snapshot | None = None) -> list[ArticlePermutation]:
-        snapshot = (
-            snapshot
-            if snapshot is not None
-            else self.context.repository_snapshot
-        )
+        snapshot = snapshot or self.context.repository_snapshot
         if snapshot is None:
             return []
 
         results: list[ArticlePermutation] = []
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
 
         for article in sorted(
             snapshot.articles,
@@ -50,58 +54,70 @@ class ArticlePermutationService(BaseService):
             if not base_code:
                 continue
 
-            dimensions = self._dimensions_for_article(snapshot, article.id, base_code)
-            if not dimensions:
-                final_article = base_code
-                if final_article not in seen:
-                    seen.add(final_article)
+            dimensions = self._property_dimensions(snapshot, article.id, base_code)
+            products = itertools.product(*(d.values for d in dimensions)) if dimensions else [()]
+
+            for selected in products:
+                properties = self._materialize_values(dimensions, selected)
+                property_ids = {v.value_id for v in properties}
+
+                if not self._valid_art_base(snapshot, base_code, property_ids):
+                    continue
+                if not self._valid_exclusions(snapshot, property_ids):
+                    continue
+
+                option_dimensions = self._option_dimensions(
+                    snapshot, article, property_ids, base_code
+                )
+                option_products = (
+                    itertools.product(*(d.values for d in option_dimensions))
+                    if option_dimensions else [()]
+                )
+
+                for selected_options in option_products:
+                    options = self._materialize_values(option_dimensions, selected_options)
+                    all_ids = {v.value_id for v in (*properties, *options)}
+
+                    if not self._valid_art_base(snapshot, base_code, all_ids):
+                        continue
+                    if not self._valid_exclusions(snapshot, all_ids):
+                        continue
+
+                    evaluated = self._evaluate_configuration(
+                        snapshot, base_code, properties, options
+                    )
+                    if evaluated is None:
+                        continue
+
+                    encoded = self._encode_article(
+                        snapshot, article.id, base_code, evaluated
+                    )
+                    if encoded is None:
+                        continue
+
+                    final_article, variant_code = encoded
+                    key = (str(article.id or ""), final_article)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
                     results.append(
                         self._make_permutation(
-                            snapshot, article, base_code, (), (), final_article
+                            article,
+                            base_code,
+                            evaluated,
+                            final_article,
+                            variant_code,
+                            self._scheme_id(snapshot, article.id),
                         )
                     )
-                continue
-
-            for selected_values in itertools.product(
-                *(dimension.values for dimension in dimensions)
-            ):
-                properties = self._materialize_properties(
-                    dimensions, selected_values
-                )
-                selected_ids = {value.value_id for value in properties}
-
-                if not self._valid_art_base(snapshot, base_code, selected_ids):
-                    continue
-                if not self._valid_exclusions(snapshot, selected_ids):
-                    continue
-                if not self._valid_relations(
-                    snapshot, base_code, selected_ids, properties
-                ):
-                    continue
-
-                final_article = self._encode_article(
-                    snapshot, article.id, base_code, properties
-                )
-                if not final_article or final_article in seen:
-                    continue
-
-                seen.add(final_article)
-                results.append(
-                    self._make_permutation(
-                        snapshot,
-                        article,
-                        base_code,
-                        properties,
-                        (),
-                        final_article,
-                    )
-                )
 
         results.sort(
             key=lambda item: (
                 item.base_code,
                 item.final_article,
-                tuple(value.value_id for value in item.properties),
+                tuple(v.value_id for v in item.properties),
+                tuple(v.value_id for v in item.options),
             )
         )
         return results
