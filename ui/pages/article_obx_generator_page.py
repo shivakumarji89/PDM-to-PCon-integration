@@ -6,7 +6,7 @@ reviewed.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -19,11 +19,40 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QHeaderView,
+    QSizePolicy,
 )
 
+from core.progress import ProgressReporter
 from ui.components import SectionHeader
+from ui.dialogs.progress_dialog import ProgressDialog
 from ui.components._styles import secondary_button_qss
 from ui.pages.base_page import BasePage
+
+
+class _PermutationBuildSignals(QObject):
+    """Signals emitted by the background permutation-build worker."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+
+class _PermutationBuildWorker(QRunnable):
+    """Build permutations away from the UI thread."""
+
+    def __init__(self, service, snapshot, reporter, signals) -> None:
+        super().__init__()
+        self._service = service
+        self._snapshot = snapshot
+        self._reporter = reporter
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            result = self._service.build(self._snapshot, reporter=self._reporter)
+        except Exception as error:  # defensive: never crash the worker thread
+            self._signals.failed.emit(f"Unexpected error: {error}")
+        else:
+            self._signals.finished.emit(result)
 
 
 class ArticleObxGeneratorPage(BasePage):
@@ -42,6 +71,10 @@ class ArticleObxGeneratorPage(BasePage):
         )
         self._context = context
         self._permutations = []
+        self._thread_pool = QThreadPool(self)
+        self._build_signals = None
+        self._build_reporter = None
+        self._build_dialog = None
         self._currency = QComboBox(self)
         self._date = QDateEdit(self)
         self._date.setCalendarPopup(True)
@@ -95,6 +128,9 @@ class ArticleObxGeneratorPage(BasePage):
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self._table.setMinimumHeight(240)
+        self._table.setMaximumHeight(380)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         permutation_layout.addWidget(self._table)
 
         parameters = QGroupBox("OBX Parameters", self)
@@ -131,23 +167,94 @@ class ArticleObxGeneratorPage(BasePage):
         self._permutations = []
 
         if snapshot is None:
-            self._status.setText("No repository snapshot is loaded.")
+            self._status.setText(
+                "No repository snapshot is loaded. Load/select the published "
+                "repository through the existing repository workflow first."
+            )
             return
 
-        self._permutations = self._context.article_permutation_service.build(snapshot)
+        self._build_button.setEnabled(False)
+        reporter = ProgressReporter(self)
+        dialog = self._context_window_progress_monitor()
+        dialog.bind(reporter)
+        self._build_reporter = reporter
+        self._build_dialog = dialog
 
+        signals = _PermutationBuildSignals()
+        signals.finished.connect(self._on_permutations_finished)
+        signals.failed.connect(self._on_permutations_failed)
+        self._build_signals = signals
+
+        reporter.begin(
+            max(1, len(snapshot.articles)),
+            title="Building Article Permutations",
+            subject=snapshot.product.code or snapshot.product.name,
+        )
+        reporter.note("Preparing repository configuration dimensions")
+
+        worker = _PermutationBuildWorker(
+            self._context.article_permutation_service,
+            snapshot,
+            reporter,
+            signals,
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self._thread_pool.start(worker)
+
+    def _context_window_progress_monitor(self) -> ProgressDialog:
+        main = self.window()
+        if hasattr(main, "_product_page"):
+            return main._product_page.progress_monitor()
+        dialog = getattr(self, "_progress_dialog", None)
+        if dialog is None:
+            dialog = ProgressDialog(self)
+            self._progress_dialog = dialog
+        return dialog
+
+    def _on_permutations_finished(self, permutations) -> None:
+        reporter = self._build_reporter
+        self._permutations = list(permutations or [])
+        self._populate_permutation_table()
+        snapshot = self._context.repository_snapshot
+        if snapshot is not None:
+            self._status.setText(
+                f"Repository snapshot loaded: "
+                f"{snapshot.product.code or snapshot.product.name} "
+                f"| Repository articles: {len(snapshot.articles)} "
+                f"| Generated permutations: {len(self._permutations)} "
+                f"| Properties: {len(snapshot.properties)} "
+                f"| Options: {len(snapshot.options)} "
+                f"| Prices: {len(snapshot.price_records)}"
+            )
+        if reporter is not None:
+            reporter.finish(True, f"Generated {len(self._permutations)} permutation(s)")
+        self._build_button.setEnabled(True)
+        self._build_reporter = None
+        self._build_signals = None
+
+    def _on_permutations_failed(self, message: str) -> None:
+        reporter = self._build_reporter
+        if reporter is not None:
+            reporter.finish(False, message)
+        self._status.setText(f"Permutation build failed: {message}")
+        self._build_button.setEnabled(True)
+        self._build_reporter = None
+        self._build_signals = None
+
+    def _populate_permutation_table(self) -> None:
         self._table.setRowCount(len(self._permutations))
         for row, permutation in enumerate(self._permutations, start=1):
             configuration = "; ".join(
                 f"{value.name}={value.value}"
                 for value in (*permutation.properties, *permutation.options)
             ) or "—"
-            variant_code = permutation.variant_code
             values = [
                 str(row),
                 permutation.base_code,
                 permutation.final_article,
-                variant_code or "—",
+                permutation.variant_code or "—",
                 configuration,
                 "Valid",
             ]
@@ -155,16 +262,6 @@ class ArticleObxGeneratorPage(BasePage):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
                 self._table.setItem(row - 1, column, item)
-
-        self._status.setText(
-            f"Repository snapshot loaded: "
-            f"{snapshot.product.code or snapshot.product.name} "
-            f"| Repository articles: {len(snapshot.articles)} "
-            f"| Generated permutations: {len(self._permutations)} "
-            f"| Properties: {len(snapshot.properties)} "
-            f"| Options: {len(snapshot.options)} "
-            f"| Prices: {len(snapshot.price_records)}"
-        )
 
     def refresh(self) -> None:
         snapshot = self._context.repository_snapshot
