@@ -1099,6 +1099,9 @@ class ArticlesPage(BasePage):
             self._table.setItem(row, _COL_ORDER, order_item)
 
     def _on_group_toggled(self, checked: bool) -> None:
+        # A user toggle cancels an earlier automatic coverage collapse. The
+        # automatic path can re-collapse later only when coverage is complete.
+        self._auto_collapsed_by_coverage = False
         self._group_by_base = checked
         self._apply_filter()
 
