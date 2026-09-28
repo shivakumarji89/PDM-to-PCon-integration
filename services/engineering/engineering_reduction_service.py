@@ -508,12 +508,17 @@ class EngineeringReductionService(BaseService):
         pre_dot = (getattr(article, "code", "") or "").split(".", 1)[0]
         boundary = max(0, min(int(base_length or 0), len(pre_dot)))
         remaining = pre_dot[boundary:]
+        article_value_ids = getattr(snapshot, 'article_property_value_ids', {}) or {}
+        product_value_ids = getattr(snapshot, 'product_property_value_ids', {}) or {}
+        product_id = str(getattr(article, 'product_id', '') or '')
+        carried_value_ids = [str(v) for v in article_value_ids.get(str(article.id), [])] or [str(v) for v in product_value_ids.get(product_id, [])]
+        carried_pids = {str(p.id) for p in getattr(snapshot, 'properties', []) or [] if any(str(v.id) in carried_value_ids for v in getattr(p, 'values', []) or [])}
         assignments, seen = [], set()
         for cls in getattr(getattr(snapshot, 'engineering', None), 'classes', []) or []:
             if not str(getattr(cls, 'name', '')).endswith('_Attribute'): continue
             for assignment in getattr(cls, 'properties', []) or []:
                 pid = str(getattr(assignment, 'property_id', '') or '')
-                if pid and pid not in seen: seen.add(pid); assignments.append(assignment)
+                if pid and pid in carried_pids and pid not in seen: seen.add(pid); assignments.append(assignment)
         assignments.sort(key=lambda a: (int(getattr(a, 'placement', 0) or 0), str(getattr(a, 'property_id', '') or '')))
         try: decoded = self.context.engineering_class_service.resolve_config_codes(snapshot)
         except Exception: decoded = {}
