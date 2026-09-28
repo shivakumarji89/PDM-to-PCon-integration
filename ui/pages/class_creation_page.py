@@ -528,6 +528,9 @@ class ClassCreationPage(BasePage):
         self._attr_master.setHorizontalHeaderLabels(
             ["Property", "Width", "Ignore", "Type", "Usage", "Relation Object"]
         )
+        # Ignore is temporarily disconnected from Class Creation. Keep the
+        # backing compatibility column but do not expose or edit it.
+        self._attr_master.setColumnHidden(2, True)
         self._attr_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._attr_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._attr_master.setEditTriggers(
@@ -963,6 +966,7 @@ class ClassCreationPage(BasePage):
         self._opt_master.setHorizontalHeaderLabels(
             ["Option", "Width", "Ignore", "Type", "Usage", "Relation Object"]
         )
+        self._opt_master.setColumnHidden(2, True)
         self._opt_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._opt_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._opt_master.setEditTriggers(
@@ -2115,11 +2119,8 @@ class ClassCreationPage(BasePage):
             self._context.snapshot_manager.mark_modified()
 
     def _on_ignore_toggled(self, prop_id, checked: bool, prop_node=None) -> None:
-        """User chose to keep a head property in the base (checked) or slice it
-        (unchecked). Re-slices and re-materialises the base masters so both this
-        page and the Article Master reflect the choice."""
-        if self._populating:
-            return
+        """Legacy callback retained for old snapshots; Ignore is disconnected."""
+        return
         snapshot = self._context.active_snapshot
         if snapshot is None:
             return
