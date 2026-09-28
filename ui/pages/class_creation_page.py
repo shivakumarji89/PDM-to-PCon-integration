@@ -855,14 +855,17 @@ class ClassCreationPage(BasePage):
             self._attr_values.setItem(
                 row, 2, QTableWidgetItem(self._value_relation_object(prop, value))
             )
+            width = max(0, int(getattr(cls_prop, "width", 0) or 0))
             status = "PDM"
             if cv is not None and getattr(cv, "source", "pdm") != "pdm":
                 status = "Added"
             elif not sliced:
                 status = "Needs Sliced code"
+            elif width > 0 and len(sliced) != width:
+                status = f"Invalid width: property={width}, code={len(sliced)}"
             elif sliced_item.text() != pdm_code:
                 status = "Corrected"
-            status_ok = status != "Needs Sliced code"
+            status_ok = status not in ("Needs Sliced code",) and not status.startswith("Invalid width")
             status_item = QTableWidgetItem()
             status_item.setIcon(_status_icon(status_ok))
             status_item.setToolTip(status)
