@@ -112,3 +112,23 @@ def test_text_workflow_keeps_values_without_codes():
 
     assert keys[("propvalue", "Finish_id_v1")] == "Custom"
     assert keys[("optionvalue", "Handle_id_ov1")] == "Custom"
+
+def test_text_workflow_preserves_edits_when_blocks_are_ensured_again():
+    snapshot = Snapshot(
+        articles=[
+            Article(
+                id="a1",
+                product_id="p1",
+                code="A100",
+                name="Article",
+                description="Original",
+            )
+        ]
+    )
+    service = _service()
+    blocks = service.ensure_text_blocks(snapshot)
+    block = next(b for b in blocks if b.type_code == "artshort")
+    block.set_language("en", "Edited")
+    
+    assert service.ensure_text_blocks(snapshot) is blocks
+    assert next(b for b in snapshot.text_blocks if b.type_code == "artshort").en == "Edited"
