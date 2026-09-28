@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -121,7 +120,8 @@ class ArticlesPage(BasePage):
         self._blocked_article_ids: frozenset[str] = frozenset()
         self._blocked_reason: str = ""
         self._group_by_base = True  # group by base by default
-        self._auto_collapsed_by_coverage = False  # Development: auto-collapse only after full assignment
+        # Development only: set when this page collapses a complete set automatically.
+        self._auto_collapsed_by_coverage = False
         self._syncing = False  # guard while programmatically syncing widgets
         self._last_module = None
 
