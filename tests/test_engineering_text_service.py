@@ -132,3 +132,35 @@ def test_text_workflow_preserves_edits_when_blocks_are_ensured_again():
     
     assert service.ensure_text_blocks(snapshot) is blocks
     assert next(b for b in snapshot.text_blocks if b.type_code == "artshort").en == "Edited"
+
+def test_text_workflow_round_trip_preserves_dynamic_languages_and_identity():
+    from services.snapshot_serialization import snapshot_from_dict, snapshot_to_dict
+
+    snapshot = Snapshot(
+        articles=[
+            Article(
+                id="a1",
+                product_id="p1",
+                code="A100",
+                name="Article",
+                description="Original",
+            )
+        ]
+    )
+    service = _service()
+    block = service.ensure_text_blocks(snapshot)[0]
+    block.set_language("it", "Articolo")
+    block.set_language("es", "Artículo")
+    block.set_language("en", "Edited")
+
+    restored = snapshot_from_dict(snapshot_to_dict(snapshot))
+    restored_block = next(
+        b for b in restored.text_blocks
+        if b.type_code == block.type_code and b.name == block.name
+    )
+
+    assert restored_block.en == "Edited"
+    assert restored_block.get_language("it") == "Articolo"
+    assert restored_block.get_language("es") == "Artículo"
+    assert restored_block.name == block.name
+    assert restored_block.type_code == block.type_code
