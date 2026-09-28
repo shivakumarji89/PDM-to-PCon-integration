@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
-from models.article_set import ArticleSet, SetAttribute, SetValue
+from models.article_set import ArticleSet, ClassSplit, SetAttribute, SetValue
 from models.member_article import MemberArticle
 from models.snapshot import Snapshot
 from services.base_service import BaseService
@@ -534,11 +534,6 @@ class EngineeringReductionService(BaseService):
             for member in (getattr(family, "members", []) or [])
             if getattr(member, "article_id", "")
         }
-        ignored = {
-            str(k): bool(v)
-            for k, v in (getattr(snapshot, "config_ignore_overrides", {}) or {}).items()
-        }
-
         # Class Creation assignments are the engineering-side vocabulary. Use
         # Attribute classes only for pre-dot reduction; Options/Visual classes
         # continue to serve their existing downstream workflows.
@@ -624,10 +619,9 @@ class EngineeringReductionService(BaseService):
                 original = code_of.get(article_id, "")
                 working = original.split(".", 1)[0]
 
-                for pid, assignment in ordered:
-                    if ignored.get(pid, False):
-                        continue
-
+                override_key = str(original or "")
+                has_manual_boundary = override_key in override_map
+                for pid, assignment in (() if has_manual_boundary else ordered):
                     # Class Creation is authoritative for Development
                     # reduction. The codes in assignment.values are exactly
                     # the codes represented by the Class Creation Sliced
@@ -673,8 +667,6 @@ class EngineeringReductionService(BaseService):
                 # the stored base boundary. The Class Creation reduction above is
                 # still run first so its Sliced/property-value matching remains
                 # authoritative and all property/value coverage is retained.
-                override_map = getattr(snapshot, "base_length_overrides", {}) or {}
-                override_key = str(original or "")
                 if override_key in override_map:
                     try:
                         override_length = max(0, int(override_map[override_key]))
@@ -740,14 +732,42 @@ class EngineeringReductionService(BaseService):
             bases = [v for v in reduced_by_article.values() if v]
             base_length = self._common_prefix_len(bases) if bases else 0
             base_code = (bases[0][:base_length] if bases else "")
+            split_base_length = min(
+                (
+                    len((code_of.get(a, "") or "").split(".", 1)[0])
+                    for a in article_ids
+                    if code_of.get(a, "")
+                ),
+                default=base_length,
+            )
+            remaining_length = max(0, split_base_length - base_length)
+            class_splits = [
+                ClassSplit(
+                    property_id=str(getattr(assignment, "property_id", "") or ""),
+                    property_name=str(getattr(assignment, "property_name", "") or ""),
+                    start=base_length + sum(
+                        max(0, int(getattr(previous, "width", 0) or 0))
+                        for previous in ordered[:index]
+                    ),
+                    width=max(0, int(getattr(assignment, "width", 0) or 0)),
+                    relation_object=str(
+                        getattr(assignment, "relation_object", "") or ""
+                    ),
+                )
+                for index, (_pid, assignment) in enumerate(ordered)
+                if bool(getattr(assignment, "configurable", True))
+                and str(getattr(assignment, "property_id", "") or "")
+            ]
             sets.append(
                 ArticleSet(
                     id=pc.id,
                     base_length=base_length,
                     base_code=base_code,
+                    remaining_length=remaining_length,
                     article_ids=article_ids,
                     properties=attributes,
                     options=options,
+                    class_splits=class_splits,
                 )
             )
 
@@ -836,12 +856,9 @@ class EngineeringReductionService(BaseService):
                 for a in article_ids
                 if code_of.get(a, "") in getattr(snapshot, "base_length_overrides", {})
             ]
-            explicit_ignores = getattr(
-                snapshot, "config_ignore_overrides", {}
-            ) or {}
             if override_lengths:
                 base_length = min(override_lengths)
-            elif pdm_prefixes and not explicit_ignores:
+            elif pdm_prefixes:
                 # PDM's getArticlePrefixLength is authoritative for the normal
                 # untouched load. An explicit Class Creation ignore decision
                 # intentionally overrides that boundary and must use the
@@ -871,7 +888,6 @@ class EngineeringReductionService(BaseService):
                     for prop in properties
                     if str(prop.id) in head_layout
                     and head_layout[str(prop.id)].get("width", 0)
-                    and ignored.get(str(prop.id)) is not True
                     and any(
                         len({str(v.id) for v in attr.values}) > 1
                         for attr in properties
@@ -882,16 +898,6 @@ class EngineeringReductionService(BaseService):
                 if varying_head_positions:
                     base_length = min(varying_head_positions)
                 else:
-                    ignored_end_positions = [
-                        int(head_layout[str(prop.id)].get("position", 0) or 0)
-                        + int(head_layout[str(prop.id)].get("width", 0) or 0)
-                        for prop in properties
-                        if ignored.get(str(prop.id)) is True
-                        and str(prop.id) in head_layout
-                        and head_layout[str(prop.id)].get("width", 0)
-                    ]
-                    if ignored_end_positions:
-                        base_length = max(ignored_end_positions)
                     else:
                         # With no configurable head property, the complete
                         # pre-dot article number is the base. This also keeps
