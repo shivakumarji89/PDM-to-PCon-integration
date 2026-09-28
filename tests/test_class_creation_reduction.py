@@ -226,13 +226,13 @@ def test_variant_condition_consumes_sequential_widths_in_placement_order():
         articles=[Article(id="a1", product_id="prod", code="ABC12345")],
         properties=[
             Property(id="p1", name="Height", values=[
-                PropertyValue(id="h3", property_id="p1", value="3", code="3")
+                PropertyValue(id="h1", property_id="p1", value="1", code="1")
             ], has_dependent_options=True),
             Property(id="p2", name="Width", values=[
                 PropertyValue(id="w45", property_id="p2", value="45", code="45")
             ], has_dependent_options=True),
         ],
-        article_property_value_ids={"a1": ["h3", "w45"]},
+        article_property_value_ids={"a1": ["h1", "w45"]},
         engineering=Engineering(
             classes=[EngineeringClass(
                 id="class3",
@@ -240,7 +240,7 @@ def test_variant_condition_consumes_sequential_widths_in_placement_order():
                 properties=[
                     ClassPropertyAssignment(
                         property_id="p1", property_name="Height", width=1, placement=0,
-                        values=[ClassValue(value_id="h3", code="3", value="3")],
+                        values=[ClassValue(value_id="h1", code="1", value="1")],
                     ),
                     ClassPropertyAssignment(
                         property_id="p2", property_name="Width", width=2, placement=1,
