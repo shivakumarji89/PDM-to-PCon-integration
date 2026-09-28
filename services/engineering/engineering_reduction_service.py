@@ -751,7 +751,15 @@ class EngineeringReductionService(BaseService):
                     ),
                     width=max(0, int(getattr(assignment, "width", 0) or 0)),
                     relation_object=str(
-                        getattr(assignment, "relation_object", "") or ""
+                        getattr(assignment, "relation_object", "")
+                        or next(
+                            (
+                                getattr(relation, "name", "")
+                                for relation in (getattr(snapshot, "relation_objects", []) or [])
+                                if str(getattr(relation, "property_id", "")) == str(getattr(assignment, "property_id", "") or "")
+                            ),
+                            "",
+                        )
                     ),
                 )
                 for index, (_pid, assignment) in enumerate(ordered)
@@ -828,6 +836,14 @@ class EngineeringReductionService(BaseService):
         # complete property/value vocabulary, even for a tiny article selection.
         # The decoder remains available lazily for the heuristic fallback below.
         head_layout: dict = {}
+        class_assignments: dict[str, object] = {}
+        for cls in getattr(getattr(snapshot, "engineering", None), "classes", []) or []:
+            if not str(getattr(cls, "name", "")).endswith("_Attribute"):
+                continue
+            for assignment in getattr(cls, "properties", []) or []:
+                pid = str(getattr(assignment, "property_id", "") or "")
+                if pid and pid not in class_assignments:
+                    class_assignments[pid] = assignment
         sets: list[ArticleSet] = []
         for pc in classes:
             article_ids = [str(a) for a in pc.article_ids]
@@ -941,14 +957,62 @@ class EngineeringReductionService(BaseService):
             codes = [code_of.get(a, "") for a in article_ids]
             base_n = min(base_length, self._common_prefix_len(codes))
             base_code = next((c for c in codes if c), "")[:base_n]
+            pre_dot_lengths = [
+                len((code_of.get(a, "") or "").split(".", 1)[0])
+                for a in article_ids
+                if code_of.get(a, "")
+            ]
+            remaining_length = max(
+                0,
+                (min(pre_dot_lengths) if pre_dot_lengths else base_length) - base_length,
+            )
+            ordered_assignments = sorted(
+                (
+                    assignment
+                    for pid, assignment in class_assignments.items()
+                    if pid in {str(a.id) for a in properties}
+                ),
+                key=lambda assignment: (
+                    int(getattr(assignment, "placement", 0) or 0),
+                    str(getattr(assignment, "property_id", "") or ""),
+                ),
+            )
+            class_splits = []
+            offset = base_length
+            for assignment in ordered_assignments:
+                width = max(0, int(getattr(assignment, "width", 0) or 0))
+                if not bool(getattr(assignment, "configurable", True)):
+                    continue
+                class_splits.append(
+                    ClassSplit(
+                        property_id=str(getattr(assignment, "property_id", "") or ""),
+                        property_name=str(getattr(assignment, "property_name", "") or ""),
+                        start=offset,
+                        width=width,
+                        relation_object=str(
+                            getattr(assignment, "relation_object", "")
+                            or next(
+                                (
+                                    getattr(relation, "name", "")
+                                    for relation in (getattr(snapshot, "relation_objects", []) or [])
+                                    if str(getattr(relation, "property_id", "")) == str(getattr(assignment, "property_id", "") or "")
+                                ),
+                                "",
+                            )
+                        ),
+                    )
+                )
+                offset += width
             sets.append(
                 ArticleSet(
                     id=pc.id,
                     base_length=base_length,
                     base_code=base_code,
+                    remaining_length=remaining_length,
                     article_ids=article_ids,
                     properties=properties,
                     options=options,
+                    class_splits=class_splits,
                 )
             )
         snapshot.article_sets = sets
