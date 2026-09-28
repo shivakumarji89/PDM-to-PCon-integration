@@ -840,6 +840,9 @@ def relation_object_to_dict(relation: RelationObject) -> dict[str, Any]:
         "class_name": relation.class_name,
         "property_id": relation.property_id,
         "value_id": relation.value_id,
+        "rel_obj_id": relation.rel_obj_id,
+        "relation_id": relation.relation_id,
+        "relation_name": relation.relation_name,
     }
 
 
@@ -853,6 +856,9 @@ def relation_object_from_dict(data: dict[str, Any]) -> RelationObject:
         class_name=str(data.get("class_name", "")),
         property_id=str(data.get("property_id", "")),
         value_id=str(data.get("value_id", "")),
+        rel_obj_id=str(data.get("rel_obj_id", "")),
+        relation_id=str(data.get("relation_id", "")),
+        relation_name=str(data.get("relation_name", "")),
     )
 
 
