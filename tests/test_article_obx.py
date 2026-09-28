@@ -137,6 +137,56 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertIn("BASEZC", [p.final_article for p in permutations])
         self.assertIn("BASEZD", [p.final_article for p in permutations])
 
+    def test_independent_option_is_not_hidden_by_another_option_dependency(self):
+        from models.option import Option
+        from models.option_value import OptionValue
+
+        snapshot = _base_snapshot()
+        fr_option = Option(id="fr-option", name="FR_Option", display_order=3)
+        fr_option.values = [
+            OptionValue(id="fr", option_id="fr-option", value="FR", code="FR"),
+        ]
+        fabric_colour = Option(id="fabric-colour", name="Fabric_Colour", display_order=4)
+        fabric_colour.values = [
+            OptionValue(id="fabric-red", option_id="fabric-colour", value="Red", code="R1"),
+            OptionValue(id="fabric-blue", option_id="fabric-colour", value="Blue", code="B1"),
+        ]
+        snapshot.options = [fr_option, fabric_colour]
+        snapshot.product_option_value_ids = {
+            "mdb:package:1": ["fr", "fabric-red", "fabric-blue"]
+        }
+        # FR is specifically an enabled FR_Option value. Fabric_Colour is an
+        # independently offered option and must remain a separate dimension.
+        snapshot.attribute_option_dependencies = {"oak": ["fr"]}
+        snapshot.option_option_dependencies = {}
+
+        snapshot.code_schemes["scheme-1"]["body"] = (
+            "Article:Finish,Article:Color,Article:FR_Option,Article:Fabric_Colour"
+        )
+
+        permutations = ArticlePermutationService(_Context()).build(snapshot)
+
+        self.assertEqual(
+            [p.final_article for p in permutations],
+            [
+                "BASEACFRB1",
+                "BASEACFRR1",
+                "BASEADFRB1",
+                "BASEADFRR1",
+                "BASEBCFRB1",
+                "BASEBCFRR1",
+                "BASEBDFRB1",
+                "BASEBDFRR1",
+            ],
+        )
+        self.assertTrue(
+            all(
+                {value.name for value in p.options}
+                == {"FR_Option", "Fabric_Colour"}
+                for p in permutations
+            )
+        )
+
     def test_dependent_option_values_follow_selected_property(self):
         from models.option import Option
         from models.option_value import OptionValue
