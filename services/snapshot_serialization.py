@@ -25,7 +25,7 @@ from typing import Any
 
 from core.enums import SnapshotStatus
 from models.article import Article
-from models.article_set import ArticleSet, SetAttribute, SetValue
+from models.article_set import ArticleSet, ClassSplit, SetAttribute, SetValue
 from models.engineering import Engineering
 from models.engineering_class import (
     ClassPropertyAssignment,
@@ -526,6 +526,8 @@ def class_property_assignment_to_dict(
         "type": assignment.type,
         "usage": assignment.usage,
         "text_block": assignment.text_block,
+        "configurable": assignment.configurable,
+        "relation_object": assignment.relation_object,
         "values": [class_value_to_dict(v) for v in assignment.values],
     }
 
@@ -541,6 +543,8 @@ def class_property_assignment_from_dict(
         type=data.get("type", ""),
         usage=data.get("usage", ""),
         text_block=data.get("text_block", ""),
+        configurable=bool(data.get("configurable", True)),
+        relation_object=data.get("relation_object", ""),
         values=[
             class_value_from_dict(v) for v in data.get("values", [])
         ],
@@ -688,8 +692,19 @@ def article_set_to_dict(article_set: ArticleSet) -> dict[str, Any]:
         "base_length": article_set.base_length,
         "base_code": article_set.base_code,
         "article_ids": list(article_set.article_ids),
+        "remaining_length": article_set.remaining_length,
         "properties": [_set_attribute_to_dict(a) for a in article_set.properties],
         "options": [_set_attribute_to_dict(a) for a in article_set.options],
+        "class_splits": [
+            {
+                "property_id": split.property_id,
+                "property_name": split.property_name,
+                "start": split.start,
+                "width": split.width,
+                "relation_object": split.relation_object,
+            }
+            for split in article_set.class_splits
+        ],
     }
 
 
@@ -714,9 +729,20 @@ def article_set_from_dict(data: dict[str, Any]) -> ArticleSet:
         id=str(data.get("id", "")),
         base_length=int(data.get("base_length", 0)),
         base_code=str(data.get("base_code", "")),
+        remaining_length=int(data.get("remaining_length", 0) or 0),
         article_ids=[str(a) for a in data.get("article_ids", [])],
         properties=[_set_attribute_from_dict(a) for a in data.get("properties", [])],
         options=[_set_attribute_from_dict(a) for a in data.get("options", [])],
+        class_splits=[
+            ClassSplit(
+                property_id=str(s.get("property_id", "")),
+                property_name=str(s.get("property_name", "")),
+                start=int(s.get("start", 0) or 0),
+                width=int(s.get("width", 0) or 0),
+                relation_object=str(s.get("relation_object", "")),
+            )
+            for s in data.get("class_splits", [])
+        ],
     )
 
 
