@@ -114,6 +114,17 @@ class EngineeringRelationService(BaseService):
             self._add_value_preconditions(
                 add, prop_name, str(prop.id or ""), values, classify, bodies,
             )
+            relation_name = ""
+            for relation in relations:
+                if str(getattr(relation, "property_id", "")) == str(prop.id or ""):
+                    relation_name = relation.name
+                    if relation_name.startswith("B_"):
+                        break
+            if relation_name:
+                for cls in getattr(snapshot.engineering, "classes", []) or []:
+                    for assignment in getattr(cls, "properties", []) or []:
+                        if str(getattr(assignment, "property_id", "")) == str(prop.id or ""):
+                            assignment.relation_object = relation_name
 
         # Option values carry the bulk of the configurable choice relations (e.g.
         # fabrics), authored identically to property value preconditions.
