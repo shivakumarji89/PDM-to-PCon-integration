@@ -603,6 +603,7 @@ class EngineeringReductionService(BaseService):
             carried = {str(a.id) for a in attributes}
             reduced_by_article: dict[str, str] = {}
             matched_by_prop: dict[str, dict[str, set[str]]] = {}
+            override_map = getattr(snapshot, "base_length_overrides", {}) or {}
             ordered = sorted(
                 (
                     (pid, assignment)
@@ -663,10 +664,9 @@ class EngineeringReductionService(BaseService):
                         if remove_width > 0:
                             working = working[:pos] + working[pos + remove_width:]
                             matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
-                # A manual Article-workflow base-length override changes only
-                # the stored base boundary. The Class Creation reduction above is
-                # still run first so its Sliced/property-value matching remains
-                # authoritative and all property/value coverage is retained.
+                # A manual Article-workflow Base Length is authoritative. It
+                # defines the base/remaining boundary; Class Creation owns the
+                # property mapping of the remaining segment.
                 if override_key in override_map:
                     try:
                         override_length = max(0, int(override_map[override_key]))
