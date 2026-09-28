@@ -363,7 +363,16 @@ class ArticlePermutationService(BaseService):
             for child in children
         }
         root_ids = offered_ids - dependent_child_ids
-        candidate_ids = (root_ids | attribute_seeds) & offered_ids
+        attribute_gated_ids = {
+            str(child)
+            for children in (snapshot.attribute_option_dependencies or {}).values()
+            for child in children
+        }
+        independent_root_ids = root_ids - attribute_gated_ids
+        candidate_ids = (
+            independent_root_ids
+            | attribute_seeds
+        ) & offered_ids
 
         pending = list(candidate_ids)
         while pending:

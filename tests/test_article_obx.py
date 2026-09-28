@@ -204,7 +204,7 @@ class ArticleObxPermutationTests(unittest.TestCase):
         snapshot.option_option_dependencies = {}
 
         snapshot.code_schemes["scheme-1"]["body"] = (
-            "Article:Finish,Article:Color,Article:FR_Option,Article:Fabric_Colour"
+            "Article:Finish,Article:Color,Article:Fabric_Colour"
         )
 
         permutations = ArticlePermutationService(_Context()).build(snapshot)
@@ -212,20 +212,20 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertEqual(
             [p.final_article for p in permutations],
             [
-                "BASEACFRB1",
-                "BASEACFRR1",
-                "BASEADFRB1",
-                "BASEADFRR1",
-                "BASEBCFRB1",
-                "BASEBCFRR1",
-                "BASEBDFRB1",
-                "BASEBDFRR1",
+                "BASEACB1",
+                "BASEACR1",
+                "BASEADB1",
+                "BASEADR1",
+                "BASEBCB1",
+                "BASEBCR1",
+                "BASEBDB1",
+                "BASEBDR1",
             ],
         )
         self.assertTrue(
             all(
                 {value.name for value in p.options}
-                == {"FR_Option", "Fabric_Colour"}
+                == ({"FR_Option", "Fabric_Colour"} if p.properties[0].value == "Oak" else {"Fabric_Colour"})
                 for p in permutations
             )
         )
