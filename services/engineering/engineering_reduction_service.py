@@ -496,15 +496,15 @@ class EngineeringReductionService(BaseService):
     ) -> list[ArticleSet]:
         """Materialise Development Article Sets from the Class Creation definition.
 
-        This is the authoritative Development path. It deliberately does NOT
-        use the user-entered PDM article-prefix length. PDM supplies the actual
-        articles and their property/value relationships; Class Creation supplies
-        the pre-dot reduction rules (value codes, placement/order and Ignore).
+        This is the authoritative Development path. PDM supplies the
+        complete article code; the Article workflow supplies the base-length
+        boundary; Class Creation maps the remaining characters in placement
+        order.
 
-        Reduction starts from each original pre-dot article and removes the
-        configured value code for each non-ignored property in placement order.
-        The original PDM article and all PDM relationship maps remain untouched.
-        The resulting remaining string is the derived base article.
+        Consumption is positional and deterministic. For each assignment, only
+        the next configured width is considered, and it is consumed only when
+        that exact slice matches a configured Class Creation value code. No
+        matching code is searched for elsewhere in the article.
         """
         if snapshot is None:
             return []
