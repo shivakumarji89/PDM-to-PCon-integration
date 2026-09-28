@@ -884,12 +884,11 @@ class ArticlesPage(BasePage):
             applied = self._applied_length(member)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
-                remaining = code[len(base):] if base and code.startswith(base) else ""
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                resolved = self._context.engineering_reduction_service.resolve_variant_condition(
+                    self._context.active_snapshot, str(getattr(article, "id", "")), length
+                )
+                base, remaining = resolved.base, resolved.remaining
                 length = len(base)
                 has_length = True
             else:
