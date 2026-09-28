@@ -618,71 +618,53 @@ class EngineeringReductionService(BaseService):
             )
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
-                working = original.split(".", 1)[0]
-
+                pre_dot = (original or "").split(".", 1)[0]
                 override_key = str(original or "")
                 has_manual_boundary = override_key in override_map
-                for pid, assignment in (() if has_manual_boundary else ordered):
-                    # Class Creation is authoritative for Development
-                    # reduction. The codes in assignment.values are exactly
-                    # the codes represented by the Class Creation Sliced
-                    # column. Do NOT use article/product PDM value IDs to
-                    # choose a reduction code: those IDs are retained for
-                    # relationship/value coverage, but they must never override
-                    # a code the user has corrected in Class Creation.
-                    #
-                    # This matters when PDM has duplicate value rows or
-                    # stale/mismatched value IDs: Article reduction must follow
-                    # what the user sees and edits in Sliced.
-                    codes = effective_codes(pid)
-                    width = max(0, int(getattr(assignment, "width", 0) or 0))
-                    # Select the configured Sliced value from the article code
-                    # itself. A configuration code can also occur in the base
-                    # prefix (for example 0 in AL1C1002S), so the reduction
-                    # segment is the right-most matching configured code. This
-                    # keeps the decision entirely inside the Class Creation
-                    # Sliced vocabulary instead of using PDM value IDs.
-                    matches = []
-                    for candidate in codes:
-                        start = 0
-                        while candidate:
-                            pos = working.find(candidate, start)
-                            if pos < 0:
-                                break
-                            matches.append((pos, len(candidate), candidate))
-                            start = pos + 1
-                    if matches:
-                        pos, _candidate_len, candidate = max(
-                            matches, key=lambda item: (item[0], item[1])
-                        )
-                        # The Sliced value itself is authoritative. Width is
-                        # the maximum/configured slice capacity, but Sliced
-                        # values may be variable length (e.g. 2 vs 4L). Never
-                        # consume the character after a one-character value
-                        # merely because the property width is 2.
-                        remove_width = len(candidate)
-                        if remove_width > 0:
-                            working = working[:pos] + working[pos + remove_width:]
-                            matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
-                # A manual Article-workflow Base Length is authoritative. It
-                # defines the base/remaining boundary; Class Creation owns the
-                # property mapping of the remaining segment.
-                if override_key in override_map:
-                    try:
-                        override_length = max(0, int(override_map[override_key]))
-                    except (TypeError, ValueError):
-                        override_length = 0
-                    pre_dot = (original or "").split(".", 1)[0]
-                    working = pre_dot[:min(override_length, len(pre_dot))]
 
-                reduced_by_article[article_id] = working
+                if has_manual_boundary:
+                    try:
+                        base_length_for_article = max(
+                            0, min(int(override_map[override_key]), len(pre_dot))
+                        )
+                    except (TypeError, ValueError):
+                        base_length_for_article = 0
+                else:
+                    base_length_for_article = self._common_prefix_len(
+                        [
+                            (code_of.get(a, "") or "").split(".", 1)[0]
+                            for a in article_ids
+                        ]
+                    )
+
+                base = pre_dot[:base_length_for_article]
+                remaining = pre_dot[base_length_for_article:]
+
+                # Class Creation consumes the remaining Variant Condition
+                # sequentially. Never search for a code elsewhere.
+                for pid, assignment in ordered:
+                    width = max(0, int(getattr(assignment, "width", 0) or 0))
+                    if width <= 0 or not remaining:
+                        continue
+                    codes = effective_codes(pid)
+                    if not codes:
+                        continue
+
+                    slice_code = remaining[:width]
+                    if slice_code not in codes:
+                        # Leave this segment visibly unassigned; it must not
+                        # become a pCon permutation dimension.
+                        continue
+
+                    remaining = remaining[width:]
+                    matched_by_prop.setdefault(pid, {}).setdefault(
+                        slice_code, set()
+                    ).add(article_id)
+
+                reduced_by_article[article_id] = base
                 member = member_by_article.get(article_id)
                 if member is not None:
-                    # Development Articles reads this as the authoritative
-                    # reduced/base article. The source PDM Article remains
-                    # untouched. Manual length overrides do not change Ignore
-                    # or the Class Creation property/value relationships.
-                    member.reduced_article = working
+                    member.reduced_article = base
 
             # Make the ArticleSet reflect the Class Creation vocabulary without
             # destroying the PDM article/value links. A corrected class code
