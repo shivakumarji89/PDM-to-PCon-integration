@@ -763,6 +763,16 @@ def _set_attribute_from_dict(data: dict[str, Any]) -> SetAttribute:
 
 
 def text_block_to_dict(block: TextBlock) -> dict[str, Any]:
+    """Serialize all text languages, including dynamically imported columns."""
+    translations = {
+        str(language): str(value or "")
+        for language, value in (block.translations or {}).items()
+        if str(language)
+    }
+    # Keep the legacy columns explicit for backward compatibility and include
+    # the complete dynamic translation map for newer languages.
+    for language in ("de", "en", "fr", "nl"):
+        translations.setdefault(language, getattr(block, language, "") or "")
     return {
         "name": block.name,
         "type_code": block.type_code,
@@ -770,10 +780,19 @@ def text_block_to_dict(block: TextBlock) -> dict[str, Any]:
         "en": block.en,
         "fr": block.fr,
         "nl": block.nl,
+        "translations": translations,
     }
 
 
 def text_block_from_dict(data: dict[str, Any]) -> TextBlock:
+    translations = {
+        str(language): str(value or "")
+        for language, value in (data.get("translations") or {}).items()
+        if str(language)
+    }
+    # Older project files contain only the four legacy language fields.
+    for language in ("de", "en", "fr", "nl"):
+        translations.setdefault(language, str(data.get(language, "") or ""))
     return TextBlock(
         name=str(data.get("name", "")),
         type_code=str(data.get("type_code", "")),
@@ -781,6 +800,7 @@ def text_block_from_dict(data: dict[str, Any]) -> TextBlock:
         en=str(data.get("en", "")),
         fr=str(data.get("fr", "")),
         nl=str(data.get("nl", "")),
+        translations=translations,
     )
 
 
