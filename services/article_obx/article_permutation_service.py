@@ -315,27 +315,38 @@ class ArticlePermutationService(BaseService):
         if not offered_ids:
             return ()
 
-        dependent_ids: set[str] = set()
+        attribute_seeds: set[str] = set()
         for value_id in selected_property_ids:
-            dependent_ids.update(
+            attribute_seeds.update(
                 str(v)
                 for v in (snapshot.attribute_option_dependencies or {}).get(value_id, [])
             )
 
-        # Resolve option dependency chains (A -> B -> C) before creating
-        # option dimensions. Child option values are derived from the selected
-        # parent configuration; they do not create an independent Cartesian
-        # dimension unless the repository exposes them as such.
-        pending = list(dependent_ids)
+        # An option can be independently offered by the product or enabled by
+        # another selected value.  Do not let one dependency edge (for example
+        # FR -> FR_Option) hide an independent option such as Fabric_Colour.
+        #
+        # Values which are targets of option->option dependencies are children;
+        # values with no incoming edge are root options and remain available.
+        # From those roots, and from attribute-enabled seeds, walk the option
+        # dependency graph so every reachable child is retained.
+        option_dependencies = snapshot.option_option_dependencies or {}
+        dependent_child_ids = {
+            str(child)
+            for children in option_dependencies.values()
+            for child in children
+        }
+        root_ids = offered_ids - dependent_child_ids
+        candidate_ids = (root_ids | attribute_seeds) & offered_ids
+
+        pending = list(candidate_ids)
         while pending:
             current = pending.pop()
-            for child in (snapshot.option_option_dependencies or {}).get(current, []):
+            for child in option_dependencies.get(current, []):
                 child = str(child)
-                if child not in dependent_ids:
-                    dependent_ids.add(child)
+                if child in offered_ids and child not in candidate_ids:
+                    candidate_ids.add(child)
                     pending.append(child)
-
-        candidate_ids = (dependent_ids or offered_ids) & offered_ids
         restrictions = (snapshot.art_base or {}).get(base_code, {})
         dimensions: list[_Dimension] = []
 
@@ -523,20 +534,35 @@ class ArticlePermutationService(BaseService):
 
     @staticmethod
     def _article_property_ids(snapshot: Snapshot, article_id: str | None) -> set[str]:
-        links = (getattr(snapshot, "article_class_ids", {}) or {}).get(
-            str(article_id or ""), []
-        )
-        if not links:
-            return set()
-
-        class_ids = {str(value) for value in links}
+        article_key = str(article_id or "")
         property_ids: set[str] = set()
+
+        # ArticleClass is the repository class definition, but PDM snapshots
+        # can also carry article-specific attribute/value links.  Preserve
+        # those links when present so a property such as Fabric_Colour is not
+        # lost merely because it is not repeated on the generated class.
+        links = (getattr(snapshot, "article_class_ids", {}) or {}).get(
+            article_key, []
+        )
+        class_ids = {str(value) for value in links}
         for engineering_class in getattr(snapshot.engineering, "classes", []) or []:
             if str(engineering_class.id) not in class_ids:
                 continue
             for assignment in engineering_class.properties:
                 if assignment.property_id:
                     property_ids.add(str(assignment.property_id))
+
+        article_value_ids = {
+            str(value_id)
+            for value_id in (getattr(snapshot, "article_property_value_ids", {}) or {}).get(
+                article_key, []
+            )
+        }
+        if article_value_ids:
+            for value in getattr(snapshot, "property_values", []) or []:
+                if str(value.id or "") in article_value_ids and value.property_id:
+                    property_ids.add(str(value.property_id))
+
         return property_ids
 
     @classmethod
@@ -723,6 +749,7 @@ class ArticlePermutationService(BaseService):
         variant_parts: list[str] = []
         has_base_placeholder = False
         recognised = False
+        base_index = 0
 
         for segment in body.split(","):
             token = segment
