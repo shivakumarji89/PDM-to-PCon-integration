@@ -892,11 +892,9 @@ class EngineeringReductionService(BaseService):
                         )
                     except Exception:
                         head_layout = {}
-                ignored = getattr(snapshot, "config_ignore_overrides", {}) or {}
-
-                # A head property is part of the base when its value is
-                # constant across the set. The first NON-ignored head property
-                # whose value varies is where the configurable portion starts.
+                 # A head property is part of the base when its value is
+                # constant across the set. The first varying head property
+                # marks where the configurable portion starts.
                 # This is data-driven: it does not assume fixed character
                 # positions for a particular product family.
                 varying_head_positions = [
