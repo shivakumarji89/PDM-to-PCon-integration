@@ -535,7 +535,7 @@ class EngineeringReductionService(BaseService):
             bad_width = [code for code in valid_codes if len(code) != width]
             if bad_width: issues.append(f"{getattr(assignment, 'property_name', pid)}: width {width} does not match configured code length")
             slice_code = remaining[:width]
-            if slice_code in valid_codes and not bad_width:
+            if slice_code in valid_codes and len(slice_code) == width:
                 consumed.append((pid, slice_code, str(getattr(assignment, 'property_name', '') or ''))); remaining = remaining[width:]
             else: issues.append(f"{getattr(assignment, 'property_name', pid)}: unassigned slice {slice_code!r}")
         return VariantConditionResult(base=pre_dot[:boundary], remaining=remaining, consumed=tuple(consumed), unassigned=remaining, issues=tuple(issues))
