@@ -292,6 +292,15 @@ def normalize_value_name(text: str) -> str:
     return _VALUE_NAME_NOISE.sub(" ", (text or "").casefold()).strip()
 
 
+@dataclass(frozen=True)
+class VariantConditionResult:
+    """Resolved pre-dot base/Variant Condition for one article."""
+    base: str = ""
+    remaining: str = ""
+    consumed: tuple[tuple[str, str, str], ...] = ()
+    unassigned: str = ""
+    issues: tuple[str, ...] = ()
+
 class EngineeringReductionService(BaseService):
     """Group members by identical engineering signature (read-only)."""
 
@@ -491,6 +500,45 @@ class EngineeringReductionService(BaseService):
         masters.sort(key=lambda m: len(m.article_ids), reverse=True)
         return tuple(masters)
 
+    def resolve_variant_condition(self, snapshot: Snapshot | None, article_id: str, base_length: int) -> VariantConditionResult:
+        """Resolve one article from the explicit base boundary through Class Creation."""
+        if snapshot is None: return VariantConditionResult()
+        article = next((a for a in snapshot.articles if str(a.id) == str(article_id)), None)
+        if article is None: return VariantConditionResult()
+        pre_dot = (getattr(article, "code", "") or "").split(".", 1)[0]
+        boundary = max(0, min(int(base_length or 0), len(pre_dot)))
+        remaining = pre_dot[boundary:]
+        assignments, seen = [], set()
+        for cls in getattr(getattr(snapshot, 'engineering', None), 'classes', []) or []:
+            if not str(getattr(cls, 'name', '')).endswith('_Attribute'): continue
+            for assignment in getattr(cls, 'properties', []) or []:
+                pid = str(getattr(assignment, 'property_id', '') or '')
+                if pid and pid not in seen: seen.add(pid); assignments.append(assignment)
+        assignments.sort(key=lambda a: (int(getattr(a, 'placement', 0) or 0), str(getattr(a, 'property_id', '') or '')))
+        try: decoded = self.context.engineering_class_service.resolve_config_codes(snapshot)
+        except Exception: decoded = {}
+        prop_by_id = {str(p.id): p for p in getattr(snapshot, 'properties', []) or []}
+        consumed, issues = [], []
+        for assignment in assignments:
+            if not bool(getattr(assignment, 'configurable', True)): continue
+            width = max(0, int(getattr(assignment, 'width', 0) or 0))
+            if width <= 0 or not remaining: continue
+            pid = str(getattr(assignment, 'property_id', '') or '')
+            prop = prop_by_id.get(pid); valid_codes = []
+            for value in getattr(assignment, 'values', []) or []:
+                code = (getattr(value, 'code', '') or '').strip()
+                if not code and prop is not None:
+                    for pv in getattr(prop, 'values', []) or []:
+                        if (getattr(pv, 'value', '') or '').strip().casefold() == (getattr(value, 'value', '') or '').strip().casefold():
+                            code = (getattr(pv, 'code', '') or '').strip() or (decoded.get(pid, {}) or {}).get(str(getattr(pv, 'id', '')), '') or ''; break
+                if code and code not in valid_codes: valid_codes.append(code)
+            bad_width = [code for code in valid_codes if len(code) != width]
+            if bad_width: issues.append(f"{getattr(assignment, 'property_name', pid)}: width {width} does not match configured code length")
+            slice_code = remaining[:width]
+            if slice_code in valid_codes and not bad_width:
+                consumed.append((pid, slice_code, str(getattr(assignment, 'property_name', '') or ''))); remaining = remaining[width:]
+            else: issues.append(f"{getattr(assignment, 'property_name', pid)}: unassigned slice {slice_code!r}")
+        return VariantConditionResult(base=pre_dot[:boundary], remaining=remaining, consumed=tuple(consumed), unassigned=remaining, issues=tuple(issues))
     def materialize_class_creation_article_sets(
         self, snapshot: Snapshot | None
     ) -> list[ArticleSet]:
