@@ -964,12 +964,12 @@ class ArticlesPage(BasePage):
         order_keys: list[str] = []
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
-                remaining = code[len(base):] if base and code.startswith(base) else ""
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                resolved = self._context.engineering_reduction_service.resolve_variant_condition(
+                    self._context.active_snapshot, str(getattr(article, "id", "")),
+                    self._applied_length(member) if self._applied_length(member) is not None else default_len,
+                )
+                base, remaining = resolved.base, resolved.remaining
             else:
                 base, remaining = self._split_base(
                     code, self._applied_length(member) or default_len
