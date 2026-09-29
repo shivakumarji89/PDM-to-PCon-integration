@@ -101,20 +101,42 @@ class ReviewPage(BasePage):
         return box
 
     def _build_generation_summary(self) -> QWidget:
-        box = QGroupBox("Final Generation Summary", self)
-        form = QFormLayout(box)
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # These are the four generation inputs/identifiers that a user needs
+        # to understand what the Review workflow will generate. Package and
+        # COM-group implementation IDs remain available in the technical
+        # backend tables below; they are not generation information for the
+        # engineering review summary.
+        info_box = QGroupBox("Generation Information", container)
+        info_form = QFormLayout(info_box)
         self._generation_rows = {}
-        for label in (
-            "Template", "Program", "Series", "Manufacturer",
-            "Package ID", "COM Group ID", "CAD Base-Length Overrides",
-            "Generated MDB rows", "Generated MDB tables", "Retained template tables",
-            "CAD Registry",
-        ):
-            value = QLabel("-", box)
+        for label in ("Template", "Program", "Series", "Manufacturer"):
+            value = QLabel("-", info_box)
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._generation_rows[label] = value
-            form.addRow(f"{label}:", value)
-        return box
+            info_form.addRow(f"{label}:", value)
+        layout.addWidget(info_box)
+
+        diagnostics_box = QGroupBox("Generation Diagnostics", container)
+        diagnostics_form = QFormLayout(diagnostics_box)
+        self._generation_diagnostics = {}
+        for label in (
+            "CAD Base-Length Overrides",
+            "Generated MDB rows",
+            "Generated MDB tables",
+            "Retained template tables",
+            "CAD Registry",
+        ):
+            value = QLabel("-", diagnostics_box)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._generation_diagnostics[label] = value
+            diagnostics_form.addRow(f"{label}:", value)
+        layout.addWidget(diagnostics_box)
+
+        return container
 
     def _build_backend_review(self) -> QWidget:
         box = QGroupBox(
@@ -288,25 +310,21 @@ class ReviewPage(BasePage):
         self._generation_rows["Program"].setText(str(result.program_code or program or "-"))
         self._generation_rows["Series"].setText(str(result.series_id or series or "-"))
         self._generation_rows["Manufacturer"].setText(str(result.manufacturer_id or "-"))
-        self._generation_rows["Package ID"].setText(
-            str(result.package_id if result.package_id is not None else "-")
-        )
-        self._generation_rows["COM Group ID"].setText(
-            str(result.comgroup_id if result.comgroup_id is not None else "-")
-        )
-        self._generation_rows["CAD Base-Length Overrides"].setText(
+        self._generation_diagnostics["CAD Base-Length Overrides"].setText(
             str(len(result.registry_overrides))
         )
-        self._generation_rows["Generated MDB rows"].setText(
+        self._generation_diagnostics["Generated MDB rows"].setText(
             str(sum(result.table_counts.values()))
         )
-        self._generation_rows["Generated MDB tables"].setText(
+        self._generation_diagnostics["Generated MDB tables"].setText(
             str(len(result.table_counts))
         )
-        self._generation_rows["Retained template tables"].setText(
+        self._generation_diagnostics["Retained template tables"].setText(
             str(len(result.retained_rows))
         )
-        self._generation_rows["CAD Registry"].setText(result.registry_path or "-")
+        self._generation_diagnostics["CAD Registry"].setText(
+            result.registry_path or "-"
+        )
         self._mdb_preview_status.setText(
             f"Generated {sum(result.table_counts.values())} backend/export rows "
             f"across {len(result.table_counts)} MDB tables. Read-only; nothing written."
@@ -353,6 +371,8 @@ class ReviewPage(BasePage):
 
     def _clear_generation_summary(self) -> None:
         for widget in self._generation_rows.values():
+            widget.setText("-")
+        for widget in self._generation_diagnostics.values():
             widget.setText("-")
         self._mdb_retained_rows = {}
         for selector, table in self._backend_tables.values():
