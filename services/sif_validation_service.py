@@ -286,7 +286,7 @@ class SifValidationService(BaseService):
 
     @staticmethod
     def _match_inc_groups(
-        groups: dict[str, dict[str, float]],
+        groups: dict[str, dict[str, tuple[float, int]]],
         codes,
         fabric_groups: dict[str, dict[str, float]] | None = None,
         fabric_targets: dict[str, list[str]] | None = None,
@@ -306,7 +306,8 @@ class SifValidationService(BaseService):
                 for group_id, values in order:
                     if group_id in used or code not in values:
                         continue
-                    total += values[code]
+                    price, quantity = values[code]
+                    total += price * quantity
                     used.add(group_id)
                     break
                 continue
@@ -563,7 +564,7 @@ class SifValidationService(BaseService):
             skipped_option_items: set[str] = set()
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
-            inc_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
+            inc_groups_by_item: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             fabric_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
             fabric_targets_by_item: dict[str, dict[str, list[str]]] = {}
 
@@ -579,10 +580,11 @@ class SifValidationService(BaseService):
 
                     if obx:
                         group = str(getattr(r, "OptionId", "") or "")
-                        inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
-                            0.0 if inc_price is None else float(inc_price)
-                        )
                         is_fabric = int(r.IsFabric or 0)
+                        inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
+                            0.0 if inc_price is None else float(inc_price),
+                            int(r.Quantity or 1) if is_fabric == 0 else 1,
+                        )
                         if is_fabric == 1 and code.endswith("#") and inc_price is not None:
                             fabric_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = float(inc_price)
                         elif is_fabric == 2:

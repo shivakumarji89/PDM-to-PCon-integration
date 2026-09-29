@@ -518,8 +518,13 @@ class XocdExportService(BaseService):
                     chunk = chunk[_CODE_BLOCK_MAX:]
                 rel_rows.append([ctx["program"], rel.name, block_nr, chunk])
                 block_nr += 1
-            if getattr(rel, "value_id", ""):
-                value_relobj[str(rel.value_id)] = rel_id
+            value_ids = list(getattr(rel, "value_ids", []) or [])
+            value_id = str(getattr(rel, "value_id", "") or "")
+            if value_id and value_id not in value_ids:
+                value_ids.insert(0, value_id)
+            for bound_value_id in value_ids:
+                if bound_value_id:
+                    value_relobj[str(bound_value_id)] = rel_id
         return obj_rows, rel_rows, value_relobj
 
     def _code_schemes(

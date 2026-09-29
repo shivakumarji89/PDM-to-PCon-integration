@@ -1,4 +1,9 @@
-from services.obx_validation_service import ObxValidationService
+from types import SimpleNamespace
+
+import pytest
+
+from repositories.pdm_repository import _IncPriceRow
+from services.obx_validation_service import ObxLine, ObxValidationService
 from services.sif_validation_service import SifValidationService
 
 
@@ -171,11 +176,66 @@ def test_obx_selected_options_are_represented_as_priced_codes():
 
 def test_obx_option_group_matching_consumes_each_pdm_group_once():
     groups = {
-        "10": {"RED": 20.0},
-        "20": {"RED": 35.0},
+        "10": {"RED": (20.0, 1)},
+        "20": {"RED": (35.0, 1)},
     }
 
     assert SifValidationService._match_inc_groups(groups, ["RED", "RED"]) == 55.0
+
+
+def test_obx_repeated_wfk_uses_priced_group_quantity_not_null_group():
+    groups = {
+        "7576": {"WFK": (220.0, 2)},
+        "7577": {"WFK": (0.0, 2)},
+    }
+
+    assert SifValidationService._match_inc_groups(groups, ["WFK", "WFK"]) == 440.0
+
+
+@pytest.mark.parametrize("article,base,increment,quantity,expected", [
+    ("MEXXAW.2020S4MG", 2932, 220, 2, 3372),
+    ("MEXXAW.2020P2MG", 3014, 220, 2, 3454),
+    ("MEXXAW.2222S4MG", 3150, 241, 2, 3632),
+    ("MEXXAW.2222P2MG", 3230, 241, 2, 3712),
+    ("MEXXAW.2424S4MG", 3286, 263, 2, 3812),
+    ("MEXXAW.2424P2MG", 3366, 263, 2, 3892),
+    ("SINGLE", 100, 20, 1, 120),
+])
+def test_obx_validation_prices_pdm_option_quantity(
+    monkeypatch, article, base, increment, quantity, expected
+):
+    service = SifValidationService(None)
+    monkeypatch.setattr(service, "_fetch_plc", lambda *args: {})
+    option_rows = [
+        _IncPriceRow(article, SimpleNamespace(
+            OptionId=option_id, OrderCodeValue2=code, IncPrice=price,
+            IsFabric=0, Quantity=row_quantity, ParentOptId=None,
+        ))
+        for option_id, code, price, row_quantity in [
+            (7578, "NN", None, quantity),
+            (7576, "WFK", increment, quantity),
+            (7577, "WFK", None, quantity),
+            (7573, "X1", None, quantity),
+            (7683, "X1", None, quantity),
+            (8894, "X1", None, quantity),
+        ]
+    ]
+    repo = SimpleNamespace(
+        fetch_item_base_prices=lambda *args, **kwargs: [SimpleNamespace(Item=article, price=base)],
+        fetch_item_option_increment_prices=lambda *args: option_rows,
+    )
+    line = ObxLine(seq=1, base_article=article,
+                   final_article=f"{article} NN WFK WFK X1 X1 X1", obx_price=expected)
+
+    results = service._validate_group(
+        "GBP", [line], 1, repo, None, "28 Sep 2026", [0], 1,
+        None, None, obx=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].pdm_price == expected
+    assert results[0].status == "ok"
+
 
 def test_obx_recovers_completed_articles_from_truncated_export():
     service = ObxValidationService(None)

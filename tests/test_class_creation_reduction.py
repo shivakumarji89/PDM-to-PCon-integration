@@ -205,3 +205,135 @@ def test_manual_base_length_override_wins_over_registry_override_in_review_previ
     effective = dict(registry)
     effective.update(manual)
     assert effective["A1X100.S1"] == 3
+
+
+def test_variant_condition_is_consumed_only_from_the_next_positional_slice():
+    snapshot = _snapshot()
+    snapshot.articles[0].code = "A1ZXX.S1"
+    service = _service(snapshot)
+
+    resolved = service.resolve_variant_condition(snapshot, "a1", 2)
+
+    assert resolved.base == "A1"
+    assert resolved.remaining == "ZXX"
+    assert resolved.consumed == ()
+    assert resolved.unassigned == "ZXX"
+
+
+def test_variant_condition_consumes_sequential_widths_in_placement_order():
+    snapshot = Snapshot(
+        id="s3",
+        articles=[Article(id="a1", product_id="prod", code="ABC12345")],
+        properties=[
+            Property(id="p1", name="Height", values=[
+                PropertyValue(id="h1", property_id="p1", value="1", code="1")
+            ], has_dependent_options=True),
+            Property(id="p2", name="Width", values=[
+                PropertyValue(id="w45", property_id="p2", value="45", code="45")
+            ], has_dependent_options=True),
+        ],
+        article_property_value_ids={"a1": ["h1", "w45"]},
+        engineering=Engineering(
+            classes=[EngineeringClass(
+                id="class3",
+                name="Chair_Attribute",
+                properties=[
+                    ClassPropertyAssignment(
+                        property_id="p1", property_name="Height", width=1, placement=0,
+                        values=[ClassValue(value_id="h1", code="1", value="1")],
+                    ),
+                    ClassPropertyAssignment(
+                        property_id="p2", property_name="Width", width=2, placement=1,
+                        values=[ClassValue(value_id="w45", code="45", value="45")],
+                    ),
+                ],
+            )],
+            families=[EngineeringFamily(
+                id="f3", name="Chair",
+                members=[MemberArticle(id="m3", article_id="a1", family_id="f3")],
+            )],
+        ),
+    )
+    service = _service(snapshot)
+
+    resolved = service.resolve_variant_condition(snapshot, "a1", 3)
+
+    assert resolved.base == "ABC"
+    assert resolved.remaining == ""
+    assert resolved.unassigned == ""
+    assert resolved.consumed == (
+        ("p1", "Height", "123"[0:1]),
+        ("p2", "Width", "23"),
+    )
+
+
+def test_variant_condition_does_not_consume_a_property_not_carried_by_article():
+    snapshot = Snapshot(
+        id="s4",
+        articles=[Article(id="a1", product_id="prod", code="ABC123")],
+        properties=[
+            Property(id="p1", name="Height", values=[
+                PropertyValue(id="h1", property_id="p1", value="1", code="1")
+            ], has_dependent_options=True),
+            Property(id="p2", name="Width", values=[
+                PropertyValue(id="w2", property_id="p2", value="2", code="2")
+            ], has_dependent_options=True),
+        ],
+        article_property_value_ids={"a1": ["h1"]},
+        engineering=Engineering(
+            classes=[EngineeringClass(
+                id="class4",
+                name="Chair_Attribute",
+                properties=[
+                    ClassPropertyAssignment(
+                        property_id="p1", property_name="Height", width=1, placement=0,
+                        values=[ClassValue(value_id="h1", code="1", value="1")],
+                    ),
+                    ClassPropertyAssignment(
+                        property_id="p2", property_name="Width", width=1, placement=1,
+                        values=[ClassValue(value_id="w2", code="2", value="2")],
+                    ),
+                ],
+            )],
+            families=[EngineeringFamily(
+                id="f4", name="Chair",
+                members=[MemberArticle(id="m4", article_id="a1", family_id="f4")],
+            )],
+        ),
+    )
+    service = _service(snapshot)
+
+    resolved = service.resolve_variant_condition(snapshot, "a1", 3)
+
+    assert resolved.base == "ABC"
+    assert resolved.remaining == "23"
+    assert resolved.unassigned == "23"
+    assert resolved.consumed == (("p1", "Height", "1"),)
+
+
+def test_variant_condition_rejects_invalid_width_but_keeps_unassigned_tail():
+    snapshot = _snapshot()
+    assignment = snapshot.engineering.classes[0].properties[0]
+    assignment.width = 2
+    service = _service(snapshot)
+
+    resolved = service.resolve_variant_condition(snapshot, "a1", 2)
+
+    assert resolved.base == "A1"
+    assert resolved.remaining == "X100"
+    assert resolved.unassigned == "X100"
+    assert any("width" in issue.lower() for issue in resolved.issues)
+
+
+def test_class_creation_split_metadata_round_trips():
+    snapshot = _snapshot()
+    service = _service(snapshot)
+    service.materialize_class_creation_article_sets(snapshot)
+
+    restored = snapshot_from_dict(snapshot_to_dict(snapshot))
+
+    assert restored.article_sets[0].class_splits
+    split = restored.article_sets[0].class_splits[0]
+    assert split.property_id == "p1"
+    assert split.width == 1
+    assert split.start == restored.article_sets[0].base_length

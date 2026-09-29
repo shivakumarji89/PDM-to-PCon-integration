@@ -1466,9 +1466,13 @@ class MainWindow(QMainWindow):
         self._product_status.setObjectName("productStatus")
         status.addPermanentWidget(self._product_status)
 
+    def progress_monitor(self):
+        """Return the shared reusable progress monitor for background workspaces."""
+        return self._product_page.progress_monitor()
+
     def _open_progress_monitor(self) -> None:
         """Reopen the existing (reusable) progress monitor from the status bar."""
-        dialog = self._product_page.progress_monitor()
+        dialog = self.progress_monitor()
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()

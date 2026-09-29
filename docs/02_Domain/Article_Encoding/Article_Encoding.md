@@ -144,7 +144,9 @@ This confirms real pCon *input* files never carry `type="final"` or `type="varco
 
 ## 16. What does MK Workbench currently do differently?
 
-**CONFIRMED** (`services/article_obx/article_permutation_service.py:439-481`, read in full this pass):
+**HISTORICAL — see Finding 18 for the corrected, current implementation.** The gaps below were true of the implementation as it stood at the start of this investigation pass; the `@`/literal/computed-code gaps described here have since been fixed. Left unedited as the empirical record of what was found; do not read this as describing current behavior.
+
+**CONFIRMED AT THE TIME** (`services/article_obx/article_permutation_service.py:439-481`, read in full this pass):
 ```python
 return base_code + "".join(tokens)
 ```
@@ -156,7 +158,44 @@ return base_code + "".join(tokens)
 - `services/article_obx/article_obx_service.py` writes `type="base"` and `type="final"` (from `p.final_article`, i.e. MK Workbench's own no-separator concatenation) plus `type="ofmlvarcode"` — **confirmed it does NOT write `type="varcode"`** (verified by reading the full `_render_xml` method; only `base`, `final`, `ofmlvarcode` `<artNr>` elements are emitted). Per Finding 15, this is actually *correct* behavior for an input OBX (real pCon input files never carry `varcode` either) — **but** MK Workbench's `type="final"` value is very likely wrong given Finding 16's concatenation gap, and per Finding 15 real pCon input OBX files never carry `type="final"` at all, only `type="base"` + `type="ofmlvarcode"` — meaning MK Workbench may be writing a *speculative*, generally-incorrect `final` article number into a file whose only job (per every real captured input OBX) is to hand pCon the base + raw property assignments and let pCon's own Update step compute `final`/`varcode` itself.
 - `services/article_obx/article_price_service.py` (lines ~87-160) keys price lookups by `article_id` + `variant_condition` — this **does** match the OCD `Price` table's real key structure (`ocd_price.csv` columns `article_nr;var_cond;price_type;price_level;...`, confirmed against `pdata.ocd_price.inp_descr` and a real Aeron price row `AER1A11;AF;S;B;...`), so pricing-key logic is **not** part of the gap; it is already aligned.
 
-## 17. What exact information is still unknown?
+## 18. Post-fix implementation status (this pass)
+
+**Implemented in `services/article_obx/article_permutation_service.py` following the evidence above:**
+
+- **`@` placeholder** — unchanged; the implementation already matched Finding 3b/14 exactly (next base-article character, consumed left to right) once a pre-existing `base_index` initialization bug was fixed. No semantic change was evidenced or made.
+- **Literal characters, including a lone space or dot as a group boundary** (Finding 6/7/9) — already handled generically (any scheme segment that is not `@` and not a `Class:Property` reference is inserted unchanged); confirmed correct against the real, verbatim Cosm `U00000000000006297` scheme string (see Finding 19 below), not merely a synthetic separator like `-`.
+- **Computed-code relation actions (Finding 3c/12)** — the prior implementation matched only one invented, non-evidenced pattern (`Code<Prop> = '<literal>' IF <Prop> = '<value>'`) that does not correspond to any real range's grammar. It has been replaced with a small evaluator for the real grammar:
+  `<Target> = <expr> [IF <condition>][, <Target> = <expr> [IF <condition>], ...]`, evaluated strictly left to right (later clauses overwrite the same target — self-reference, e.g. `Code = Code + ... IF ...`), where `<expr>` is `+`-concatenated `'literal'` strings, `SUBSTR(<expr>, start, len)`, `$BAN`, the target's own prior value, or another property/option's code, and `<condition>` reuses the existing AND/OR/IN/SPECIFIED grammar (now also supporting plain `Prop = 'value'` equality, which was previously mis-parsed as always-true). A scheme may reference the computed target name directly (e.g. `AERON_OPTIONS:Code`) even though it is never itself a selected property/option — encoding now falls back to the computed-code table for such names instead of rejecting the configuration.
+- **Deduplication (Finding — new)** — the permutation dedup key is now the selected property/option value-ID set, not the encoded final-article string. Two distinct configurations that legitimately encode to the same visible final article (e.g. a property that does not feed the CodeScheme at all — proven by a real-grammar-derived test) are both kept.
+- **Option dependency fallback (Finding — new)** — when a repository defines *any* attribute→option dependency data, a selected property value with no listed dependents now yields zero (not all) offered options for that selection; the "assume every offered option is available" fallback now applies only when the repository defines no dependency data at all. This matches the "do not generate options not offered by the context" requirement more precisely than the previous per-value-only fallback.
+- **Error containment** — a malformed or unsupported relation clause (e.g. a `SUBSTR` call with non-numeric arguments) is now skipped for that one clause/combination, with a diagnostic logged through the existing `ProgressReporter`, rather than raising out of `build()` and losing every other Article's permutations.
+
+**Deliberately left unchanged (no evidence of a defect):** predefined-scheme `VarCodeSep`/`ValueSep`/`Visibility`/`InVisibleChar`/`UnselectChar`/`Trim`/`MO_Sep`/`MO_Bracket` handling (Finding 8/10 — spec-text-only, no real populated example exists in any of the 7 ranges sampled to validate against); `TABLE(...)`/`<TableCall>` scheme segments (Finding 17 — not observed in any sampled range); hierarchy/validity-relation parsing (Finding 11 — already matched the real `(SPECIFIED Parent) AND (Parent IN (...))` / simple-equality grammar); OBX `<artNr type="final">`/`type="varcond"` output policy (Finding 15/16 — flagged as a possible mismatch with real pCon *input* OBX conventions, but changing MK Workbench's own OBX schema is a separate product decision outside this pass's evidence and scope).
+
+## 19. Real-data validation performed this pass
+
+**AU980 does not exist anywhere reachable from this machine** (not in this repo, not in the one real HM OFML repository present at `C:\HermanMillerOFMLSVN\Staging\HermanMiller\_repository\hmx\`) — confirmed by repo-wide search; no test or trace was fabricated around it.
+
+The strongest real evidence reachable and independently re-verifiable is the **verbatim Cosm CodeScheme string** (SchemeID `U00000000000006297`, Finding 3b). It was used to build `tests/test_article_obx.py::ArticleObxRealCodeSchemeFidelityTests`, which feeds the **exact quoted scheme body** through the corrected encoder against a minimal 12-property/1-value-each fixture (a stand-in for the real Cosm property/value CSV rows, which were not reachable this pass — the *grammar* under test is real, the *property codes* are illustrative):
+
+```
+Base article:      COS
+Scheme (verbatim):  @,@,@,COSM_NORMAL:Assembly_Option,COSM_NORMAL:Back_Height,
+                     COSM_NORMAL:Height_Adjustment,COSM_NORMAL:Tilt,COSM_NORMAL:Seat_Depth,
+                     COSM_NORMAL:Arms, ,COSM_NORMAL:Frame_Finish, ,COSM_NORMAL:Chassis_Finish,
+                     ,COSM_NORMAL:Base_Finish, ,COSM_NORMAL:Castors_Glides,
+                     ,COSM_NORMAL:Armpad_Finish_H, ,COSM_NORMAL:Intercept_Finish
+Dimension count:    12 properties (1 value each -> 1 candidate combination)
+@ consumption:      "C","O","S" (3 placeholders, base "COS" fully consumed)
+Property run 1:     A1 B1 H1 T1 D1 R1  (no separator, matches Finding 3b/9)
+Group boundary:     literal space before each remaining finish property
+Final Article:      COSA1B1H1T1D1R1 F1 C1 S1 G1 M1 I1
+Variant Code:       A1B1H1T1D1R1 F1 C1 S1 G1 M1 I1   (excludes the @-consumed chars)
+```
+
+The implementation reproduces this exactly (test passes). This is the real-data validation this pass could perform without a live PDM/OFML connection: the grammar is evidenced from a real, reachable repository file; the encoder is proven to walk it correctly, char-for-char, including the three-`@` base consumption and every literal-space group boundary.
+
+## 20. What exact information is still unknown?
 
 **UNKNOWN / explicitly not resolved in this pass:**
 - Cloud (NOCLE4)'s own real `ocd_codescheme.csv`/`ocd_relation.csv` content — the range is not present in the one real HM OFML repository reachable from this machine (`C:\HermanMillerOFMLSVN\...\hmx\`), so whether Cloud is template-style or script-style, and its exact scheme grammar, remains inferred-only from the two OBX captures, not confirmed from source data.
