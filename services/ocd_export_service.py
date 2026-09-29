@@ -468,7 +468,7 @@ class OcdExportService(BaseService):
         # No text generation is needed for Review. The property text reference
         # is intentionally empty; Text workflow owns tCOMd_Text validation.
         property_rows, prop_index = self._properties(
-            snapshot, classes, class_index, {}, digits,
+            snapshot, classes, class_index, {}, digits, {},
             protos["tCOMd_Property"],
         )
         # No relation-object generation is needed for Review. Relation workflow
