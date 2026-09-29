@@ -823,6 +823,10 @@ class ClassCreationPage(BasePage):
                 v for v in displayed
                 if str(getattr(v, "id", "")) in allowed_ids
             ]
+        snapshot = self._context.active_snapshot
+        article_codes = {str(a.id): a.code for a in snapshot.articles} if snapshot else {}
+        article_values = (snapshot.article_property_value_ids or {}) if snapshot else {}
+        product_values = (snapshot.product_property_value_ids or {}) if snapshot else {}
         for value in _by_display_order(displayed):
             cv = class_values.get(str(getattr(value, "id", "")))
             pdm_code = (getattr(value, "code", "") or "").strip()
@@ -832,7 +836,20 @@ class ClassCreationPage(BasePage):
             )
             row = self._attr_values.rowCount()
             self._attr_values.insertRow(row)
-            value_item = QTableWidgetItem(value.value or "-")
+            linked_articles = [
+                article_codes[str(article.id)]
+                for article in (snapshot.articles if snapshot else [])
+                if str(value.id) in (
+                    article_values.get(str(article.id))
+                    or product_values.get(str(article.product_id), [])
+                )
+            ] if article_values or product_values else []
+            value_label = value.value or "-"
+            if article_values or product_values:
+                value_label += " (linked)" if linked_articles else " (remaining)"
+            value_item = QTableWidgetItem(value_label)
+            if linked_articles:
+                value_item.setToolTip("Linked articles: " + ", ".join(linked_articles))
             value_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
             self._attr_values.setItem(row, 0, value_item)
 

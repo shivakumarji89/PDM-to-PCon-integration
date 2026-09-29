@@ -541,7 +541,7 @@ class EngineeringReductionService(BaseService):
             if bad_width: issues.append(f"{getattr(assignment, 'property_name', pid)}: width {width} does not match configured code length")
             slice_code = remaining[:width]
             if slice_code in valid_codes and len(slice_code) == width:
-                consumed.append((pid, slice_code, str(getattr(assignment, 'property_name', '') or ''))); remaining = remaining[width:]
+                consumed.append((pid, str(getattr(assignment, 'property_name', '') or ''), slice_code)); remaining = remaining[width:]
             else: issues.append(f"{getattr(assignment, 'property_name', pid)}: unassigned slice {slice_code!r}")
         return VariantConditionResult(base=pre_dot[:boundary], remaining=remaining, consumed=tuple(consumed), unassigned=remaining, issues=tuple(issues))
     def materialize_class_creation_article_sets(
@@ -751,10 +751,11 @@ class EngineeringReductionService(BaseService):
                     if target is not None:
                         target.code = code
                         target.value = getattr(class_value, "value", target.value) or target.value
-                        for aid in carriers:
-                            if aid not in target.article_ids:
-                                target.article_ids.append(aid)
-                    elif class_value is not None:
+                        if not value_id:
+                            for aid in carriers:
+                                if aid not in target.article_ids:
+                                    target.article_ids.append(aid)
+                    elif class_value is not None and not value_id:
                         attr.values.append(
                             SetValue(
                                 id=f"manual:{pid}:{code}",

@@ -76,43 +76,87 @@ def test_development_class_creation_reduction_preserves_article_specific_value_c
     sets = service.materialize_class_creation_article_sets(snapshot)
 
     assert len(sets) == 1
-    assert sets[0].base_code == "A1100"
-    assert sets[0].base_length == 5
+    assert sets[0].base_code == "A1"
+    assert sets[0].base_length == 2
     assert snapshot.articles[0].code == "A1X100.S1"
     assert snapshot.articles[1].code == "A1Y100.S2"
-    assert snapshot.engineering.families[0].members[0].reduced_article == "A1100"
-    assert snapshot.engineering.families[0].members[1].reduced_article == "A1100"
+    assert snapshot.engineering.families[0].members[0].reduced_article == "A1"
+    assert snapshot.engineering.families[0].members[1].reduced_article == "A1"
 
     values = {v.id: v for v in sets[0].properties[0].values}
     assert values["vx"].article_ids == ["a1"]
     assert values["vy"].article_ids == ["a2"]
 
 
+def test_class_creation_sliced_match_does_not_reassign_pdm_article_value():
+    snapshot = _snapshot()
+    prop = snapshot.properties[0]
+    prop.values.append(PropertyValue(id="vz", property_id="p1", value="Z", code="Z"))
+    snapshot.articles[0].code = "A1Y100.S1"
+    snapshot.base_length_overrides = {"A1Y100.S1": 2, "A1Y100.S2": 2}
+    service = _service(snapshot)
+
+    article_set = service.materialize_class_creation_article_sets(snapshot)[0]
+
+    assert article_set.article_ids == ["a1", "a2"]
+    values = {value.id: value for value in article_set.properties[0].values}
+    assert values["vx"].article_ids == ["a1"]
+    assert values["vy"].article_ids == ["a2"]
+    assert {value.id for value in prop.values} - set(values) == {"vz"}
+    assert snapshot.article_property_value_ids == {"a1": ["vx"], "a2": ["vy"]}
+
+
+def test_class_creation_single_article_leaves_other_pdm_values_remaining():
+    snapshot = _snapshot()
+    prop = snapshot.properties[0]
+    prop.values.append(PropertyValue(id="vz", property_id="p1", value="Z", code="Z"))
+    snapshot.articles.pop()
+    snapshot.article_property_value_ids.pop("a2")
+    snapshot.engineering.families[0].members.pop()
+
+    article_set = _service(snapshot).materialize_class_creation_article_sets(snapshot)[0]
+
+    assert article_set.article_ids == ["a1"]
+    assert {value.id: value.article_ids for value in article_set.properties[0].values} == {
+        "vx": ["a1"],
+    }
+    assert {value.id for value in prop.values} - {
+        value.id for value in article_set.properties[0].values
+    } == {"vy", "vz"}
+
+
 def test_development_class_creation_ignore_keeps_property_in_base():
     snapshot = _snapshot()
     snapshot.config_ignore_overrides = {"p1": True}
+    snapshot.base_length_overrides = {"A1X100.S1": 3, "A1Y100.S2": 3}
     service = _service(snapshot)
 
     sets = service.materialize_class_creation_article_sets(snapshot)
 
     assert sets[0].base_code == "A1"
     assert sets[0].base_length == 2
-    assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
-    assert snapshot.engineering.families[0].members[1].reduced_article == "A1Y100"
+    assert snapshot.engineering.families[0].members[0].reduced_article == "A1X"
+    assert snapshot.engineering.families[0].members[1].reduced_article == "A1Y"
+    assert snapshot.config_ignore_overrides == {"p1": True}
 
 
 def test_development_class_creation_code_correction_changes_only_matching_article():
     snapshot = _snapshot()
     assignment = snapshot.engineering.classes[0].properties[0]
     assignment.values[0].code = "Q"
+    snapshot.base_length_overrides = {"A1X100.S1": 2, "A1Y100.S2": 2}
     service = _service(snapshot)
 
-    service.materialize_class_creation_article_sets(snapshot)
+    article_set = service.materialize_class_creation_article_sets(snapshot)[0]
 
-    # Article a1 still contains the old sliced code X, so the corrected Q does not
-    # remove it. Article a2 still uses the unchanged Y mapping.
-    assert snapshot.engineering.families[0].members[0].reduced_article == "A1X100"
-    assert snapshot.engineering.families[0].members[1].reduced_article == "A1100"
+    assert service.resolve_variant_condition(snapshot, "a1", 2).consumed == ()
+    assert service.resolve_variant_condition(snapshot, "a2", 2).consumed == (
+        ("p1", "Type", "Y"),
+    )
+    assert [member.reduced_article for member in snapshot.engineering.families[0].members] == ["A1", "A1"]
+    assert {value.id: value.article_ids for value in article_set.properties[0].values} == {
+        "vx": ["a1"], "vy": ["a2"],
+    }
 
 
 def test_development_reduction_uses_class_creation_sliced_code_not_article_value_id():
@@ -134,6 +178,7 @@ def test_development_reduction_uses_class_creation_sliced_code_not_article_value
         # Class Creation Sliced vocabulary contains both 0 and 2. The
         # reduction must follow Class Creation, not this PDM value id.
         article_property_value_ids={"a1": ["v0"]},
+        base_length_overrides={"AL1C1002S": 7},
         engineering=Engineering(
             classes=[
                 EngineeringClass(
@@ -143,7 +188,7 @@ def test_development_reduction_uses_class_creation_sliced_code_not_article_value
                         ClassPropertyAssignment(
                             property_id="p1",
                             property_name="Type",
-                            width=2,
+                            width=1,
                             placement=0,
                             values=[
                                 ClassValue(value_id="v0", code="0", value="Zero"),
@@ -164,12 +209,17 @@ def test_development_reduction_uses_class_creation_sliced_code_not_article_value
     )
     service = _service(snapshot)
 
-    service.materialize_class_creation_article_sets(snapshot)
+    article_set = service.materialize_class_creation_article_sets(snapshot)[0]
 
-    # The Class Creation vocabulary contains 2, so that is the code selected
-    # for reduction. The PDM value id v0 must not force removal of 0.
-    assert snapshot.engineering.families[0].members[0].reduced_article == "AL1C100S"
-    assert snapshot.engineering.families[0].members[0].reduced_article != "AL1C102S"
+    assert snapshot.engineering.families[0].members[0].reduced_article == "AL1C100"
+    assert service.resolve_variant_condition(snapshot, "a1", 7).consumed == (
+        ("p1", "Type", "2"),
+    )
+    assert service.resolve_variant_condition(snapshot, "a1", 7).remaining == "S"
+    assert [(value.id, value.article_ids) for value in article_set.properties[0].values] == [
+        ("v0", ["a1"]),
+    ]
+    assert snapshot.article_property_value_ids == {"a1": ["v0"]}
 
 def test_manual_base_length_override_preserves_class_creation_property_relationships_and_ignore():
     snapshot = _snapshot()
@@ -223,7 +273,7 @@ def test_variant_condition_is_consumed_only_from_the_next_positional_slice():
 def test_variant_condition_consumes_sequential_widths_in_placement_order():
     snapshot = Snapshot(
         id="s3",
-        articles=[Article(id="a1", product_id="prod", code="ABC12345")],
+        articles=[Article(id="a1", product_id="prod", code="ABC145")],
         properties=[
             Property(id="p1", name="Height", values=[
                 PropertyValue(id="h1", property_id="p1", value="1", code="1")
@@ -262,8 +312,8 @@ def test_variant_condition_consumes_sequential_widths_in_placement_order():
     assert resolved.remaining == ""
     assert resolved.unassigned == ""
     assert resolved.consumed == (
-        ("p1", "Height", "123"[0:1]),
-        ("p2", "Width", "23"),
+        ("p1", "Height", "1"),
+        ("p2", "Width", "45"),
     )
 
 

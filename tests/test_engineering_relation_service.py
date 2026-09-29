@@ -93,17 +93,25 @@ class EngineeringRelationServiceTests(unittest.TestCase):
 
         self.assertEqual(kinds["child-y"], "generic")
 
-    def test_dependency_value_is_combination_only_when_explained_by_other_property(self):
+    def test_subset_coverage_does_not_infer_a_dependency_relation(self):
         snapshot = _relation_snapshot()
-        kinds = EngineeringRelationService(_RelationContext()).classify_values(snapshot)
+        service = EngineeringRelationService(_RelationContext())
+        kinds = service.classify_values(snapshot)
 
-        self.assertEqual(kinds["child-x"], "combination")
-        relations = EngineeringRelationService(_RelationContext()).build_relation_objects(snapshot)
-        relation = next(r for r in relations if r.value_id == "child-x")
-        self.assertIn("SPECIFIED Parent", relation.body)
-        self.assertIn("Parent IN ('A')", relation.body)
-        self.assertEqual(relation.type_code, "1")
-        self.assertEqual(relation.domain, "C")
+        self.assertEqual(kinds["child-x"], "base")
+        self.assertEqual(kinds["child-y"], "generic")
+        self.assertFalse(any(r.value_id == "child-x" for r in service.build_relation_objects(snapshot)))
+
+        authored = RelationObject(
+            name="B_Child_X", type_code="1", domain="C",
+            body="(SPECIFIED Parent) AND (Parent IN ('A'))",
+            property_id="child", value_id="child-x", relation_id="901",
+        )
+        snapshot.relation_objects = [authored]
+        relations = service.build_relation_objects(snapshot)
+        self.assertIn(authored, relations)
+        self.assertEqual(service.classify_values(snapshot)["child-x"], "base")
+        self.assertEqual(service.related_value_ids(snapshot), {"child-x"})
 
     def test_export_preserves_distinct_relobj_and_relation_ids_and_bindings(self):
         snapshot = Snapshot(
