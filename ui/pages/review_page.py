@@ -1,6 +1,6 @@
 """Review workspace page.
 
-A read-only engineering review of the active snapshot: aggregate counts,
+An engineering review of the active snapshot: aggregate counts,
 validation warnings, errors, duplicates, missing relationships and overall
 engineering readiness. Presents (never mutates) data from the snapshot.
 """
@@ -12,10 +12,15 @@ from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QProgressBar,
@@ -44,7 +49,17 @@ class _MdbPreviewWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            self.finished.emit(self._context.ocd_export_service.preview(self._snapshot))
+            result = self._context.ocd_export_service.preview(self._snapshot)
+            if not result.error:
+                try:
+                    permutations = self._context.article_permutation_service.build(
+                        self._snapshot
+                    )
+                    result.permutation_count = len(permutations)
+                except Exception as error:
+                    result.logs.append(f"Permutation count unavailable: {error}")
+                    result.permutation_count = None
+            self.finished.emit(result)
         except Exception as error:
             self.failed.emit(str(error))
 
@@ -55,7 +70,7 @@ class ReviewPage(BasePage):
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Review",
-            description="Read-only engineering review before generation.",
+            description="Final Development validation before export.",
             parent=parent,
             show_placeholder=False,
             content_stretch=True,
@@ -75,6 +90,10 @@ class ReviewPage(BasePage):
         self._preview_worker: _MdbPreviewWorker | None = None
         self._preview_running = False
         self._preview_elapsed = 0
+        self._technical_dialog: QDialog | None = None
+        self._backend_tables = {}
+        self._development_cards = {}
+        self._mdb_cards = {}
         self._preview_elapsed_timer = QTimer(self)
         self._preview_elapsed_timer.setInterval(1000)
         self._preview_elapsed_timer.timeout.connect(self._update_preview_progress)
@@ -105,47 +124,123 @@ class ReviewPage(BasePage):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # These are the four generation inputs/identifiers that a user needs
-        # to understand what the Review workflow will generate. Package and
-        # COM-group implementation IDs remain available in the technical
-        # backend tables below; they are not generation information for the
-        # engineering review summary.
         info_box = QGroupBox("Generation Information", container)
-        info_form = QFormLayout(info_box)
+        info_layout = QVBoxLayout(info_box)
+        form = QFormLayout()
         self._generation_rows = {}
         for label in ("Template", "Program", "Series", "Manufacturer"):
             value = QLabel("-", info_box)
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._generation_rows[label] = value
-            info_form.addRow(f"{label}:", value)
+            form.addRow(f"{label}:", value)
+        info_layout.addLayout(form)
+
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        self._edit_generation_btn = QPushButton("Edit generation info", info_box)
+        self._edit_generation_btn.clicked.connect(self._edit_generation_info)
+        actions.addWidget(self._edit_generation_btn)
+        info_layout.addLayout(actions)
         layout.addWidget(info_box)
 
-        diagnostics_box = QGroupBox("Generation Diagnostics", container)
-        diagnostics_form = QFormLayout(diagnostics_box)
-        self._generation_diagnostics = {}
-        for label in (
-            "CAD Base-Length Overrides",
-            "Generated MDB rows",
-            "Generated MDB tables",
-            "Retained template tables",
-            "CAD Registry",
-        ):
-            value = QLabel("-", diagnostics_box)
-            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            self._generation_diagnostics[label] = value
-            diagnostics_form.addRow(f"{label}:", value)
-        layout.addWidget(diagnostics_box)
+        development_box = QGroupBox("Development Summary", container)
+        development_grid = QGridLayout(development_box)
+        development_grid.setContentsMargins(8, 8, 8, 8)
+        development_grid.setSpacing(8)
+        development_metrics = (
+            "Articles", "Classes", "Properties", "Property Values",
+            "Options", "Option Values", "Permutations", "Texts",
+            "Relations", "Pricing",
+        )
+        for index, label in enumerate(development_metrics):
+            card = self._metric_card(label, development_box)
+            self._development_cards[label] = card
+            development_grid.addWidget(card, index // 5, index % 5)
+        layout.addWidget(development_box)
+
+        mdb_box = QGroupBox("MDB Generation Preview", container)
+        mdb_layout = QVBoxLayout(mdb_box)
+        mdb_grid = QGridLayout()
+        mdb_grid.setSpacing(8)
+        mdb_metrics = (
+            "Articles to generate", "Classes to generate",
+            "Properties to generate", "Property Values to generate",
+            "Options to generate", "Option Values to generate",
+            "MDB tables", "MDB rows",
+        )
+        for index, label in enumerate(mdb_metrics):
+            card = self._metric_card(label, mdb_box)
+            self._mdb_cards[label] = card
+            mdb_grid.addWidget(card, index // 4, index % 4)
+        mdb_layout.addLayout(mdb_grid)
+
+        technical_actions = QHBoxLayout()
+        technical_actions.addStretch(1)
+        self._technical_details_btn = QPushButton("View technical details", mdb_box)
+        self._technical_details_btn.clicked.connect(self._show_technical_details)
+        technical_actions.addWidget(self._technical_details_btn)
+        mdb_layout.addLayout(technical_actions)
+        layout.addWidget(mdb_box)
 
         return container
 
-    def _build_backend_review(self) -> QWidget:
-        box = QGroupBox(
-            "Backend / Derived / Export Data (not repeated from the other workflows)",
-            self,
-        )
-        layout = QVBoxLayout(box)
+    @staticmethod
+    def _metric_card(title: str, parent: QWidget) -> QFrame:
+        card = QFrame(parent)
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setFrameShadow(QFrame.Shadow.Raised)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        caption = QLabel(title, card)
+        caption.setWordWrap(True)
+        value = QLabel("-", card)
+        value.setObjectName("reviewMetricValue")
+        value.setStyleSheet("font-size: 18px; font-weight: 600;")
+        value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(caption)
+        layout.addWidget(value)
+        card._value_label = value
+        return card
 
-        self._backend_tabs = QTabWidget(box)
+    @staticmethod
+    def _set_metric(card: QFrame, value: object) -> None:
+        label = getattr(card, "_value_label", None)
+        if label is not None:
+            label.setText("-" if value is None else str(value))
+
+    def _build_backend_review(self) -> QWidget:
+        box = QGroupBox("Technical Details", self)
+        layout = QHBoxLayout(box)
+        layout.setContentsMargins(8, 4, 8, 4)
+        note = QLabel(
+            "MDB tables, retained template rows and generated backend mappings "
+            "are available on demand.",
+            box,
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note, 1)
+        button = QPushButton("View technical details", box)
+        button.clicked.connect(self._show_technical_details)
+        layout.addWidget(button)
+        return box
+
+    def _show_technical_details(self) -> None:
+        dialog = self._ensure_technical_dialog()
+        self._populate_backend_tables()
+        dialog.resize(1100, 700)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _ensure_technical_dialog(self) -> QDialog:
+        if self._technical_dialog is not None:
+            return self._technical_dialog
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Review — Technical Details")
+        dialog.setMinimumSize(900, 600)
+        layout = QVBoxLayout(dialog)
+        self._backend_tabs = QTabWidget(dialog)
         layout.addWidget(self._backend_tabs, 1)
 
         self._backend_tables = {}
@@ -176,7 +271,6 @@ class ReviewPage(BasePage):
             tab = QWidget(self._backend_tabs)
             tab_layout = QVBoxLayout(tab)
             tab_layout.setContentsMargins(0, 0, 0, 0)
-
             selector = QComboBox(tab)
             selector.addItems(tables)
             table = QTableWidget(tab)
@@ -184,7 +278,6 @@ class ReviewPage(BasePage):
             table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
             table.setAlternatingRowColors(True)
             table.setSortingEnabled(False)
-
             selector.currentTextChanged.connect(
                 lambda name, t=table: self._show_backend_table(name, t)
             )
@@ -193,7 +286,23 @@ class ReviewPage(BasePage):
             self._backend_tables[tab_name] = (selector, table)
             self._backend_tabs.addTab(tab, tab_name)
 
-        return box
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        buttons.rejected.connect(dialog.hide)
+        layout.addWidget(buttons)
+        self._technical_dialog = dialog
+        return dialog
+
+    def _populate_backend_tables(self) -> None:
+        if not self._backend_tables:
+            return
+        for tab_name, (selector, table) in self._backend_tables.items():
+            if tab_name == "Package / Manufacturer":
+                names = list(self._mdb_retained_rows)
+                selector.blockSignals(True)
+                selector.clear()
+                selector.addItems(names)
+                selector.blockSignals(False)
+            self._show_backend_table(selector.currentText(), table)
 
     def _show_backend_table(self, table_name: str, widget: QTableWidget) -> None:
         rows = self._review_rows_for_table(table_name)
@@ -310,39 +419,146 @@ class ReviewPage(BasePage):
         self._generation_rows["Program"].setText(str(result.program_code or program or "-"))
         self._generation_rows["Series"].setText(str(result.series_id or series or "-"))
         self._generation_rows["Manufacturer"].setText(str(result.manufacturer_id or "-"))
-        self._generation_diagnostics["CAD Base-Length Overrides"].setText(
-            str(len(result.registry_overrides))
-        )
-        self._generation_diagnostics["Generated MDB rows"].setText(
-            str(sum(result.table_counts.values()))
-        )
-        self._generation_diagnostics["Generated MDB tables"].setText(
-            str(len(result.table_counts))
-        )
-        self._generation_diagnostics["Retained template tables"].setText(
-            str(len(result.retained_rows))
-        )
-        self._generation_diagnostics["CAD Registry"].setText(
-            result.registry_path or "-"
-        )
+        self._update_development_summary()
         self._mdb_preview_status.setText(
             f"Generated {sum(result.table_counts.values())} backend/export rows "
             f"across {len(result.table_counts)} MDB tables. Read-only; nothing written."
         )
 
-        package_selector, package_table = self._backend_tables["Package / Manufacturer"]
-        package_selector.blockSignals(True)
-        package_selector.clear()
-        package_selector.addItems(list(result.retained_rows))
-        package_selector.blockSignals(False)
-        if package_selector.count():
-            package_selector.setCurrentIndex(0)
-            self._show_backend_table(package_selector.currentText(), package_table)
+        self._update_review_metrics(result)
+        self._populate_backend_tables()
 
-        for tab_name, (selector, table) in self._backend_tables.items():
-            if tab_name == "Package / Manufacturer":
-                continue
-            self._show_backend_table(selector.currentText(), table)
+    def _update_development_summary(self) -> None:
+        review = self._last_review
+        counts = review.counts if review is not None else {}
+        snapshot = self._context.active_snapshot
+        self._set_metric(self._development_cards["Articles"], counts.get("Articles", 0))
+        self._set_metric(self._development_cards["Properties"], counts.get("Properties", 0))
+        self._set_metric(self._development_cards["Property Values"], counts.get("Property Values", 0))
+        self._set_metric(self._development_cards["Options"], counts.get("Options", 0))
+        self._set_metric(self._development_cards["Option Values"], counts.get("Option Values", 0))
+        self._set_metric(
+            self._development_cards["Classes"],
+            len(getattr(getattr(snapshot, "engineering", None), "classes", []) or [])
+            if snapshot is not None else 0,
+        )
+        self._set_metric(
+            self._development_cards["Texts"],
+            len(getattr(snapshot, "text_blocks", []) or [])
+            if snapshot is not None else 0,
+        )
+        self._set_metric(
+            self._development_cards["Relations"],
+            len(getattr(snapshot, "relation_objects", []) or [])
+            if snapshot is not None else 0,
+        )
+        self._set_metric(
+            self._development_cards["Pricing"],
+            len(getattr(snapshot, "price_records", []) or [])
+            if snapshot is not None else 0,
+        )
+        permutation_count = (
+            self._mdb_preview_result.permutation_count
+            if self._mdb_preview_result is not None
+            else None
+        )
+        self._set_metric(self._development_cards["Permutations"], permutation_count)
+
+    def _update_review_metrics(self, result) -> None:
+        rows = result.preview_rows or {}
+        table_count = result.table_counts or {}
+        self._set_metric(
+            self._mdb_cards["Articles to generate"],
+            len(rows.get("tCOMd_Article", [])),
+        )
+        self._set_metric(
+            self._mdb_cards["Classes to generate"],
+            len(rows.get("tCOMd_Class", [])),
+        )
+        self._set_metric(
+            self._mdb_cards["Properties to generate"],
+            len(rows.get("tCOMd_Property", [])),
+        )
+        self._set_metric(
+            self._mdb_cards["Property Values to generate"],
+            len(rows.get("tCOMd_PropValue", [])),
+        )
+        self._set_metric(
+            self._mdb_cards["Options to generate"],
+            0,
+        )
+        self._set_metric(
+            self._mdb_cards["Option Values to generate"],
+            0,
+        )
+        self._set_metric(self._mdb_cards["MDB tables"], len(table_count))
+        self._set_metric(self._mdb_cards["MDB rows"], sum(table_count.values()))
+        self._update_development_summary()
+
+    def _edit_generation_info(self) -> None:
+        snapshot = self._context.active_snapshot
+        if snapshot is None or snapshot.product is None:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Generation Information")
+        form = QFormLayout(dialog)
+        template = QComboBox(dialog)
+        template.addItems(("seating", "tables"))
+        current_template = snapshot.generation_template or (
+            self._mdb_preview_result.template if self._mdb_preview_result else ""
+        )
+        if not current_template:
+            current_template = self._context.ocd_export_service._infer_template(
+                snapshot.product
+            )
+        template.setCurrentText(current_template)
+
+        derived_program = self._safe_xocd_value("program_key", snapshot.product) or ""
+        derived_series = self._safe_xocd_value("series_id", snapshot.product) or ""
+        program = QLineEdit(snapshot.generation_program or derived_program, dialog)
+        series = QLineEdit(snapshot.generation_series or derived_series, dialog)
+        manufacturer = QLabel(
+            self._generation_rows["Manufacturer"].text() or "-", dialog
+        )
+        manufacturer.setToolTip(
+            "Manufacturer is retained from the selected MDB template and is not "
+            "a Review generation override."
+        )
+
+        form.addRow("Template:", template)
+        form.addRow("Program:", program)
+        form.addRow("Series:", series)
+        form.addRow("Manufacturer:", manufacturer)
+        note = QLabel(
+            "Program and Series are a coupled generation override. "
+            "Changing them affects generation only; the PDM Product remains unchanged.",
+            dialog,
+        )
+        note.setWordWrap(True)
+        form.addRow(note)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        form.addRow(buttons)
+
+        def save() -> None:
+            program_value = program.text().strip()
+            series_value = series.text().strip()
+            if not program_value or not series_value:
+                return
+            snapshot.generation_template = template.currentText().strip().lower()
+            snapshot.generation_program = program_value
+            snapshot.generation_series = series_value
+            self.refresh(include_preview=True)
+            dialog.accept()
+
+        buttons.accepted.connect(save)
+        buttons.rejected.connect(dialog.reject)
+        dialog.exec()
 
     @Slot(str)
     def _on_mdb_preview_failed(self, error: str) -> None:
@@ -372,8 +588,9 @@ class ReviewPage(BasePage):
     def _clear_generation_summary(self) -> None:
         for widget in self._generation_rows.values():
             widget.setText("-")
-        for widget in self._generation_diagnostics.values():
-            widget.setText("-")
+        for cards in (self._development_cards, self._mdb_cards):
+            for card in cards.values():
+                self._set_metric(card, "-")
         self._mdb_retained_rows = {}
         for selector, table in self._backend_tables.values():
             table.clear()
@@ -529,6 +746,7 @@ class ReviewPage(BasePage):
     def refresh(self, include_preview: bool = False) -> None:
         review = self._context.validation_service.review()
         self._last_review = review
+        self._update_development_summary()
 
         # MDB preview performs template discovery, Access reads and full export
         # row construction. It is deliberately not part of the synchronous
