@@ -951,6 +951,9 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "prog_info_rows": snapshot.prog_info_rows,
         "material_manufacturer_code": snapshot.material_manufacturer_code,
         "material_package_code": snapshot.material_package_code,
+        "generation_template": snapshot.generation_template,
+        "generation_program": snapshot.generation_program,
+        "generation_series": snapshot.generation_series,
         "split_classes_by_group": snapshot.split_classes_by_group,
         "class_group_basis": snapshot.class_group_basis,
         "class_group_names": snapshot.class_group_names,
@@ -1115,6 +1118,9 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
         material_package_code=str(
             data.get("material_package_code") or "basics"
         ),
+        generation_template=str(data.get("generation_template") or ""),
+        generation_program=str(data.get("generation_program") or ""),
+        generation_series=str(data.get("generation_series") or ""),
         split_classes_by_group=bool(data.get("split_classes_by_group", False)),
         class_group_basis=str(data.get("class_group_basis", "") or "range"),
         class_group_names={
