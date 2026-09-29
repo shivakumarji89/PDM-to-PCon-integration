@@ -36,8 +36,8 @@ def _relation_snapshot() -> Snapshot:
         id="parent",
         name="Parent",
         values=[
-            PropertyValue(id="parent-a", property_id="parent", value="A"),
-            PropertyValue(id="parent-b", property_id="parent", value="B"),
+            PropertyValue(id="parent-a", property_id="parent", value="A", code="PA"),
+            PropertyValue(id="parent-b", property_id="parent", value="B", code="PB"),
         ],
     )
     child = Property(
@@ -101,7 +101,7 @@ class EngineeringRelationServiceTests(unittest.TestCase):
         relations = EngineeringRelationService(_RelationContext()).build_relation_objects(snapshot)
         relation = next(r for r in relations if r.value_id == "child-x")
         self.assertIn("SPECIFIED Parent", relation.body)
-        self.assertIn("Parent IN ('A')", relation.body)
+        self.assertIn("Parent IN ('PA')", relation.body)
         self.assertEqual(relation.type_code, "1")
         self.assertEqual(relation.domain, "C")
 
