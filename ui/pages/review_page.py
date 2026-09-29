@@ -80,7 +80,6 @@ class ReviewPage(BasePage):
 
         self.add_content(self._build_toolbar())
         self.add_content(self._build_generation_summary())
-        self.add_content(self._build_backend_review())
 
         self._last_review = None
         self._mdb_preview_rows = {}
@@ -165,13 +164,12 @@ class ReviewPage(BasePage):
         mdb_metrics = (
             "Articles to generate", "Classes to generate",
             "Properties to generate", "Property Values to generate",
-            "Options to generate", "Option Values to generate",
             "MDB tables", "MDB rows",
         )
         for index, label in enumerate(mdb_metrics):
             card = self._metric_card(label, mdb_box)
             self._mdb_cards[label] = card
-            mdb_grid.addWidget(card, index // 4, index % 4)
+            mdb_grid.addWidget(card, index // 3, index % 3)
         mdb_layout.addLayout(mdb_grid)
 
         technical_actions = QHBoxLayout()
@@ -482,14 +480,6 @@ class ReviewPage(BasePage):
         self._set_metric(
             self._mdb_cards["Property Values to generate"],
             len(rows.get("tCOMd_PropValue", [])),
-        )
-        self._set_metric(
-            self._mdb_cards["Options to generate"],
-            0,
-        )
-        self._set_metric(
-            self._mdb_cards["Option Values to generate"],
-            0,
         )
         self._set_metric(self._mdb_cards["MDB tables"], len(table_count))
         self._set_metric(self._mdb_cards["MDB rows"], sum(table_count.values()))
