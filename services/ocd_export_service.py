@@ -690,6 +690,18 @@ class OcdExportService(BaseService):
         used_relation_ids: set[int] = set()
         obj_ids: dict[str, int] = {}
         relation_ids: dict[str, int] = {}
+        reserved_obj_ids = {
+            value
+            for value in (_numeric_id(getattr(rel, "rel_obj_id", "")) for rel in relation_objects)
+            if value is not None
+        }
+        reserved_relation_ids = {
+            value
+            for value in (_numeric_id(getattr(rel, "relation_id", "")) for rel in relation_objects)
+            if value is not None
+        }
+        used_obj_ids.update(reserved_obj_ids)
+        used_relation_ids.update(reserved_relation_ids)
         next_obj_id = 1
         next_relation_id = 1
 
@@ -745,6 +757,7 @@ class OcdExportService(BaseService):
             if getattr(rel, "value_id", ""):
                 value_relobj.setdefault(str(rel.value_id), obj_id)
 
+        return obj_rows, rel_rows, relrel_rows, property_relobj, value_relobj
 
 
     # -- Code schemes ---------------------------------------------------
