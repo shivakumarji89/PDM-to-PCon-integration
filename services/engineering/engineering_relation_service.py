@@ -173,14 +173,16 @@ class EngineeringRelationService(BaseService):
             ))
 
     @staticmethod
-    def _head_property_ids(snapshot: Snapshot) -> set[str]:
-        """Head/code (config) properties = those whose values carry no order code
-        (positional in the base article code). Only these may gate a combination
-        precondition."""
-        return {
-            str(p.id) for p in snapshot.properties
-            if p.values and not any((v.code or "").strip() for v in p.values)
-        }
+    def _dependency_attribute_ids(snapshot: Snapshot) -> set[str]:
+        """Configuration attributes that can explain a value's carrier set.
+        Dependencies are not limited to head properties: a coded property or
+        option can also be the condition that makes another value valid. A
+        candidate is used only when observed article coverage proves it."""
+        ids: set[str] = set()
+        for attribute in (*snapshot.properties, *snapshot.options):
+            if attribute.id and attribute.values:
+                ids.add(str(attribute.id))
+        return ids
 
     @staticmethod
     def _articles_by_base(base_by_article: dict[str, str]) -> dict[str, set]:
@@ -254,10 +256,10 @@ class EngineeringRelationService(BaseService):
                 classify[vid] = "generic"
                 continue
             aid_attr = value_attr.get(vid, "")
-            if aid_attr not in head_ids:
+            if aid_attr not in dependency_ids:
                 body = self._combination_body(
                     carriers, aid_attr, base_by_article, articles_by_base,
-                    article_tokens, attr_names, head_ids,
+                    article_tokens, attr_names, dependency_ids,
                 )
                 if "(SPECIFIED" in body:
                     classify[vid] = "combination"
@@ -276,7 +278,7 @@ class EngineeringRelationService(BaseService):
 
     def _combination_body(
         self, carriers, attr_id, base_by_article, articles_by_base,
-        article_tokens, attr_names, head_ids,
+        article_tokens, attr_names, dependency_ids,
     ) -> str:
         """OR of per-base branches. A base carried whole -> ``$BAN IN ('base')``;
         a base carried in part -> the HEAD-property conditions that select
@@ -290,7 +292,7 @@ class EngineeringRelationService(BaseService):
                 branches.append(f"$BAN IN ('{base}')")
                 continue
             keep: dict[str, set] = {}
-            for qid in head_ids:
+            for qid in dependency_ids:
                 if qid == attr_id or not attr_names.get(qid):
                     continue
                 cvals = {article_tokens.get(a, {}).get(qid) for a in here}
