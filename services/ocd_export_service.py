@@ -703,6 +703,13 @@ class OcdExportService(BaseService):
         next_obj_id = 1
         next_relation_id = 1
 
+        def _bindings(rel, singular: str, plural: str) -> list[str]:
+            values = [str(value) for value in (getattr(rel, plural, []) or []) if str(value)]
+            scalar = str(getattr(rel, singular, "") or "")
+            if scalar and scalar not in values:
+                values.insert(0, scalar)
+            return values
+
         for rel in relation_objects:
             raw_obj_id = str(getattr(rel, "rel_obj_id", "") or "").strip()
             obj_key = raw_obj_id or f"generated:{id(rel)}"
@@ -710,7 +717,7 @@ class OcdExportService(BaseService):
             if obj_id is None:
                 obj_id = _numeric_id(raw_obj_id)
                 if obj_id is None or obj_id in used_obj_ids:
-                    while next_obj_id in reserved_obj_ids or next_obj_id in used_obj_ids:
+                    while next_obj_id in used_obj_ids or next_obj_id in reserved_obj_ids:
                         next_obj_id += 1
                     obj_id = next_obj_id
                     next_obj_id += 1
@@ -728,7 +735,7 @@ class OcdExportService(BaseService):
             if relation_id is None:
                 relation_id = _numeric_id(raw_relation_id)
                 if relation_id is None or relation_id in used_relation_ids:
-                    while next_relation_id in reserved_relation_ids or next_relation_id in used_relation_ids:
+                    while next_relation_id in used_relation_ids or next_relation_id in reserved_relation_ids:
                         next_relation_id += 1
                     relation_id = next_relation_id
                     next_relation_id += 1
@@ -750,10 +757,15 @@ class OcdExportService(BaseService):
                 "com_RelationOrder": rel.order,
             }))
 
-            if getattr(rel, "property_id", "") and not getattr(rel, "value_id", ""):
-                property_relobj.setdefault(str(rel.property_id), obj_id)
-            if getattr(rel, "value_id", ""):
-                value_relobj.setdefault(str(rel.value_id), obj_id)
+            property_bindings = _bindings(rel, "", "property_ids")
+            if not _bindings(rel, "value_id", "value_ids"):
+                property_id = str(getattr(rel, "property_id", "") or "")
+                if property_id and property_id not in property_bindings:
+                    property_bindings.append(property_id)
+            for property_id in property_bindings:
+                property_relobj.setdefault(property_id, obj_id)
+            for value_id in _bindings(rel, "value_id", "value_ids"):
+                value_relobj.setdefault(value_id, obj_id)
 
         return obj_rows, rel_rows, relrel_rows, property_relobj, value_relobj
 

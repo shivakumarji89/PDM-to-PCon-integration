@@ -6,7 +6,7 @@ evaluation order and OCD_4 logic ``body``. Fields only - no logic.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 #: OCD relation types (``tCOMd_RelObjRel.com_RelObjTypeCode``).
 RELATION_TYPE_LABELS: dict[str, str] = {
@@ -42,6 +42,10 @@ class RelationObject:
     # derivation time: the property, plus the value for a value-level relation.
     property_id: str = ""
     value_id: str = ""
+    # A single relation object can be bound to multiple properties/values in
+    # the MDB. Keep the scalar fields above for existing editors and callers.
+    property_ids: list[str] = field(default_factory=list)
+    value_ids: list[str] = field(default_factory=list)
     # Original MDB keys retained for imported repository relations. These are
     # the real tCOMd_RelObj -> tCOMd_RelObjRel -> tCOMd_Relation links.
     rel_obj_id: str = ""

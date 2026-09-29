@@ -478,8 +478,15 @@ class ArticlePermutationService(BaseService):
             body = str(getattr(relation, "body", "") or "")
 
             if domain == "C" and type_code in {"1", "2"}:
+                value_ids = {
+                    str(value_id)
+                    for value_id in (getattr(relation, "value_ids", []) or [])
+                    if str(value_id)
+                }
                 value_id = str(getattr(relation, "value_id", "") or "")
-                if value_id in selected_ids and not cls._relation_body_matches(
+                if value_id:
+                    value_ids.add(value_id)
+                if selected_ids.intersection(value_ids) and not cls._relation_body_matches(
                     body, base_code, selected
                 ):
                     return None
