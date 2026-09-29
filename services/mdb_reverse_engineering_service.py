@@ -398,16 +398,8 @@ class MdbReverseEngineeringService(BaseService):
                 value_relobj.setdefault(obj_id, []).append(value_id)
 
         for obj_id, obj_row in relobj_by_id.items():
-            property_mdb_ids = prop_relobj.get(obj_id, [])
-            value_mdb_ids = value_relobj.get(obj_id, [])
-            property_bindings = list(dict.fromkeys(
-                prop_by_mdb[pid].id for pid in property_mdb_ids
-                if pid in prop_by_mdb
-            ))
-            value_bindings = list(dict.fromkeys(
-                value_by_mdb[vid].id for vid in value_mdb_ids
-                if vid in value_by_mdb
-            ))
+            property_ids = prop_relobj.get(obj_id, [])
+            value_ids = value_relobj.get(obj_id, [])
 
             for meta in relmeta_by_obj.get(obj_id, []):
                 relation_id = _mdb_id(meta.get("com_RelationID"))
@@ -415,16 +407,23 @@ class MdbReverseEngineeringService(BaseService):
                 if rel is None:
                     continue
 
+                property_id = next(
+                    (prop_by_mdb[pid].id for pid in property_ids if pid in prop_by_mdb),
+                    "",
+                )
+                value_id = next(
+                    (value_by_mdb[vid].id for vid in value_ids if vid in value_by_mdb),
+                    "",
+                )
+
                 snapshot.relation_objects.append(RelationObject(
                     name=str(obj_row.get("com_RelObjName") or ""),
                     type_code=str(meta.get("com_RelObjTypeCode") or "1"),
                     domain=str(meta.get("com_RelObjDomainCode") or "C"),
                     order=int(meta.get("com_RelationOrder") or 100),
                     body=str(rel.get("com_RelationBody") or ""),
-                    property_id=property_bindings[0] if property_bindings else "",
-                    value_id=value_bindings[0] if value_bindings else "",
-                    property_ids=property_bindings,
-                    value_ids=value_bindings,
+                    property_id=property_id,
+                    value_id=value_id,
                     rel_obj_id=obj_id,
                     relation_id=relation_id,
                     relation_name=str(rel.get("com_RelationName") or ""),

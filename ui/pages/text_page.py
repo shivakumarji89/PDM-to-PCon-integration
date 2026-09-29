@@ -51,7 +51,7 @@ class TextPage(BasePage):
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Text",
-            description="Author localized text blocks for articles, properties, options and their values.",
+            description="Author localized text blocks for articles, properties and values.",
             parent=parent,
             show_placeholder=False,
             content_stretch=True,
@@ -119,15 +119,14 @@ class TextPage(BasePage):
 
     # -- data --------------------------------------------------------------
     def on_enter(self) -> None:
-        """Load the snapshot's text blocks without destroying user edits.
-
-        Text blocks are derived lazily when the snapshot has none. Navigation
-        back to this page must never rebuild them, because the snapshot is the
-        source of truth for edits made in the Text workflow.
-        """
+        """Load imported MDB text as-is; derive text only for generated snapshots."""
         snapshot = self._context.active_snapshot
         service = self._context.engineering_text_service
-        self._all_blocks = service.ensure_text_blocks(snapshot)
+        if snapshot is not None and snapshot.metadata.source == "MDB":
+            self._all_blocks = service.ensure_text_blocks(snapshot)
+        else:
+            service.rebuild_text_blocks(snapshot)
+            self._all_blocks = service.ensure_text_blocks(snapshot)
         self._apply_filter()
 
     def refresh(self) -> None:

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
-from models.article_set import ArticleSet, ClassSplit, SetAttribute, SetValue
+from models.article_set import ArticleSet, SetAttribute, SetValue
 from models.member_article import MemberArticle
 from models.snapshot import Snapshot
 from services.base_service import BaseService
@@ -292,15 +292,6 @@ def normalize_value_name(text: str) -> str:
     return _VALUE_NAME_NOISE.sub(" ", (text or "").casefold()).strip()
 
 
-@dataclass(frozen=True)
-class VariantConditionResult:
-    """Resolved pre-dot base/Variant Condition for one article."""
-    base: str = ""
-    remaining: str = ""
-    consumed: tuple[tuple[str, str, str], ...] = ()
-    unassigned: str = ""
-    issues: tuple[str, ...] = ()
-
 class EngineeringReductionService(BaseService):
     """Group members by identical engineering signature (read-only)."""
 
@@ -500,64 +491,20 @@ class EngineeringReductionService(BaseService):
         masters.sort(key=lambda m: len(m.article_ids), reverse=True)
         return tuple(masters)
 
-    def resolve_variant_condition(self, snapshot: Snapshot | None, article_id: str, base_length: int) -> VariantConditionResult:
-        """Resolve one article from the explicit base boundary through Class Creation."""
-        if snapshot is None: return VariantConditionResult()
-        article = next((a for a in snapshot.articles if str(a.id) == str(article_id)), None)
-        if article is None: return VariantConditionResult()
-        pre_dot = (getattr(article, "code", "") or "").split(".", 1)[0]
-        boundary = max(0, min(int(base_length or 0), len(pre_dot)))
-        remaining = pre_dot[boundary:]
-        article_value_ids = getattr(snapshot, 'article_property_value_ids', {}) or {}
-        product_value_ids = getattr(snapshot, 'product_property_value_ids', {}) or {}
-        product_id = str(getattr(article, 'product_id', '') or '')
-        carried_value_ids = [str(v) for v in article_value_ids.get(str(article.id), [])] or [str(v) for v in product_value_ids.get(product_id, [])]
-        carried_pids = {str(p.id) for p in getattr(snapshot, 'properties', []) or [] if any(str(v.id) in carried_value_ids for v in getattr(p, 'values', []) or [])}
-        assignments, seen = [], set()
-        for cls in getattr(getattr(snapshot, 'engineering', None), 'classes', []) or []:
-            if not str(getattr(cls, 'name', '')).endswith('_Attribute'): continue
-            for assignment in getattr(cls, 'properties', []) or []:
-                pid = str(getattr(assignment, 'property_id', '') or '')
-                if pid and pid in carried_pids and pid not in seen: seen.add(pid); assignments.append(assignment)
-        assignments.sort(key=lambda a: (int(getattr(a, 'placement', 0) or 0), str(getattr(a, 'property_id', '') or '')))
-        try: decoded = self.context.engineering_class_service.resolve_config_codes(snapshot)
-        except Exception: decoded = {}
-        prop_by_id = {str(p.id): p for p in getattr(snapshot, 'properties', []) or []}
-        consumed, issues = [], []
-        for assignment in assignments:
-            if not bool(getattr(assignment, 'configurable', True)): continue
-            width = max(0, int(getattr(assignment, 'width', 0) or 0))
-            if width <= 0 or not remaining: continue
-            pid = str(getattr(assignment, 'property_id', '') or '')
-            prop = prop_by_id.get(pid); valid_codes = []
-            for value in getattr(assignment, 'values', []) or []:
-                code = (getattr(value, 'code', '') or '').strip()
-                if not code and prop is not None:
-                    for pv in getattr(prop, 'values', []) or []:
-                        if (getattr(pv, 'value', '') or '').strip().casefold() == (getattr(value, 'value', '') or '').strip().casefold():
-                            code = (getattr(pv, 'code', '') or '').strip() or (decoded.get(pid, {}) or {}).get(str(getattr(pv, 'id', '')), '') or ''; break
-                if code and code not in valid_codes: valid_codes.append(code)
-            bad_width = [code for code in valid_codes if len(code) != width]
-            if bad_width: issues.append(f"{getattr(assignment, 'property_name', pid)}: width {width} does not match configured code length")
-            slice_code = remaining[:width]
-            if slice_code in valid_codes and len(slice_code) == width:
-                consumed.append((pid, slice_code, str(getattr(assignment, 'property_name', '') or ''))); remaining = remaining[width:]
-            else: issues.append(f"{getattr(assignment, 'property_name', pid)}: unassigned slice {slice_code!r}")
-        return VariantConditionResult(base=pre_dot[:boundary], remaining=remaining, consumed=tuple(consumed), unassigned=remaining, issues=tuple(issues))
     def materialize_class_creation_article_sets(
         self, snapshot: Snapshot | None
     ) -> list[ArticleSet]:
         """Materialise Development Article Sets from the Class Creation definition.
 
-        This is the authoritative Development path. PDM supplies the
-        complete article code; the Article workflow supplies the base-length
-        boundary; Class Creation maps the remaining characters in placement
-        order.
+        This is the authoritative Development path. It deliberately does NOT
+        use the user-entered PDM article-prefix length. PDM supplies the actual
+        articles and their property/value relationships; Class Creation supplies
+        the pre-dot reduction rules (value codes, placement/order and Ignore).
 
-        Consumption is positional and deterministic. For each assignment, only
-        the next configured width is considered, and it is consumed only when
-        that exact slice matches a configured Class Creation value code. No
-        matching code is searched for elsewhere in the article.
+        Reduction starts from each original pre-dot article and removes the
+        configured value code for each non-ignored property in placement order.
+        The original PDM article and all PDM relationship maps remain untouched.
+        The resulting remaining string is the derived base article.
         """
         if snapshot is None:
             return []
@@ -587,6 +534,11 @@ class EngineeringReductionService(BaseService):
             for member in (getattr(family, "members", []) or [])
             if getattr(member, "article_id", "")
         }
+        ignored = {
+            str(k): bool(v)
+            for k, v in (getattr(snapshot, "config_ignore_overrides", {}) or {}).items()
+        }
+
         # Class Creation assignments are the engineering-side vocabulary. Use
         # Attribute classes only for pre-dot reduction; Options/Visual classes
         # continue to serve their existing downstream workflows.
@@ -656,7 +608,6 @@ class EngineeringReductionService(BaseService):
             carried = {str(a.id) for a in attributes}
             reduced_by_article: dict[str, str] = {}
             matched_by_prop: dict[str, dict[str, set[str]]] = {}
-            override_map = getattr(snapshot, "base_length_overrides", {}) or {}
             ordered = sorted(
                 (
                     (pid, assignment)
@@ -671,53 +622,75 @@ class EngineeringReductionService(BaseService):
             )
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
-                pre_dot = (original or "").split(".", 1)[0]
-                override_key = str(original or "")
-                has_manual_boundary = override_key in override_map
+                working = original.split(".", 1)[0]
 
-                if has_manual_boundary:
-                    try:
-                        base_length_for_article = max(
-                            0, min(int(override_map[override_key]), len(pre_dot))
-                        )
-                    except (TypeError, ValueError):
-                        base_length_for_article = 0
-                else:
-                    base_length_for_article = self._common_prefix_len(
-                        [
-                            (code_of.get(a, "") or "").split(".", 1)[0]
-                            for a in article_ids
-                        ]
-                    )
-
-                base = pre_dot[:base_length_for_article]
-                remaining = pre_dot[base_length_for_article:]
-
-                # Class Creation consumes the remaining Variant Condition
-                # sequentially. Never search for a code elsewhere.
                 for pid, assignment in ordered:
-                    width = max(0, int(getattr(assignment, "width", 0) or 0))
-                    if width <= 0 or not remaining:
+                    if ignored.get(pid, False):
                         continue
+
+                    # Class Creation is authoritative for Development
+                    # reduction. The codes in assignment.values are exactly
+                    # the codes represented by the Class Creation Sliced
+                    # column. Do NOT use article/product PDM value IDs to
+                    # choose a reduction code: those IDs are retained for
+                    # relationship/value coverage, but they must never override
+                    # a code the user has corrected in Class Creation.
+                    #
+                    # This matters when PDM has duplicate value rows or
+                    # stale/mismatched value IDs: Article reduction must follow
+                    # what the user sees and edits in Sliced.
                     codes = effective_codes(pid)
-                    if not codes:
-                        continue
+                    width = max(0, int(getattr(assignment, "width", 0) or 0))
+                    # Select the configured Sliced value from the article code
+                    # itself. A configuration code can also occur in the base
+                    # prefix (for example 0 in AL1C1002S), so the reduction
+                    # segment is the right-most matching configured code. This
+                    # keeps the decision entirely inside the Class Creation
+                    # Sliced vocabulary instead of using PDM value IDs.
+                    matches = []
+                    for candidate in codes:
+                        start = 0
+                        while candidate:
+                            pos = working.find(candidate, start)
+                            if pos < 0:
+                                break
+                            matches.append((pos, len(candidate), candidate))
+                            start = pos + 1
+                    if matches:
+                        pos, _candidate_len, candidate = max(
+                            matches, key=lambda item: (item[0], item[1])
+                        )
+                        # The Sliced value itself is authoritative. Width is
+                        # the maximum/configured slice capacity, but Sliced
+                        # values may be variable length (e.g. 2 vs 4L). Never
+                        # consume the character after a one-character value
+                        # merely because the property width is 2.
+                        remove_width = len(candidate)
+                        if remove_width > 0:
+                            working = working[:pos] + working[pos + remove_width:]
+                            matched_by_prop.setdefault(pid, {}).setdefault(candidate, set()).add(article_id)
+                # A manual Article-workflow base-length override changes only
+                # the stored base boundary. The Class Creation reduction above is
+                # still run first so its Sliced/property-value matching remains
+                # authoritative and all property/value coverage is retained.
+                override_map = getattr(snapshot, "base_length_overrides", {}) or {}
+                override_key = str(original or "")
+                if override_key in override_map:
+                    try:
+                        override_length = max(0, int(override_map[override_key]))
+                    except (TypeError, ValueError):
+                        override_length = 0
+                    pre_dot = (original or "").split(".", 1)[0]
+                    working = pre_dot[:min(override_length, len(pre_dot))]
 
-                    slice_code = remaining[:width]
-                    if slice_code not in codes:
-                        # Leave this segment visibly unassigned; it must not
-                        # become a pCon permutation dimension.
-                        continue
-
-                    remaining = remaining[width:]
-                    matched_by_prop.setdefault(pid, {}).setdefault(
-                        slice_code, set()
-                    ).add(article_id)
-
-                reduced_by_article[article_id] = base
+                reduced_by_article[article_id] = working
                 member = member_by_article.get(article_id)
                 if member is not None:
-                    member.reduced_article = base
+                    # Development Articles reads this as the authoritative
+                    # reduced/base article. The source PDM Article remains
+                    # untouched. Manual length overrides do not change Ignore
+                    # or the Class Creation property/value relationships.
+                    member.reduced_article = working
 
             # Make the ArticleSet reflect the Class Creation vocabulary without
             # destroying the PDM article/value links. A corrected class code
@@ -767,50 +740,14 @@ class EngineeringReductionService(BaseService):
             bases = [v for v in reduced_by_article.values() if v]
             base_length = self._common_prefix_len(bases) if bases else 0
             base_code = (bases[0][:base_length] if bases else "")
-            split_base_length = min(
-                (
-                    len((code_of.get(a, "") or "").split(".", 1)[0])
-                    for a in article_ids
-                    if code_of.get(a, "")
-                ),
-                default=base_length,
-            )
-            remaining_length = max(0, split_base_length - base_length)
-            class_splits = [
-                ClassSplit(
-                    property_id=str(getattr(assignment, "property_id", "") or ""),
-                    property_name=str(getattr(assignment, "property_name", "") or ""),
-                    start=base_length + sum(
-                        max(0, int(getattr(previous, "width", 0) or 0))
-                        for previous in ordered[:index]
-                    ),
-                    width=max(0, int(getattr(assignment, "width", 0) or 0)),
-                    relation_object=str(
-                        getattr(assignment, "relation_object", "")
-                        or next(
-                            (
-                                getattr(relation, "name", "")
-                                for relation in (getattr(snapshot, "relation_objects", []) or [])
-                                if str(getattr(relation, "property_id", "")) == str(getattr(assignment, "property_id", "") or "")
-                            ),
-                            "",
-                        )
-                    ),
-                )
-                for index, (_pid, assignment) in enumerate(ordered)
-                if bool(getattr(assignment, "configurable", True))
-                and str(getattr(assignment, "property_id", "") or "")
-            ]
             sets.append(
                 ArticleSet(
                     id=pc.id,
                     base_length=base_length,
                     base_code=base_code,
-                    remaining_length=remaining_length,
                     article_ids=article_ids,
                     properties=attributes,
                     options=options,
-                    class_splits=class_splits,
                 )
             )
 
@@ -871,14 +808,6 @@ class EngineeringReductionService(BaseService):
         # complete property/value vocabulary, even for a tiny article selection.
         # The decoder remains available lazily for the heuristic fallback below.
         head_layout: dict = {}
-        class_assignments: dict[str, object] = {}
-        for cls in getattr(getattr(snapshot, "engineering", None), "classes", []) or []:
-            if not str(getattr(cls, "name", "")).endswith("_Attribute"):
-                continue
-            for assignment in getattr(cls, "properties", []) or []:
-                pid = str(getattr(assignment, "property_id", "") or "")
-                if pid and pid not in class_assignments:
-                    class_assignments[pid] = assignment
         sets: list[ArticleSet] = []
         for pc in classes:
             article_ids = [str(a) for a in pc.article_ids]
@@ -907,9 +836,12 @@ class EngineeringReductionService(BaseService):
                 for a in article_ids
                 if code_of.get(a, "") in getattr(snapshot, "base_length_overrides", {})
             ]
+            explicit_ignores = getattr(
+                snapshot, "config_ignore_overrides", {}
+            ) or {}
             if override_lengths:
                 base_length = min(override_lengths)
-            elif pdm_prefixes:
+            elif pdm_prefixes and not explicit_ignores:
                 # PDM's getArticlePrefixLength is authoritative for the normal
                 # untouched load. An explicit Class Creation ignore decision
                 # intentionally overrides that boundary and must use the
@@ -927,9 +859,11 @@ class EngineeringReductionService(BaseService):
                         )
                     except Exception:
                         head_layout = {}
-                 # A head property is part of the base when its value is
-                # constant across the set. The first varying head property
-                # marks where the configurable portion starts.
+                ignored = getattr(snapshot, "config_ignore_overrides", {}) or {}
+
+                # A head property is part of the base when its value is
+                # constant across the set. The first NON-ignored head property
+                # whose value varies is where the configurable portion starts.
                 # This is data-driven: it does not assume fixed character
                 # positions for a particular product family.
                 varying_head_positions = [
@@ -937,6 +871,7 @@ class EngineeringReductionService(BaseService):
                     for prop in properties
                     if str(prop.id) in head_layout
                     and head_layout[str(prop.id)].get("width", 0)
+                    and ignored.get(str(prop.id)) is not True
                     and any(
                         len({str(v.id) for v in attr.values}) > 1
                         for attr in properties
@@ -947,6 +882,17 @@ class EngineeringReductionService(BaseService):
                 if varying_head_positions:
                     base_length = min(varying_head_positions)
                 else:
+                    ignored_end_positions = [
+                        int(head_layout[str(prop.id)].get("position", 0) or 0)
+                        + int(head_layout[str(prop.id)].get("width", 0) or 0)
+                        for prop in properties
+                        if ignored.get(str(prop.id)) is True
+                        and str(prop.id) in head_layout
+                        and head_layout[str(prop.id)].get("width", 0)
+                    ]
+                    if ignored_end_positions:
+                        base_length = max(ignored_end_positions)
+                    else:
                         # With no configurable head property, the complete
                         # pre-dot article number is the base. This also keeps
                         # singleton structure classes from retaining the
@@ -989,62 +935,14 @@ class EngineeringReductionService(BaseService):
             codes = [code_of.get(a, "") for a in article_ids]
             base_n = min(base_length, self._common_prefix_len(codes))
             base_code = next((c for c in codes if c), "")[:base_n]
-            pre_dot_lengths = [
-                len((code_of.get(a, "") or "").split(".", 1)[0])
-                for a in article_ids
-                if code_of.get(a, "")
-            ]
-            remaining_length = max(
-                0,
-                (min(pre_dot_lengths) if pre_dot_lengths else base_length) - base_length,
-            )
-            ordered_assignments = sorted(
-                (
-                    assignment
-                    for pid, assignment in class_assignments.items()
-                    if pid in {str(a.id) for a in properties}
-                ),
-                key=lambda assignment: (
-                    int(getattr(assignment, "placement", 0) or 0),
-                    str(getattr(assignment, "property_id", "") or ""),
-                ),
-            )
-            class_splits = []
-            offset = base_length
-            for assignment in ordered_assignments:
-                width = max(0, int(getattr(assignment, "width", 0) or 0))
-                if not bool(getattr(assignment, "configurable", True)):
-                    continue
-                class_splits.append(
-                    ClassSplit(
-                        property_id=str(getattr(assignment, "property_id", "") or ""),
-                        property_name=str(getattr(assignment, "property_name", "") or ""),
-                        start=offset,
-                        width=width,
-                        relation_object=str(
-                            getattr(assignment, "relation_object", "")
-                            or next(
-                                (
-                                    getattr(relation, "name", "")
-                                    for relation in (getattr(snapshot, "relation_objects", []) or [])
-                                    if str(getattr(relation, "property_id", "")) == str(getattr(assignment, "property_id", "") or "")
-                                ),
-                                "",
-                            )
-                        ),
-                    )
-                )
-                offset += width
             sets.append(
                 ArticleSet(
                     id=pc.id,
                     base_length=base_length,
                     base_code=base_code,
-                    remaining_length=remaining_length,
                     article_ids=article_ids,
                     properties=properties,
                     options=options,
-                    class_splits=class_splits,
                 )
             )
         snapshot.article_sets = sets

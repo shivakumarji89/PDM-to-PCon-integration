@@ -47,9 +47,8 @@ class EngineeringArtbaseService(BaseService):
         restriction; a base allowing every value needs no ArtBase entry).
         Covers both properties and options."""
         base_by_article = self._base_by_article(snapshot)
-        relation_bound_values = (
-            self.context.engineering_relation_service.related_value_ids(snapshot)
-        )
+        # Combination values are gated by a relation, not ArtBase - skip them.
+        classify = self.context.engineering_relation_service.classify_values(snapshot)
         allowed: dict[str, dict[str, set]] = defaultdict(lambda: defaultdict(set))
         full: dict[str, set] = defaultdict(set)
         for article_set in snapshot.article_sets:
@@ -57,7 +56,7 @@ class EngineeringArtbaseService(BaseService):
                 eid = str(attr.id)
                 for value in attr.values:
                     vid = str(value.id)
-                    if vid in relation_bound_values:
+                    if classify.get(vid) == "combination":
                         continue
                     bases = {
                         base_by_article.get(str(aid)) for aid in value.article_ids

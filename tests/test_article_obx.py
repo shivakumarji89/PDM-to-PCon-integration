@@ -332,26 +332,6 @@ class ArticleObxPermutationTests(unittest.TestCase):
         self.assertNotIn("BASEAD", [p.final_article for p in permutations])
         self.assertNotIn("BASEBD", [p.final_article for p in permutations])
 
-    def test_relation_precondition_applies_to_all_bound_values(self):
-        snapshot = _base_snapshot()
-        snapshot.relation_objects = [
-            type(
-                "Relation",
-                (),
-                {
-                    "type_code": "1",
-                    "domain": "C",
-                    "value_id": "",
-                    "value_ids": ["oak", "red"],
-                    "body": "Restrictions:\r\n  $BAN IN ('OTHER').",
-                },
-            )()
-        ]
-
-        permutations = ArticlePermutationService(_Context()).build(snapshot)
-
-        self.assertEqual([p.final_article for p in permutations], ["BASEBC"])
-
     def test_parent_child_property_hierarchy_prunes_invalid_combinations(self):
         # (SPECIFIED Parent) AND (Parent IN ('B')) — the real validity-relation
         # grammar (Article_Encoding.md Finding 11) — gates a child value so it

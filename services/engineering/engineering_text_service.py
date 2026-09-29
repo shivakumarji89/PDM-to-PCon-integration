@@ -49,18 +49,12 @@ class EngineeringTextService(BaseService):
         return snapshot.text_blocks
 
     def build_text_blocks(self, snapshot: Snapshot) -> list[TextBlock]:
-        """Derive every text-bearing engineering item into editable text blocks.
-
-        The Text workflow is the single authoring surface for article short/long
-        text, property/value text, and option/value text. Source records are
-        never omitted merely because an engineering family, code, or translation
-        is missing.
-        """
+        """Derive text blocks from the snapshot's articles, properties and
+        property values. Deterministic and de-duplicated by (type_code, name)."""
         blocks: list[TextBlock] = []
         seen: set[tuple[str, str]] = set()
 
-        def add(type_code: str, name: str, en: str = "") -> None:
-            name = (name or "").strip()
+        def add(type_code: str, name: str, en: str) -> None:
             if not name:
                 return
             key = (type_code, name)
@@ -73,64 +67,46 @@ class EngineeringTextService(BaseService):
             str(a.id): a for a in snapshot.articles if a.id is not None
         }
 
-        # Article text must exist for every article, not only family members.
-        member_by_article: dict[str, object] = {}
+        # Article short/long text, keyed by the article's base (reduced) code.
         for family in snapshot.engineering.families:
             for member in family.members:
-                member_by_article.setdefault(str(member.article_id), member)
+                article = articles.get(str(member.article_id))
+                code = member.reduced_article or (article.code if article else "")
+                short = member.short_description or (
+                    self.context.product_type_name(article.product_id)
+                    if article is not None else ""
+                ) or (article.description if article else "")
+                long_text = member.long_description or (
+                    self.context.product_type_name(article.product_id)
+                    if article is not None
+                    else ""
+                ) or (article.name if article else "")
+                add("artshort", code, short)
+                add("artlong", code, long_text)
 
-        for article_id, article in articles.items():
-            member = member_by_article.get(article_id)
-            code = (
-                getattr(member, "reduced_article", "") if member is not None else ""
-            ) or article.code
-            short = (
-                getattr(member, "short_description", "") if member is not None else ""
-            ) or article.description or article.name
-            long_text = (
-                getattr(member, "long_description", "") if member is not None else ""
-            ) or article.description or article.name
-            add("artshort", code, short)
-            add("artlong", code, long_text)
-
-        # Property and property-value text.
+        # Property + property-value text. A value's text block is keyed by
+        # ``<Property>_<code>`` (e.g. ``LegStyle_T``), using the value's own
+        # order code or, for configuration values, the resolved code.
         resolved = self.context.engineering_class_service.resolve_config_codes(snapshot)
         for prop in snapshot.properties:
-            prop_key = text_block_name(prop.name or prop.code)
-            if not prop_key:
-                continue
-            add("property", prop_key, prop.name or prop.code)
+            prop_key = text_block_name(prop.name)
+            add("property", prop_key, prop.name)
             codes = resolved.get(str(prop.id), {})
             for value in prop.values:
                 code = (
-                    (value.code or "").strip()
-                    or codes.get(str(value.id), "").strip()
+                    (value.code or "").strip() or codes.get(str(value.id), "")
                 ).replace("#", "")
                 if code:
-                    suffix = code
-                elif value.id:
-                    suffix = f"id_{value.id}"
-                else:
-                    suffix = text_block_name(value.value)
-                if suffix:
-                    add("propvalue", f"{prop_key}_{suffix}", value.value)
+                    add("propvalue", f"{prop_key}_{code}", value.value)
 
-        # Option and option-value text.
+        # Option + option-value text (options carry their own order codes).
         for option in snapshot.options:
-            opt_key = text_block_name(option.name or option.code)
-            if not opt_key:
-                continue
-            add("option", opt_key, option.name or option.code)
+            opt_key = text_block_name(option.name)
+            add("option", opt_key, option.name)
             for value in getattr(option, "values", []):
                 code = (value.code or "").strip().replace("#", "")
                 if code:
-                    suffix = code
-                elif value.id:
-                    suffix = f"id_{value.id}"
-                else:
-                    suffix = text_block_name(value.value)
-                if suffix:
-                    add("optionvalue", f"{opt_key}_{suffix}", value.value)
+                    add("optionvalue", f"{opt_key}_{code}", value.value)
 
         return blocks
 

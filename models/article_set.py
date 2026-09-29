@@ -32,27 +32,12 @@ class SetAttribute:
 
 
 @dataclass
-class ClassSplit:
-    """Persisted mapping from the manual base boundary to a Class Creation property."""
-
-    property_id: str = ""
-    property_name: str = ""
-    start: int = 0
-    width: int = 0
-    relation_object: str = ""
-
-
-@dataclass
 class ArticleSet:
     """A group of articles sharing a property structure (single, b2b, ...)."""
 
     id: str = ""
     base_length: int = 0
     base_code: str = ""
-    remaining_length: int = 0
     article_ids: list[str] = field(default_factory=list)
     properties: list[SetAttribute] = field(default_factory=list)
     options: list[SetAttribute] = field(default_factory=list)
-    # Explicit Class Creation split links.  These survive snapshot/project
-    # round-trips so downstream workflows do not have to rediscover them.
-    class_splits: list[ClassSplit] = field(default_factory=list)

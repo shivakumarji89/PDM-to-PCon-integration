@@ -79,13 +79,13 @@ def module_title(module: WorkbenchModule) -> str:
 # Engineering remains available to the application internally, but is not
 # exposed as a user-facing workflow step for now.
 MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
-    # Development: Articles establishes the full article code and the manual
-    # Base Length first. Class Creation then consumes the remaining Variant
-    # Condition in property order.
+    # Development: Class Creation comes before Articles because class-derived
+    # article/base-position information is finalized there. Articles is then
+    # revisited to apply/review the resulting position.
     WorkbenchModule.DEVELOPMENT: (
         WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLES,
         WorkflowStep.CLASS_CREATION,
+        WorkflowStep.ARTICLES,
         WorkflowStep.TEXT,
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,

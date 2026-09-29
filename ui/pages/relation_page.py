@@ -237,35 +237,9 @@ class RelationPage(BasePage):
         self._populate(self._grouped(rows))
 
     def _bound_to(self, rel: RelationObject) -> str:
-        property_ids = self._binding_ids(rel, "property_id", "property_ids")
-        value_ids = self._binding_ids(rel, "value_id", "value_ids")
-        names = [self._entity_names.get(pid, pid) for pid in property_ids]
-        values = [self._value_texts.get(vid, vid) for vid in value_ids]
-        value_label = values[0] if values else ""
-        if len(values) > 1:
-            value_label = f"{value_label} (+{len(values) - 1})"
-        name_label = ", ".join(names)
-        return f"{name_label} / {value_label}" if name_label and value_label else name_label or value_label
-
-    @staticmethod
-    def _binding_ids(rel: RelationObject, singular: str, plural: str) -> list[str]:
-        ids = [str(value) for value in (getattr(rel, plural, []) or []) if value]
-        value = str(getattr(rel, singular, "") or "")
-        if value and value not in ids:
-            ids.insert(0, value)
-        return ids
-
-    def _bound_tooltip(self, rel: RelationObject) -> str:
-        property_ids = self._binding_ids(rel, "property_id", "property_ids")
-        value_ids = self._binding_ids(rel, "value_id", "value_ids")
-        names = [self._entity_names.get(pid, pid) for pid in property_ids]
-        values = [self._value_texts.get(vid, vid) for vid in value_ids]
-        lines = []
-        if names:
-            lines.append("Properties: " + ", ".join(names))
-        if values:
-            lines.append("Values: " + ", ".join(values))
-        return "\n".join(lines)
+        name = self._entity_names.get(rel.property_id, "")
+        value = self._value_texts.get(rel.value_id, "") if rel.value_id else ""
+        return f"{name} / {value}" if (name and value) else name
 
     def _grouped(self, rows: list[RelationObject]) -> list:
         """Return the rows, optionally sectioned by ('__header__', label) rows."""
@@ -281,10 +255,7 @@ class RelationPage(BasePage):
                 return (rank.get(r.type_code, len(rank)), r.name)
         elif mode == _GROUP_PROPERTY:
             def label(r):
-                property_ids = self._binding_ids(r, "property_id", "property_ids")
-                return ", ".join(
-                    self._entity_names.get(pid, pid) for pid in property_ids
-                ) or "(unbound)"
+                return self._entity_names.get(r.property_id, "") or "(unbound)"
 
             def sort_key(r):
                 return (label(r).lower(), r.name)
@@ -339,9 +310,7 @@ class RelationPage(BasePage):
                 row, _COL_DOMAIN,
                 QTableWidgetItem(RELATION_DOMAIN_LABELS.get(rel.domain, rel.domain)),
             )
-            bound_item = QTableWidgetItem(self._bound_to(rel))
-            bound_item.setToolTip(self._bound_tooltip(rel))
-            self._table.setItem(row, _COL_BOUND, bound_item)
+            self._table.setItem(row, _COL_BOUND, QTableWidgetItem(self._bound_to(rel)))
             self._table.setItem(row, _COL_REL_OBJ_ID, QTableWidgetItem(rel.rel_obj_id))
             self._table.setItem(row, _COL_RELATION_ID, QTableWidgetItem(rel.relation_id))
             order_item = QTableWidgetItem()
