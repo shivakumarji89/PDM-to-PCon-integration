@@ -114,12 +114,20 @@ class EngineeringRelationService(BaseService):
             self._add_value_preconditions(
                 add, prop_name, str(prop.id or ""), values, classify, bodies,
             )
-            relation_name = ""
-            for relation in relations:
-                if str(getattr(relation, "property_id", "")) == str(prop.id or ""):
-                    relation_name = relation.name
-                    if relation_name.startswith("B_"):
-                        break
+            # Property-level com_RelObjID is owned by the property relation,
+            # not by a value-level precondition.  In the canonical model this is
+            # the action relation (A_Code_<Property>).  B_<Property>_<Value>
+            # relations are bound through tCOMd_PropValue instead.
+            relation_name = next(
+                (
+                    relation.name
+                    for relation in relations
+                    if str(getattr(relation, "property_id", "")) == str(prop.id or "")
+                    and not str(getattr(relation, "value_id", "") or "")
+                    and str(getattr(relation, "type_code", "")) == "3"
+                ),
+                "",
+            )
             if relation_name:
                 for cls in getattr(snapshot.engineering, "classes", []) or []:
                     for assignment in getattr(cls, "properties", []) or []:
