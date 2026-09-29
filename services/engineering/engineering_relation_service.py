@@ -173,16 +173,15 @@ class EngineeringRelationService(BaseService):
             ))
 
     @staticmethod
-    def _dependency_attribute_ids(snapshot: Snapshot) -> set[str]:
-        """Configuration attributes that can explain a value's carrier set.
-        Dependencies are not limited to head properties: a coded property or
-        option can also be the condition that makes another value valid. A
-        candidate is used only when observed article coverage proves it."""
-        ids: set[str] = set()
-        for attribute in (*snapshot.properties, *snapshot.options):
-            if attribute.id and attribute.values:
-                ids.add(str(attribute.id))
-        return ids
+    def _head_property_ids(snapshot: Snapshot) -> set[str]:
+        """Head/config properties whose values have no order code. These are
+        the evidence-backed properties that can gate a combination relation;
+        ordinary coded properties are not treated as dependencies merely from
+        correlated article coverage."""
+        return {
+            str(p.id) for p in snapshot.properties
+            if p.values and not any((v.code or "").strip() for v in p.values)
+        }
 
     @staticmethod
     def _articles_by_base(base_by_article: dict[str, str]) -> dict[str, set]:
@@ -258,7 +257,7 @@ class EngineeringRelationService(BaseService):
             aid_attr = value_attr.get(vid, "")
             body = self._combination_body(
                 carriers, aid_attr, base_by_article, articles_by_base,
-                article_tokens, attr_names, dependency_ids,
+                article_tokens, attr_names, head_ids,
             )
             if "(SPECIFIED" in body:
                 classify[vid] = "combination"
@@ -280,7 +279,7 @@ class EngineeringRelationService(BaseService):
         article_tokens, attr_names, dependency_ids,
     ) -> str:
         """OR of per-base branches. A base carried whole -> ``$BAN IN ('base')``;
-        a base carried in part -> dependency-property conditions that select
+        a base carried in part -> HEAD-property conditions that select
         exactly its carriers plus the base gate. Conditions are verified; a base
         no head property can characterise falls back to the gate alone."""
         branches: list[str] = []
@@ -291,7 +290,7 @@ class EngineeringRelationService(BaseService):
                 branches.append(f"$BAN IN ('{base}')")
                 continue
             keep: dict[str, set] = {}
-            for qid in dependency_ids:
+            for qid in head_ids:
                 if qid == attr_id or not attr_names.get(qid):
                     continue
                 cvals = {article_tokens.get(a, {}).get(qid) for a in here}
