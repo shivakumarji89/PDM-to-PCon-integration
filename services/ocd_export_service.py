@@ -518,16 +518,20 @@ class OcdExportService(BaseService):
         token_by_base = xocd._group_token_by_base(snapshot, classes)
 
         text_rows, text_index = self._text(snapshot, package_id, protos["tCOMd_Text"])
-        relobj_rows, relation_rows, relobjrel_rows, value_relobj = self._relations(
-            snapshot, package_id, protos
-        )
+        (
+            relobj_rows,
+            relation_rows,
+            relobjrel_rows,
+            property_relobj,
+            value_relobj,
+        ) = self._relations(snapshot, package_id, protos)
         scheme_rows, scheme_index, scheme_by_code = self._code_schemes(
             snapshot, package_id, base_codes, classes, codes, protos["tCOMd_CodeScheme"]
         )
         class_rows, class_index = self._classes(classes, package_id, protos["tCOMd_Class"])
         property_rows, prop_index = self._properties(
             snapshot, classes, class_index, text_index, digits,
-            protos["tCOMd_Property"]
+            property_relobj, protos["tCOMd_Property"]
         )
         propvalue_rows = self._property_values(
             snapshot, classes, prop_index, text_index, value_relobj, codes,
@@ -657,7 +661,7 @@ class OcdExportService(BaseService):
 
     def _relations(
         self, snapshot: Snapshot, package_id: Any, protos: dict[str, dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, int]]:
         """tCOMd_RelObj + tCOMd_Relation + tCOMd_RelObjRel rows and the
         ``{value_id: relobj_id}`` back-reference for value preconditions."""
         # Preserve relation objects already imported or edited in the active
@@ -666,23 +670,82 @@ class OcdExportService(BaseService):
         obj_rows: list[dict[str, Any]] = []
         rel_rows: list[dict[str, Any]] = []
         relrel_rows: list[dict[str, Any]] = []
+        property_relobj: dict[str, int] = {}
         value_relobj: dict[str, int] = {}
-        for i, rel in enumerate(relation_objects, start=1):
-            obj_rows.append(self._row(protos["tCOMd_RelObj"], {
-                "com_RelObjID": i, "com_RelObjName": rel.name, "com_PackageID": package_id,
-            }))
-            rel_rows.append(self._row(protos["tCOMd_Relation"], {
-                "com_RelationID": i, "com_RelationName": rel.relation_name or self._relation_name(rel.name),
-                "com_RelationBody": rel.body or "", "com_PackageID": package_id,
-            }))
+
+        # Imported MDB identities are authoritative. RelObjID and RelationID
+        # are independent keys; one relation object may also have multiple
+        # tCOMd_RelObjRel links.
+        def _numeric_id(value: Any) -> int | None:
+            text = str(value or "").strip()
+            if not text:
+                return None
+            try:
+                number = int(float(text))
+            except (TypeError, ValueError):
+                return None
+            return number if number > 0 else None
+
+        used_obj_ids: set[int] = set()
+        used_relation_ids: set[int] = set()
+        obj_ids: dict[str, int] = {}
+        relation_ids: dict[str, int] = {}
+        next_obj_id = 1
+        next_relation_id = 1
+
+        for rel in relation_objects:
+            raw_obj_id = str(getattr(rel, "rel_obj_id", "") or "").strip()
+            obj_key = raw_obj_id or f"generated:{id(rel)}"
+            obj_id = obj_ids.get(obj_key)
+            if obj_id is None:
+                obj_id = _numeric_id(raw_obj_id)
+                if obj_id is None or obj_id in used_obj_ids:
+                    while next_obj_id in used_obj_ids:
+                        next_obj_id += 1
+                    obj_id = next_obj_id
+                    next_obj_id += 1
+                used_obj_ids.add(obj_id)
+                obj_ids[obj_key] = obj_id
+                obj_rows.append(self._row(protos["tCOMd_RelObj"], {
+                    "com_RelObjID": obj_id,
+                    "com_RelObjName": rel.name,
+                    "com_PackageID": package_id,
+                }))
+
+            raw_relation_id = str(getattr(rel, "relation_id", "") or "").strip()
+            relation_key = raw_relation_id or f"generated:{id(rel)}"
+            relation_id = relation_ids.get(relation_key)
+            if relation_id is None:
+                relation_id = _numeric_id(raw_relation_id)
+                if relation_id is None or relation_id in used_relation_ids:
+                    while next_relation_id in used_relation_ids:
+                        next_relation_id += 1
+                    relation_id = next_relation_id
+                    next_relation_id += 1
+                used_relation_ids.add(relation_id)
+                relation_ids[relation_key] = relation_id
+                rel_rows.append(self._row(protos["tCOMd_Relation"], {
+                    "com_RelationID": relation_id,
+                    "com_RelationName": rel.relation_name or self._relation_name(rel.name),
+                    "com_RelationBody": rel.body or "",
+                    "com_PackageID": package_id,
+                }))
+
             relrel_rows.append(self._row(protos["tCOMd_RelObjRel"], {
-                "com_RelObjRelID": i, "com_RelObjID": i, "com_RelationID": i,
-                "com_RelObjTypeCode": rel.type_code, "com_RelObjDomainCode": rel.domain,
+                "com_RelObjRelID": len(relrel_rows) + 1,
+                "com_RelObjID": obj_id,
+                "com_RelationID": relation_id,
+                "com_RelObjTypeCode": rel.type_code,
+                "com_RelObjDomainCode": rel.domain,
                 "com_RelationOrder": rel.order,
             }))
+
+            if getattr(rel, "property_id", "") and not getattr(rel, "value_id", ""):
+                property_relobj.setdefault(str(rel.property_id), obj_id)
             if getattr(rel, "value_id", ""):
-                value_relobj[str(rel.value_id)] = i
-        return obj_rows, rel_rows, relrel_rows, value_relobj
+                value_relobj.setdefault(str(rel.value_id), obj_id)
+
+
 
     # -- Code schemes ---------------------------------------------------
 
@@ -749,7 +812,7 @@ class OcdExportService(BaseService):
     def _properties(
         self, snapshot: Snapshot, classes: list, class_index: dict[str, int],
         text_index: dict[tuple[str, str], int], digits: dict[str, int],
-        proto: dict[str, Any],
+        property_relobj: dict[str, int], proto: dict[str, Any],
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """tCOMd_Property rows + ``{property_id: com_PropertyID}`` index.
 
@@ -783,7 +846,7 @@ class OcdExportService(BaseService):
                     "com_PropertyID": pid, "com_ClassID": class_pk,
                     "com_PropName": prop_key, "com_PropTypeCode": (a.type or "C")[:1] or "C",
                     "com_PropScopeCode": scope, "com_PropPosition": 100 + position * 10,
-                    "com_TextID": text_id, "com_RelObjID": None, "com_HintTextID": None,
+                    "com_TextID": text_id, "com_RelObjID": property_relobj.get(str(a.property_id)), "com_HintTextID": None,
                     "com_PropDigits": width, "com_PropDecDigits": 0,
                     "com_PropInfoPicPrefix": prop_info_prefix,
                 }))
