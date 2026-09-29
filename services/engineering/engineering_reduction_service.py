@@ -947,7 +947,6 @@ class EngineeringReductionService(BaseService):
                 if varying_head_positions:
                     base_length = min(varying_head_positions)
                 else:
-                    else:
                         # With no configurable head property, the complete
                         # pre-dot article number is the base. This also keeps
                         # singleton structure classes from retaining the
