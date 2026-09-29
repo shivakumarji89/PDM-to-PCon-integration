@@ -65,7 +65,7 @@ class _MdbPreviewWorker(QObject):
 
 
 class ReviewPage(BasePage):
-    """Read-only engineering review before generation."""
+    """Final development validation and generation preview before export."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
@@ -77,11 +77,6 @@ class ReviewPage(BasePage):
         )
         self._context = context
         self._last_review = None  # cached review() output; reused by is_ready()
-
-        self.add_content(self._build_toolbar())
-        self.add_content(self._build_generation_summary())
-
-        self._last_review = None
         self._mdb_preview_rows = {}
         self._mdb_retained_rows = {}
         self._mdb_preview_result = None
@@ -94,6 +89,9 @@ class ReviewPage(BasePage):
         self._development_cards = {}
         self._mdb_cards = {}
         self._preview_elapsed_timer = QTimer(self)
+
+        self.add_content(self._build_toolbar())
+        self.add_content(self._build_generation_summary())
         self._preview_elapsed_timer.setInterval(1000)
         self._preview_elapsed_timer.timeout.connect(self._update_preview_progress)
         self.refresh()
