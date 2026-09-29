@@ -700,8 +700,6 @@ class OcdExportService(BaseService):
             for value in (_numeric_id(getattr(rel, "relation_id", "")) for rel in relation_objects)
             if value is not None
         }
-        used_obj_ids.update(reserved_obj_ids)
-        used_relation_ids.update(reserved_relation_ids)
         next_obj_id = 1
         next_relation_id = 1
 
@@ -712,7 +710,7 @@ class OcdExportService(BaseService):
             if obj_id is None:
                 obj_id = _numeric_id(raw_obj_id)
                 if obj_id is None or obj_id in used_obj_ids:
-                    while next_obj_id in used_obj_ids:
+                    while next_obj_id in reserved_obj_ids or next_obj_id in used_obj_ids:
                         next_obj_id += 1
                     obj_id = next_obj_id
                     next_obj_id += 1
@@ -730,7 +728,7 @@ class OcdExportService(BaseService):
             if relation_id is None:
                 relation_id = _numeric_id(raw_relation_id)
                 if relation_id is None or relation_id in used_relation_ids:
-                    while next_relation_id in used_relation_ids:
+                    while next_relation_id in reserved_relation_ids or next_relation_id in used_relation_ids:
                         next_relation_id += 1
                     relation_id = next_relation_id
                     next_relation_id += 1
