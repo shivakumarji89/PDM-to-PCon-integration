@@ -93,7 +93,9 @@ class ReviewPage(BasePage):
         self._backend_tables = {}
         self._development_cards = {}
         self._mdb_cards = {}
-        self._preview_elapsed_timer = QTimer(self)
+        self._development_cards = {}
+        self._mdb_cards = {}
+                self._preview_elapsed_timer = QTimer(self)
         self._preview_elapsed_timer.setInterval(1000)
         self._preview_elapsed_timer.timeout.connect(self._update_preview_progress)
         self.refresh()
