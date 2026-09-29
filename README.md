@@ -1,27 +1,22 @@
 # MK Product Workbench
 
-A modular PySide6 desktop application for engineering product management.
+A modular PySide6 desktop application for engineering product management: it connects to legacy PDM (SQL Server), builds a read-only repository `Snapshot` from the OCD MDB set, and drives article/permutation/OBX generation workflows on top of that data.
 
-> **Phase 1 - UI foundation only.** No PDM connection, SQL, MDB operations,
-> snapshots, business logic, export, or validation. All data shown is
-> placeholder data.
+**Full documentation:** see [`docs/README.md`](docs/README.md) — architecture, domain model (PDM, Repository/Snapshot, Engineering, Product, Permutation, Article Encoding, Pricing, OBX), workflows, and reference material all live there.
 
 ## Layout
 
-The main window is divided into four sections:
+> **2026-09-27 correction:** this section previously described an early-scaffold layout ("dummy data", "future phases") that predates the current codebase. Corrected against the actual `ui/` and `services/` trees (2026-09-27); some detail (e.g. the exact right-hand panel content) has not been re-verified line-by-line and may need a closer follow-up pass — treat this as a corrected overview, not an exhaustive UI spec.
 
-| Section | Component | Purpose |
-| ------- | --------- | ------- |
-| Left    | Workflow Navigator | Switch the center workspace between steps |
-| Center  | `QStackedWidget` of pages | One independent widget per workflow step |
-| Right   | PDM Explorer | Search box, tree view, product information (dummy data) |
-| Bottom  | Status bar | Shows `Ready` and `No Product Selected` |
-
-The three panels are hosted in a resizable `QSplitter`.
+The main window (`ui/main_window.py`) hosts a `QStackedWidget` of workflow pages, driven by a `WorkflowNavigator` (`ui/navigation/workflow_navigator.py`) and a resizable `QSplitter`, with a status bar reporting the active module/snapshot state.
 
 ### Workflow steps
 
-Product -> Articles -> Properties -> Values -> Builder -> Review -> Generate
+Driven by `core/workflow.py` (`WORKFLOW_ITEMS`, "pure metadata — no business logic"):
+
+Product → Articles → Class Creation → Text → Relation Object → Pricing → Pricing Relation → Review → Engineering → Bulk Update
+
+Plus three optionally-enabled, independently disconnectable steps: CET SIF Validation, OBX Validation, Article OBX Generator.
 
 Each step maps to an independent page class under `ui/pages/`.
 
@@ -34,26 +29,25 @@ mk_product_workbench/
     assets/                 # Icons / images
     core/
         workflow.py         # Workflow step metadata (no business logic)
-    models/                 # Data models (future phases)
-    services/               # Application services (future phases)
+        snapshot_manager.py # Holds the active in-memory Snapshot
+        ...
+    models/                 # Data models (Snapshot, Article, Property, RelationObject, ...)
+    services/                # Application services — PDM read, OCD/XOCD export, MDB reverse-engineering,
+                             # engineering (relations, dependencies, classes), pricing, snapshot persistence, ...
     resources/
         styles.qss          # Application theme
     ui/
-        main_window.py      # Assembles the four sections
+        main_window.py      # Assembles the workflow navigator, page stack, and status bar
         navigation/
             workflow_navigator.py
         explorer/
             pdm_explorer.py
-        widgets/            # Reusable widgets (future phases)
-        dialogs/            # Dialogs (future phases)
-        pages/
-            base_page.py
-            product_page.py
-            articles_page.py
-            builder_page.py
-            review_page.py
-            generate_page.py
+        widgets/            # Reusable widgets, incl. RepositoryWorkspace (shared repository browser/open/extract)
+        dialogs/            # Dialogs
+        pages/               # One page per workflow step — see core/workflow.py for the current list
 ```
+
+See [`docs/README.md`](docs/README.md) for the full domain model and architecture documentation, which this section intentionally does not duplicate.
 
 ## Setup & run
 
@@ -66,7 +60,6 @@ python main.py
 
 ## Design principles
 
-- UI and business logic are completely separated.
-- Every page is an independent class.
-- No hardcoded business logic; placeholder data only.
-- Modular, service-oriented structure ready for later phases.
+- UI and business logic are separated: pages consume services and models, not database/file access directly.
+- Every workflow step is an independent page class.
+- Workflow steps are metadata-driven (`core/workflow.py`) rather than hardcoded into the navigator.
