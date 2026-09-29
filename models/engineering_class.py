@@ -45,6 +45,8 @@ class ClassPropertyAssignment:
     type: str = ""      # C=character, L=length, N=number, T=Text
     usage: str = ""     # MDB Usage: Configuration | Graphic
     text_block: str = ""  # MDB Text-block (display key, e.g. Desk_Type)
+    configurable: bool = True  # Remaining article segment is configurable through this class property.
+    relation_object: str = ""  # Explicit relation-object link owned by Class Creation.
     values: list[ClassValue] = field(default_factory=list)
 
 

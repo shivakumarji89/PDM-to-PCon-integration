@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -121,6 +120,8 @@ class ArticlesPage(BasePage):
         self._blocked_article_ids: frozenset[str] = frozenset()
         self._blocked_reason: str = ""
         self._group_by_base = True  # group by base by default
+        # Development only: set when this page collapses a complete set automatically.
+        self._auto_collapsed_by_coverage = False
         self._syncing = False  # guard while programmatically syncing widgets
         self._last_module = None
 
@@ -853,8 +854,68 @@ class ArticlesPage(BasePage):
             filtered.append((family, member, article))
 
         self._filtered = filtered
+        self._apply_development_coverage_collapse()
         self._populate(filtered)
         self._update_status()
+
+    def _apply_development_coverage_collapse(self) -> None:
+        """Collapse fully assigned Development permutations to their Base row.
+
+        The collapse is coverage-driven, not selection-driven: every PDM line
+        item in the active family/set must have a non-empty Base, consume at
+        least one Variant Condition slice, and have no remaining characters.
+        While any permutation is still unresolved, keep the line-item view so
+        the user can see exactly what remains.
+        """
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+            self._auto_collapsed_by_coverage = False
+            return
+
+        # A manual Group-by-Base choice remains authoritative unless this page
+        # previously changed it automatically because coverage was complete.
+        if not self._auto_collapsed_by_coverage and self._group_by_base:
+            return
+
+        candidates: list[tuple] = []
+        for family, member, article in self._rows:
+            if self._active_family_id is not None and (
+                family is None or family.id != self._active_family_id
+            ):
+                continue
+            if self._active_set_ids is not None and (
+                article is None or str(article.id) not in self._active_set_ids
+            ):
+                continue
+            candidates.append((family, member, article))
+
+        complete = bool(candidates)
+        for _family, member, article in candidates:
+            if article is None:
+                complete = False
+                break
+            resolved = self._context.engineering_reduction_service.resolve_variant_condition(
+                self._context.active_snapshot,
+                str(getattr(article, "id", "")),
+                self._applied_length(member) or 0,
+            )
+            # Do not collapse merely because Base Length equals the full code.
+            # At least one Class Creation slice must actually have been consumed.
+            if not resolved.base or not resolved.consumed or resolved.remaining:
+                complete = False
+                break
+
+        if complete and not self._group_by_base:
+            self._auto_collapsed_by_coverage = True
+            self._group_by_base = True
+            self._group_check.blockSignals(True)
+            self._group_check.setChecked(True)
+            self._group_check.blockSignals(False)
+        elif not complete and self._auto_collapsed_by_coverage:
+            self._auto_collapsed_by_coverage = False
+            self._group_by_base = False
+            self._group_check.blockSignals(True)
+            self._group_check.setChecked(False)
+            self._group_check.blockSignals(False)
 
     @staticmethod
     def _set_readonly(item: QTableWidgetItem) -> None:
@@ -884,12 +945,11 @@ class ArticlesPage(BasePage):
             applied = self._applied_length(member)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
-                remaining = code[len(base):] if base and code.startswith(base) else ""
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                resolved = self._context.engineering_reduction_service.resolve_variant_condition(
+                    self._context.active_snapshot, str(getattr(article, "id", "")), length
+                )
+                base, remaining = resolved.base, resolved.remaining
                 length = len(base)
                 has_length = True
             else:
@@ -965,12 +1025,12 @@ class ArticlesPage(BasePage):
         order_keys: list[str] = []
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
-                remaining = code[len(base):] if base and code.startswith(base) else ""
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                resolved = self._context.engineering_reduction_service.resolve_variant_condition(
+                    self._context.active_snapshot, str(getattr(article, "id", "")),
+                    self._applied_length(member) if self._applied_length(member) is not None else default_len,
+                )
+                base, remaining = resolved.base, resolved.remaining
             else:
                 base, remaining = self._split_base(
                     code, self._applied_length(member) or default_len
@@ -1039,6 +1099,9 @@ class ArticlesPage(BasePage):
             self._table.setItem(row, _COL_ORDER, order_item)
 
     def _on_group_toggled(self, checked: bool) -> None:
+        # A user toggle cancels an earlier automatic coverage collapse. The
+        # automatic path can re-collapse later only when coverage is complete.
+        self._auto_collapsed_by_coverage = False
         self._group_by_base = checked
         self._apply_filter()
 

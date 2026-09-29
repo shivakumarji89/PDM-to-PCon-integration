@@ -1,15 +1,14 @@
 """Validate the Relation Object workflow step (Phase B) against the canonical
 standard.
 
-Headless, PDM-free check that EngineeringRelationService derives configuration
-relations to the fixed standard:
+Headless, PDM-free check that EngineeringRelationService derives encoding
+actions while refusing to infer validity relations from article coverage:
   * ``A_Code_<Prop>`` action only when a value's code differs from its value
     (numeric properties), body ``Code<Prop> = '<code>' IF <Prop> = <value>``;
-  * ``B_<Prop>_<Value>`` precondition per value, body ``$BAN IN (...)`` when the
-    value is carried by a proper subset of the base articles, else the value
-    marker ``(SPECIFIED <Prop>) AND (<Prop> IN ('<Value>'))``.
-Also checks the underscore naming, determinism, edit persistence and JSON
-round-trip.
+    * no generated ``B_*`` precondition without an explicitly bound OCD Relation
+        Object.
+Also checks ArtBase coverage, imported-relation preservation, edit persistence
+and JSON round-trip.
 
 Run:  python scripts/validate_relation_creation.py
 """
@@ -28,15 +27,16 @@ from models.engineering_family import EngineeringFamily
 from models.member_article import MemberArticle
 from models.property import Property
 from models.property_value import PropertyValue
+from models.relation_object import RelationObject
 from models.snapshot import Snapshot
 from services.snapshot_serialization import snapshot_from_dict, snapshot_to_dict
 from services.engineering.engineering_relation_service import validate_relation_body
 
 
 def _make_snapshot() -> Snapshot:
-    # BASE1 (a1,a2,a3) + BASE2 (a4). Head property Type (uncoded) GATES the
-    # non-head Castors value; Finish is base-scoped (-> ArtBase); Brand is
-    # generic (-> nothing).
+    # BASE1 (a1,a2,a3) + BASE2 (a4). Castors correlates with Type in this sample,
+    # but there is no explicit dependency source. Finish is base-scoped; Brand
+    # is universal.
     a1 = Article(id="a1", code="B1-7-Y", product_id="P1")
     a2 = Article(id="a2", code="B1-5-N", product_id="P1")
     a3 = Article(id="a3", code="B1-5-N2", product_id="P1")
@@ -91,18 +91,8 @@ def main() -> None:
     relations = service.ensure_relation_objects(snapshot)
     by_name = {r.name: r for r in relations}
 
-    # COMBINATION: the non-head Castors value is gated by the HEAD Type property.
-    assert "B_Castors_C1" in by_name, sorted(by_name)
-    combo = by_name["B_Castors_C1"]
-    assert combo.type_code == "1" and combo.domain == "C"
-    assert combo.body == "(SPECIFIED Type) AND (Type IN ('7')) AND $BAN IN ('BASE1')", combo.body
-    assert combo.property_id == "CA"
-    assert combo.value_id == "cy"
-
-    # Multi-base combination: a partial base (Type gate) OR a whole base.
-    assert by_name["B_Castors_C2"].body == (
-        "(SPECIFIED Type) AND (Type IN ('5')) AND $BAN IN ('BASE1') OR $BAN IN ('BASE2')"
-    ), by_name["B_Castors_C2"].body
+    # Correlated article coverage is not authoritative dependency evidence.
+    assert not any(r.name.startswith("B_") for r in relations), sorted(by_name)
 
     # BASE-scoped Finish -> ArtBase, NOT a relation.
     assert "B_Finish_OAK" not in by_name, "base-scoped value must not be a relation"
@@ -111,18 +101,12 @@ def main() -> None:
     # GENERIC Brand (on every article) -> nothing.
     assert "B_Brand_HM" not in by_name, "generic value must get no relation"
 
-    # Head values are the conditions, never combination targets themselves.
-    assert not any(r.name.startswith("B_Type_") for r in relations), "head value got a relation"
-
-    # A full article number must never leak into a $BAN gate (base only).
-    assert not any("B1-" in r.body or "B2-" in r.body for r in relations), "$BAN leaked a full article number"
-
-    # ArtBase holds the base-scoped Finish restriction; the combination Castors
-    # value is excluded from ArtBase.
+    # ArtBase carries base-scoped coverage, including Castors values restricted
+    # only by the observed base membership.
     art = context.engineering_artbase_service.build_art_base(snapshot)
     assert art.get("BASE1", {}).get("FI") == ["oak"], art
     assert art.get("BASE2", {}).get("FI") == ["wal"], art
-    assert all("CA" not in entries for entries in art.values()), art
+    assert art.get("BASE2", {}).get("CA") == ["cn"], art
 
     # No '#' ever leaks into a name/body.
     assert not any("#" in r.name or "#" in r.body for r in relations), "'#' leaked"
@@ -131,8 +115,17 @@ def main() -> None:
     again = service.rebuild_relation_objects(snapshot)
     assert [(r.name, r.body) for r in again] == [(r.name, r.body) for r in relations], "non-deterministic"
 
-    # JSON round-trip preserves an edit.
-    edited = {r.name: r for r in snapshot.relation_objects}["B_Castors_C1"]
+    # A target-bound imported OCD relation is retained by rebuild and its edit
+    # survives JSON round-trip.
+    edited = RelationObject(
+        name="B_Castors_C1", type_code="1", domain="C",
+        body="Type = '7'", property_id="CA", value_id="cy",
+        rel_obj_id="40", relation_id="90", relation_name="BA_Castors_C1",
+        value_ids=["cy"],
+    )
+    snapshot.relation_objects.append(edited)
+    rebuilt = service.rebuild_relation_objects(snapshot)
+    assert edited in rebuilt, "rebuild dropped imported relation"
     assert service.set_body(edited, "EDITED")
     restored = snapshot_from_dict(snapshot_to_dict(snapshot))
     r_by_name = {r.name: r for r in restored.relation_objects}

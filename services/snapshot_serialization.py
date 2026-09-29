@@ -25,7 +25,7 @@ from typing import Any
 
 from core.enums import SnapshotStatus
 from models.article import Article
-from models.article_set import ArticleSet, SetAttribute, SetValue
+from models.article_set import ArticleSet, ClassSplit, SetAttribute, SetValue
 from models.engineering import Engineering
 from models.engineering_class import (
     ClassPropertyAssignment,
@@ -526,6 +526,8 @@ def class_property_assignment_to_dict(
         "type": assignment.type,
         "usage": assignment.usage,
         "text_block": assignment.text_block,
+        "configurable": assignment.configurable,
+        "relation_object": assignment.relation_object,
         "values": [class_value_to_dict(v) for v in assignment.values],
     }
 
@@ -541,6 +543,8 @@ def class_property_assignment_from_dict(
         type=data.get("type", ""),
         usage=data.get("usage", ""),
         text_block=data.get("text_block", ""),
+        configurable=bool(data.get("configurable", True)),
+        relation_object=data.get("relation_object", ""),
         values=[
             class_value_from_dict(v) for v in data.get("values", [])
         ],
@@ -688,8 +692,19 @@ def article_set_to_dict(article_set: ArticleSet) -> dict[str, Any]:
         "base_length": article_set.base_length,
         "base_code": article_set.base_code,
         "article_ids": list(article_set.article_ids),
+        "remaining_length": article_set.remaining_length,
         "properties": [_set_attribute_to_dict(a) for a in article_set.properties],
         "options": [_set_attribute_to_dict(a) for a in article_set.options],
+        "class_splits": [
+            {
+                "property_id": split.property_id,
+                "property_name": split.property_name,
+                "start": split.start,
+                "width": split.width,
+                "relation_object": split.relation_object,
+            }
+            for split in article_set.class_splits
+        ],
     }
 
 
@@ -714,9 +729,20 @@ def article_set_from_dict(data: dict[str, Any]) -> ArticleSet:
         id=str(data.get("id", "")),
         base_length=int(data.get("base_length", 0)),
         base_code=str(data.get("base_code", "")),
+        remaining_length=int(data.get("remaining_length", 0) or 0),
         article_ids=[str(a) for a in data.get("article_ids", [])],
         properties=[_set_attribute_from_dict(a) for a in data.get("properties", [])],
         options=[_set_attribute_from_dict(a) for a in data.get("options", [])],
+        class_splits=[
+            ClassSplit(
+                property_id=str(s.get("property_id", "")),
+                property_name=str(s.get("property_name", "")),
+                start=int(s.get("start", 0) or 0),
+                width=int(s.get("width", 0) or 0),
+                relation_object=str(s.get("relation_object", "")),
+            )
+            for s in data.get("class_splits", [])
+        ],
     )
 
 
@@ -737,6 +763,16 @@ def _set_attribute_from_dict(data: dict[str, Any]) -> SetAttribute:
 
 
 def text_block_to_dict(block: TextBlock) -> dict[str, Any]:
+    """Serialize all text languages, including dynamically imported columns."""
+    translations = {
+        str(language): str(value or "")
+        for language, value in (block.translations or {}).items()
+        if str(language)
+    }
+    # Keep the legacy columns explicit for backward compatibility and include
+    # the complete dynamic translation map for newer languages.
+    for language in ("de", "en", "fr", "nl"):
+        translations.setdefault(language, getattr(block, language, "") or "")
     return {
         "name": block.name,
         "type_code": block.type_code,
@@ -744,10 +780,19 @@ def text_block_to_dict(block: TextBlock) -> dict[str, Any]:
         "en": block.en,
         "fr": block.fr,
         "nl": block.nl,
+        "translations": translations,
     }
 
 
 def text_block_from_dict(data: dict[str, Any]) -> TextBlock:
+    translations = {
+        str(language): str(value or "")
+        for language, value in (data.get("translations") or {}).items()
+        if str(language)
+    }
+    # Older project files contain only the four legacy language fields.
+    for language in ("de", "en", "fr", "nl"):
+        translations.setdefault(language, str(data.get(language, "") or ""))
     return TextBlock(
         name=str(data.get("name", "")),
         type_code=str(data.get("type_code", "")),
@@ -755,6 +800,7 @@ def text_block_from_dict(data: dict[str, Any]) -> TextBlock:
         en=str(data.get("en", "")),
         fr=str(data.get("fr", "")),
         nl=str(data.get("nl", "")),
+        translations=translations,
     )
 
 
@@ -814,6 +860,11 @@ def relation_object_to_dict(relation: RelationObject) -> dict[str, Any]:
         "class_name": relation.class_name,
         "property_id": relation.property_id,
         "value_id": relation.value_id,
+        "property_ids": list(relation.property_ids),
+        "value_ids": list(relation.value_ids),
+        "rel_obj_id": relation.rel_obj_id,
+        "relation_id": relation.relation_id,
+        "relation_name": relation.relation_name,
     }
 
 
@@ -827,6 +878,11 @@ def relation_object_from_dict(data: dict[str, Any]) -> RelationObject:
         class_name=str(data.get("class_name", "")),
         property_id=str(data.get("property_id", "")),
         value_id=str(data.get("value_id", "")),
+        property_ids=[str(value) for value in data.get("property_ids", [])],
+        value_ids=[str(value) for value in data.get("value_ids", [])],
+        rel_obj_id=str(data.get("rel_obj_id", "")),
+        relation_id=str(data.get("relation_id", "")),
+        relation_name=str(data.get("relation_name", "")),
     )
 
 
