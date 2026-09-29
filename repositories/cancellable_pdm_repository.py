@@ -143,6 +143,79 @@ class CancellablePDMRepository(PDMRepository):
             out.extend(cache.get(key, []))
         return out
 
+    def fetch_item_validation_options(
+        self, items, currency, mydate, site_id, connection=None
+    ) -> list[Any]:
+        """Cache cancellable validation option rows and isolate item failures."""
+        cache = self._lookup_cache.setdefault("validation_options", {})
+        vals = [str(item) for item in items if item]
+        missing = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
+            if key not in cache:
+                missing.append(item)
+        self.last_skipped_option_items = []
+        if missing:
+            worker_count = min(2, len(missing))
+            chunks = [
+                missing[index::worker_count]
+                for index in range(worker_count)
+                if missing[index::worker_count]
+            ]
+
+            def fetch_chunk(chunk):
+                worker_repo = CancellablePDMRepository(
+                    self.context, self._control, self._lookup_cache
+                )
+                worker_conn = worker_repo.get_connection()
+                successful_rows = []
+                skipped_items = []
+                try:
+                    for item in chunk:
+                        try:
+                            item_rows = PDMRepository.fetch_item_validation_options(
+                                worker_repo,
+                                [item],
+                                currency,
+                                mydate,
+                                site_id,
+                                connection=worker_conn,
+                            )
+                            successful_rows.extend(item_rows)
+                        except Exception:
+                            skipped_items.append(item)
+                    return successful_rows, skipped_items
+                finally:
+                    worker_conn.close()
+                    self._control.unregister_cancel_handler(
+                        worker_repo.cancel_active_operation
+                    )
+
+            rows = []
+            if worker_count > 1:
+                with ThreadPoolExecutor(
+                    max_workers=worker_count,
+                    thread_name_prefix="obx-pdm-options",
+                ) as executor:
+                    for chunk_rows, skipped_items in executor.map(fetch_chunk, chunks):
+                        rows.extend(chunk_rows)
+                        self.last_skipped_option_items.extend(skipped_items)
+            else:
+                rows, self.last_skipped_option_items = fetch_chunk(missing)
+
+            by_item = {}
+            for row in rows:
+                by_item.setdefault(str(row.Item), []).append(row)
+            for item in missing:
+                key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
+                cache[key] = by_item.get(item, [])
+
+        out = []
+        for item in vals:
+            key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
+            out.extend(cache.get(key, []))
+        return out
+
     def fetch_item_option_increment_prices(
         self, items, currency, mydate, site_id, connection=None
     ) -> list[Any]:

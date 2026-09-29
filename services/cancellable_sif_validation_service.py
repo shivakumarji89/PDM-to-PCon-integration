@@ -88,7 +88,9 @@ class CancellableSifValidationService(SifValidationService):
             # Only query PDM for the server date when no validation date was supplied.
             # The OBX UI always supplies a date, so this avoids an unnecessary round trip
             # while preserving the existing fallback for programmatic callers.
-            mydate = validation_date or self._server_date(repo, conn)
+            mydate = self._normalise_pricing_date(
+                validation_date or self._server_date(repo, conn)
+            )
             groups: dict[str, list] = {}
             for line in lines:
                 groups.setdefault(line.currency or currency, []).append(line)

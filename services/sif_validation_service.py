@@ -1,10 +1,11 @@
 """CET SIF order-file validation against PDM (replicates PDM 'Validate Order SIF').
 
 Parses a Herman Miller SIF order file, and for each order line re-prices the
-SKU against PDM using the SAME functions PDM uses (``fnGetListPriceByItem`` for
-the base, ``fnGetListPrice`` for option increments), then flags any line whose
-SIF price does not match PDM. Because the price is computed by the identical SQL
-UDFs, a reported mismatch is a genuine data discrepancy, not a replication error.
+SKU against PDM using the SAME functions PDM uses (legacy ``fnGetListPrice``
+semantics for the base, ``fnGetListPrice`` for option increments), then flags
+any line whose SIF price does not match PDM. Because the price is computed by
+the identical SQL UDFs, a reported mismatch is a genuine data discrepancy,
+not a replication error.
 
 Validated 2026-08-14 against a real ASIA/Atlas CNY SIF: 9/9 exact price matches.
 Recipe: currency from the ``PZ`` header; pricing SITE resolved by calibrating on
@@ -17,7 +18,7 @@ OBX (pCon) uses a dedicated parser and shares the PDM repricing engine; this ser
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from services.base_service import BaseService
 
 
@@ -285,6 +286,60 @@ class SifValidationService(BaseService):
         return 0.0
 
     @staticmethod
+    def _increment_key_match(code: str, values: dict[str, object]) -> str | None:
+        """Match exact option codes first, then the most-specific PDM '#' band."""
+        code = (code or "").strip().upper()
+        if not code:
+            return None
+        if code in values:
+            return code
+        matches = [
+            key for key in values
+            if key.endswith("#") and key != "#" and code.startswith(key[:-1])
+        ]
+        return max(matches, key=len) if matches else None
+
+    @classmethod
+    def _verify_selected_options(cls, option_rows, codes: list[str]) -> str | None:
+        """Validate selected order codes against active PDM option groups."""
+        groups: dict[str, dict[str, object]] = {}
+        order: list[str] = []
+        for row in option_rows:
+            try:
+                if int(getattr(row, "Status", None)) != 1:
+                    continue
+                if int(getattr(row, "IsFabric", 0) or 0) == 2:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+            if not code or code in {"!", "#"}:
+                continue
+            group = str(getattr(row, "OptionId", "") or "")
+            if group not in groups:
+                groups[group] = {}
+                order.append(group)
+            groups[group][code] = row
+
+        used: set[str] = set()
+        for position, raw in enumerate(codes, start=1):
+            code = (raw or "").strip().upper()
+            if not code or code in {"!", "#"}:
+                continue
+            matched_group = next(
+                (
+                    group for group in order
+                    if group not in used
+                    and cls._increment_key_match(code, groups[group]) is not None
+                ),
+                None,
+            )
+            if matched_group is None:
+                return f"invalid option string in order code at position {position}: {code}"
+            used.add(matched_group)
+        return None
+
+    @staticmethod
     def _match_inc_groups(
         groups: dict[str, dict[str, tuple[float, int]]],
         codes,
@@ -319,8 +374,10 @@ class SifValidationService(BaseService):
             if target_group is None:
                 continue
             band_values = fabric_groups.get(str(target_group), {})
-            candidates = [(band_code, price) for band_code, price in band_values.items()
-                          if band_code.endswith("#") and code.startswith(band_code[:-1])]
+            candidates = [
+                (band_code, price) for band_code, price in band_values.items()
+                if band_code.endswith("#") and code.startswith(band_code[:-1])
+            ]
             fabric_occurrence[code] = occurrence + 1
             used.add(str(target_group))
             if candidates:
@@ -328,21 +385,251 @@ class SifValidationService(BaseService):
                 total += price
         return total
 
+    @staticmethod
+    def _feature_option_indexes(feature_position: object, option_id: object) -> set[int] | None:
+        """Return zero-based parent option slots mapped to a component OptionId."""
+        text = str(feature_position or "")
+        target = str(option_id or "")
+        if not text or not target:
+            return None
+        positions = {
+            index for index, value in enumerate(text.split("|"))
+            if value == target
+        }
+        return positions or None
+
+    @staticmethod
+    def _legacy_component_display_override(
+        item: str, option_id: str, display: int
+    ) -> tuple[int, int]:
+        """Apply source-audited GetPrice family position overrides to SuperProducts."""
+        item = (item or "").upper()
+        try:
+            option_number = int(option_id)
+        except (TypeError, ValueError):
+            return display, 1
+
+        if item.startswith(("YH304", "YH306", "YH307")) and option_number == 6733:
+            display = 3
+        elif item.startswith(("YI303", "YI305")) and option_number == 6768:
+            display = 3
+        elif item.startswith("NOFTE") and option_number == 6820:
+            display = 1
+        elif item.startswith(("NODLE1", "NODLE2")):
+            if option_number == 6699:
+                display = 1
+            elif option_number == 6695:
+                display = 2
+        elif item.startswith(("EX1", "EZ1")) and option_number == 1206 and display == 1:
+            display = 3
+        elif item.startswith("OAW30"):
+            if option_number == 3278:
+                display = 1
+            elif option_number == 3716:
+                display = 2
+        elif item.startswith("HE"):
+            if option_number == 3765:
+                display = 3
+            elif option_number == 3761:
+                display = 4
+
+        base_display = 1
+        if item.startswith("AS"):
+            if item.startswith(("AS4", "AS5")) and display == 3:
+                display = 1
+            if display == 4:
+                display = 2
+            if display == 2:
+                base_display = 2
+        return display, base_display
+
+    @classmethod
+    def _match_component_increments(
+        cls, rows, codes: list[str], item: str = ""
+    ) -> float:
+        """Allocate component increments by GetPrice position and option group."""
+        normalized_item = (item or "").upper()
+        prepared = []
+        for row in rows:
+            code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+            if not code:
+                continue
+            option_id = str(getattr(row, "OptionId", "") or "")
+            display = int(getattr(row, "DisplayOrder", 0) or 0)
+            display, base_display = cls._legacy_component_display_override(
+                normalized_item, option_id, display
+            )
+            prepared.append({
+                "row": row,
+                "code": code,
+                "display": display,
+                "tertiary": int(getattr(row, "TertiaryOption", 0) or 0),
+                "feature_positions": cls._feature_option_indexes(
+                    getattr(row, "FeaturePositionString", None), option_id
+                ),
+                "base_display": base_display,
+                "option_id": option_id,
+                "component": str(getattr(row, "CompItem", "") or ""),
+            })
+
+        total = 0.0
+        deferred = 0.0
+        applied_option_ids: set[str] = set()
+        work = list(prepared)
+        for position, raw in enumerate(codes, start=1):
+            selected = (raw or "").strip().upper()
+            if not selected:
+                continue
+            search_from = 0
+            chosen = None
+            while search_from < len(work):
+                match = next(
+                    (
+                        (index, entry) for index, entry in enumerate(work)
+                        if index >= search_from
+                        and entry["option_id"] not in applied_option_ids
+                        and cls._increment_key_match(selected, {entry["code"]: entry})
+                    ),
+                    None,
+                )
+                if match is None:
+                    break
+                index, entry = match
+                tertiary = entry["tertiary"]
+                if tertiary > 0 and position > tertiary:
+                    later = next(
+                        (
+                            candidate for candidate in range(index + 1, len(work))
+                            if work[candidate]["tertiary"] == position
+                        ),
+                        None,
+                    )
+                    if later is None:
+                        later = next(
+                            (
+                                candidate for candidate in range(index + 1, len(work))
+                                if work[candidate]["display"] == position
+                            ),
+                            None,
+                        )
+                    if later is not None:
+                        search_from = later
+                        continue
+
+                feature_positions = entry["feature_positions"]
+                position_matches_feature = (
+                    feature_positions is not None and position - 1 in feature_positions
+                )
+                position_ok = (
+                    "#" in selected
+                    or "#" in entry["code"]
+                    or normalized_item.startswith("AK")
+                    or (position == 1 and entry["display"] == 1 and position == tertiary)
+                    or (
+                        position == entry["base_display"]
+                        and entry["display"] == entry["base_display"]
+                    )
+                    or (
+                        position > entry["base_display"]
+                        and entry["display"] > entry["base_display"]
+                        and tertiary == 0
+                    )
+                    or position == entry["display"]
+                    or position_matches_feature
+                    or not entry["component"]
+                )
+                if position_ok:
+                    chosen = (index, entry)
+                break
+
+            if chosen is None:
+                continue
+            _, chosen_entry = chosen
+            option_id = chosen_entry["option_id"]
+            if option_id in applied_option_ids:
+                continue
+            applied_option_ids.add(option_id)
+
+            row = chosen_entry["row"]
+            price = getattr(row, "IncPrice", None)
+            if price is not None:
+                amount = float(price)
+                if normalized_item.startswith("OF") and normalized_item.endswith("2"):
+                    try:
+                        option_number = int(option_id)
+                    except ValueError:
+                        option_number = -1
+                    if option_number == 3344:
+                        deferred = amount
+                        amount = 0.0
+                    elif option_number == 8:
+                        amount = max(deferred, amount)
+                        deferred = 0.0
+                total += amount * int(getattr(row, "Quantity", 1) or 1)
+
+            component = chosen_entry["component"]
+            work = [
+                entry for entry in work
+                if entry is chosen_entry
+                or entry["component"] != component
+                and not (
+                    entry["option_id"] == option_id
+                    and entry["component"] == component
+                    and entry["code"] != selected
+                )
+            ]
+        return total + deferred
+
     def _server_date(self, repo, conn) -> str:
         """Effective date = PDM ``GetUTCDate()`` (the current price list)."""
         rows = repo._execute("SELECT CONVERT(varchar, GetUTCDate(), 106) AS d", (), conn)
         return rows[0].d if rows else ""
 
     @staticmethod
-    def _is_future_date(value: str, server_date: str) -> bool:
-        """Whether a user-selected date is later than PDM's current date."""
-        try:
-            return (
-                datetime.strptime(value, "%d-%b-%Y").date()
-                > datetime.strptime(server_date, "%d %b %Y").date()
-            )
-        except (TypeError, ValueError):
-            return False
+    def _normalise_pricing_date(value: date | datetime | str) -> str:
+        """Normalize supported validation dates without locale-dependent guessing."""
+        if isinstance(value, datetime):
+            if value.utcoffset() is not None:
+                raise ValueError(
+                    "invalid validation date: timezone-aware values are not supported"
+                )
+            timespec = "microseconds" if value.microsecond else "seconds"
+            return value.isoformat(sep=" ", timespec=timespec)
+        if isinstance(value, date):
+            return value.isoformat()
+
+        text = str(value or "").strip()
+        formats = ("%Y-%m-%d", "%d-%b-%Y", "%d %b %Y", "%d/%m/%Y")
+        for date_format in formats:
+            try:
+                return datetime.strptime(text, date_format).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        # ISO datetime strings preserve their time component; localized or
+        # timezone-bearing values are rejected rather than interpreted by SQL.
+        if len(text) >= 19 and text[4:5] == "-" and text[7:8] == "-":
+            try:
+                parsed = datetime.fromisoformat(text)
+            except ValueError:
+                parsed = None
+            if parsed is not None and parsed.tzinfo is None:
+                timespec = "microseconds" if parsed.microsecond else "seconds"
+                return parsed.isoformat(sep=" ", timespec=timespec)
+
+        raise ValueError(
+            f"invalid validation date {text!r}; expected YYYY-MM-DD, DD-Mon-YYYY, "
+            "DD Mon YYYY, DD/MM/YYYY, or an ISO datetime"
+        )
+
+    @classmethod
+    def _is_future_date(
+        cls, value: date | datetime | str, server_date: date | datetime | str
+    ) -> bool:
+        """Compare validation dates using the same accepted formats as pricing."""
+        selected = datetime.fromisoformat(cls._normalise_pricing_date(value)).date()
+        current = datetime.fromisoformat(cls._normalise_pricing_date(server_date)).date()
+        return selected > current
     def _site_ids(self, repo, conn) -> list[int]:
         rows = repo._execute(
             "SELECT SiteId FROM Site ORDER BY SiteId",
@@ -357,12 +644,22 @@ class SifValidationService(BaseService):
     _SIF_SITE_BY_CURRENCY = {
         "GBP": "UK",
         "EUR": "UK",
-        "HKD": "Hong Kong",
-        "CNY": "HM Dongguan",
-        "JPY": "Japan",
-        "INR": "India",
-        "BRL": "Brazil",
-        "USD": "Singapore",
+        "HKD": "HK",
+        "CNY": "DG",
+        "JPY": "JP",
+        "INR": "IN",
+        "BRL": "BR",
+        "USD": "SG",
+    }
+
+    _SITE_DESCRIPTION_BY_CODE = {
+        "UK": "UK",
+        "HK": "Hong Kong",
+        "DG": "HM Dongguan",
+        "JP": "Japan",
+        "IN": "India",
+        "BR": "Brazil",
+        "SG": "Singapore",
     }
 
     def site_for_currency(self, currency: str, repo, conn, *, obx: bool = False) -> int | None:
@@ -373,18 +670,22 @@ class SifValidationService(BaseService):
         currencies other than a site's domestic currency (for example UK/EUR).
         """
         code = (currency or "").strip().upper()
-        site_name = "UK" if obx and code in {"GBP", "EUR"} else self._SIF_SITE_BY_CURRENCY.get(code)
-        if not site_name:
+        site_code = "UK" if obx and code in {"GBP", "EUR"} else self._SIF_SITE_BY_CURRENCY.get(code)
+        if not site_code:
             return None
 
         rows = repo._execute(
             """
             SELECT SiteId
             FROM Site
-            WHERE UPPER(Site) = UPPER(?)
-            ORDER BY SiteId
+            WHERE UPPER(Site) = UPPER(?) OR UPPER(Description) = UPPER(?)
+            ORDER BY CASE WHEN UPPER(Site) = UPPER(?) THEN 0 ELSE 1 END, SiteId
             """,
-            (site_name,),
+            (
+                site_code,
+                self._SITE_DESCRIPTION_BY_CODE.get(site_code, site_code),
+                site_code,
+            ),
             conn,
         )
         return int(rows[0].SiteId) if rows else None
@@ -495,7 +796,7 @@ class SifValidationService(BaseService):
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
         server_date = self._server_date(repo, conn)
-        mydate = validation_date or server_date
+        mydate = self._normalise_pricing_date(validation_date or server_date)
         groups: dict[str, list[SifLine]] = {}
         for line in lines:
             groups.setdefault(line.currency or currency, []).append(line)
@@ -539,6 +840,15 @@ class SifValidationService(BaseService):
                     on_result(results[-1])
             return results
 
+        all_items = sorted({line.base for line in lines if line.base})
+        normal_domain_items = repo.find_normal_items(all_items, connection=conn)
+        us_items = repo.find_us_items(all_items, connection=conn) - normal_domain_items
+        normal_scope_items = set(all_items) - us_items
+        catalogue_ids = (
+            repo.fetch_validation_catalogue_ids(site, connection=conn)
+            if normal_scope_items
+            else []
+        )
         if stage:
             stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
 
@@ -547,62 +857,320 @@ class SifValidationService(BaseService):
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
-            got = repo.fetch_item_base_prices(items, currency, mydate, conn, site_id=site)
-            base_price = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
-            plc_by_item = self._fetch_plc(items, site, repo, conn)
-            # Preserve original SIF behavior: only fetch increments for explicit
-            # OL values. OBX has selected order codes without OL amounts, so it
-            # always needs increment lookup.
+            normal_items = [item for item in items if item not in us_items]
+            us_domain_items = [item for item in items if item in us_items]
+            contexts = (
+                repo.fetch_item_validation_price_context(
+                    normal_items, currency, site, connection=conn
+                )
+                if normal_items
+                else []
+            )
+            us_contexts = (
+                repo.fetch_us_item_price_context(
+                    us_domain_items, currency, site, connection=conn
+                )
+                if us_domain_items
+                else []
+            )
+            contexts.extend(us_contexts)
+            context_by_item = {str(row.Item): row for row in contexts}
+            valid_catalogues_by_item = (
+                repo.fetch_items_valid_catalogues(
+                    normal_items, catalogue_ids, connection=conn
+                )
+                if normal_items and catalogue_ids
+                else {}
+            )
+            eligible_base_items: set[str] = set()
+            context_errors: dict[str, str] = {}
+            for item in items:
+                context = context_by_item.get(item)
+                if item in us_items:
+                    if context is None:
+                        context_errors[item] = f"unable to resolve USItem pricing context [{item}]"
+                        continue
+                    status = getattr(context, "Status", None)
+                    if status is None or int(status) >= 2:
+                        context_errors[item] = f"inactive or unresolved USItem [{item}]"
+                        continue
+                    us_price_fields = (
+                        "ProductCodeId", "PriceCode", "BasePriceRef", "Rounding",
+                        "MatchedCurrency", "BasePrice",
+                    )
+                    if any(getattr(context, field, None) is None for field in us_price_fields):
+                        context_errors[item] = (
+                            f"incomplete USItem price context for [{item}] "
+                            f"(site {site}, currency {currency})"
+                        )
+                        continue
+                    eligible_base_items.add(item)
+                    continue
+
+                if item not in valid_catalogues_by_item:
+                    context_errors[item] = (
+                        f"SKU/options do not resolve in validation catalogue scope [{item}]"
+                    )
+                    continue
+                if context is None:
+                    context_errors[item] = f"unable to resolve SKU in PDM [{item}]"
+                    continue
+                status = getattr(context, "Status", None)
+                if status is not None and int(status) >= 2:
+                    context_errors[item] = f"SKU is inactive in PDM [{item}]"
+                    continue
+                if status is None:
+                    context_errors[item] = f"unable to determine PDM item status [{item}]"
+                    continue
+                is_super_product = bool(getattr(context, "IsSuperProduct", False))
+                required_matrix_fields = (
+                    "ProductCodeId", "PriceCode", "BasePriceRef", "Rounding",
+                    "MatchedCurrency",
+                )
+                if not is_super_product and any(
+                    getattr(context, field, None) is None
+                    for field in required_matrix_fields
+                ):
+                    context_errors[item] = (
+                        f"incomplete price matrix for SKU [{item}] "
+                        f"(site {site}, currency {currency})"
+                    )
+                    continue
+                eligible_base_items.add(item)
+
+            super_candidate_items = {
+                item for item in eligible_base_items
+                if bool(getattr(context_by_item[item], "IsSuperProduct", False))
+            }
             if obx:
-                inc_items = sorted({l.base for l in chunk if l.options})
+                inc_items = sorted({
+                    line.base for line in chunk
+                    if line.options and line.base in eligible_base_items
+                    and line.base not in super_candidate_items
+                    and line.base not in us_items
+                })
             else:
                 inc_items = sorted({
-                    l.base for l in chunk
-                    if any(o.ol for o in l.options)
+                    line.base for line in chunk
+                    if line.base in eligible_base_items and any(option.ol for option in line.options)
+                    and line.base not in super_candidate_items
+                    and line.base not in us_items
                 })
-            inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
+            option_items = sorted({
+                line.base for line in chunk
+                if line.options and line.base in eligible_base_items
+                and line.base not in us_items
+            })
+            option_data_items = sorted(set(option_items) | set(inc_items))
             skipped_option_items: set[str] = set()
+            option_rows = (
+                repo.fetch_item_validation_options(
+                    option_data_items, currency, mydate, site, conn
+                )
+                if option_data_items
+                else []
+            )
+            if option_data_items:
+                skipped_option_items = set(
+                    getattr(repo, "last_skipped_option_items", [])
+                )
+            if obx:
+                us_increment_items = sorted({
+                    line.base for line in chunk
+                    if line.options and line.base in eligible_base_items
+                    and line.base in us_items
+                })
+            else:
+                us_increment_items = sorted({
+                    line.base for line in chunk
+                    if line.base in eligible_base_items and line.base in us_items
+                    and any(option.ol for option in line.options)
+                })
+            us_option_rows = (
+                repo.fetch_item_us_option_increment_prices(
+                    us_increment_items, currency, mydate, site, connection=conn
+                )
+                if us_increment_items
+                else []
+            )
+            all_increment_rows = [*option_rows, *us_option_rows]
+            option_rows_by_item: dict[str, list[Any]] = {}
+            for row in option_rows:
+                option_rows_by_item.setdefault(str(getattr(row, "Item", "")), []).append(row)
+
+            option_errors_by_seq: dict[int, str] = {}
+            valid_pricing_items: set[str] = set()
+            for line in chunk:
+                if line.base not in eligible_base_items:
+                    continue
+                if line.base in us_items:
+                    valid_pricing_items.add(line.base)
+                    continue
+                option_error = self._verify_selected_options(
+                    option_rows_by_item.get(str(line.base), []),
+                    [option.code for option in line.options],
+                )
+                if option_error:
+                    option_errors_by_seq[line.seq] = option_error
+                else:
+                    valid_pricing_items.add(line.base)
+
+            super_product_items = valid_pricing_items & super_candidate_items
+            us_price_items = valid_pricing_items & us_items
+            standard_price_items = valid_pricing_items - super_product_items - us_price_items
+            got = (
+                repo.fetch_validation_get_price_ext_base_prices(
+                    sorted(standard_price_items), currency, mydate, conn, site_id=site
+                )
+                if standard_price_items
+                else []
+            )
+            us_got = (
+                repo.fetch_us_item_base_prices(
+                    sorted(us_price_items), currency, mydate, site, connection=conn
+                )
+                if us_price_items
+                else []
+            )
+            base_price = {
+                str(row.Item): (float(row.price) if row.price is not None else None)
+                for row in [*got, *us_got]
+            }
+
+            if super_product_items:
+                parent_ids = {
+                    item: getattr(context_by_item[item], "ItemId", None)
+                    for item in super_product_items
+                }
+                item_by_parent_id = {
+                    str(parent_id): item for item, parent_id in parent_ids.items()
+                    if parent_id is not None
+                }
+                expected_components: dict[str, list[tuple[str, str, int]]] = {
+                    item: [] for item in super_product_items
+                }
+                if item_by_parent_id:
+                    bom_rows = repo.fetch_item_components(
+                        [parent_ids[item] for item in item_by_parent_id.values()],
+                        connection=conn,
+                    )
+                    for row in bom_rows:
+                        parent = item_by_parent_id.get(str(row.ParentItemId))
+                        if parent is not None:
+                            expected_components[parent].append((
+                                str(row.ComponentSequence),
+                                str(row.SubItem),
+                                int(row.Quantity or 1),
+                            ))
+
+                    component_price_rows = repo.fetch_item_component_prices(
+                        sorted(item_by_parent_id.values()),
+                        currency,
+                        mydate,
+                        site,
+                        connection=conn,
+                    )
+                else:
+                    component_price_rows = []
+
+                priced_components: dict[str, list[Any]] = {}
+                for row in component_price_rows:
+                    priced_components.setdefault(str(row.ParentItem), []).append(row)
+                for item in super_product_items:
+                    expected = expected_components[item]
+                    actual = priced_components.get(item, [])
+                    actual_signature = sorted((
+                        str(row.ComponentSequence),
+                        str(row.ComponentItem),
+                        int(row.Quantity or 1),
+                    ) for row in actual)
+                    if not expected:
+                        context_errors[item] = (
+                            f"SuperProduct has no resolvable components [{item}]"
+                        )
+                    elif sorted(expected) != actual_signature:
+                        context_errors[item] = (
+                            f"unable to resolve all SuperProduct components [{item}]"
+                        )
+                    elif any(getattr(row, "price", None) is None for row in actual):
+                        context_errors[item] = (
+                            f"unable to resolve a SuperProduct component price [{item}]"
+                        )
+                    else:
+                        base_price[item] = round(sum(
+                            float(row.price) * int(row.Quantity or 1)
+                            for row in actual
+                        ), 2)
+                    if item in context_errors:
+                        eligible_base_items.discard(item)
+
+            plc_by_item = self._fetch_plc(items, site, repo, conn)
+            inc_by_item: dict[str, dict[str, tuple[float, int, int]]] = {}
             # OBX order codes repeat across option groups, so OBX also keeps the
             # rows grouped by PDM OptionId (in PDM row order).
             inc_groups_by_item: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             fabric_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
             fabric_targets_by_item: dict[str, dict[str, list[str]]] = {}
 
-            if inc_items:
-                inc_rows = repo.fetch_item_option_increment_prices(
-                    inc_items, currency, mydate, site, conn
-                )
-                skipped_option_items = set(getattr(repo, "last_skipped_option_items", []))
-                for r in inc_rows:
-                    inc_price = getattr(r, "IncPrice", None)
-                    item = str(r.Item)
-                    code = str(r.OrderCodeValue2 or "").strip().upper()
-
-                    if obx:
-                        group = str(getattr(r, "OptionId", "") or "")
-                        is_fabric = int(r.IsFabric or 0)
-                        inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
-                            0.0 if inc_price is None else float(inc_price),
-                            int(r.Quantity or 1) if is_fabric == 0 else 1,
-                        )
-                        if is_fabric == 1 and code.endswith("#") and inc_price is not None:
-                            fabric_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = float(inc_price)
-                        elif is_fabric == 2:
-                            parent_group = str(getattr(r, "ParentOptId", "") or "")
-                            if parent_group and code:
-                                fabric_targets_by_item.setdefault(item, {}).setdefault(code, []).append(parent_group)
-
-                    if inc_price is None:
+            for r in all_increment_rows:
+                item = str(r.Item)
+                if item not in inc_items and item not in us_increment_items:
+                    continue
+                if item not in us_items:
+                    try:
+                        if int(getattr(r, "Status", None)) != 1:
+                            continue
+                    except (TypeError, ValueError):
                         continue
+                inc_price = getattr(r, "IncPrice", None)
+                code = str(r.OrderCodeValue2 or "").strip().upper()
 
+                if obx or item in us_items:
+                    group = str(getattr(r, "OptionId", "") or "")
                     is_fabric = int(r.IsFabric or 0)
-                    quantity = int(r.Quantity or 1)
-
-                    inc_by_item.setdefault(item, {})[code] = (
-                        float(inc_price),
-                        is_fabric,
-                        quantity,
+                    inc_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = (
+                        0.0 if inc_price is None else float(inc_price),
+                        int(r.Quantity or 1) if is_fabric == 0 else 1,
                     )
+                    if is_fabric == 1 and code.endswith("#") and inc_price is not None:
+                        fabric_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = float(inc_price)
+                    elif is_fabric == 2:
+                        parent_group = str(getattr(r, "ParentOptId", "") or "")
+                        if parent_group and code:
+                            fabric_targets_by_item.setdefault(item, {}).setdefault(code, []).append(parent_group)
+
+                if inc_price is None:
+                    continue
+
+                is_fabric = int(r.IsFabric or 0)
+                quantity = int(r.Quantity or 1)
+                inc_by_item.setdefault(item, {})[code] = (
+                    float(inc_price),
+                    is_fabric,
+                    quantity,
+                )
+
+            component_increment_items = sorted({
+                line.base for line in chunk
+                if line.base in super_product_items
+                and line.base in eligible_base_items
+                and line.base in base_price
+                and line.options
+                and line.seq not in option_errors_by_seq
+            })
+            component_increment_rows = (
+                repo.fetch_item_component_increment_prices(
+                    component_increment_items, currency, mydate, site, connection=conn
+                )
+                if component_increment_items
+                else []
+            )
+            component_increments_by_item: dict[str, list[Any]] = {}
+            for row in component_increment_rows:
+                component_increments_by_item.setdefault(
+                    str(getattr(row, "ParentItem", "")), []
+                ).append(row)
+
             for line in chunk:
                 # A worker can report an individual option lookup as skipped.
                 # Do not manufacture a pricing result for it; the OBX worker
@@ -614,16 +1182,45 @@ class SifValidationService(BaseService):
                     progress(done[0], total, line.base)
                 sku = self._sku(line)
                 sif = line.sif_price
-                base = base_price.get(line.base)
                 plc = plc_by_item.get(line.base, "")
-                if base is None:
+                if line.base not in eligible_base_items:
                     results.append(SifResult(
-                        seq=line.seq, sku=sku, currency=currency, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
-                        status="unresolved", message=f"unable to resolve SKU in PDM [{line.base}]"))
+                        seq=line.seq, sku=sku, currency=currency, plc=plc,
+                        qty=line.qty, source_date=line.source_date, sif_price=sif,
+                        status="unresolved", message=context_errors.get(
+                            line.base, f"unable to resolve SKU in PDM [{line.base}]"
+                        ),
+                    ))
                     if on_result:
                         on_result(results[-1])
                     continue
-                if obx:
+                option_error = option_errors_by_seq.get(line.seq)
+                if option_error:
+                    results.append(SifResult(
+                        seq=line.seq, sku=sku, currency=currency, plc=plc,
+                        qty=line.qty, source_date=line.source_date, sif_price=sif,
+                        status="unresolved", message=option_error,
+                    ))
+                    if on_result:
+                        on_result(results[-1])
+                    continue
+                base = base_price.get(line.base)
+                if base is None:
+                    results.append(SifResult(
+                        seq=line.seq, sku=sku, currency=currency, plc=plc, qty=line.qty, source_date=line.source_date, sif_price=sif,
+                        status="unresolved", message=context_errors.get(
+                            line.base, f"unable to resolve SKU in PDM [{line.base}]"
+                        )))
+                    if on_result:
+                        on_result(results[-1])
+                    continue
+                if line.base in super_product_items:
+                    upcharge = self._match_component_increments(
+                        component_increments_by_item.get(line.base, []),
+                        [option.code for option in line.options],
+                        line.base,
+                    )
+                elif obx or line.base in us_items:
                     upcharge = self._match_inc_groups(
                         inc_groups_by_item.get(line.base, {}),
                         [o.code for o in line.options],

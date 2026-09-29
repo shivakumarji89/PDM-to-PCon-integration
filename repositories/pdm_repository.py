@@ -25,16 +25,28 @@ class _IncPriceRow:
     """Wraps a PDMOptionDataReportWithIncList row, supplying ``Item`` (the
     proc is called per-item and never echoes it back as a column)."""
 
-    __slots__ = ("Item", "OptionId", "OrderCodeValue2", "IncPrice", "IsFabric", "Quantity", "ParentOptId")
+    __slots__ = (
+        "Item", "OptionId", "OptionValueId", "OrderCodeValue2", "Status",
+        "IncPrice", "IsFabric", "Quantity", "ParentOptId",
+        "FeaturePositionString", "TertiaryOption", "DisplayOrder", "DisplayOrdinal",
+    )
 
     def __init__(self, item: str, row: Any) -> None:
         self.Item = item
         self.OptionId = getattr(row, "OptionId", None)
+        self.OptionValueId = getattr(row, "OptionValueId", None)
         self.OrderCodeValue2 = getattr(row, "OrderCodeValue2", None)
+        self.Status = getattr(row, "Status", None)
         self.IncPrice = getattr(row, "IncPrice", None)
         self.IsFabric = getattr(row, "IsFabric", None)
         self.Quantity = getattr(row, "Quantity", None)
         self.ParentOptId = getattr(row, "ParentOptId", None)
+        self.FeaturePositionString = getattr(row, "FeaturePositionString", None)
+        self.TertiaryOption = getattr(
+            row, "TertiaryOption", getattr(row, "TertiayOption", None)
+        )
+        self.DisplayOrder = getattr(row, "DisplayOrder", None)
+        self.DisplayOrdinal = getattr(row, "DisplayOrdinal", None)
 
 
 class PDMRepository(BaseRepository):
@@ -798,6 +810,105 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, tuple(chunk), connection=connection))
         return rows
 
+    def fetch_item_component_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Price each active SuperProduct component using its own price matrix.
+
+        LEFT joins preserve component rows whose price context is incomplete;
+        their NULL price is reported as unresolved by validation, never zero.
+        """
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT parent.Item AS ParentItem, component.Item AS ComponentItem, "
+                "ic.ComponentSequence, ic.Quantity, ic.FeaturePositionString, "
+                "dbo.fnGetListPrice(pm.MatchedCurrency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN component.BasePrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN component.BasePrice3 "
+                "ELSE component.BasePrice END, "
+                "pc.PriceCode, "
+                "DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime), "
+                "CAST(? AS datetime)), CAST('19700101' AS datetime)), "
+                "'DMY', pm.Rounding, ?, NULL) AS price "
+                "FROM Item parent "
+                "INNER JOIN ItemComponents ic ON ic.ItemId = parent.ItemId "
+                "INNER JOIN Item component ON component.ItemId = ic.SubItemId "
+                "LEFT JOIN Product cp ON component.ProductId = cp.ProductId "
+                "LEFT JOIN Product_Code pc ON pc.ProductCodeId = CASE "
+                "WHEN component.ProductCodeIdOverride IS NOT NULL "
+                "THEN component.ProductCodeIdOverride ELSE cp.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "LEFT JOIN (SELECT pm.ItemPriceCode, pm.Rounding, "
+                "c.Currency AS MatchedCurrency FROM PriceMatrix pm "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "WHERE UPPER(c.Currency) = UPPER(?)) pm "
+                "ON pc.PriceCode = pm.ItemPriceCode "
+                f"WHERE parent.Item IN ({placeholders}) "
+                "AND component.Status < 2 AND parent.Status = 1 "
+                "ORDER BY parent.Item, CONVERT(INT, ic.ComponentSequence)"
+            )
+            params = (mydate, site_id, site_id, currency) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
+    def fetch_item_component_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return ordered component option increments for SuperProduct pricing."""
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT parent.Item AS ParentItem, itco.Quantity, itco.SubItemId, "
+                "itco.ComponentSequence, sub_item.Item AS CompItem, opt.DisplayOrder, "
+                "CASE WHEN opt.TertiaryOption > 0 AND opt.TertiaryOption < 20 "
+                "THEN opt.TertiaryOption ELSE 0 END AS TertiaryOption, "
+                "ov.OptionValueId, itco.FeaturePositionString, "
+                "ov.DisplayOrdinal, ov.OrderCodeValue AS OrderCodeValue2, ov.OptionId, "
+                "dbo.fnGetListPrice(c.Currency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN itov.IncrementalPrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN itov.IncrementalPrice3 "
+                "ELSE itov.IncrementalPrice END, pc.PriceCode, "
+                "DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime), "
+                "CAST(? AS datetime)), CAST('19700101' AS datetime)), "
+                "'DMY', pm.Rounding, ?, NULL) AS IncPrice "
+                "FROM Item parent "
+                "INNER JOIN ItemComponents itco ON itco.ItemId = parent.ItemId "
+                "INNER JOIN Item sub_item ON sub_item.ItemId = itco.SubItemId "
+                "INNER JOIN ItemOptionValues itov ON itov.ItemId = sub_item.ItemId "
+                "INNER JOIN OptionValue ov ON itov.OptionValueId = ov.OptionValueId "
+                "INNER JOIN [Option] opt ON ov.OptionId = opt.OptionId "
+                "INNER JOIN Product sub_product ON sub_item.ProductId = sub_product.ProductId "
+                "INNER JOIN Product_Code pc ON pc.ProductCodeId = CASE "
+                "WHEN sub_item.ProductCodeIdOverride IS NOT NULL "
+                "THEN sub_item.ProductCodeIdOverride ELSE sub_product.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE parent.Item IN ({placeholders}) "
+                "AND parent.Status = 1 AND sub_item.Status < 2 "
+                "ORDER BY parent.Item, CONVERT(INT, itco.ComponentSequence), "
+                "opt.DisplayOrder, ov.DisplayOrdinal"
+            )
+            params = (mydate, site_id, site_id, currency) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
     def count_product_option_values(
         self, product_id: Any, connection: Any = None
     ) -> int:
@@ -883,6 +994,54 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, params, connection=connection))
         return rows
 
+    def fetch_item_validation_options(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return ordered validation metadata and increments from PDM's option procedure."""
+        vals = [str(value) for value in items if value]
+        if not vals:
+            return []
+        rows: list[Any] = []
+        owns_connection = connection is None
+        conn = self.get_connection() if owns_connection else connection
+        required_columns = {
+            "optionid", "optionvalueid", "ordercodevalue2", "status",
+            "isfabric", "incprice",
+        }
+        try:
+            for item in vals:
+                query = """
+                    EXEC dbo.PDMOptionDataReportWithIncList
+                        @item = ?,
+                        @siteId = ?,
+                        @currency = ?,
+                        @effectivedate = ?,
+                        @custPriceCodeOverride = NULL,
+                        @excludeFabricColours = 0
+                """
+                cursor = conn.cursor()
+                try:
+                    cursor.execute(query, (item, site_id, currency, mydate))
+                    while True:
+                        if cursor.description is not None:
+                            columns = {column[0].lower() for column in cursor.description}
+                            if required_columns.issubset(columns):
+                                rows.extend(_IncPriceRow(item, row) for row in cursor.fetchall())
+                                break
+                        if not cursor.nextset():
+                            break
+                finally:
+                    cursor.close()
+        finally:
+            if owns_connection:
+                conn.close()
+        return rows
+
     def fetch_item_base_prices(
         self,
         items: Sequence[Any],
@@ -910,6 +1069,322 @@ class PDMRepository(BaseRepository):
                 f"WHERE i.Item IN ({ph})"
             )
             params = (currency, mydate, site_id) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
+    def fetch_validation_get_price_ext_base_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        effective_date: str,
+        connection: Any = None,
+        site_id: int = 1,
+    ) -> list[Any]:
+        """Bulk validation base prices using legacy GetPriceExt semantics.
+
+        Product_Code overrides, BasePriceRef selection, PriceMatrix rounding,
+        and fnGetListPrice are intentionally kept in SQL. Items with no
+        resolvable price may be absent or have a NULL price; validation treats
+        either case as unresolved. The general-purpose item-price API remains
+        unchanged for other workflows.
+        """
+        vals = [str(item) for item in items if item]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT i.Item, "
+                "dbo.fnGetListPrice("
+                "c.Currency, "
+                "CASE WHEN pc.BasePriceRef = 2 THEN i.BasePrice2 "
+                "WHEN pc.BasePriceRef = 3 THEN i.BasePrice3 "
+                "ELSE i.BasePrice END, "
+                "pc.PriceCode, "
+                "DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime), "
+                "CAST(? AS datetime)), CAST('19700101' AS datetime)), "
+                "'DMY', pm.Rounding, ?, NULL"
+                ") AS price "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                "INNER JOIN Product_Code pc ON "
+                "pc.ProductCodeId = CASE "
+                "WHEN i.ProductCodeIdOverride IS NOT NULL THEN i.ProductCodeIdOverride "
+                "ELSE p.ProductCodeId END "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE i.Item IN ({placeholders})"
+            )
+            params = (effective_date, site_id, site_id, currency) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
+    def fetch_validation_catalogue_ids(
+        self, site_id: int | None, connection: Any = None
+    ) -> list[int]:
+        """Return active validation catalogues for the already-resolved site.
+
+        Order-file validation deliberately resolves catalogue scope separately
+        from the product snapshot catalogue used by product loading.
+        """
+        if site_id is None:
+            return []
+        query = (
+            "SELECT c.CatalogueId "
+            "FROM Catalogue c "
+            "WHERE c.PrimarySiteId = ? AND c.Status <> 2 "
+            "ORDER BY c.LeadTime, "
+            "CASE WHEN c.PrimarySiteId = ? THEN 0 ELSE 1 END, c.Name"
+        )
+        rows = self._execute(
+            query, (int(site_id), int(site_id)), connection=connection
+        )
+        return [int(row.CatalogueId) for row in rows]
+
+    def fetch_item_validation_price_context(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return active-item and currency/site price-matrix context for validation."""
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT i.Item, i.ItemId, i.Status, i.ProductId, "
+                "p.IsSuperProduct, pc.ProductCodeId, pc.Product_Code AS ProductCode, "
+                "pc.PriceCode, pc.BasePriceRef, pm.Rounding, pm.MatchedCurrency "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "LEFT JOIN Product_Code pc ON pc.ProductCodeId = CASE "
+                "WHEN i.ProductCodeIdOverride IS NOT NULL THEN i.ProductCodeIdOverride "
+                "ELSE p.ProductCodeId END AND pc.SiteId = ? "
+                "LEFT JOIN (SELECT pm.ItemPriceCode, pm.Rounding, "
+                "c.Currency AS MatchedCurrency FROM PriceMatrix pm "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "WHERE UPPER(c.Currency) = UPPER(?)) pm "
+                "ON pc.PriceCode = pm.ItemPriceCode "
+                f"WHERE i.Item IN ({placeholders})"
+            )
+            rows.extend(
+                self._execute(
+                    query, (int(site_id), currency) + tuple(chunk), connection=connection
+                )
+            )
+        return rows
+
+    def fetch_items_valid_catalogues(
+        self,
+        items: Sequence[Any],
+        catalogue_ids: Sequence[int],
+        connection: Any = None,
+    ) -> dict[str, list[int]]:
+        """Return item catalogue membership with active category and range links."""
+        vals = [str(value) for value in items if value]
+        catalogues = [int(value) for value in catalogue_ids]
+        if not vals or not catalogues:
+            return {}
+        item_ph = self._placeholders(len(vals))
+        catalogue_ph = self._placeholders(len(catalogues))
+        query = (
+            "SELECT DISTINCT i.Item, c.CatalogueId "
+            "FROM Item i "
+            "INNER JOIN Product p ON i.ProductId = p.ProductId "
+            "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+            "INNER JOIN CatalogueItems ci ON ci.ItemId = i.ItemId "
+            "INNER JOIN Catalogue c ON c.CatalogueId = ci.CatalogueId "
+            "AND c.Status <> 2 "
+            "INNER JOIN CatalogueProductCategories cpc ON "
+            "cpc.CatalogueId = c.CatalogueId "
+            "AND cpc.ProductCategoryId = pr.ProductCategoryId AND cpc.Status = 1 "
+            "INNER JOIN CatalogueProductRanges cpr ON "
+            "cpr.CatalogueId = c.CatalogueId "
+            "AND cpr.ProductRangeId = pr.ProductRangeId "
+            f"WHERE i.Item IN ({item_ph}) AND c.CatalogueId IN ({catalogue_ph})"
+        )
+        rows = self._execute(
+            query, tuple(vals) + tuple(catalogues), connection=connection
+        )
+        allowed: dict[str, set[int]] = {}
+        for row in rows:
+            allowed.setdefault(str(row.Item), set()).add(int(row.CatalogueId))
+        return {
+            item: [catalogue for catalogue in catalogues if catalogue in matched]
+            for item, matched in allowed.items()
+        }
+
+    def find_normal_items(
+        self, items: Sequence[Any], connection: Any = None
+    ) -> set[str]:
+        """Return codes present in the normal Item domain, even if incomplete."""
+        vals = [str(value) for value in items if value]
+        found: set[str] = set()
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            rows = self._execute(
+                f"SELECT i.Item FROM Item i WHERE i.Item IN ({placeholders})",
+                tuple(chunk), connection=connection,
+            )
+            found.update(str(row.Item) for row in rows)
+        return found
+
+    def find_us_items(
+        self, items: Sequence[Any], connection: Any = None
+    ) -> set[str]:
+        """Return codes present in the separate legacy USItem domain."""
+        vals = [str(value) for value in items if value]
+        found: set[str] = set()
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            rows = self._execute(
+                f"SELECT u.USItem FROM USItem u WHERE u.USItem IN ({placeholders})",
+                tuple(chunk), connection=connection,
+            )
+            found.update(str(row.USItem) for row in rows)
+        return found
+
+    def fetch_us_item_price_context(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return USItem-specific base and currency/site price-matrix context."""
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT u.USItem AS Item, u.USItemId AS ItemId, 1 AS Status, "
+                "-1 AS ProductId, CAST(0 AS bit) AS IsSuperProduct, "
+                "pc.ProductCodeId, pc.PriceCode, pc.BasePriceRef, pm.Rounding, "
+                "pm.MatchedCurrency, u.BasePrice "
+                "FROM USItem u "
+                "LEFT JOIN Product_Code pc ON u.Product_Code = pc.Product_Code "
+                "AND pc.SiteId = ? "
+                "LEFT JOIN (SELECT pm.ItemPriceCode, pm.Rounding, "
+                "c.Currency AS MatchedCurrency FROM PriceMatrix pm "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "WHERE UPPER(c.Currency) = UPPER(?)) pm "
+                "ON pc.PriceCode = pm.ItemPriceCode "
+                f"WHERE u.USItem IN ({placeholders})"
+            )
+            rows.extend(self._execute(
+                query, (int(site_id), currency) + tuple(chunk), connection=connection
+            ))
+        return rows
+
+    def fetch_us_item_base_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Price USItem base values in the distinct legacy USdata domain."""
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            placeholders = self._placeholders(len(chunk))
+            query = (
+                "SELECT u.USItem AS Item, "
+                "dbo.fnGetListPrice(c.Currency, u.BasePrice, pc.PriceCode, "
+                "DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime), "
+                "CAST(? AS datetime)), CAST('19700101' AS datetime)), "
+                "'DMY', pm.Rounding, ?, NULL) AS price "
+                "FROM USItem u "
+                "INNER JOIN Product_Code pc ON u.Product_Code = pc.Product_Code "
+                "AND pc.SiteId = ? "
+                "INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode "
+                "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
+                "AND UPPER(c.Currency) = UPPER(?) "
+                f"WHERE u.USItem IN ({placeholders})"
+            )
+            params = (mydate, site_id, site_id, currency) + tuple(chunk)
+            rows.extend(self._execute(query, params, connection=connection))
+        return rows
+
+    def fetch_item_us_option_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return direct and dependent USdata increments as one ordered stream."""
+        vals = [str(value) for value in items if value]
+        rows: list[Any] = []
+        for item in vals:
+            query = """
+                SELECT 1 AS Quantity, -1 AS SubItemId, '' AS CompItem,
+                       1 AS DisplayOrder, 0 AS TertiaryOption,
+                       optval.USOptionValueId AS OptionValueId,
+                       '' AS FeaturePositionString, optval.DisplayOrder AS DisplayOrdinal,
+                       USItem.USItem AS Item, optval.OrderCodeValue AS OrderCodeValue2,
+                       optval.USOptionId AS OptionId, 0 AS IsFabric,
+                       dbo.fnGetListPrice(
+                           Currency.Currency, uitov.IncrementalPrice, pc.PriceCode,
+                           DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime),
+                           CAST(? AS datetime)), CAST('19700101' AS datetime)),
+                           'DMY', pm.Rounding, ?, NULL
+                       ) AS IncPrice
+                FROM USItemOptionValues uitov
+                INNER JOIN USOptionValue optval
+                    ON uitov.USOptionValueId = optval.USOptionValueId
+                INNER JOIN USOption opt ON optval.USOptionId = opt.USOptionId
+                INNER JOIN USItem ON uitov.USItemId = USItem.USItemId
+                INNER JOIN Product_Code pc
+                    ON USItem.Product_Code = pc.Product_Code AND pc.SiteId = ?
+                INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode
+                INNER JOIN Currency
+                    ON pm.CustPriceCode = Currency.PriceCode
+                    AND UPPER(Currency.Currency) = UPPER(?)
+                WHERE USItem.USItem = ?
+
+                UNION
+
+                SELECT 1 AS Quantity, -1 AS SubItemId, '' AS CompItem,
+                       1 AS DisplayOrder, 0 AS TertiaryOption,
+                       optval2.USOptionValueId AS OptionValueId,
+                       '' AS FeaturePositionString, optval2.DisplayOrder AS DisplayOrdinal,
+                       USItem.USItem AS Item, optval2.OrderCodeValue AS OrderCodeValue2,
+                       optval2.USOptionId AS OptionId, 0 AS IsFabric,
+                       dbo.fnGetListPrice(
+                           Currency.Currency, udov.CommonIncrementalPrice, pc.PriceCode,
+                           DATEADD(SECOND, DATEDIFF(SECOND, CAST('19700101' AS datetime),
+                           CAST(? AS datetime)), CAST('19700101' AS datetime)),
+                           'DMY', pm.Rounding, ?, NULL
+                       ) AS IncPrice
+                FROM USItemOptionValues uitov
+                INNER JOIN USOptionValue optval
+                    ON uitov.USOptionValueId = optval.USOptionValueId
+                INNER JOIN USItem ON uitov.USItemId = USItem.USItemId
+                INNER JOIN Product_Code pc
+                    ON USItem.Product_Code = pc.Product_Code AND pc.SiteId = ?
+                INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode
+                INNER JOIN Currency
+                    ON pm.CustPriceCode = Currency.PriceCode
+                    AND UPPER(Currency.Currency) = UPPER(?)
+                INNER JOIN USDependentOptionValues udov
+                    ON optval.USOptionValueId = udov.USOptionValueId
+                INNER JOIN USOptionValue optval2
+                    ON udov.USAdditionalOptionValueId = optval2.USOptionValueId
+                INNER JOIN USOption opt2 ON optval2.USOptionId = opt2.USOptionId
+                WHERE USItem.USItem = ?
+                ORDER BY DisplayOrdinal
+            """
+            params = (
+                mydate, site_id, site_id, currency, item,
+                mydate, site_id, site_id, currency, item,
+            )
             rows.extend(self._execute(query, params, connection=connection))
         return rows
 

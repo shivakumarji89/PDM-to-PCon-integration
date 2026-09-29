@@ -361,7 +361,9 @@ class ObxValidationService(BaseService):
         )
         conn = repo.get_connection()
         try:
-            mydate = validation_date or pricing._server_date(repo, conn)
+            mydate = pricing._normalise_pricing_date(
+                validation_date or pricing._server_date(repo, conn)
+            )
             groups: dict[str, list[ObxLine]] = {}
             for line in unique_lines:
                 groups.setdefault(line.currency or currency, []).append(line)
