@@ -188,6 +188,12 @@ class Snapshot:
     material_manufacturer_code: str = "hmx"
     material_package_code: str = "basics"
 
+    # Optional Review generation overrides. Blank means derive from the active
+    # product/template as before; these never mutate the PDM Product fields.
+    generation_template: str = ""
+    generation_program: str = ""
+    generation_series: str = ""
+
     # User opt-in: split the standard classes into one <Group>_* set per product
     # range (desk / screen / wire management) instead of one flat <Category>_*
     # set. Off by default (flat, historical behaviour). Persisted with the project.
