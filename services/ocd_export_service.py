@@ -96,6 +96,7 @@ class OcdExportResult:
     manufacturer_id: str = ""
     registry_overrides: dict[str, int] = field(default_factory=dict)
     registry_path: str = ""
+    permutation_count: int | None = None
 
 
 class OcdExportService(BaseService):
