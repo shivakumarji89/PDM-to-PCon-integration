@@ -359,6 +359,34 @@ class ReviewPage(BasePage):
 
         self._preview_running = True
         self._preview_elapsed = 0
+
+        # Generation information is derived from the active snapshot and does
+        # not require the expensive MDB preview. Show it immediately instead of
+        # leaving the Review header blank while Access/MDB work is running.
+        product = snapshot.product
+        derived_template = snapshot.generation_template or (
+            self._context.ocd_export_service._infer_template(product)
+        )
+        derived_program = snapshot.generation_program or (
+            self._safe_xocd_value("program_key", product) or ""
+        )
+        derived_series = snapshot.generation_series or (
+            self._safe_xocd_value("series_id", product) or ""
+        )
+        self._generation_rows["Template"].setText(str(derived_template or "-"))
+        self._generation_rows["Program"].setText(str(derived_program or "-"))
+        self._generation_rows["Series"].setText(str(derived_series or "-"))
+        self._generation_rows["Manufacturer"].setText(
+            "Loading from template..."
+        )
+        self._set_metric(self._development_cards["Permutations"], "Calculating...")
+        self._set_metric(self._mdb_cards["Articles to generate"], "Calculating...")
+        self._set_metric(self._mdb_cards["Classes to generate"], "Calculating...")
+        self._set_metric(self._mdb_cards["Properties to generate"], "Calculating...")
+        self._set_metric(self._mdb_cards["Property Values to generate"], "Calculating...")
+        self._set_metric(self._mdb_cards["MDB tables"], "Calculating...")
+        self._set_metric(self._mdb_cards["MDB rows"], "Calculating...")
+
         self._refresh_btn.setEnabled(False)
         self._mdb_preview_progress.show()
         self._preview_elapsed_timer.start()
