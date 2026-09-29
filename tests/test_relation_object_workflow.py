@@ -276,9 +276,15 @@ class RelationObjectWorkflowTests(unittest.TestCase):
         self.assertEqual(property_bindings, {"choice": 40})
         self.assertEqual(value_bindings, {"cy": 40, "cy-alias": 40})
 
+        snapshot.generation_template = "tables"
+        snapshot.generation_program = "betwixtchair"
+        snapshot.generation_series = "BETWITXCHAIR"
         restored = snapshot_from_dict(snapshot_to_dict(snapshot))
         self.assertEqual(restored.relation_objects[0].property_ids, ["choice"])
         self.assertEqual(restored.relation_objects[0].value_ids, ["cy", "cy-alias"])
+        self.assertEqual(restored.generation_template, "tables")
+        self.assertEqual(restored.generation_program, "betwixtchair")
+        self.assertEqual(restored.generation_series, "BETWITXCHAIR")
 
 
 _REAL_MDB = os.environ.get("MK_REAL_OCD_MDB", "")
