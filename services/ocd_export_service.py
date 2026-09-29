@@ -122,7 +122,7 @@ class OcdExportService(BaseService):
             result.error = "32-bit PowerShell / ACE OLEDB bridge unavailable."
             return result
 
-        kind = (template_kind or self._infer_template(snapshot.product)).lower()
+        kind = (template_kind or snapshot.generation_template or self._infer_template(snapshot.product)).strip().lower()
         template = _TEMPLATES.get(kind)
         if template is None or not template.is_file():
             result.error = f"Template not found for '{kind}': {template}"
@@ -162,8 +162,10 @@ class OcdExportService(BaseService):
         product = snapshot.product
         material_mf = snapshot.material_manufacturer_code or _MATERIAL_MANUFACTURER
         material_pk = snapshot.material_package_code or _MATERIAL_PACKAGE
-        program_code = XocdExportService.program_key(product)
-        series_id = XocdExportService.series_id(product)
+        derived_program = XocdExportService.program_key(product)
+        derived_series = XocdExportService.series_id(product)
+        program_code = (snapshot.generation_program or derived_program).strip()
+        series_id = (snapshot.generation_series or derived_series).strip()
         result.program_code = program_code
         result.series_id = series_id
         result.package_id = package_id
@@ -224,7 +226,7 @@ class OcdExportService(BaseService):
             result.error = "No product loaded."
             return result
 
-        kind = (template_kind or self._infer_template(snapshot.product)).lower()
+        kind = (template_kind or snapshot.generation_template or self._infer_template(snapshot.product)).strip().lower()
         template = _TEMPLATES.get(kind)
         if template is None or not template.is_file():
             result.error = f"Template not found for '{kind}': {template}"
@@ -262,8 +264,10 @@ class OcdExportService(BaseService):
 
         package_id = pkg[0].get("com_PackageID")
         comgroup_id = pkg[0].get("com_ComGroupID")
-        program_code = XocdExportService.program_key(preview_snapshot.product)
-        series_id = XocdExportService.series_id(preview_snapshot.product)
+        derived_program = XocdExportService.program_key(preview_snapshot.product)
+        derived_series = XocdExportService.series_id(preview_snapshot.product)
+        program_code = (preview_snapshot.generation_program or derived_program).strip()
+        series_id = (preview_snapshot.generation_series or derived_series).strip()
         self.context.material_picking_service.ensure_package_defaults(preview_snapshot)
         material_mf = preview_snapshot.material_manufacturer_code or _MATERIAL_MANUFACTURER
         material_pk = preview_snapshot.material_package_code or _MATERIAL_PACKAGE
