@@ -238,7 +238,7 @@ class EngineeringRelationService(BaseService):
         base_by_article = self._base_by_article(snapshot)
         articles_by_base = self._articles_by_base(base_by_article)
         all_articles = set(base_by_article)
-        head_ids = self._head_property_ids(snapshot)
+        dependency_ids = self._dependency_attribute_ids(snapshot)
         article_tokens = self._article_tokens(snapshot, decoded)
         attr_names = self._attr_names(snapshot)
         value_attr = self._value_attr(snapshot)
@@ -256,15 +256,14 @@ class EngineeringRelationService(BaseService):
                 classify[vid] = "generic"
                 continue
             aid_attr = value_attr.get(vid, "")
-            if aid_attr not in dependency_ids:
-                body = self._combination_body(
-                    carriers, aid_attr, base_by_article, articles_by_base,
-                    article_tokens, attr_names, dependency_ids,
-                )
-                if "(SPECIFIED" in body:
-                    classify[vid] = "combination"
-                    bodies[vid] = body
-                    continue
+            body = self._combination_body(
+                carriers, aid_attr, base_by_article, articles_by_base,
+                article_tokens, attr_names, dependency_ids,
+            )
+            if "(SPECIFIED" in body:
+                classify[vid] = "combination"
+                bodies[vid] = body
+                continue
             classify[vid] = "base"
         return classify, bodies
 
@@ -281,7 +280,7 @@ class EngineeringRelationService(BaseService):
         article_tokens, attr_names, dependency_ids,
     ) -> str:
         """OR of per-base branches. A base carried whole -> ``$BAN IN ('base')``;
-        a base carried in part -> the HEAD-property conditions that select
+        a base carried in part -> dependency-property conditions that select
         exactly its carriers plus the base gate. Conditions are verified; a base
         no head property can characterise falls back to the gate alone."""
         branches: list[str] = []
