@@ -119,13 +119,6 @@ class MaintenanceAlignmentService(BaseService):
                 if length > 0:
                     return length, "PDM_ARTICLE_SET_BASE_LENGTH"
 
-        # A dot-delimited article is a final deterministic fallback already used
-        # by the existing pricing semantics, but it is marked explicitly.
-        if "." in code:
-            length = code.find(".")
-            if length > 0:
-                return length, "ARTICLE_DOT_BOUNDARY"
-
         return 0, "UNRESOLVED"
 
     @staticmethod
