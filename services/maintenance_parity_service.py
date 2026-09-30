@@ -115,6 +115,42 @@ class MaintenanceParityService:
 
         return report
 
+
+    def compare_loaded(
+        self,
+        maintenance_snapshot: MaintenanceSnapshot,
+        *,
+        progress: Callable[[str], None] | None = None,
+    ) -> ParityReport:
+        """Compare the loaded Maintenance PDM scope directly with its released MDB snapshot."""
+        if maintenance_snapshot is None or maintenance_snapshot.pdm_snapshot is None:
+            raise ValueError("A Maintenance PDM snapshot is required.")
+        if maintenance_snapshot.repository_snapshot is None:
+            raise ValueError("A released MDB repository snapshot is required.")
+        if not maintenance_snapshot.alignment.is_aligned:
+            raise ValueError("Maintenance article alignment must be complete before comparison.")
+
+        def report_progress(message: str) -> None:
+            if progress:
+                progress(message)
+
+        report = ParityReport()
+        pdm_snapshot = maintenance_snapshot.pdm_snapshot
+        mdb_snapshot = maintenance_snapshot.repository_snapshot
+        comparisons = (
+            ("Articles", self._maintenance_article_keys(maintenance_snapshot), self._article_keys(mdb_snapshot)),
+            ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
+            ("Property Values", self._property_values(pdm_snapshot), self._property_values(mdb_snapshot)),
+            ("Options", self._options(pdm_snapshot), self._options(mdb_snapshot)),
+            ("Option Values", self._option_values(pdm_snapshot), self._option_values(mdb_snapshot)),
+            ("Price Lists", self._price_lists(pdm_snapshot), self._price_lists(mdb_snapshot)),
+            ("Prices", self._maintenance_prices(maintenance_snapshot), self._prices(mdb_snapshot)),
+        )
+        for domain, expected, actual in comparisons:
+            report_progress(f"Comparing {domain}...")
+            self._compare_domain(report, domain, expected, actual)
+        return report
+
     @staticmethod
     def _compare_domain(
         report: ParityReport,
