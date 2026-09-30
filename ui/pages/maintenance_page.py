@@ -2,8 +2,7 @@
 
 Each tool opens in its own pop-up so the page stays clear for at-a-glance
 repository statistics. Tools: **Bulk Price Update** (price-list roll-over),
-**Check Base Lengths** (vs PDM CAD Maintenance) and **Update Version** (OCD +
-ODB export version).
+**Update Version** (OCD + ODB export version), and **Repository Link**.
 """
 from __future__ import annotations
 
@@ -71,10 +70,6 @@ class MaintenancePage(BasePage):
             "Bulk-write the export version and today's date to OCD + ODB "
             "packages.",
             self._on_update_version))
-        row.addWidget(self._tool_card(
-            "PDM ↔ MDB Parity",
-            "Compare the loaded PDM Snapshot with a manually authored MDB without changing either source.",
-            self._on_parity))
         row.addWidget(self._tool_card(
             "Repository Link",
             "Establish or reopen the persistent link between a published series repository and its PDM product.",
@@ -144,11 +139,6 @@ class MaintenancePage(BasePage):
         from ui.dialogs.price_rollover_dialog import PriceRolloverDialog
 
         PriceRolloverDialog(self._context, self._default_repo(), self).exec()
-
-    def _on_parity(self) -> None:
-        from ui.dialogs.maintenance_parity_dialog import MaintenanceParityDialog
-
-        MaintenanceParityDialog(self._context, self).exec()
 
     def _on_repository_link(self) -> None:
         from ui.dialogs.maintenance_repository_link_dialog import MaintenanceRepositoryLinkDialog
