@@ -62,6 +62,7 @@ from core.modules import WorkbenchModule
 from services.engineering.engineering_reduction_service import (
     collapse_duplicate_values,
 )
+from services.mdb_classification_service import MdbClassificationService
 from ui import theme
 from ui.pages.base_page import BasePage
 from ui.widgets.data_table import standardize_table
@@ -1311,6 +1312,13 @@ class ClassCreationPage(BasePage):
             tuple(sorted(getattr(snapshot, "ignored_ranges", None) or [])),
         )
 
+    def _mdb_classified_property_ids(self, class_type: str) -> set[str]:
+        """Return property IDs belonging to imported MDB classes of a type."""
+        snapshot = self._context.active_snapshot
+        if not MdbClassificationService.is_mdb_snapshot(snapshot):
+            return set()
+        return MdbClassificationService.property_ids_for_type(snapshot, class_type)
+
     def _category_label(self) -> str:
         """The <Category> used in the class/card names (product category)."""
         snapshot = self._context.active_snapshot
@@ -1597,6 +1605,9 @@ class ClassCreationPage(BasePage):
             widths = {a.property_id: a.width for a in cls.properties}
 
         props = list(self._context.property_service.get_properties())
+        mdb_attribute_ids = self._mdb_classified_property_ids("Attribute")
+        if mdb_attribute_ids:
+            props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
         development = (
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
@@ -3104,6 +3115,18 @@ class ClassCreationPage(BasePage):
         self._opt_tree.clear()
         cls = self._options_class()
         options = list(self._context.option_service.get_options())
+        mdb_option_ids = self._mdb_classified_property_ids("Option")
+        if mdb_option_ids:
+            # Imported MDB stores Attribute and Option concepts in the same
+            # property/value model. For an MDB snapshot, the class
+            # classification decides which properties belong in the Options
+            # workspace. Property and Option expose the same display fields,
+            # so the existing master/detail renderer can be reused safely.
+            snapshot = self._context.active_snapshot
+            options = [
+                prop for prop in (getattr(snapshot, "properties", []) or [])
+                if str(getattr(prop, "id", "")) in mdb_option_ids
+            ]
 
         # Same functional grouping as Attributes, computed from the product
         # option links: option value -> ProductRange(s), option -> their union.
