@@ -29,3 +29,12 @@ def _state() -> MaintenanceSnapshot:
 def test_maintenance_parity_article_identity_uses_released_base():
     service = MaintenanceParityService(None)
     assert service._maintenance_article_keys(_state()) == {"aer1a11": ""}
+
+def test_loaded_maintenance_comparison_uses_repository_snapshot():
+    service = MaintenanceParityService(None)
+    report = service.compare_loaded(_state())
+
+    assert report.passed
+    assert report.match_count == 1
+    assert report.differences[0].domain == "Articles"
+    assert report.differences[0].status == "MATCH"
