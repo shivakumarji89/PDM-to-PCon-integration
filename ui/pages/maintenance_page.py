@@ -77,6 +77,10 @@ class MaintenancePage(BasePage):
             "packages.",
             self._on_update_version))
         row.addWidget(self._tool_card(
+            "PDM ↔ MDB Parity",
+            "Compare the loaded PDM Snapshot with a manually authored MDB without changing either source.",
+            self._on_parity))
+        row.addWidget(self._tool_card(
             "Repository Link",
             "Establish or reopen the persistent link between a published series repository and its PDM product.",
             self._on_repository_link))
@@ -150,6 +154,11 @@ class MaintenancePage(BasePage):
         from ui.dialogs.base_length_check_dialog import BaseLengthCheckDialog
 
         BaseLengthCheckDialog(self._context, self._default_repo(), self).exec()
+
+    def _on_parity(self) -> None:
+        from ui.dialogs.pdm_mdb_parity_dialog import PdmMdbParityDialog
+
+        PdmMdbParityDialog(self._context, self).exec()
 
     def _on_repository_link(self) -> None:
         from ui.dialogs.maintenance_repository_link_dialog import MaintenanceRepositoryLinkDialog
