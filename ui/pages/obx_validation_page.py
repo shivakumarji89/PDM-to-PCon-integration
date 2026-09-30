@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 import time
 import xml.etree.ElementTree as ET
 
@@ -181,6 +183,7 @@ class ObxValidationPage(BasePage):
         self._recovery_attempt = 0
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
+        self._last_checkpoint_count = 0
         self.add_content(self._build_controls())
         self.add_content(self._build_progress_panel())
         self.add_content(self._build_results())
@@ -400,6 +403,7 @@ class ObxValidationPage(BasePage):
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
+        self._offer_checkpoint_resume()
 
     def _on_launch(self) -> None:
         if self._lines:
@@ -535,6 +539,7 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
+        self._write_checkpoint()
         self._progress_state.setText("FAILED")
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
 
@@ -545,6 +550,7 @@ class ObxValidationPage(BasePage):
         self._is_paused = False
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
+        self._delete_checkpoint()
         self._progress_state.setText("CANCELLED")
 
     def _on_paused(self, payload) -> None:
@@ -553,6 +559,7 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pending_lines = list(remaining_lines)
         self._is_paused = True
+        self._write_checkpoint()
         self._launch_btn.setEnabled(False)
         self._pause_btn.setText("Resume Validation")
         self._pause_btn.setEnabled(bool(self._pending_lines))
@@ -586,6 +593,7 @@ class ObxValidationPage(BasePage):
     def _on_line_done(self, r) -> None:
         self._results.append(r)
         self._export_btn.setEnabled(True)
+        self._failed_export_btn.setEnabled(True)
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
@@ -598,6 +606,9 @@ class ObxValidationPage(BasePage):
         self._set_metric("duplicate", str(self._duplicate_count))
         if self._show_all or r.status != "ok":
             self._append_row(r)
+        if self._live["lines"] - self._last_checkpoint_count >= 100:
+            self._write_checkpoint()
+            self._last_checkpoint_count = self._live["lines"]
 
     def _on_results(self, payload) -> None:
         self._finalize_validation_elapsed()
@@ -621,6 +632,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("eta", "0:00")
         self._set_metric("recovery", str(self._recovery_attempt))
         self._set_site_metrics(sites)
+        self._delete_checkpoint()
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
         self._progress_percent.setText("100%")
@@ -779,9 +791,94 @@ class ObxValidationPage(BasePage):
                 f"Exported {total} {label} article(s) in {written} filtered OBX file(s) beside the source files.",
             )
 
+    def _checkpoint_path(self) -> Path | None:
+        paths = getattr(self, "_paths", [])
+        if not paths:
+            return None
+        digest = hashlib.sha1("|".join(str(Path(p).resolve()) for p in paths).encode()).hexdigest()[:12]
+        return Path(paths[0]).parent / f".obx_validation_{digest}.checkpoint.json"
+
+    def _write_checkpoint(self) -> None:
+        path = self._checkpoint_path()
+        if path is None or not self._results:
+            return
+        payload = {
+            "version": 1,
+            "paths": [str(Path(p).resolve()) for p in getattr(self, "_paths", [])],
+            "files": [
+                {"path": str(Path(p).resolve()), "size": Path(p).stat().st_size, "mtime_ns": Path(p).stat().st_mtime_ns}
+                for p in getattr(self, "_paths", []) if Path(p).is_file()
+            ],
+            "validation_date": self._validation_date.date().toString("dd-MMM-yyyy"),
+            "elapsed_seconds": self._current_validation_elapsed(),
+            "results": [r.__dict__ for r in self._results],
+        }
+        try:
+            path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _delete_checkpoint(self) -> None:
+        path = self._checkpoint_path()
+        if path is None:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _offer_checkpoint_resume(self) -> None:
+        path = self._checkpoint_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            expected = [str(Path(p).resolve()) for p in getattr(self, "_paths", [])]
+            if payload.get("paths") != expected:
+                return
+            for item in payload.get("files", []):
+                source = Path(item["path"])
+                stat = source.stat()
+                if stat.st_size != item["size"] or stat.st_mtime_ns != item["mtime_ns"]:
+                    return
+            data = payload.get("results", [])
+        except (OSError, ValueError, TypeError, KeyError):
+            return
+        if not data:
+            return
+        answer = QMessageBox.question(
+            self, "Resume OBX Validation",
+            f"An interrupted validation checkpoint contains {len(data)} completed line(s).\n\nResume the remaining articles?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._delete_checkpoint()
+            return
+        from services.sif_validation_service import SifResult
+        self._results = [SifResult(**item) for item in data]
+        completed = {r.seq for r in self._results}
+        self._pending_lines = [line for line in self._lines if line.seq not in completed]
+        self._validation_elapsed_seconds = float(payload.get("elapsed_seconds", 0.0) or 0.0)
+        self._render_table()
+        self._set_metric("completed", f"{len(self._results)}/{len(self._lines)}")
+        self._set_metric("matched", str(sum(r.status == "ok" for r in self._results)))
+        self._set_metric("mismatch", str(sum(r.status == "price_mismatch" for r in self._results)))
+        self._set_metric("unresolved", str(sum(r.status == "unresolved" for r in self._results)))
+        self._set_metric("elapsed", self._format_duration(int(self._validation_elapsed_seconds)))
+        self._set_metric("skipped", str(self._skipped_count))
+        self._set_metric("duplicate", str(self._duplicate_count))
+        self._export_btn.setEnabled(True)
+        self._failed_export_btn.setEnabled(True)
+        if self._pending_lines:
+            self._start_validation(self._pending_lines, fresh=False)
+        else:
+            self._delete_checkpoint()
+
     def _reset_results(self) -> None:
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
+        self._last_checkpoint_count = 0
         self._results = []
         self._pending_lines = []
         self._is_paused = False
