@@ -234,8 +234,10 @@ class OcdExportService(BaseService):
             return result
 
         # Match the actual Export MDB pre-processing without mutating the live
-        # Review snapshot.
-        preview_snapshot = copy.deepcopy(snapshot)
+        # Review snapshot. The preview pipeline is read-only, so a shallow
+        # snapshot copy is sufficient; deep-copying the complete repository
+        # graph was unnecessarily expensive for large products.
+        preview_snapshot = copy.copy(snapshot)
         registry_path = self.context.price_update_service.registry_path()
         result.registry_path = str(registry_path)
         result.registry_overrides = (
@@ -370,24 +372,14 @@ class OcdExportService(BaseService):
         return rows[0].get("com_Val2MatMapID") if rows else None
 
     def _template_table_names(self, mdb: Path) -> list[str]:
-        """Return every user table physically retained by the copied MDB template.
+        """Return the retained template tables needed by Review.
 
-        Access exposes user tables through MSysObjects. If that metadata query is
-        unavailable, fall back to the known OCD infrastructure tables so Review
-        still exposes the important retained package data.
+        Review is a generation checkpoint, not a full Access database browser.
+        Discovering every user table through MSysObjects and reading every
+        retained row made each preview pay the cost of the entire template.
+        Keep the initial preview bounded to the package/manufacturer
+        infrastructure exposed by the technical dialog.
         """
-        try:
-            rows = self.context.mdb_service.read_table(
-                mdb,
-                "SELECT Name FROM MSysObjects "
-                "WHERE Type = 1 AND Flags = 0 ORDER BY Name",
-            )
-            names = [str(row.get("Name") or "") for row in rows]
-            if names:
-                return names
-        except Exception:
-            pass
-
         return [
             "tCOMd_ComGroup",
             "tCOMd_Package",
@@ -397,7 +389,6 @@ class OcdExportService(BaseService):
             "tCOMd_PriceList2",
             "tCOMd_DistributionRegionPriceList",
         ]
-
     def _safe_template_table(
         self, mdb: Path, table: str
     ) -> list[dict[str, Any]]:
