@@ -67,3 +67,35 @@ def test_maintenance_alignment_does_not_guess_without_pdm_slice_length():
 
     assert result.status == "PARTIAL"
     assert result.unresolved_article_codes == ["ABC123.X"]
+
+
+def test_maintenance_uses_released_mdb_base_length_as_override():
+    pdm = _snapshot("AER1A11AF", "ABC123X", "NO_MATCH")
+    pdm.article_prefix_length = {
+        "article:1": 99,
+        "article:2": 2,
+        "article:3": 4,
+    }
+    repository = _snapshot("AER1A11", "ABC123")
+    
+    applied = MaintenanceAlignmentService(None).apply_released_mdb_base_lengths(
+        pdm, repository
+    )
+
+    assert applied == 2
+    assert pdm.base_length_overrides["AER1A11AF"] == 7
+    assert pdm.base_length_overrides["ABC123X"] == 6
+    assert "NO_MATCH" not in pdm.base_length_overrides
+
+
+def test_maintenance_keeps_pdm_length_when_mdb_has_no_matching_base():
+    pdm = _snapshot("NO_MATCH.X")
+    pdm.article_prefix_length = {"article:1": 8}
+    repository = _snapshot("ABC123")
+
+    applied = MaintenanceAlignmentService(None).apply_released_mdb_base_lengths(
+        pdm, repository
+    )
+
+    assert applied == 0
+    assert pdm.base_length_overrides == {}
