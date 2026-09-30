@@ -487,6 +487,88 @@ class ObxValidationPage(BasePage):
         reporter.begin(max(len(self._lines), 1), title="Validate OBX", subject=f"{len(self._lines)} order line(s)")
         self._dispatch_memory_batch()
 
+    @staticmethod
+    def _memory_batch_size(total_lines: int) -> int:
+        """Scale the outer feed batch with workload size.
+
+        The worker layer remains fixed at 2 x 8 lines. This outer batch only
+        limits how many lines are queued for the next set of worker rounds.
+        """
+        if total_lines <= 0:
+            return 0
+        worker_round = 2 * _ObxWorker._WORKER_SIZE
+        rounds = max(1, math.ceil(math.sqrt(total_lines / worker_round)))
+        return min(total_lines, worker_round * rounds)
+
+    def _dispatch_memory_batch(self) -> None:
+        if self._active_control is None:
+            return
+        if not self._dispatch_remaining:
+            results = sorted(
+                self._results,
+                key=lambda result: self._seq_key(getattr(result, "seq", 0)),
+            )
+            self._on_results((self._dispatch_sites, results))
+            return
+
+        batch_size = self._memory_batch_size(self._dispatch_total)
+        memory_batch = self._dispatch_remaining[:batch_size]
+        self._dispatch_workers = 0
+        validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
+        chunks = [
+            memory_batch[index:index + _ObxWorker._WORKER_SIZE]
+            for index in range(0, len(memory_batch), _ObxWorker._WORKER_SIZE)
+        ]
+        self._progress_state.setText(
+            f"VALIDATING — feed batch {len(memory_batch)} lines, workers 8 + 8"
+        )
+
+        for chunk in chunks[:2]:
+            signals = _ObxSignals()
+            signals.finished.connect(self._on_worker_finished)
+            signals.failed.connect(self._on_failed)
+            signals.paused.connect(self._on_paused)
+            signals.cancelled.connect(self._on_cancelled)
+            signals.recovery.connect(self._on_recovery)
+            signals.line_done.connect(self._on_line_done)
+            self._dispatch_workers += 1
+            QThreadPool.globalInstance().start(
+                _ObxWorker(
+                    self._context.obx_validation_service,
+                    self._currency,
+                    chunk,
+                    None,
+                    validation_date,
+                    self._active_reporter,
+                    signals,
+                    self._active_control,
+                )
+            )
+
+    def _on_worker_finished(self, payload) -> None:
+        sites, _results = payload
+        self._dispatch_sites.update(sites or {})
+        self._dispatch_workers -= 1
+        if self._dispatch_workers > 0 or self._active_control is None:
+            return
+
+        completed_seqs = {
+            getattr(result, "seq", None) for result in self._results
+        }
+        self._dispatch_remaining = [
+            line for line in self._dispatch_remaining
+            if getattr(line, "seq", None) not in completed_seqs
+        ]
+        if not self._dispatch_remaining:
+            results = sorted(
+                self._results,
+                key=lambda result: self._seq_key(getattr(result, "seq", 0)),
+            )
+            self._on_results((self._dispatch_sites, results))
+            return
+
+        self._dispatch_memory_batch()
+
     def _release_active_control(self) -> None:
         self._active_control = None
         self._active_reporter = None
