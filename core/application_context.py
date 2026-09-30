@@ -16,6 +16,7 @@ from core.events import EventBus
 from core.snapshot_manager import SnapshotManager
 from models.project import Project
 from models.snapshot import Snapshot
+from models.maintenance_snapshot import MaintenanceSnapshot
 from services.article_service import ArticleService
 from services.obx_service import OBXService
 from services.mdb_service import MDBService
@@ -34,6 +35,7 @@ from services.mdb_reconcile_service import MdbReconcileService
 from services.mdb_reverse_engineering_service import MdbReverseEngineeringService
 from services.pdm_mdb_parity_service import PdmMdbParityService
 from services.maintenance_repository_link_service import MaintenanceRepositoryLinkService
+from services.maintenance_alignment_service import MaintenanceAlignmentService
 from services.distribution_region_service import DistributionRegionService
 from services.option_service import OptionService
 from services.option_value_service import OptionValueService
@@ -81,6 +83,7 @@ class ApplicationContext:
         # in separate snapshots so repository imports never overwrite Development.
         self._pdm_snapshot: Snapshot | None = None
         self._repository_snapshot: Snapshot | None = None
+        self._maintenance_snapshot: MaintenanceSnapshot | None = None
         self._snapshot_source: str = "pdm"
         self._product_names: dict[str, str] = {}
         self._event_bus: EventBus | None = None
@@ -98,6 +101,7 @@ class ApplicationContext:
             MdbReverseEngineeringService: MdbReverseEngineeringService,
             PdmMdbParityService: PdmMdbParityService,
             MaintenanceRepositoryLinkService: MaintenanceRepositoryLinkService,
+            MaintenanceAlignmentService: MaintenanceAlignmentService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
             PropertyValueService: PropertyValueService,
@@ -133,6 +137,13 @@ class ApplicationContext:
     @property
     def active_snapshot(self) -> Snapshot | None:
         return self.snapshot_manager.get_active_snapshot()
+
+    @property
+    def maintenance_snapshot(self) -> MaintenanceSnapshot | None:
+        return self._maintenance_snapshot
+
+    def register_maintenance_snapshot(self, snapshot: MaintenanceSnapshot | None) -> None:
+        self._maintenance_snapshot = snapshot
 
     @property
     def snapshot_source(self) -> str:
@@ -239,6 +250,10 @@ class ApplicationContext:
     @property
     def pdm_mdb_parity_service(self) -> PdmMdbParityService:
         return self.get_service(PdmMdbParityService)
+
+    @property
+    def maintenance_alignment_service(self) -> MaintenanceAlignmentService:
+        return self.get_service(MaintenanceAlignmentService)
 
     @property
     def maintenance_repository_link_service(self) -> MaintenanceRepositoryLinkService:
