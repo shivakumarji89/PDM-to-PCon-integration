@@ -50,7 +50,10 @@ _ACT_LEVEL = {
 }
 
 
-from ui.workers.background_task import BackgroundTask\n\n\n_COL_ARTICLE = 0
+from ui.workers.background_task import BackgroundTask
+
+
+_COL_ARTICLE = 0
 _COL_VARCOND = 1
 _COL_VALUE = 2
 _COL_CURRENCY = 3
