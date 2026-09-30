@@ -38,6 +38,8 @@ from models.price_record import PriceRecord
 from services.pricing_service import PriceParams, PricingService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
+from ui.dialogs.price_list_manager_dialog import PriceListManagerDialog
+from core.modules import WorkbenchModule
 
 # Map ProgressReporter log kinds to activity log levels.
 _ACT_LEVEL = {
@@ -143,91 +145,65 @@ class PricingPage(BasePage):
         layout.addStretch(1)
         return box
 
-    # -- price lists (named lists + date roll-over) ----------------------
-    def _on_manage_price_lists(self) -> None:
+    # -- price lists ------------------------------------------------------
+    def _price_list_mode(self) -> str:
+        """Select creation vs maintenance behavior from the active module."""
+        module = getattr(self.window(), "_active_module", None)
+        return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
+
+    def _price_list_currencies(self) -> list[str]:
+        """Use currencies already present in the pricing context; otherwise use the
+        selected currency. This keeps new-list creation tied to the actual pricing
+        run instead of inventing a range-specific naming scheme."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return []
+        currencies: list[str] = []
+        for record in snapshot.price_records:
+            currency = (record.currency or "").upper()
+            if currency and currency not in currencies:
+                currencies.append(currency)
+        if currencies:
+            return currencies
+        selected = self._currency.currentText()
+        if selected != "All":
+            return [selected.upper()]
+        return ["GBP"]
+
+    def _open_price_list_manager(self) -> None:
         snapshot = self._context.active_snapshot
         if snapshot is None:
             QMessageBox.information(self, "Price Lists", "Load a product first.")
             return
-        svc = self._context.price_list_service
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Price Lists")
-        dialog.setMinimumSize(620, 380)
-        layout = QVBoxLayout(dialog)
-
-        table = QTableWidget(0, 5, dialog)
-        table.setHorizontalHeaderLabels(
-            ["Id", "Label", "Currency", "Valid From", "Valid To"]
+        mode = self._price_list_mode()
+        dialog = PriceListManagerDialog(
+            self._context,
+            snapshot,
+            mode=mode,
+            currencies=self._price_list_currencies(),
+            effective_date=self._date.date().toString("yyyyMMdd"),
+            parent=self,
         )
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(table)
-
-        def render() -> None:
-            table.setRowCount(0)
-            for price_list in svc.price_lists(snapshot):
-                row = table.rowCount()
-                table.insertRow(row)
-                cells = [
-                    price_list.id, price_list.label, price_list.currency,
-                    price_list.date_from, price_list.date_to,
-                ]
-                for col, value in enumerate(cells):
-                    table.setItem(row, col, QTableWidgetItem(value))
-
-        add_bar = QHBoxLayout()
-        id_edit = QLineEdit(dialog)
-        id_edit.setPlaceholderText("id e.g. euro_2026")
-        label_edit = QLineEdit(dialog)
-        label_edit.setPlaceholderText("label")
-        cur_combo = QComboBox(dialog)
-        cur_combo.addItems(["EUR", "GBP"])
-        date_edit = QDateEdit(dialog)
-        date_edit.setDisplayFormat("dd-MMM-yyyy")
-        date_edit.setCalendarPopup(True)
-        date_edit.setDate(QDate.currentDate())
-        add_btn = QPushButton("Add", dialog)
-
-        def on_add() -> None:
-            created = svc.add_price_list(
-                snapshot, id_edit.text(), label_edit.text(),
-                cur_combo.currentText(), date_edit.date().toString("yyyyMMdd"),
-            )
-            if created is None:
-                QMessageBox.warning(dialog, "Price Lists", "Enter a unique id.")
-                return
-            self._context.snapshot_manager.mark_modified()
-            id_edit.clear()
-            label_edit.clear()
-            render()
-
-        add_btn.clicked.connect(on_add)
-        for widget in (id_edit, label_edit, cur_combo, date_edit, add_btn):
-            add_bar.addWidget(widget)
-        layout.addLayout(add_bar)
-
-        button_bar = QHBoxLayout()
-        remove_btn = QPushButton("Remove selected", dialog)
-
-        def on_remove() -> None:
-            row = table.currentRow()
-            if row < 0 or table.item(row, 0) is None:
-                return
-            if svc.remove_price_list(snapshot, table.item(row, 0).text()):
-                self._context.snapshot_manager.mark_modified()
-                render()
-
-        remove_btn.clicked.connect(on_remove)
-        button_bar.addWidget(remove_btn)
-        button_bar.addStretch(1)
-        close_btn = QPushButton("Close", dialog)
-        close_btn.clicked.connect(dialog.accept)
-        button_bar.addWidget(close_btn)
-        layout.addLayout(button_bar)
-
-        render()
         dialog.exec()
+        if dialog.applied:
+            self.refresh()
+
+    def _on_manage_price_lists(self) -> None:
+        self._open_price_list_manager()
+
+    def on_enter(self) -> None:
+        """Refresh and offer the default first-list setup for Development."""
+        snapshot = self._context.active_snapshot
+        self.refresh()
+        if snapshot is None:
+            return
+        module = getattr(self.window(), "_active_module", None)
+        if module != WorkbenchModule.DEVELOPMENT or snapshot.price_lists:
+            return
+        if getattr(self, "_default_price_list_snapshot", None) is snapshot:
+            return
+        self._default_price_list_snapshot = snapshot
+        QTimer.singleShot(0, self._open_price_list_manager)
 
     def _build_table(self) -> QWidget:
         box = QGroupBox("Price records", self)
