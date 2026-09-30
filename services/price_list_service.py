@@ -106,11 +106,18 @@ class PriceListService(BaseService):
         """Apply a reviewed proposal set."""
         if snapshot is None or not proposals or any(p.conflict for p in proposals):
             return False
+        existing_ids = {p.id.upper() for p in snapshot.price_lists}
+        proposed_ids = [p.list_id.upper() for p in proposals]
+        if len(proposed_ids) != len(set(proposed_ids)):
+            return False
+        if existing_ids.intersection(proposed_ids):
+            return False
         for proposal in proposals:
-            if self.add_price_list(
+            created = self.add_price_list(
                 snapshot, proposal.list_id, proposal.label,
                 proposal.currency, proposal.date_from,
-            ) is None:
+            )
+            if created is None:
                 return False
         return True
     def add_price_list(
