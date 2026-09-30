@@ -82,6 +82,7 @@ class ApplicationContext:
         # in separate snapshots so repository imports never overwrite Development.
         self._pdm_snapshot: Snapshot | None = None
         self._repository_snapshot: Snapshot | None = None
+        self._maintenance_repository_info: dict | None = None
         self._maintenance_snapshot: MaintenanceSnapshot | None = None
         # UI-independent session state for long-running validation workflows.
         # Pages may be hidden during module navigation; the operation data must
@@ -151,6 +152,14 @@ class ApplicationContext:
     @property
     def maintenance_snapshot(self) -> MaintenanceSnapshot | None:
         return self._maintenance_snapshot
+
+    @property
+    def maintenance_repository_info(self) -> dict | None:
+        """Selected published repository identity used by Maintenance linking."""
+        return self._maintenance_repository_info
+
+    def register_maintenance_repository_info(self, info: dict | None) -> None:
+        self._maintenance_repository_info = info
 
     def register_maintenance_snapshot(self, snapshot: MaintenanceSnapshot | None) -> None:
         self._maintenance_snapshot = snapshot
