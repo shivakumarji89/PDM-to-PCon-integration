@@ -70,10 +70,14 @@ class MaintenancePage(BasePage):
             "Bulk-write the export version and today's date to OCD + ODB "
             "packages.",
             self._on_update_version))
-        row.addWidget(self._tool_card(
+        repository_link_card = self._tool_card(
             "Repository Link",
-            "Establish or reopen the persistent link between a published series repository and its PDM product.",
-            self._on_repository_link))
+            "Establish the persistent link between the currently loaded published series and PDM product.",
+            self._on_repository_link)
+        row.addWidget(repository_link_card)
+        self._repository_link_button = repository_link_card.findChild(QPushButton)
+        if self._repository_link_button is not None:
+            self._repository_link_button.setEnabled(False)
         layout.addLayout(row)
         return container
 
@@ -126,6 +130,15 @@ class MaintenancePage(BasePage):
         layout.addWidget(grid)
         layout.addStretch(1)
         return container
+
+    def refresh(self) -> None:
+        """Refresh Maintenance tool availability from the loaded Workbench state."""
+        if getattr(self, "_repository_link_button", None) is None:
+            return
+        self._repository_link_button.setEnabled(
+            self._context.repository_snapshot is not None
+            and self._context.pdm_snapshot is not None
+        )
 
     # -- helpers --------------------------------------------------------
 
