@@ -692,6 +692,16 @@ class ProductPage(BasePage):
 
         self._context.register_pdm_snapshot(pdm_snapshot)
         self._context.activate_snapshot_source("repository")
+
+        # Maintenance-only alignment state. Development never enters this path.
+        from models.maintenance_snapshot import MaintenanceSnapshot
+        maintenance_state = MaintenanceSnapshot(
+            pdm_snapshot=pdm_snapshot,
+            repository_snapshot=self._context.repository_snapshot,
+        )
+        self._context.register_maintenance_snapshot(maintenance_state)
+        self._context.maintenance_alignment_service.align(maintenance_state)
+
         self._repository_workspace._repository_status.setText(
             f"Maintenance ready: MDB baseline + PDM scope "
             f"{self._maintenance_pdm_scope} | {len(pdm_snapshot.articles):,} articles."
@@ -707,6 +717,7 @@ class ProductPage(BasePage):
 
 
     def _on_shared_repository_cleared(self) -> None:
+        self._context.register_maintenance_snapshot(None)
         self._update_repository_actions()
         self.snapshot_changed.emit()
 
