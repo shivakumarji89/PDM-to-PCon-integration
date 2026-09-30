@@ -924,10 +924,6 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "article_varcond_terms": snapshot.article_varcond_terms,
         "article_prefix_length": snapshot.article_prefix_length,
         "base_length_overrides": snapshot.base_length_overrides,
-        "maintenance_base_rules": snapshot.maintenance_base_rules,
-        "maintenance_article_relations": snapshot.maintenance_article_relations,
-        "maintenance_unresolved_article_ids": snapshot.maintenance_unresolved_article_ids,
-        "maintenance_alignment_status": snapshot.maintenance_alignment_status,
         "option_increments": snapshot.option_increments,
         "attribute_value_exclusions": snapshot.attribute_value_exclusions,
         "attribute_option_dependencies": snapshot.attribute_option_dependencies,
@@ -1044,14 +1040,6 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
             for k, v in (data.get("base_length_overrides") or {}).items()
             if v is not None
         },
-        maintenance_base_rules=dict(data.get("maintenance_base_rules") or {}),
-        maintenance_article_relations=dict(data.get("maintenance_article_relations") or {}),
-        maintenance_unresolved_article_ids=list(
-            data.get("maintenance_unresolved_article_ids") or []
-        ),
-        maintenance_alignment_status=str(
-            data.get("maintenance_alignment_status", "UNRESOLVED") or "UNRESOLVED"
-        ),
         option_increments={
             str(k): list(v or [])
             for k, v in (data.get("option_increments") or {}).items()
