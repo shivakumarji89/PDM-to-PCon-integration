@@ -22,6 +22,7 @@ class WorkflowStep(Enum):
     PRICING = "pricing"
     PRICING_RELATION = "pricing_relation"
     REVIEW = "review"
+    MAINTENANCE_COMPARISON = "maintenance_comparison"
     ENGINEERING = "engineering"
     MAINTENANCE = "maintenance"
     #: Standalone CET SIF validation tool (self-contained, disconnectable).
