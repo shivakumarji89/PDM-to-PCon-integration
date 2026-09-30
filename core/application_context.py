@@ -83,6 +83,10 @@ class ApplicationContext:
         self._pdm_snapshot: Snapshot | None = None
         self._repository_snapshot: Snapshot | None = None
         self._maintenance_snapshot: MaintenanceSnapshot | None = None
+        # UI-independent session state for long-running validation workflows.
+        # Pages may be hidden during module navigation; the operation data must
+        # remain available until the user explicitly replaces or clears it.
+        self._workflow_sessions: dict[str, dict[str, object]] = {}
         self._snapshot_source: str = "pdm"
         self._product_names: dict[str, str] = {}
         self._event_bus: EventBus | None = None
@@ -131,6 +135,14 @@ class ApplicationContext:
             factory = self._service_factories.get(service_type, service_type)
             self._services[service_type] = factory(self)
         return self._services[service_type]  # type: ignore[return-value]
+
+    def workflow_session(self, name: str) -> dict[str, object]:
+        """Return persistent UI-independent state for a long-running workflow."""
+        return self._workflow_sessions.setdefault(name, {})
+
+    def clear_workflow_session(self, name: str) -> None:
+        """Explicitly discard persistent state for a workflow."""
+        self._workflow_sessions.pop(name, None)
 
     @property
     def active_snapshot(self) -> Snapshot | None:
