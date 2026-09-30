@@ -854,7 +854,7 @@ class PDMRepository(BaseRepository):
                 "WHEN component.ProductCodeIdOverride IS NOT NULL "
                 "THEN component.ProductCodeIdOverride ELSE cp.ProductCodeId END "
                 "AND pc.SiteId = ? "
-                "LEFT JOIN (SELECT pm.ItemPriceCode, pm.Rounding, "
+                "LEFT JOIN (SELECT DISTINCT pm.ItemPriceCode, pm.Rounding, "
                 "c.Currency AS MatchedCurrency FROM PriceMatrix pm "
                 "INNER JOIN Currency c ON pm.CustPriceCode = c.PriceCode "
                 "WHERE UPPER(c.Currency) = UPPER(?)) pm "
