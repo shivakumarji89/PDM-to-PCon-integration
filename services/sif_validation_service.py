@@ -81,8 +81,7 @@ class SifValidationService(BaseService):
 
     _PRICE_WINDOW = 16  # normal PDM query window; one validation connection is reused
 
-    @classmethod
-    def _adaptive_price_window(cls, line_count: int) -> int:
+    def _adaptive_price_window(self, line_count: int) -> int:
         """Keep PDM query batches small as an OBX/SIF workload grows.
 
         The window is deliberately conservative: it changes query size, not
@@ -90,7 +89,7 @@ class SifValidationService(BaseService):
         PDM connection and reuses it across all windows, while the connection
         recovery logic in the caller remains unchanged.
         """
-        base = max(1, int(cls._PRICE_WINDOW))
+        base = max(1, int(self._PRICE_WINDOW))
         count = max(0, int(line_count))
         if count <= 128:
             return base
@@ -986,6 +985,11 @@ class SifValidationService(BaseService):
             })
             option_data_items = sorted(set(option_items) | set(inc_items))
             skipped_option_items: set[str] = set()
+            # The repository may retain skipped-option diagnostics from a
+            # previous chunk. Clear that state before each fresh option lookup
+            # so a later chunk cannot inherit a stale skip decision.
+            if option_data_items and hasattr(repo, "last_skipped_option_items"):
+                repo.last_skipped_option_items = []
             option_rows = (
                 repo.fetch_item_validation_options(
                     option_data_items, currency, mydate, site, conn
