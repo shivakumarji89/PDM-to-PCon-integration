@@ -67,11 +67,6 @@ class MaintenancePage(BasePage):
             "list with fresh PDM prices.",
             self._on_price_update))
         row.addWidget(self._tool_card(
-            "Check Base Lengths",
-            "Compare base articles against PDM CAD Maintenance and edit the "
-            "central registry.",
-            self._on_check_base_lengths))
-        row.addWidget(self._tool_card(
             "Update Version",
             "Bulk-write the export version and today's date to OCD + ODB "
             "packages.",
@@ -149,11 +144,6 @@ class MaintenancePage(BasePage):
         from ui.dialogs.price_rollover_dialog import PriceRolloverDialog
 
         PriceRolloverDialog(self._context, self._default_repo(), self).exec()
-
-    def _on_check_base_lengths(self) -> None:
-        from ui.dialogs.base_length_check_dialog import BaseLengthCheckDialog
-
-        BaseLengthCheckDialog(self._context, self._default_repo(), self).exec()
 
     def _on_parity(self) -> None:
         from ui.dialogs.maintenance_parity_dialog import MaintenanceParityDialog
