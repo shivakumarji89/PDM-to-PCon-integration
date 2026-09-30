@@ -184,6 +184,7 @@ class ObxValidationPage(BasePage):
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
         self._last_checkpoint_count = 0
+        self._session = self._context.workflow_session("obx_validation")
         self.add_content(self._build_controls())
         self.add_content(self._build_progress_panel())
         self.add_content(self._build_results())
@@ -404,6 +405,7 @@ class ObxValidationPage(BasePage):
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
+        self._save_session()
         self._offer_checkpoint_resume()
 
     def _on_launch(self) -> None:
