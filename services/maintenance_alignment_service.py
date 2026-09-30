@@ -13,6 +13,53 @@ from services.base_service import BaseService
 class MaintenanceAlignmentService(BaseService):
     """Align Maintenance PDM articles against released MDB base articles."""
 
+    @staticmethod
+    def apply_released_mdb_base_lengths(pdm_snapshot, repository_snapshot) -> int:
+        """Apply released-MDB base lengths to a Maintenance PDM snapshot.
+
+        This is intentionally an opt-in Maintenance operation. Development never
+        calls it, so the shared PDM loading semantics remain unchanged.
+
+        For each PDM article, the longest released-MDB article code that is a
+        prefix of the PDM code supplies the Maintenance base length. Articles
+        with no released-MDB prefix are left untouched so the existing PDM
+        length resolution remains available as the fallback.
+        """
+        if pdm_snapshot is None or repository_snapshot is None:
+            return 0
+
+        mdb_codes = sorted(
+            {
+                str(article.code or "").strip()
+                for article in repository_snapshot.articles
+                if str(article.code or "").strip()
+            },
+            key=lambda value: (-len(value), value.casefold()),
+        )
+        if not mdb_codes:
+            return 0
+
+        overrides = dict(getattr(pdm_snapshot, "base_length_overrides", {}) or {})
+        applied = 0
+        for article in pdm_snapshot.articles:
+            code = str(article.code or "").strip()
+            if not code:
+                continue
+            folded = code.casefold()
+            base_code = next(
+                (candidate for candidate in mdb_codes if folded.startswith(candidate.casefold())),
+                None,
+            )
+            if base_code is None:
+                continue
+            length = len(base_code)
+            if overrides.get(code) != length:
+                overrides[code] = length
+                applied += 1
+
+        pdm_snapshot.base_length_overrides = overrides
+        return applied
+
     def align(self, state: MaintenanceSnapshot) -> MaintenanceAlignment:
         """Align Maintenance PDM articles using PDM's authoritative slice length."""
         pdm = state.pdm_snapshot
