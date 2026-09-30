@@ -1511,12 +1511,44 @@ class ProductPage(BasePage):
         pdm_snapshot = self._context.active_snapshot
         self._context.engineering_initialization_service.initialize(pdm_snapshot)
         self._context.register_pdm_snapshot(pdm_snapshot)
+        self._sync_maintenance_comparison_state(pdm_snapshot)
         if self._context.snapshot_source == "repository":
             self._context.activate_snapshot_source("repository")
         self._refresh_display(product, duration, result.warnings)
         self._highlight_active_node(product)
         self.product_loaded.emit(f"Product: {product.code} - {product.name}")
         self.snapshot_changed.emit()
+
+    def _sync_maintenance_comparison_state(self, pdm_snapshot) -> None:
+        """Build Maintenance comparison state from the selected Product PDM snapshot."""
+        if self._context_module != WorkbenchModule.MAINTENANCE:
+            return
+
+        repository = self._context.repository_snapshot
+        if repository is None:
+            self._context.register_maintenance_snapshot(None)
+            self._repository_workspace._repository_status.setText(
+                "PDM product loaded. Open the released MDB repository before comparison."
+            )
+            return
+
+        from models.maintenance_snapshot import MaintenanceSnapshot
+        from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+        state = MaintenanceSnapshot(
+            pdm_snapshot=pdm_snapshot,
+            repository_snapshot=repository,
+        )
+        self._context.register_maintenance_snapshot(state)
+        alignment = MaintenanceAlignmentService(self._context).align(state)
+
+        self._repository_workspace._repository_status.setText(
+            f"Maintenance PDM ↔ MDB alignment {alignment.status}: "
+            f"{len(alignment.relations):,} matched, "
+            f"{len(alignment.unresolved_article_ids):,} unresolved | "
+            f"PDM product {pdm_snapshot.product.code if pdm_snapshot.product else '-'} | "
+            f"{len(pdm_snapshot.articles):,} articles."
+        )
 
     def _on_load_failed(self, token: int, message: str) -> None:
         if token != self._load_token:
@@ -1529,6 +1561,9 @@ class ProductPage(BasePage):
 
     def _on_clear_snapshot(self) -> None:
         self._context.clear_active_snapshot()
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            self._context.register_pdm_snapshot(None)
+            self._context.register_maintenance_snapshot(None)
         self._loaded_product = None
         self._clear_active_highlight()
         self._reset_display()
