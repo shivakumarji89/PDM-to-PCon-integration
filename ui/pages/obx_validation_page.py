@@ -481,6 +481,7 @@ class ObxValidationPage(BasePage):
         self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
         self._dispatch_remaining = list(lines)
+        self._dispatch_batch_remaining = []
         self._dispatch_sites = {}
         self._dispatch_workers = 0
         self._dispatch_total = len(lines)
@@ -503,24 +504,29 @@ class ObxValidationPage(BasePage):
     def _dispatch_memory_batch(self) -> None:
         if self._active_control is None:
             return
-        if not self._dispatch_remaining:
-            results = sorted(
-                self._results,
-                key=lambda result: self._seq_key(getattr(result, "seq", 0)),
+        if not self._dispatch_batch_remaining:
+            if not self._dispatch_remaining:
+                results = sorted(
+                    self._results,
+                    key=lambda result: self._seq_key(getattr(result, "seq", 0)),
+                )
+                self._on_results((self._dispatch_sites, results))
+                return
+            batch_size = self._memory_batch_size(self._dispatch_total)
+            self._dispatch_batch_remaining = self._dispatch_remaining[:batch_size]
+            self._reporter.note(
+                f"Loaded feed batch of {len(self._dispatch_batch_remaining)} line(s)."
             )
-            self._on_results((self._dispatch_sites, results))
-            return
 
-        batch_size = self._memory_batch_size(self._dispatch_total)
-        memory_batch = self._dispatch_remaining[:batch_size]
+        worker_round = self._dispatch_batch_remaining[: 2 * _ObxWorker._WORKER_SIZE]
         self._dispatch_workers = 0
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         chunks = [
-            memory_batch[index:index + _ObxWorker._WORKER_SIZE]
-            for index in range(0, len(memory_batch), _ObxWorker._WORKER_SIZE)
+            worker_round[index:index + _ObxWorker._WORKER_SIZE]
+            for index in range(0, len(worker_round), _ObxWorker._WORKER_SIZE)
         ]
         self._progress_state.setText(
-            f"VALIDATING — feed batch {len(memory_batch)} lines, workers 8 + 8"
+            f"VALIDATING — feed batch {len(self._dispatch_batch_remaining)} lines, workers 8 + 8"
         )
 
         for chunk in chunks[:2]:
@@ -555,18 +561,18 @@ class ObxValidationPage(BasePage):
         completed_seqs = {
             getattr(result, "seq", None) for result in self._results
         }
+        self._dispatch_batch_remaining = [
+            line for line in self._dispatch_batch_remaining
+            if getattr(line, "seq", None) not in completed_seqs
+        ]
+        if self._dispatch_batch_remaining:
+            self._dispatch_memory_batch()
+            return
+
         self._dispatch_remaining = [
             line for line in self._dispatch_remaining
             if getattr(line, "seq", None) not in completed_seqs
         ]
-        if not self._dispatch_remaining:
-            results = sorted(
-                self._results,
-                key=lambda result: self._seq_key(getattr(result, "seq", 0)),
-            )
-            self._on_results((self._dispatch_sites, results))
-            return
-
         self._dispatch_memory_batch()
 
     def _release_active_control(self) -> None:
