@@ -618,101 +618,10 @@ class ProductPage(BasePage):
 
     def _on_shared_repository_loaded(self, snapshot) -> None:
         self._update_repository_actions()
-        self.snapshot_changed.emit()
         if self._context_module == WorkbenchModule.MAINTENANCE:
-            self._start_maintenance_pdm_selection()
-
-    def _start_maintenance_pdm_selection(self) -> None:
-        """After MDB extraction, select and load the matching PDM scope."""
-        from ui.dialogs.pdm_maintenance_scope_dialog import PdmMaintenanceScopeDialog
-
-        # A new repository invalidates the previous Maintenance pairing.
-        # Clear both snapshots so parity cannot accidentally reuse the prior
-        # repository/PDM alignment while the new scope is being selected.
-        self._context.register_pdm_snapshot(None)
-        self._context.register_maintenance_snapshot(None)
-
-        try:
-            products = self._context.pdm_service.get_cached_products()
-        except Exception as error:
-            QMessageBox.warning(self, "Maintenance PDM", str(error))
-            return
-
-        if not products:
-            QMessageBox.warning(
-                self,
-                "Maintenance PDM",
-                "No PDM products are available for the current PDM connection.",
-            )
-            return
-
-        dialog = PdmMaintenanceScopeDialog(products, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
             self._repository_workspace._repository_status.setText(
-                "MDB repository loaded. PDM scope selection cancelled."
+                "MDB repository loaded. Select a PDM product from the Product workflow to compare."
             )
-            return
-
-        selected = dialog.selected_products
-        if not selected:
-            return
-
-        series = selected[0].range_name or "(Unassigned Series)"
-        category = selected[0].category or "(Unassigned Category)"
-        catalog = selected[0].description or "(Unassigned Catalog)"
-        scope_name = f"{series} / {category} / {catalog}"
-
-        self._repository_workspace._repository_status.setText(
-            f"MDB loaded. Loading PDM scope: {scope_name} ({len(selected):,} products)..."
-        )
-        self._start_maintenance_pdm_load(selected, scope_name)
-
-    def _start_maintenance_pdm_load(self, products, scope_name: str) -> None:
-        signals = _MaintenancePdmLoadSignals()
-        signals.finished.connect(self._on_maintenance_pdm_loaded)
-        signals.failed.connect(self._on_maintenance_pdm_load_failed)
-        self._maintenance_pdm_signals = signals
-        self._maintenance_pdm_scope = scope_name
-        worker = _MaintenancePdmLoadWorker(
-            self._context.pdm_service, products, scope_name, signals
-        )
-        self._pool.start(worker)
-
-    def _on_maintenance_pdm_loaded(self, result) -> None:
-        if not result.ok:
-            self._on_maintenance_pdm_load_failed(result.message)
-            return
-
-        pdm_snapshot = self._context.active_snapshot
-        try:
-            self._context.engineering_initialization_service.initialize(pdm_snapshot)
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "Maintenance PDM",
-                f"PDM data loaded, but engineering initialization failed: {error}",
-            )
-
-        self._context.register_pdm_snapshot(pdm_snapshot)
-        self._context.activate_snapshot_source("repository")
-
-        # Maintenance-only alignment state. Development never enters this path.
-        from models.maintenance_snapshot import MaintenanceSnapshot
-        maintenance_state = MaintenanceSnapshot(
-            pdm_snapshot=pdm_snapshot,
-            repository_snapshot=self._context.repository_snapshot,
-        )
-        self._context.register_maintenance_snapshot(maintenance_state)
-        from services.maintenance_alignment_service import MaintenanceAlignmentService
-        alignment = MaintenanceAlignmentService(self._context).align(maintenance_state)
-
-        self._repository_workspace._repository_status.setText(
-            f"Maintenance alignment {alignment.status}: "
-            f"{len(alignment.relations):,} matched, "
-            f"{len(alignment.unresolved_article_ids):,} unresolved | "
-            f"PDM scope {self._maintenance_pdm_scope} | "
-            f"{len(pdm_snapshot.articles):,} articles."
-        )
         self.snapshot_changed.emit()
 
     def _on_maintenance_pdm_load_failed(self, message: str) -> None:
