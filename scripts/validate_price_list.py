@@ -23,38 +23,38 @@ def main() -> int:
     )
 
     # Add two EUR lists out of order + one GBP list.
-    svc.add_price_list(snap, "euro_2027", "Euro 2027", "EUR", "20270101")
-    svc.add_price_list(snap, "euro_2026", "Euro 2026", "eur", "20260101")
-    svc.add_price_list(snap, "gbp_2026", "GBP 2026", "GBP", "20260401")
+    svc.add_price_list(snap, "EURO_2027", "EURO 2027", "EUR", "20270101")
+    svc.add_price_list(snap, "EURO_2026", "EURO 2026", "eur", "20260101")
+    svc.add_price_list(snap, "GBP_2026", "GBP 2026", "GBP", "20260401")
 
     lists = {pl.id: pl for pl in svc.price_lists(snap)}
-    assert lists["euro_2026"].currency == "EUR", "currency upper-cased"
+    assert lists["EURO_2026"].currency == "EUR", "currency upper-cased"
     # Roll-over within EUR: 2026 closes the day before 2027 starts; 2027 open.
-    assert lists["euro_2026"].date_from == "20260101"
-    assert lists["euro_2026"].date_to == "20261231", lists["euro_2026"].date_to
-    assert lists["euro_2027"].date_to == "99991231", lists["euro_2027"].date_to
+    assert lists["EURO_2026"].date_from == "20260101"
+    assert lists["EURO_2026"].date_to == "20261231", lists["EURO_2026"].date_to
+    assert lists["EURO_2027"].date_to == "99991231", lists["EURO_2027"].date_to
     print("OK: EUR chain rolls over (2026 -> 20261231, 2027 open)")
 
     # GBP is an independent chain: single list stays open.
-    assert lists["gbp_2026"].date_to == "99991231", lists["gbp_2026"].date_to
+    assert lists["GBP_2026"].date_to == "99991231", lists["GBP_2026"].date_to
     print("OK: GBP chain independent (single list stays open)")
 
     # Duplicate id rejected.
-    assert svc.add_price_list(snap, "euro_2026", "dup", "EUR", "20280101") is None
+    assert svc.add_price_list(snap, "EURO_2026", "dup", "EUR", "20280101") is None
     print("OK: duplicate id rejected")
 
     # Remove re-opens the previous list.
-    svc.remove_price_list(snap, "euro_2027")
+    svc.remove_price_list(snap, "EURO_2027")
     lists = {pl.id: pl for pl in svc.price_lists(snap)}
-    assert "euro_2027" not in lists
-    assert lists["euro_2026"].date_to == "99991231", lists["euro_2026"].date_to
+    assert "EURO_2027" not in lists
+    assert lists["EURO_2026"].date_to == "99991231", lists["EURO_2026"].date_to
     print("OK: removing the later list re-opens the earlier (20261231 -> 99991231)")
 
     # Add it back, then edit the start date -> re-chain.
-    svc.add_price_list(snap, "euro_2028", "Euro 2028", "EUR", "20280101")
-    svc.set_price_list(snap, "euro_2028", date_from="20270601")
+    svc.add_price_list(snap, "EURO_2028", "EURO 2028", "EUR", "20280101")
+    svc.set_price_list(snap, "EURO_2028", date_from="20270601")
     lists = {pl.id: pl for pl in svc.price_lists(snap)}
-    assert lists["euro_2026"].date_to == "20270531", lists["euro_2026"].date_to
+    assert lists["EURO_2026"].date_to == "20270531", lists["EURO_2026"].date_to
     print("OK: editing a start date re-chains (2026 -> 20270531)")
 
     # Serialization round-trip.
@@ -73,14 +73,14 @@ def main() -> int:
         PriceRecord(article_code="A1", level="B", value=90.0, currency="GBP"),
     ]
     snap.price_lists = []
-    svc.add_price_list(snap, "euro_2026", "Euro 2026", "EUR", "20260101")
-    svc.add_price_list(snap, "gbp_2026", "GBP 2026", "GBP", "20260101")
+    svc.add_price_list(snap, "EURO_2026", "EURO 2026", "EUR", "20260101")
+    svc.add_price_list(snap, "GBP_2026", "GBP 2026", "GBP", "20260101")
     xocd = ctx.xocd_export_service
     ctxd = {"program": "PROG", "price_list": "STD"}
     lists = xocd._active_price_lists(snap, ctxd)
     rows = xocd._prices(snap, ctxd, lists)
-    euro_rows = [r for r in rows if r[1] == "euro_2026"]
-    gbp_rows = [r for r in rows if r[1] == "gbp_2026"]
+    euro_rows = [r for r in rows if r[1] == "EURO_2026"]
+    gbp_rows = [r for r in rows if r[1] == "GBP_2026"]
     assert len(euro_rows) == 2 and all(r[10] == "EUR" for r in euro_rows), euro_rows
     assert len(gbp_rows) == 1 and gbp_rows[0][10] == "GBP", gbp_rows
     assert euro_rows[0][11] == "20260101" and euro_rows[0][12] == "99991231", euro_rows[0]
@@ -128,8 +128,8 @@ def main() -> int:
     svc_p = PricingService.__new__(PricingService)  # no ctx needed for these
     # Defined EUR + GBP lists -> both currencies computed (order preserved).
     snap.price_lists = [
-        PriceList(id="euro_2025", label="EUR 2025", currency="EUR"),
-        PriceList(id="gbp_2025", label="GBP 2025", currency="GBP"),
+        PriceList(id="EURO_2025", label="EUR 2025", currency="EUR"),
+        PriceList(id="GBP_2025", label="GBP 2025", currency="GBP"),
     ]
     assert svc_p.target_currencies(snap, PriceParams(currency="USD")) == ["EUR", "GBP"]
     # No lists -> fall back to the selected combo currency only.
