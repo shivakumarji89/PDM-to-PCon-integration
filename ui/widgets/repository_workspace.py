@@ -332,6 +332,7 @@ class RepositoryWorkspace(QWidget):
         self._repository_load_token += 1
         token = self._repository_load_token
         self._context.register_repository_snapshot(None)
+        self._context.register_maintenance_repository_info(None)
         self.repository_cleared.emit()
         try:
             inspection = self._context.maintenance_repository_link_service.inspect_repository(path)
@@ -340,6 +341,7 @@ class RepositoryWorkspace(QWidget):
             return
 
         self._repository_path_value = str(inspection["path"])
+        self._context.register_maintenance_repository_info(inspection)
         self._repository_path.setText(self._repository_path_value)
         self._repository_status.setText(
             f"Loading: {inspection['name']}  |  "
@@ -417,6 +419,7 @@ class RepositoryWorkspace(QWidget):
     def clear_repository(self) -> None:
         self._repository_load_token += 1
         self._repository_path_value = ""
+        self._context.register_maintenance_repository_info(None)
         self._repository_path.setText("Not connected")
         self._repository_status.setText(
             "Click Open Repository to select a series from Seating or Tables."
