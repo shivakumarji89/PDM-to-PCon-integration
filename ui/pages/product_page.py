@@ -691,11 +691,39 @@ class ProductPage(BasePage):
             )
 
         self._context.register_pdm_snapshot(pdm_snapshot)
+        try:
+            alignment = self._context.maintenance_alignment_service.align(
+                pdm_snapshot,
+                self._context.repository_snapshot,
+            )
+        except Exception as error:
+            self._context.activate_snapshot_source("repository")
+            self._repository_workspace._repository_status.setText(
+                f"PDM scope loaded, but MDB alignment failed: {error}"
+            )
+            QMessageBox.warning(
+                self,
+                "Maintenance Alignment",
+                f"PDM data loaded, but released MDB alignment failed: {error}",
+            )
+            self.snapshot_changed.emit()
+            return
+
+        self._context.register_pdm_snapshot(pdm_snapshot)
         self._context.activate_snapshot_source("repository")
-        self._repository_workspace._repository_status.setText(
-            f"Maintenance ready: MDB baseline + PDM scope "
-            f"{self._maintenance_pdm_scope} | {len(pdm_snapshot.articles):,} articles."
-        )
+        if alignment.is_aligned:
+            status = (
+                f"Maintenance ready: MDB alignment applied + PDM scope "
+                f"{self._maintenance_pdm_scope} | "
+                f"{len(alignment.relations):,} articles aligned."
+            )
+        else:
+            status = (
+                f"Maintenance alignment incomplete: "
+                f"{len(alignment.relations):,} aligned, "
+                f"{len(alignment.unresolved_article_ids):,} unresolved."
+            )
+        self._repository_workspace._repository_status.setText(status)
         self.snapshot_changed.emit()
 
     def _on_maintenance_pdm_load_failed(self, message: str) -> None:
