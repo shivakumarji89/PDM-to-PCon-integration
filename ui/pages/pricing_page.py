@@ -418,6 +418,18 @@ class PricingPage(BasePage):
         QThreadPool.globalInstance().start(worker)
 
     def _on_pricing_finished(self, result) -> None:
+        run_currencies = set(self._pricing_currencies)
+        self._pricing_running = False
+        self._pricing_currencies = set()
+        self._pricing_baseline = []
+        snapshot = self._context.active_snapshot
+        if snapshot is not None and run_currencies:
+            snapshot.price_records = PricingService._accumulate_currencies(
+                snapshot.price_records,
+                result.records,
+                run_currencies,
+            )
+            self._context.snapshot_manager.mark_modified()
         diff = PricingService.diff(self._baseline, result.records)
         self._records = list(result.records)
         self._added_keys = {r.key() for r in diff.added}
@@ -433,6 +445,9 @@ class PricingPage(BasePage):
             )
 
     def _on_pricing_failed(self, message: str) -> None:
+        self._pricing_running = False
+        self._pricing_currencies = set()
+        self._pricing_baseline = []
         self._compute_btn.setEnabled(True)
         QMessageBox.critical(
             self, "Compute Prices", f"Price computation failed:\n\n{message}"
