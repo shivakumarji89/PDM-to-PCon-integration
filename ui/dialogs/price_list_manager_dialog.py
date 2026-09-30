@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QDateEdit,
@@ -72,7 +73,7 @@ class PriceListManagerDialog(QDialog):
             "Currency", "Price List", "Valid From", "Previous List",
             "Previous Valid To", "Status",
         ])
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self._table, 1)
 
