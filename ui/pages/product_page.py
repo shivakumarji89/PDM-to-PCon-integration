@@ -700,7 +700,8 @@ class ProductPage(BasePage):
             repository_snapshot=self._context.repository_snapshot,
         )
         self._context.register_maintenance_snapshot(maintenance_state)
-        alignment = self._context.maintenance_alignment_service.align(maintenance_state)
+        from services.maintenance_alignment_service import MaintenanceAlignmentService
+        alignment = MaintenanceAlignmentService(self._context).align(maintenance_state)
 
         self._repository_workspace._repository_status.setText(
             f"Maintenance alignment {alignment.status}: "
