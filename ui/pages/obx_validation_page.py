@@ -879,6 +879,44 @@ class ObxValidationPage(BasePage):
         else:
             self._delete_checkpoint()
 
+    def _save_session(self) -> None:
+        session = self._session
+        session.update({
+            "currency": self._currency,
+            "lines": self._lines,
+            "results": self._results,
+            "pending_lines": self._pending_lines,
+            "paths": list(getattr(self, "_paths", [])),
+            "source_path": self._source_path,
+            "file_of_seq": dict(getattr(self, "_file_of_seq", {})),
+            "currency_of_path": dict(getattr(self, "_currency_of_path", {})),
+            "skipped_count": self._skipped_count,
+            "duplicate_count": self._duplicate_count,
+            "is_paused": self._is_paused,
+            "validation_elapsed_seconds": self._validation_elapsed_seconds,
+        })
+
+    def _restore_session(self) -> None:
+        session = self._session
+        if not session.get("lines"):
+            return
+        self._currency = session.get("currency", "")
+        self._lines = list(session.get("lines", []))
+        self._results = list(session.get("results", []))
+        self._pending_lines = list(session.get("pending_lines", []))
+        self._paths = list(session.get("paths", []))
+        self._source_path = session.get("source_path", "")
+        self._file_of_seq = dict(session.get("file_of_seq", {}))
+        self._currency_of_path = dict(session.get("currency_of_path", {}))
+        self._skipped_count = int(session.get("skipped_count", 0))
+        self._duplicate_count = int(session.get("duplicate_count", 0))
+        self._is_paused = bool(session.get("is_paused", False))
+        self._validation_elapsed_seconds = float(session.get("validation_elapsed_seconds", 0.0))
+        self._render_table()
+
+    def refresh(self) -> None:
+        self._restore_session()
+
     def _reset_results(self) -> None:
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
