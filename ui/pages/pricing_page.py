@@ -9,7 +9,7 @@ the stored baseline so only changed cells stand out.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, QTimer, Signal
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -48,45 +48,7 @@ _ACT_LEVEL = {
 }
 
 
-class _PricingSignals(QObject):
-    """Signals emitted from the background pricing worker."""
-
-    batch = Signal(list)      # list[PriceRecord] as each batch is computed
-    finished = Signal(object)  # PriceComputeResult
-    failed = Signal(str)       # error message
-
-
-class _PricingWorker(QRunnable):
-    """Computes prices off the UI thread so the progress popup stays live.
-
-    Batches are marshalled to the UI via ``signals.batch``; the reporter (created
-    on the UI thread) is driven from here and its cross-thread signals update the
-    dialog smoothly because the UI thread is never blocked.
-    """
-
-    def __init__(self, context, params, snapshot, reporter, signals):
-        super().__init__()
-        self._context = context
-        self._params = params
-        self._snapshot = snapshot
-        self._reporter = reporter
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            result = PricingService(self._context).compute_streaming(
-                self._params, self._snapshot,
-                on_batch=lambda recs: self._signals.batch.emit(recs),
-                reporter=self._reporter,
-            )
-        except Exception as error:  # defensive: never crash the worker thread
-            self._reporter.finish(False, str(error))
-            self._signals.failed.emit(str(error))
-        else:
-            self._signals.finished.emit(result)
-
-
-_COL_ARTICLE = 0
+from ui.workers.background_task import BackgroundTask\n\n\n_COL_ARTICLE = 0
 _COL_VARCOND = 1
 _COL_VALUE = 2
 _COL_CURRENCY = 3
@@ -409,13 +371,27 @@ class PricingPage(BasePage):
         )
 
         # Compute off the UI thread so the popup animates instead of freezing.
-        signals = _PricingSignals()
-        signals.batch.connect(self._append_batch)
+        def work(emit):
+            try:
+                return PricingService(self._context).compute_streaming(
+                    params,
+                    snapshot,
+                    on_batch=emit,
+                    reporter=reporter,
+                )
+            except Exception as error:
+                # Preserve the existing reporter lifecycle before the generic
+                # runner routes the failure back to the GUI.
+                reporter.finish(False, str(error))
+                raise
+
+        task = BackgroundTask(work)
+        signals = task.signals
+        signals.progress.connect(self._append_batch)
         signals.finished.connect(self._on_pricing_finished)
         signals.failed.connect(self._on_pricing_failed)
         self._price_signals = signals
-        worker = _PricingWorker(self._context, params, snapshot, reporter, signals)
-        QThreadPool.globalInstance().start(worker)
+        QThreadPool.globalInstance().start(task)
 
     def _on_pricing_finished(self, result) -> None:
         run_currencies = set(self._pricing_currencies)
