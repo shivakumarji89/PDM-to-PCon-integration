@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QThreadPool, QTimer, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -34,34 +34,7 @@ from PySide6.QtWidgets import (
 from ui import theme
 from ui.pages.base_page import BasePage
 from services.xocd_export_service import XocdExportService
-
-
-class _MdbPreviewWorker(QObject):
-    """Build MDB preview data away from the GUI thread."""
-    finished = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, context, snapshot) -> None:
-        super().__init__()
-        self._context = context
-        self._snapshot = snapshot
-
-    @Slot()
-    def run(self) -> None:
-        try:
-            result = self._context.ocd_export_service.preview(self._snapshot)
-            if not result.error:
-                try:
-                    permutations = self._context.article_permutation_service.build(
-                        self._snapshot
-                    )
-                    result.permutation_count = len(permutations)
-                except Exception as error:
-                    result.logs.append(f"Permutation count unavailable: {error}")
-                    result.permutation_count = None
-            self.finished.emit(result)
-        except Exception as error:
-            self.failed.emit(str(error))
+from ui.workers.background_task import BackgroundTask
 
 
 class ReviewPage(BasePage):
@@ -80,8 +53,8 @@ class ReviewPage(BasePage):
         self._mdb_preview_rows = {}
         self._mdb_retained_rows = {}
         self._mdb_preview_result = None
-        self._preview_thread: QThread | None = None
-        self._preview_worker: _MdbPreviewWorker | None = None
+        self._preview_task: BackgroundTask | None = None
+        self._preview_signals = None
         self._preview_running = False
         self._preview_elapsed = 0
         self._technical_dialog: QDialog | None = None
@@ -392,19 +365,24 @@ class ReviewPage(BasePage):
         self._preview_elapsed_timer.start()
         self._update_preview_progress()
 
-        thread = QThread(self)
-        worker = _MdbPreviewWorker(self._context, snapshot)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.finished.connect(self._on_mdb_preview_finished)
-        worker.failed.connect(self._on_mdb_preview_failed)
-        worker.finished.connect(thread.quit)
-        worker.failed.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(self._on_mdb_preview_thread_finished)
-        self._preview_thread = thread
-        self._preview_worker = worker
-        thread.start()
+        def build(_emit):
+            result = self._context.ocd_export_service.preview(snapshot)
+            if not result.error:
+                try:
+                    permutations = self._context.article_permutation_service.build(snapshot)
+                    result.permutation_count = len(permutations)
+                except Exception as error:
+                    result.logs.append(f"Permutation count unavailable: {error}")
+                    result.permutation_count = None
+            return result
+
+        task = BackgroundTask(build)
+        signals = task.signals
+        signals.finished.connect(self._on_mdb_preview_finished)
+        signals.failed.connect(self._on_mdb_preview_failed)
+        self._preview_task = task
+        self._preview_signals = signals
+        QThreadPool.globalInstance().start(task)
 
     def _update_preview_progress(self) -> None:
         """Show live elapsed progress while the background MDB build is running.
