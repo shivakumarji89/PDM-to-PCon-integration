@@ -90,7 +90,7 @@ class PdmMdbParityService:
         )
 
         comparisons = (
-            ("Articles", self._maintenance_articles(pdm_snapshot), self._articles(mdb_snapshot)),
+            ("Articles", self._maintenance_article_keys(pdm_snapshot), self._article_keys(mdb_snapshot)),
             ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
             (
                 "Property Values",
@@ -148,16 +148,23 @@ class PdmMdbParityService:
                 )
             )
 
-    def _maintenance_articles(self, snapshot: Snapshot) -> dict[str, str]:
-        """Use released-MDB base identities for an aligned Maintenance snapshot."""
+    @staticmethod
+    def _article_keys(snapshot: Snapshot) -> dict[str, str]:
+        """Article identity-only map used when Maintenance aligns to MDB bases."""
+        return {
+            _norm(a.code): ""
+            for a in snapshot.articles
+            if a.code
+        }
+
+    @classmethod
+    def _maintenance_article_keys(cls, snapshot: Snapshot) -> dict[str, str]:
+        """Collapse aligned PDM variants onto their released MDB base identities."""
         if snapshot.maintenance_alignment_status not in {"ALIGNED", "PARTIAL"}:
-            return self._articles(snapshot)
-        relations = snapshot.maintenance_article_relations
-        if not relations:
-            return self._articles(snapshot)
+            return cls._article_keys(snapshot)
         return {
             _norm(str(row.get("base_code") or "")): ""
-            for row in relations.values()
+            for row in snapshot.maintenance_article_relations.values()
             if str(row.get("base_code") or "").strip()
         }
 
