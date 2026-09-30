@@ -196,7 +196,7 @@ class ObxValidationPage(BasePage):
         self._load_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         load_menu = QMenu(self._load_btn)
         load_menu.addAction("Select file(s)...", self._on_load)
-        load_menu.addAction("Select folder...", self._on_load_folder)
+        load_menu.addAction("Select folder (including subfolders)...", self._on_load_folder)
         self._load_btn.setMenu(load_menu)
         self._launch_btn = QPushButton("Launch Item Entry", container)
         self._launch_btn.setEnabled(False)
@@ -299,14 +299,33 @@ class ObxValidationPage(BasePage):
         if paths:
             self._load_paths(paths)
 
+    @staticmethod
+    def _discover_obx_files(folder: str | Path) -> list[str]:
+        """Return OBX files in a folder and all of its subfolders."""
+        folder_path = Path(folder)
+        if not folder_path.is_dir():
+            return []
+        return sorted(
+            str(path)
+            for path in folder_path.rglob("*")
+            if path.is_file() and path.suffix.lower() == ".obx"
+        )
+
     def _on_load_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Load all OBX files in folder")
+        # Directory selection is intentional: the user chooses the folder from
+        # its parent/location and does not need to open it to see its contents.
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select OBX folder (all subfolders included)"
+        )
         if not folder:
             return
-        folder_path = Path(folder)
-        paths = sorted(str(p) for p in folder_path.iterdir() if p.is_file() and p.suffix.lower() == ".obx")
+        paths = self._discover_obx_files(folder)
         if not paths:
-            QMessageBox.information(self, "OBX Validation", "No .obx files found in that folder.")
+            QMessageBox.information(
+                self,
+                "OBX Validation",
+                "No .obx files found in the selected folder or its subfolders.",
+            )
             return
         self._load_paths(paths)
 
