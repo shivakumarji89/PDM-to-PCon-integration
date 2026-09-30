@@ -71,7 +71,7 @@ class PriceListService(BaseService):
             conflict = ""
             previous_id = ""
             previous_date_to = ""
-            same_start = next((
+            same_start = next(
                 (p for p in existing
                  if p.currency.upper() == currency and p.date_from == start),
                 None,
@@ -120,6 +120,7 @@ class PriceListService(BaseService):
             if created is None:
                 return False
         return True
+
     def add_price_list(
         self, snapshot: Snapshot | None, list_id: str, label: str,
         currency: str, date_from: str,
