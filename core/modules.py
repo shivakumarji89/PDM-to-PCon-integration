@@ -100,6 +100,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     # Keep Development's full engineering workflow completely independent.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
+        WorkflowStep.MAINTENANCE,
         WorkflowStep.MAINTENANCE_COMPARISON,
     ),
     WorkbenchModule.BULK_UPDATE: (
