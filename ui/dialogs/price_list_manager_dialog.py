@@ -68,10 +68,10 @@ class PriceListManagerDialog(QDialog):
         date_row.addStretch(1)
         layout.addLayout(date_row)
 
-        self._table = QTableWidget(0, 6, self)
+        self._table = QTableWidget(0, 7, self)
         self._table.setHorizontalHeaderLabels([
-            "Currency", "Price List", "Valid From", "Previous List",
-            "Previous Valid To", "Status",
+            "Currency", "Price List", "Valid From", "Valid To",
+            "Previous List", "Previous Valid To", "Status",
         ])
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.horizontalHeader().setStretchLastSection(True)
@@ -117,6 +117,7 @@ class PriceListManagerDialog(QDialog):
                 proposal.currency,
                 proposal.list_id,
                 proposal.date_from,
+                "99991231",
                 previous_id,
                 previous_to,
                 status,
