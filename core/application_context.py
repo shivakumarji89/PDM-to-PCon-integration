@@ -34,6 +34,7 @@ from services.mdb_reconcile_service import MdbReconcileService
 from services.mdb_reverse_engineering_service import MdbReverseEngineeringService
 from services.pdm_mdb_parity_service import PdmMdbParityService
 from services.maintenance_repository_link_service import MaintenanceRepositoryLinkService
+from services.maintenance_alignment_service import MaintenanceAlignmentService
 from services.distribution_region_service import DistributionRegionService
 from services.option_service import OptionService
 from services.option_value_service import OptionValueService
@@ -98,6 +99,7 @@ class ApplicationContext:
             MdbReverseEngineeringService: MdbReverseEngineeringService,
             PdmMdbParityService: PdmMdbParityService,
             MaintenanceRepositoryLinkService: MaintenanceRepositoryLinkService,
+            MaintenanceAlignmentService: MaintenanceAlignmentService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
             PropertyValueService: PropertyValueService,
@@ -239,6 +241,10 @@ class ApplicationContext:
     @property
     def pdm_mdb_parity_service(self) -> PdmMdbParityService:
         return self.get_service(PdmMdbParityService)
+
+    @property
+    def maintenance_alignment_service(self) -> MaintenanceAlignmentService:
+        return self.get_service(MaintenanceAlignmentService)
 
     @property
     def maintenance_repository_link_service(self) -> MaintenanceRepositoryLinkService:
