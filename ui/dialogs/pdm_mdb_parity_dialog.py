@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from services.pdm_mdb_parity_service import PdmMdbParityService
+from services.maintenance_parity_service import MaintenanceParityService
 from ui.workers.background_task import BackgroundTask
 
 
@@ -28,7 +28,7 @@ class PdmMdbParityDialog(QDialog):
     def __init__(self, context, parent=None) -> None:
         super().__init__(parent)
         self._context = context
-        self._service = PdmMdbParityService(context)
+        self._service = MaintenanceParityService(context)
         self._task: BackgroundTask | None = None
         self.setWindowTitle("PDM ↔ MDB Parity")
         self.resize(1100, 680)
@@ -96,10 +96,17 @@ class PdmMdbParityDialog(QDialog):
             self._status.setText("The selected MDB does not exist.")
             return
 
-        snapshot = self._context.pdm_snapshot
-        if snapshot is None:
+        state = self._context.maintenance_snapshot
+        if state is None or state.pdm_snapshot is None or state.repository_snapshot is None:
             self._status.setText(
-                "No PDM Snapshot is loaded. Load PDM data in Development first."
+                "Maintenance state is incomplete. Load the MDB repository and Maintenance PDM scope first."
+            )
+            return
+
+        if not state.alignment.is_aligned:
+            self._status.setText(
+                "Maintenance alignment is incomplete. "
+                "Resolve the released MDB base-article alignment before parity."
             )
             return
 
@@ -109,7 +116,7 @@ class PdmMdbParityDialog(QDialog):
         self._status.setText("Starting parity check...")
 
         task = BackgroundTask(
-            lambda emit: self._service.compare(snapshot, path, progress=emit)
+            lambda emit: self._service.compare(state, path, progress=emit)
         )
         self._task = task
         task.signals.progress.connect(self._on_progress)
