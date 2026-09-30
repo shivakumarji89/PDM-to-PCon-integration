@@ -346,7 +346,7 @@ def test_superproduct_component_base_query_preserves_missing_prices_and_quantity
     assert "ic.ComponentSequence" in query
     assert "ic.Quantity" in query
     assert "LEFT JOIN Product_Code" in query
-    assert "LEFT JOIN (SELECT pm.ItemPriceCode" in query
+    assert "LEFT JOIN (SELECT DISTINCT pm.ItemPriceCode" in query
     assert "UPPER(c.Currency) = UPPER(?)" in query
     assert "pc.BasePriceRef = 2 THEN component.BasePrice2" in query
     assert "pc.BasePriceRef = 3 THEN component.BasePrice3" in query
@@ -1522,30 +1522,11 @@ def test_obx_does_not_recover_structural_xml_corruption():
         raise AssertionError("Structural XML corruption must not be silently recovered")
 
 
-@pytest.mark.parametrize(
-    "line_count, expected_window",
-    [
-        (0, 16),
-        (128, 16),
-        (129, 8),
-        (512, 8),
-        (513, 4),
-        (2000, 4),
-        (2001, 2),
-        (10000, 2),
-    ],
-)
-def test_adaptive_price_window_scales_down_for_large_workloads(line_count, expected_window):
+def test_pdm_query_window_is_independent_of_total_workload():
     service = SifValidationService(None)
-    assert service._adaptive_price_window(line_count) == expected_window
+    service._PRICE_WINDOW = 16
 
-
-def test_adaptive_price_window_respects_smaller_test_or_safety_window():
-    service = SifValidationService(None)
-    service._PRICE_WINDOW = 3
-
-    assert service._adaptive_price_window(128) == 3
-    assert service._adaptive_price_window(1000) == 3
+    assert service._PRICE_WINDOW == 16
 
 
 def test_obx_filtered_export_preserves_selected_source_articles(tmp_path):
