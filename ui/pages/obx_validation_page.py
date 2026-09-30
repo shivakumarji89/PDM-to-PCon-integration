@@ -222,6 +222,18 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         layout.addWidget(self._export_btn)
+
+        self._failed_export_btn = QToolButton(container)
+        self._failed_export_btn.setText("Export Failed OBX...")
+        self._failed_export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._failed_export_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        failed_menu = QMenu(self._failed_export_btn)
+        failed_menu.addAction("All failed articles", lambda: self._export_failed_obx())
+        failed_menu.addAction("Price mismatches only", lambda: self._export_failed_obx("price_mismatch"))
+        failed_menu.addAction("Unresolved articles only", lambda: self._export_failed_obx("unresolved"))
+        self._failed_export_btn.setMenu(failed_menu)
+        self._failed_export_btn.setEnabled(False)
+        layout.addWidget(self._failed_export_btn)
         self._toggle_btn = QPushButton("Show errors only", container)
         self._toggle_btn.setCheckable(True)
         self._toggle_btn.setChecked(True)
@@ -467,6 +479,7 @@ class ObxValidationPage(BasePage):
         self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
         self._export_btn.setEnabled(bool(self._results))
+        self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         QThreadPool.globalInstance().start(_ObxWorker(self._context.obx_validation_service, self._currency, lines, None, validation_date, reporter, signals, control))
@@ -548,6 +561,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._export_btn.setEnabled(bool(self._results))
+        self._failed_export_btn.setEnabled(bool(self._results))
         self._set_site_metrics(sites)
 
     def _begin_live(self) -> None:
@@ -612,6 +626,7 @@ class ObxValidationPage(BasePage):
         self._progress_percent.setText("100%")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
+        self._failed_export_btn.setEnabled(bool(results))
         self._render_table()
 
         # Automatic consolidated export happens only after the worker reports
@@ -700,6 +715,70 @@ class ObxValidationPage(BasePage):
                 f"Exported {written} {state} beside the source OBX file(s).",
             )
 
+    def _export_failed_obx(self, status: str | None = None) -> None:
+        """Write failed source articles back to filtered OBX files.
+
+        Exports are kept per source file so a multi-file validation run can be
+        corrected and revalidated without mixing unrelated OBX documents.
+        """
+        results = [
+            result for result in self._results
+            if result.status != "ok" and (status is None or result.status == status)
+        ]
+        if not results:
+            label = "failed" if status is None else status.replace("_", " ")
+            QMessageBox.information(
+                self, "OBX Validation", f"No {label} articles are available to export."
+            )
+            return
+
+        line_by_seq = {line.seq: line for line in self._lines}
+        paths = getattr(self, "_paths", [])
+        svc = self._context.obx_validation_service
+        written = 0
+        total = 0
+        failures: list[str] = []
+
+        for src in paths:
+            source_results = [r for r in results if self._file_of_seq.get(r.seq) == src]
+            if not source_results:
+                continue
+            selected_lines = [
+                line_by_seq[r.seq] for r in source_results
+                if r.seq in line_by_seq and line_by_seq[r.seq].source_index >= 0
+            ]
+            if not selected_lines:
+                continue
+
+            suffix = {
+                None: "Failed",
+                "price_mismatch": "Price_Mismatch",
+                "unresolved": "Unresolved",
+            }.get(status, "Failed")
+            target = Path(src).with_name(f"{Path(src).stem}_{suffix}.obx")
+            try:
+                count = svc.export_filtered_obx(str(src), selected_lines, str(target))
+                if count:
+                    written += 1
+                    total += count
+            except (OSError, ET.ParseError, ValueError) as exc:
+                failures.append(f"{Path(src).name}: {exc}")
+
+        if failures:
+            QMessageBox.warning(
+                self,
+                "OBX Validation",
+                f"Exported {total} article(s) in {written} file(s).\n\nFailed:\n"
+                + "\n".join(failures),
+            )
+        else:
+            label = "failed" if status is None else status.replace("_", " ")
+            QMessageBox.information(
+                self,
+                "OBX Validation",
+                f"Exported {total} {label} article(s) in {written} filtered OBX file(s) beside the source files.",
+            )
+
     def _reset_results(self) -> None:
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
@@ -717,6 +796,7 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setChecked(True)
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
+        self._failed_export_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
