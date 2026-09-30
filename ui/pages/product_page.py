@@ -156,34 +156,6 @@ class _FamilyLoadWorker(QRunnable):
             self._signals.finished.emit(result)
 
 
-class _MaintenancePdmLoadSignals(QObject):
-    """Signals for the automatic PDM load after a Maintenance repository is ready."""
-
-    finished = Signal(object)  # ProductLoadResult
-    failed = Signal(str)
-
-
-class _MaintenancePdmLoadWorker(QRunnable):
-    """Load the selected PDM Maintenance scope without blocking the UI."""
-
-    def __init__(self, pdm_service, products, scope_name, signals) -> None:
-        super().__init__()
-        self._pdm_service = pdm_service
-        self._products = products
-        self._scope_name = scope_name
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            result = self._pdm_service.load_family(
-                self._products, self._scope_name
-            )
-        except Exception as error:
-            self._signals.failed.emit(f"Unexpected error: {error}")
-        else:
-            self._signals.finished.emit(result)
-
-
 class _AddFamilyWorker(QRunnable):
     """Merges a family into the CURRENT session's snapshot off the UI thread."""
 
@@ -623,14 +595,6 @@ class ProductPage(BasePage):
                 "MDB repository loaded. Select a PDM product from the Product workflow to compare."
             )
         self.snapshot_changed.emit()
-
-    def _on_maintenance_pdm_load_failed(self, message: str) -> None:
-        self._context.activate_snapshot_source("repository")
-        self._repository_workspace._repository_status.setText(
-            f"MDB repository loaded, but PDM scope loading failed: {message}"
-        )
-        QMessageBox.warning(self, "Maintenance PDM", message)
-
 
     def _on_shared_repository_cleared(self) -> None:
         self._context.register_maintenance_snapshot(None)
