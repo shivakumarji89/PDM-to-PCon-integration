@@ -7,7 +7,7 @@ It never changes either source.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 from models.snapshot import Snapshot
@@ -90,7 +90,7 @@ class PdmMdbParityService:
         )
 
         comparisons = (
-            ("Articles", self._articles(pdm_snapshot), self._articles(mdb_snapshot)),
+            ("Articles", self._maintenance_articles(pdm_snapshot), self._articles(mdb_snapshot)),
             ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
             (
                 "Property Values",
@@ -104,7 +104,7 @@ class PdmMdbParityService:
                 self._option_values(mdb_snapshot),
             ),
             ("Price Lists", self._price_lists(pdm_snapshot), self._price_lists(mdb_snapshot)),
-            ("Prices", self._prices(pdm_snapshot), self._mdb_prices(mdb_data, mdb_snapshot)),
+            ("Prices", self._maintenance_prices(pdm_snapshot), self._mdb_prices(mdb_data, mdb_snapshot)),
         )
 
         for domain, expected, actual in comparisons:
@@ -147,6 +147,19 @@ class PdmMdbParityService:
                     "Present in MDB but missing in PDM Snapshot",
                 )
             )
+
+    def _maintenance_articles(self, snapshot: Snapshot) -> dict[str, str]:
+        """Use released-MDB base identities for an aligned Maintenance snapshot."""
+        if snapshot.maintenance_alignment_status not in {"ALIGNED", "PARTIAL"}:
+            return self._articles(snapshot)
+        relations = snapshot.maintenance_article_relations
+        if not relations:
+            return self._articles(snapshot)
+        return {
+            _norm(str(row.get("base_code") or "")): ""
+            for row in relations.values()
+            if str(row.get("base_code") or "").strip()
+        }
 
     @staticmethod
     def _articles(snapshot: Snapshot) -> dict[str, str]:
@@ -214,6 +227,33 @@ class PdmMdbParityService:
     @staticmethod
     def _prices(snapshot: Snapshot) -> dict[str, str]:
         return _semantic_prices(snapshot.price_records, snapshot.price_lists)
+
+    def _maintenance_prices(self, snapshot: Snapshot) -> dict[str, str]:
+        """Normalize Maintenance price article identity through MDB alignment."""
+        if snapshot.maintenance_alignment_status not in {"ALIGNED", "PARTIAL"}:
+            return self._prices(snapshot)
+        relations = snapshot.maintenance_article_relations
+        if not relations:
+            return self._prices(snapshot)
+
+        code_to_base = {
+            _norm(str(row.get("pdm_article_code") or "")): str(row.get("base_code") or "")
+            for row in relations.values()
+            if str(row.get("pdm_article_code") or "").strip()
+            and str(row.get("base_code") or "").strip()
+        }
+        records = [
+            replace(
+                record,
+                article_code=code_to_base.get(
+                    _norm(str(record.article_code or "")),
+                    record.article_code,
+                ),
+            )
+            for record in snapshot.price_records
+        ]
+        return _semantic_prices(records, snapshot.price_lists)
+
 
     @staticmethod
     def _mdb_prices(data, snapshot: Snapshot) -> dict[str, str]:
