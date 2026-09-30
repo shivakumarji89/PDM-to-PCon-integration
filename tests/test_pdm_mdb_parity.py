@@ -1,5 +1,6 @@
 from models.article import Article
 from models.price_list import PriceList
+from models.price_record import PriceRecord
 from models.property import Property
 from models.property_value import PropertyValue
 from models.snapshot import Snapshot
@@ -44,6 +45,56 @@ def test_compare_domain_classifies_all_difference_types():
     assert report.missing_count == 1
     assert report.extra_count == 1
     assert report.different_count == 1
+
+
+
+def test_price_parity_resolves_mdb_surrogate_price_list_id_to_business_identity():
+    snapshot = _snapshot()
+    snapshot.price_records = [
+        PriceRecord(
+            article_code="A100",
+            level="B",
+            value=125.0,
+            currency="EUR",
+            valid_from="20270101",
+            valid_to="99991231",
+        )
+    ]
+
+    class Data:
+        def rows(self, table):
+            return {
+                "tCOMd_Price": [
+                    {
+                        "com_PriceListID": 77,
+                        "com_ArticleID": 456,
+                        "com_VariantCondition": "",
+                        "com_PriceLevelCode": "B",
+                        "com_PriceValue": 125.0,
+                        "sys_ISOCurrencyCode": "EUR",
+                    }
+                ],
+                "tCOMd_GlobalPrice": [],
+            }.get(table, [])
+
+    mdb_snapshot = _snapshot()
+    mdb_snapshot.price_records = list(snapshot.price_records)
+    mdb_snapshot.price_lists = [
+        PriceList(
+            id="77",
+            label="EURO_2027",
+            currency="EUR",
+            date_from="20270101",
+            date_to="99991231",
+        )
+    ]
+
+    expected = PdmMdbParityService._prices(snapshot)
+    actual = PdmMdbParityService._mdb_prices(Data(), mdb_snapshot)
+
+    assert expected == actual
+    assert all("77" not in key for key in actual)
+    assert any("euro_2027" in key for key in actual)
 
 
 def test_normalizers_ignore_source_ids():
