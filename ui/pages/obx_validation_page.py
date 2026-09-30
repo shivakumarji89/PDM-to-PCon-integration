@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import hashlib
+import math
 import json
 import time
 import xml.etree.ElementTree as ET
@@ -30,15 +31,13 @@ class _ObxSignals(QObject):
 
 
 class _ObxWorker(QRunnable):
-    """Run OBX validation off the UI thread with recovery and checkpoints.
+    """Validate one fixed worker slice.
 
-    BATCH_SIZE is the workload boundary: the worker sends one batch to the
-    validation engine, waits for that batch to finish, then automatically
-    sends the next batch. The validation engine keeps its own smaller PDM
-    query window internally.
+    Two instances run concurrently with eight lines each. The outer page
+    dispatcher controls memory batching separately.
     """
 
-    _BATCH_SIZE = 1000  # Tunable workload batch; independent from PDM query window.
+    _WORKER_SIZE = 8
 
     def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals, control):
         super().__init__()
@@ -77,9 +76,6 @@ class _ObxWorker(QRunnable):
         pending = list(self._lines)
         sites: dict = {}
         recovery_attempts = 0
-        total = len(self._lines)
-        batch_size = max(1, int(self._BATCH_SIZE))
-        self._reporter.begin(max(total, 1), title="Validate OBX", subject=f"{total} order line(s)")
 
         def on_result(result) -> None:
             key = getattr(result, "seq", None)
@@ -89,45 +85,31 @@ class _ObxWorker(QRunnable):
             self._reporter.advance(f"Validated line {key}")
             self._signals.line_done.emit(result)
 
+        self._reporter.note(f"Worker processing {len(pending)} line(s).")
         while pending:
-            batch = pending[:batch_size]
-            completed_before_batch = len(completed)
-            batch_end = min(total, completed_before_batch + len(batch))
-            self._reporter.note(
-                f"Processing OBX batch: {len(batch)} line(s), "
-                f"through line {batch_end} of {total}."
-            )
             try:
                 self._control.checkpoint()
                 site, results = self._svc.validate(
-                    self._currency, batch, site=self._site_id,
+                    self._currency, pending, site=self._site_id,
                     validation_date=self._validation_date, progress=None,
                     stage=lambda text: self._reporter.note(text),
-                    on_result=on_result, operation_control=self._control,
+                    on_result=on_result,
                 )
                 if site:
                     sites.update(site)
                 for result in results:
                     on_result(result)
 
-                skipped_items = list(
-                    getattr(self._svc, "last_skipped_items", []) or []
-                )
+                skipped_items = list(getattr(self._svc, "last_skipped_items", []) or [])
                 if skipped_items:
                     skipped_set = set(skipped_items)
                     skipped_lines = [
-                        line for line in batch
+                        line for line in pending
                         if getattr(line, "base", "") in skipped_set
                     ]
-                    self._reporter.note(
-                        f"Skipped {len(skipped_lines)} line(s) from "
-                        f"{len(skipped_items)} article lookup(s); "
-                        "these will remain pending for retry."
-                    )
-                    pending = skipped_lines + pending[len(batch):]
                     self._signals.paused.emit((
                         sites,
-                        pending,
+                        skipped_lines,
                         f"{len(skipped_lines)} line(s) skipped during worker pricing.",
                     ))
                     return
@@ -146,12 +128,10 @@ class _ObxWorker(QRunnable):
                 self._signals.paused.emit((sites, pending, reason))
                 return
             except ValidationCancelled as exc:
-                self._reporter.finish(False, "Validation cancelled.")
                 self._signals.cancelled.emit(str(exc) or "Validation cancelled.")
                 return
             except Exception as exc:
                 if self._control.is_cancelled():
-                    self._reporter.finish(False, "Validation cancelled.")
                     self._signals.cancelled.emit("Validation cancelled.")
                     return
                 if self._control.is_paused():
@@ -161,7 +141,6 @@ class _ObxWorker(QRunnable):
                     self._signals.paused.emit((sites, pending, reason))
                     return
                 if not self._is_connection_error(exc):
-                    self._reporter.finish(False, str(exc))
                     self._signals.failed.emit(str(exc))
                     return
                 pending = [line for line in pending if getattr(line, "seq", None) not in completed]
@@ -170,8 +149,10 @@ class _ObxWorker(QRunnable):
                 self._reporter.note(message)
                 self._signals.recovery.emit((recovery_attempts, None, message))
 
-        results = sorted(completed.values(), key=lambda result: self._seq_key(getattr(result, "seq", 0)))
-        self._reporter.finish(True, f"{len(results)} line(s)")
+        results = sorted(
+            completed.values(),
+            key=lambda result: self._seq_key(getattr(result, "seq", 0)),
+        )
         self._signals.finished.emit((sites, results))
 
     @staticmethod
@@ -487,14 +468,6 @@ class ObxValidationPage(BasePage):
         reporter.elapsed_changed.connect(self._on_elapsed_changed)
         reporter.remaining_changed.connect(self._on_remaining_changed)
         reporter.step_changed.connect(self._on_progress_step)
-        signals = _ObxSignals()
-        signals.finished.connect(self._on_results)
-        signals.failed.connect(self._on_failed)
-        signals.paused.connect(self._on_paused)
-        signals.cancelled.connect(self._on_cancelled)
-        signals.recovery.connect(self._on_recovery)
-        signals.line_done.connect(self._on_line_done)
-        self._signals = signals
         if fresh:
             self._begin_live()
             self._validation_start_time = time.perf_counter()
@@ -507,8 +480,12 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(self._results))
         self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
-        validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
-        QThreadPool.globalInstance().start(_ObxWorker(self._context.obx_validation_service, self._currency, lines, None, validation_date, reporter, signals, control))
+        self._dispatch_remaining = list(lines)
+        self._dispatch_sites = {}
+        self._dispatch_workers = 0
+        self._dispatch_total = len(lines)
+        reporter.begin(max(len(self._lines), 1), title="Validate OBX", subject=f"{len(self._lines)} order line(s)")
+        self._dispatch_memory_batch()
 
     def _release_active_control(self) -> None:
         self._active_control = None
