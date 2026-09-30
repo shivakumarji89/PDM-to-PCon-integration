@@ -11,11 +11,27 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from dataclasses import dataclass
+
 from models.price_list import PriceList
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 
 _DATE_MAX = "99991231"
+
+
+@dataclass(frozen=True)
+class PriceListProposal:
+    """A reviewed price-list change that has not been applied yet."""
+
+    mode: str = ""
+    currency: str = ""
+    list_id: str = ""
+    label: str = ""
+    date_from: str = ""
+    previous_id: str = ""
+    previous_date_to: str = ""
+    conflict: str = ""
 
 
 class PriceListService(BaseService):
@@ -25,6 +41,78 @@ class PriceListService(BaseService):
         """The snapshot's price lists (empty when none/no snapshot)."""
         return list(snapshot.price_lists) if snapshot is not None else []
 
+    @staticmethod
+    def generated_name(currency: str, year: str) -> str:
+        """Return the canonical generated price-list name for a currency/year."""
+        token = "EURO" if (currency or "").strip().upper() == "EUR" else (currency or "").strip().upper()
+        return f"{token}_{str(year).strip()}"
+
+    def propose(
+        self, snapshot: Snapshot | None, currencies: list[str],
+        date_from: str, *, mode: str,
+    ) -> list[PriceListProposal]:
+        """Prepare price-list changes for explicit user review."""
+        if snapshot is None:
+            return []
+        start = self._norm_date(date_from)
+        year = start[:4] if len(start) == 8 else ""
+        if not year:
+            return []
+        normalized: list[str] = []
+        for currency in currencies:
+            ccy = (currency or "").strip().upper()
+            if ccy and ccy not in normalized:
+                normalized.append(ccy)
+        existing = list(snapshot.price_lists)
+        proposals: list[PriceListProposal] = []
+        for currency in normalized:
+            list_id = self.generated_name(currency, year)
+            label = list_id.replace("_", " ")
+            conflict = ""
+            previous_id = ""
+            previous_date_to = ""
+            same_start = next((
+                (p for p in existing
+                 if p.currency.upper() == currency and p.date_from == start),
+                None,
+            )
+            if same_start is not None:
+                conflict = f"A {currency} price list already starts on {start}."
+            elif any(p.id.upper() == list_id.upper() for p in existing):
+                conflict = f"Price list {list_id} already exists."
+            if mode == "maintenance":
+                prior = [
+                    p for p in existing
+                    if p.currency.upper() == currency
+                    and p.date_from
+                    and p.date_from < start
+                ]
+                if prior:
+                    prior = sorted(prior, key=lambda p: p.date_from)
+                    previous_id = prior[-1].id
+                    previous_date_to = self._day_before(start)
+                elif not same_start:
+                    conflict = conflict or f"No existing {currency} price list precedes {start}."
+            proposals.append(PriceListProposal(
+                mode=mode, currency=currency, list_id=list_id, label=label,
+                date_from=start, previous_id=previous_id,
+                previous_date_to=previous_date_to, conflict=conflict,
+            ))
+        return proposals
+
+    def apply_proposals(
+        self, snapshot: Snapshot | None, proposals: list[PriceListProposal]
+    ) -> bool:
+        """Apply a reviewed proposal set."""
+        if snapshot is None or not proposals or any(p.conflict for p in proposals):
+            return False
+        for proposal in proposals:
+            if self.add_price_list(
+                snapshot, proposal.list_id, proposal.label,
+                proposal.currency, proposal.date_from,
+            ) is None:
+                return False
+        return True
     def add_price_list(
         self, snapshot: Snapshot | None, list_id: str, label: str,
         currency: str, date_from: str,
@@ -33,12 +121,12 @@ class PriceListService(BaseService):
         blank or already used."""
         if snapshot is None:
             return None
-        pid = (list_id or "").strip()
-        if not pid or any(pl.id == pid for pl in snapshot.price_lists):
+        pid = (list_id or "").strip().upper()
+        if not pid or any(pl.id.upper() == pid for pl in snapshot.price_lists):
             return None
         price_list = PriceList(
             id=pid,
-            label=(label or pid).strip() or pid,
+            label=(label or pid).strip().upper() or pid,
             currency=(currency or "").strip().upper(),
             date_from=self._norm_date(date_from),
         )
