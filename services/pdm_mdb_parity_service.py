@@ -104,7 +104,7 @@ class PdmMdbParityService:
                 self._option_values(mdb_snapshot),
             ),
             ("Price Lists", self._price_lists(pdm_snapshot), self._price_lists(mdb_snapshot)),
-            ("Prices", self._prices(pdm_snapshot), self._prices(mdb_snapshot)),
+            ("Prices", self._prices(pdm_snapshot), self._mdb_prices(mdb_data, mdb_snapshot)),
         )
 
         for domain, expected, actual in comparisons:
@@ -213,10 +213,38 @@ class PdmMdbParityService:
 
     @staticmethod
     def _prices(snapshot: Snapshot) -> dict[str, str]:
-        return {
-            _price_key(p): _pack(p.value, p.valid_from, p.valid_to)
-            for p in snapshot.price_records
+        return _semantic_prices(snapshot.price_records, snapshot.price_lists)
+
+    @staticmethod
+    def _mdb_prices(data, snapshot: Snapshot) -> dict[str, str]:
+        """Compare MDB prices using the referenced PriceList's business identity."""
+        price_lists_by_id = {
+            _source_id(price_list.id): price_list
+            for price_list in snapshot.price_lists
+            if price_list.id
         }
+
+        # import_snapshot preserves table row order, so normalized records can
+        # be paired with the raw rows that contain the numeric PriceList ID.
+        article_rows = list(data.rows("tCOMd_Price"))
+        global_rows = list(data.rows("tCOMd_GlobalPrice"))
+        imported_records = list(snapshot.price_records)
+        article_records = imported_records[:len(article_rows)]
+        global_records = imported_records[len(article_rows):len(article_rows) + len(global_rows)]
+
+        out: dict[str, str] = {}
+        for row, record in zip(article_rows, article_records):
+            price_list = price_lists_by_id.get(_source_id(row.get("com_PriceListID")))
+            out[_price_identity(record, price_list)] = _pack(
+                record.value, record.valid_from, record.valid_to, record.currency
+            )
+
+        for row, record in zip(global_rows, global_records):
+            price_list = price_lists_by_id.get(_source_id(row.get("com_PriceListID")))
+            out[_price_identity(record, price_list)] = _pack(
+                record.value, record.valid_from, record.valid_to, record.currency
+            )
+        return out
 
 
 def _norm(value: Any) -> str:
@@ -227,17 +255,74 @@ def _pack(*values: Any) -> str:
     return " | ".join(_norm(v) for v in values)
 
 
-def _price_key(record) -> str:
-    # PriceRecord has no business PriceList id. Include the validity start in
-    # the identity so multiple yearly lists for the same article/currency do
-    # not collapse into one comparison row.
+def _source_id(value: Any) -> str:
+    """Normalize Access integer ids such as 125.0 to 125."""
+    text = str(value or "").strip()
+    if text.endswith(".0"):
+        try:
+            return str(int(float(text)))
+        except (TypeError, ValueError):
+            pass
+    return text
+
+
+def _price_list_key(price_list) -> str:
+    if price_list is None:
+        return "UNRESOLVED"
+    return "|".join(
+        (
+            _norm(price_list.label or price_list.id),
+            _norm(price_list.currency),
+            _norm(price_list.date_from),
+            _norm(price_list.date_to),
+        )
+    )
+
+
+def _resolve_price_list(record, price_lists):
+    currency = _norm(record.currency)
+    exact = [
+        price_list
+        for price_list in price_lists
+        if _norm(price_list.currency) == currency
+        and _norm(price_list.date_from) == _norm(record.valid_from)
+        and _norm(price_list.date_to) == _norm(record.valid_to)
+    ]
+    if len(exact) == 1:
+        return exact[0]
+
+    contained = [
+        price_list
+        for price_list in price_lists
+        if _norm(price_list.currency) == currency
+        and (not record.valid_from or not price_list.date_from or _norm(record.valid_from) >= _norm(price_list.date_from))
+        and (not record.valid_to or not price_list.date_to or _norm(record.valid_to) <= _norm(price_list.date_to))
+    ]
+    if len(contained) == 1:
+        return contained[0]
+    return None
+
+
+def _price_identity(record, price_list=None) -> str:
+    list_key = _price_list_key(price_list)
+    if list_key == "UNRESOLVED" and record.currency:
+        list_key = f"UNRESOLVED|{_norm(record.currency)}|{_norm(record.valid_from)}|{_norm(record.valid_to)}"
     return "|".join(
         (
             "G" if record.is_global else "A",
             _norm(record.article_code),
             _norm(record.variant_condition),
             _norm(record.level),
-            _norm(record.currency),
-            _norm(record.valid_from),
+            list_key,
         )
     )
+
+
+def _semantic_prices(records, price_lists) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for record in records:
+        price_list = _resolve_price_list(record, price_lists)
+        out[_price_identity(record, price_list)] = _pack(
+            record.value, record.valid_from, record.valid_to, record.currency
+        )
+    return out
