@@ -43,12 +43,20 @@ class MaintenanceComparisonPage(BasePage):
         self._mdb = QLabel("-", self._summary)
         self._alignment = QLabel("-", self._summary)
         self._counts = QLabel("-", self._summary)
+        self._pdm_identity = QLabel("-", self._summary)
+        self._mdb_identity = QLabel("-", self._summary)
+        self._pdm_identity.setWordWrap(True)
+        self._mdb_identity.setWordWrap(True)
         summary.addWidget(QLabel("Status"), 0, 0)
         summary.addWidget(self._status, 0, 1, 1, 3)
         summary.addWidget(QLabel("PDM articles"), 1, 0)
         summary.addWidget(self._pdm, 1, 1)
-        summary.addWidget(QLabel("MDB articles"), 1, 2)
+        summary.addWidget(QLabel("Released MDB articles"), 1, 2)
         summary.addWidget(self._mdb, 1, 3)
+        summary.addWidget(QLabel("PDM source"), 3, 0)
+        summary.addWidget(self._pdm_identity, 3, 1, 1, 3)
+        summary.addWidget(QLabel("MDB source"), 4, 0)
+        summary.addWidget(self._mdb_identity, 4, 1, 1, 3)
         summary.addWidget(QLabel("Alignment"), 2, 0)
         summary.addWidget(self._alignment, 2, 1)
         summary.addWidget(QLabel("Results"), 2, 2)
@@ -62,7 +70,7 @@ class MaintenanceComparisonPage(BasePage):
 
         self._table = QTableWidget(0, 5, self)
         self._table.setHorizontalHeaderLabels(
-            ["Domain", "Status", "Key", "PDM / Expected", "MDB / Actual"]
+            ["Domain", "Status", "Comparison Key", "PDM (Selected Product)", "Released MDB (Linked Repository)"]
         )
         self._table.setWordWrap(False)
         self._table.setAlternatingRowColors(True)
@@ -79,6 +87,8 @@ class MaintenanceComparisonPage(BasePage):
             self._pdm.setText("-")
             self._mdb.setText("-")
             self._counts.setText("-")
+            self._pdm_identity.setText("-")
+            self._mdb_identity.setText("-")
             self._table.setRowCount(0)
             return
 
@@ -88,12 +98,16 @@ class MaintenanceComparisonPage(BasePage):
             self._pdm.setText(str(len(state.pdm_snapshot.articles)))
             self._mdb.setText("-")
             self._counts.setText("-")
+            self._pdm_identity.setText(self._pdm_source_text(state.pdm_snapshot))
+            self._mdb_identity.setText("-")
             self._table.setRowCount(0)
             return
 
         self._alignment.setText(state.alignment.status)
         self._pdm.setText(str(len(state.pdm_snapshot.articles)))
         self._mdb.setText(str(len(state.repository_snapshot.articles)))
+        self._pdm_identity.setText(self._pdm_source_text(state.pdm_snapshot))
+        self._mdb_identity.setText(self._mdb_source_text(state))
 
         if not state.alignment.is_aligned:
             self._status.setText(
@@ -104,6 +118,26 @@ class MaintenanceComparisonPage(BasePage):
             return
 
         self._run_comparison()
+
+    @staticmethod
+    def _pdm_source_text(snapshot) -> str:
+        product = getattr(snapshot, "product", None)
+        if product is None:
+            return "PDM product: not loaded"
+        code = str(getattr(product, "code", "") or "-")
+        name = str(getattr(product, "name", "") or "-")
+        return f"{code} — {name} (PDM)"
+
+    @staticmethod
+    def _mdb_source_text(state) -> str:
+        snapshot = state.repository_snapshot
+        metadata = getattr(snapshot, "metadata", None)
+        source = str(getattr(metadata, "source", "") or "MDB")
+        notes = str(getattr(metadata, "notes", "") or "")
+        product_code = str(getattr(metadata, "product_code", "") or "")
+        identity = product_code or "Released repository"
+        suffix = f" — {notes}" if notes else ""
+        return f"{identity} — {source} (released MDB){suffix}"
 
     def is_ready(self) -> bool:
         state = self._context.maintenance_snapshot
