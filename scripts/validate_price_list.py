@@ -57,6 +57,27 @@ def main() -> int:
     assert lists["EURO_2026"].date_to == "20270531", lists["EURO_2026"].date_to
     print("OK: editing a start date re-chains (2026 -> 20270531)")
 
+    # Generated naming + context-aware proposal flow.
+    snap.price_lists = []
+    proposals = svc.propose(snap, ["EUR"], "20270101", mode="new_creation")
+    assert proposals[0].list_id == "EURO_2027", proposals
+    assert proposals[0].label == "EURO 2027", proposals
+    assert svc.apply_proposals(snap, proposals)
+    assert {pl.id for pl in snap.price_lists} == {"EURO_2027"}
+    print("OK: new creation proposes/applies EURO_2027")
+
+    snap.price_lists = []
+    svc.add_price_list(snap, "EURO_2026", "EURO 2026", "EUR", "20260101")
+    proposals = svc.propose(snap, ["EUR"], "20270101", mode="maintenance")
+    assert proposals[0].list_id == "EURO_2027"
+    assert proposals[0].previous_id == "EURO_2026"
+    assert proposals[0].previous_date_to == "20261231"
+    assert svc.apply_proposals(snap, proposals)
+    lists = {pl.id: pl for pl in snap.price_lists}
+    assert lists["EURO_2026"].date_to == "20261231"
+    assert lists["EURO_2027"].date_to == "99991231"
+    print("OK: maintenance proposes/applies EURO_2027 and rolls EURO_2026")
+
     # Serialization round-trip.
     restored = snapshot_from_dict(snapshot_to_dict(snap))
     ids = {pl.id: pl.date_to for pl in restored.price_lists}
