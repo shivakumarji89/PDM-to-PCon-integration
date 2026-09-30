@@ -8,6 +8,7 @@ Fields and relationships only - no logic.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from core.enums import SnapshotStatus
 from models.article import Article
@@ -128,6 +129,14 @@ class Snapshot:
     option_option_dependencies: dict[str, list[str]] = field(default_factory=dict)
 
     metadata: SnapshotMetadata = field(default_factory=SnapshotMetadata)
+
+    # Maintenance alignment copied from the released MDB. The MDB base article
+    # definitions are authoritative; these fields let Maintenance reuse the exact
+    # base boundary before semantic parity is evaluated.
+    maintenance_base_rules: dict[str, dict[str, Any]] = field(default_factory=dict)
+    maintenance_article_relations: dict[str, dict[str, Any]] = field(default_factory=dict)
+    maintenance_unresolved_article_ids: list[str] = field(default_factory=list)
+    maintenance_alignment_status: str = "UNRESOLVED"
 
     # Repository/MDB class-purpose classification supplied by the user.
     # Keyed by the stable imported MDB class id; values are Attribute, Option,
