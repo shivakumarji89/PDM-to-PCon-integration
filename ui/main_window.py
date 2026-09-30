@@ -369,11 +369,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
-        monitor_btn = QPushButton("Check PDM Changes", container)
-        monitor_btn.setObjectName("pdmMonitorBtn")
-        monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
-        monitor_btn.clicked.connect(self._on_check_pdm_changes)
-        layout.addWidget(monitor_btn)
+        self._pdm_monitor_btn = QPushButton("Check PDM Changes", container)
+        self._pdm_monitor_btn.setObjectName("pdmMonitorBtn")
+        self._pdm_monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
+        self._pdm_monitor_btn.clicked.connect(self._on_check_pdm_changes)
+        layout.addWidget(self._pdm_monitor_btn)
 
         layout.addSpacing(theme.SECTION_SPACING)
         layout.addWidget(self._navigator, 1)
@@ -383,6 +383,9 @@ class MainWindow(QMainWindow):
         """Enter Level 2 and expose only the workflows for the selected module."""
         self._active_module = module
         self._product_page.set_module(module)
+        # PDM change review is a Development control; Maintenance has its own
+        # alignment/parity workflow and must not expose this review action.
+        self._pdm_monitor_btn.setVisible(module != WorkbenchModule.MAINTENANCE)
         steps = list(module_workflows(module))
         self._active_module_label.setText(module_title(module))
 
@@ -417,6 +420,7 @@ class MainWindow(QMainWindow):
     def _show_module_home(self) -> None:
         """Return to Level 1 and hide all workflow-specific UI."""
         self._active_module = None
+        self._pdm_monitor_btn.setVisible(False)
         self._left_panel.hide()
         self._nav_footer.hide()
         self._assistant_dock.hide()
