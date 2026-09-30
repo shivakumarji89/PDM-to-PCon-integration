@@ -55,7 +55,8 @@ class _RepositoryClassTypeDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
             "Classify the imported MDB classes so Class Creation can distinguish "
-            "Attribute, Option and Misc classes. No class names are hardcoded.",
+            "Attribute, Option and Misc classes. Names such as ATTR/ATTRIBUTE and "
+            "OPT/OPTION are suggested automatically; review the suggestions before applying.",
             self,
         ))
 
