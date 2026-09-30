@@ -101,6 +101,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
         WorkflowStep.PRICING_RELATION,
+        WorkflowStep.MAINTENANCE_COMPARISON,
     ),
     WorkbenchModule.BULK_UPDATE: (
         WorkflowStep.MAINTENANCE,
