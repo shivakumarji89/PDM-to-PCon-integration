@@ -101,7 +101,7 @@ class PDMService(BaseService):
     )
     # Bumped to 2 when catalogue fetching was scoped to active + region (UK):
     # invalidates the stale all-region cache so it rebuilds on next launch.
-    _REGISTRY_SCHEMA_VERSION = 2
+    _REGISTRY_SCHEMA_VERSION = 3
 
     #: On-disk cache of a loaded FAMILY snapshot's source PDM data - one JSON
     #: file per family, named after the family (e.g. "bolster.json").
@@ -153,6 +153,12 @@ class PDMService(BaseService):
                     category=(row.ProductCategoryName or "").strip(),
                     description=(row.CatalogueName or "").strip(),
                     catalogue_id=str(row.CatalogueId) if row.CatalogueId is not None else None,
+                    range_name=(getattr(row, "ProductRangeName", None) or "").strip(),
+                    series_id=(
+                        str(row.ProductRangeId)
+                        if getattr(row, "ProductRangeId", None) is not None
+                        else None
+                    ),
                 )
             )
         self._connected = True
@@ -190,6 +196,8 @@ class PDMService(BaseService):
                     category=entry.get("category", ""),
                     description=entry.get("description", ""),
                     catalogue_id=entry.get("catalogue_id"),
+                    range_name=entry.get("range_name", ""),
+                    series_id=entry.get("series_id"),
                 )
                 for entry in data.get("products", [])
             ]
@@ -213,6 +221,8 @@ class PDMService(BaseService):
                         "category": p.category,
                         "description": p.description,
                         "catalogue_id": p.catalogue_id,
+                        "range_name": p.range_name,
+                        "series_id": p.series_id,
                     }
                     for p in products
                 ],
@@ -378,6 +388,12 @@ class PDMService(BaseService):
                     category=(row.ProductCategoryName or "").strip(),
                     description=(row.CatalogueName or "").strip(),
                     catalogue_id=str(row.CatalogueId) if row.CatalogueId is not None else None,
+                    range_name=(getattr(row, "ProductRangeName", None) or "").strip(),
+                    series_id=(
+                        str(row.ProductRangeId)
+                        if getattr(row, "ProductRangeId", None) is not None
+                        else None
+                    ),
                 )
             )
         self._connected = True
