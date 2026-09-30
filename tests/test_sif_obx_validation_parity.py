@@ -1492,3 +1492,28 @@ def test_obx_does_not_recover_structural_xml_corruption():
         assert "mismatched tag" in str(exc).lower()
     else:
         raise AssertionError("Structural XML corruption must not be silently recovered")
+
+
+@pytest.mark.parametrize(
+    "line_count, expected_window",
+    [
+        (0, 16),
+        (128, 16),
+        (129, 8),
+        (512, 8),
+        (513, 4),
+        (2000, 4),
+        (2001, 2),
+        (10000, 2),
+    ],
+)
+def test_adaptive_price_window_scales_down_for_large_workloads(line_count, expected_window):
+    assert SifValidationService._adaptive_price_window(line_count) == expected_window
+
+
+def test_adaptive_price_window_respects_smaller_test_or_safety_window():
+    service = SifValidationService(None)
+    service._PRICE_WINDOW = 3
+
+    assert service._adaptive_price_window(128) == 3
+    assert service._adaptive_price_window(1000) == 3
