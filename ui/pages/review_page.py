@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QThreadPool, QTimer, Qt
+from PySide6.QtCore import QThreadPool, QTimer, Qt, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
