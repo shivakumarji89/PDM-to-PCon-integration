@@ -464,6 +464,7 @@ class ObxValidationPage(BasePage):
         control = ValidationControl()
         self._active_control = control
         self._active_reporter = reporter
+        self._reporter = reporter
         reporter.progress_changed.connect(self._on_progress_changed)
         reporter.elapsed_changed.connect(self._on_elapsed_changed)
         reporter.remaining_changed.connect(self._on_remaining_changed)
@@ -578,6 +579,7 @@ class ObxValidationPage(BasePage):
     def _release_active_control(self) -> None:
         self._active_control = None
         self._active_reporter = None
+        self._reporter = None
         self._pause_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
 
