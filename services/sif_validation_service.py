@@ -79,7 +79,26 @@ class SifResult:
 class SifValidationService(BaseService):
     """Validate a CET SIF order file's prices against PDM."""
 
-    _PRICE_WINDOW = 16  # benchmark window: 2 workers x 8 items
+    _PRICE_WINDOW = 16  # normal PDM query window; one validation connection is reused
+
+    @classmethod
+    def _adaptive_price_window(cls, line_count: int) -> int:
+        """Keep PDM query batches small as an OBX/SIF workload grows.
+
+        The window is deliberately conservative: it changes query size, not
+        connection concurrency. The existing validation call still owns one
+        PDM connection and reuses it across all windows, while the connection
+        recovery logic in the caller remains unchanged.
+        """
+        base = max(1, int(cls._PRICE_WINDOW))
+        count = max(0, int(line_count))
+        if count <= 128:
+            return base
+        if count <= 512:
+            return min(base, 8)
+        if count <= 2000:
+            return min(base, 4)
+        return min(base, 2)
 
     @staticmethod
     def _num(value: str) -> float:
