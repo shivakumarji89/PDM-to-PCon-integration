@@ -872,7 +872,11 @@ class SifValidationService(BaseService):
             stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
 
         # Price in small windows so rows appear steadily while keeping PDM queries bulk and parity exact.
-        window = self._PRICE_WINDOW
+        # For large workloads, shrink the query window rather than increasing
+        # connection concurrency. The same validation connection is reused.
+        window = self._adaptive_price_window(len(lines))
+        if stage and window < self._PRICE_WINDOW:
+            stage(f"Large validation workload: using PDM query window {window} (connection reuse protected).")
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
