@@ -1572,7 +1572,13 @@ class ProductPage(BasePage):
 
     # -- display -----------------------------------------------------------
     def _refresh_display(self, product, duration, warnings) -> None:
-        snapshot = self._context.active_snapshot
+        # Maintenance Product workflow is driven by the selected PDM snapshot;
+        # the released MDB remains the comparison target.
+        snapshot = (
+            self._context.pdm_snapshot
+            if self._context_module == WorkbenchModule.MAINTENANCE
+            else self._context.active_snapshot
+        )
 
         # Product Information (real data only).
         self._info_name.setText(product.name or "-")
@@ -1626,8 +1632,13 @@ class ProductPage(BasePage):
 
     # -- readiness (for navigation checks) --------------------------------
     def is_snapshot_ready(self) -> bool:
-        """Whether the active snapshot has the required engineering data."""
-        ready, _reason = self._compute_readiness(self._context.active_snapshot)
+        """Whether the Product workflow has a ready PDM snapshot."""
+        snapshot = (
+            self._context.pdm_snapshot
+            if self._context_module == WorkbenchModule.MAINTENANCE
+            else self._context.active_snapshot
+        )
+        ready, _reason = self._compute_readiness(snapshot)
         return ready
 
     def is_ready(self) -> bool:
