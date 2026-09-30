@@ -34,6 +34,8 @@ WORKFLOW_ITEMS: tuple[WorkflowItem, ...] = (
     WorkflowItem(WorkflowStep.PRICING_RELATION, "Pricing Relation",
                  "Generate the PA_PRICING relation that merges config to price varconds."),
     WorkflowItem(WorkflowStep.REVIEW, "Review", "Review the assembled configuration."),
+    WorkflowItem(WorkflowStep.MAINTENANCE_COMPARISON, "PDM ↔ MDB Comparison",
+                 "Compare the Maintenance PDM scope with the released MDB data."),
     WorkflowItem(WorkflowStep.ENGINEERING, "Engineering", "Read-only view of the engineering hierarchy."),
     WorkflowItem(WorkflowStep.MAINTENANCE, "Bulk Update",
                  "Run bulk maintenance operations on published product packages."),
