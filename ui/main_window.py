@@ -42,6 +42,7 @@ from ui.pages.relation_page import RelationPage
 from ui.pages.review_page import ReviewPage
 from ui.pages.text_page import TextPage
 from ui.pages.maintenance_page import MaintenancePage
+from ui.pages.maintenance_comparison_page import MaintenanceComparisonPage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
 from ui.pages.obx_validation_page import ObxValidationPage
 from ui.pages.article_obx_generator_page import ArticleObxGeneratorPage
@@ -289,6 +290,7 @@ class MainWindow(QMainWindow):
             WorkflowStep.PRICING: PricingPage,
             WorkflowStep.PRICING_RELATION: PricingRelationPage,
             WorkflowStep.REVIEW: ReviewPage,
+            WorkflowStep.MAINTENANCE_COMPARISON: MaintenanceComparisonPage,
             WorkflowStep.ENGINEERING: EngineeringPage,
             WorkflowStep.MAINTENANCE: MaintenancePage,
             # CET SIF Validation - unused when the step is disconnected in core.workflow.
