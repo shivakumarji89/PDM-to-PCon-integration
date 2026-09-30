@@ -356,6 +356,34 @@ def test_superproduct_component_base_query_preserves_missing_prices_and_quantity
     assert connection == "conn"
 
 
+
+def test_superproduct_component_price_query_deduplicates_currency_matrix_rows(monkeypatch):
+    repo = PDMRepository(None)
+    calls = []
+    expected = [SimpleNamespace(
+        ParentItem="SUPER", ComponentItem="PART", ComponentSequence="1",
+        Quantity=1, price=26.0,
+    )]
+    monkeypatch.setattr(
+        repo,
+        "_execute",
+        lambda query, params, connection=None: (
+            calls.append((query, params, connection)) or expected
+        ),
+    )
+
+    rows = repo.fetch_item_component_prices(
+        ["SUPER"], "GBP", "2026-09-30", 1, connection="conn"
+    )
+
+    query, params, connection = calls[0]
+    assert rows == expected
+    assert "SELECT DISTINCT pm.ItemPriceCode, pm.Rounding" in query
+    assert "UPPER(c.Currency) = UPPER(?)" in query
+    assert params == ("2026-09-30", 1, 1, "GBP", "SUPER")
+    assert connection == "conn"
+
+
 def test_superproduct_component_increment_query_preserves_position_metadata(monkeypatch):
     repo = PDMRepository(None)
     calls = []
