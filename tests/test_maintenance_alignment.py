@@ -55,3 +55,15 @@ def test_maintenance_alignment_keeps_unresolved_articles_explicit():
     assert result.status == "PARTIAL"
     assert result.unresolved_article_ids == ["article:2"]
     assert result.unresolved_article_codes == ["NOT_IN_MDB"]
+
+
+def test_maintenance_alignment_does_not_guess_without_pdm_slice_length():
+    pdm = _snapshot("ABC123.X")
+    pdm.article_prefix_length = {}
+    repository = _snapshot("ABC123")
+    state = MaintenanceSnapshot(pdm_snapshot=pdm, repository_snapshot=repository)
+
+    result = MaintenanceAlignmentService(None).align(state)
+
+    assert result.status == "PARTIAL"
+    assert result.unresolved_article_codes == ["ABC123.X"]
