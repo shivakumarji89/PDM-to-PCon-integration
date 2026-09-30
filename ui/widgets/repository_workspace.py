@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.progress import ProgressReporter
+from services.mdb_classification_service import MdbClassificationService
 from ui.dialogs.progress_dialog import ProgressDialog
 
 
@@ -91,8 +92,12 @@ class _RepositoryClassTypeDialog(QDialog):
             combo.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToContents
             )
-            current = existing.get(str(cls.id), "Unclassified")
-            combo.setCurrentText(current if current in self.TYPES else "Unclassified")
+            current = existing.get(str(cls.id))
+            suggested = current if current in self.TYPES else MdbClassificationService.suggest(cls.name)
+            combo.setCurrentText(suggested)
+            combo.setToolTip(
+                f"Suggested from class name: {suggested}. Review and change if needed."
+            )
             self._table.setCellWidget(row, 1, combo)
 
         layout.addWidget(self._table, 1)
