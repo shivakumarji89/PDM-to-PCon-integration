@@ -158,6 +158,7 @@ class OcdExportService(BaseService):
             if manufacturer_rows else _MATERIAL_MANUFACTURER
         )
         protos = {t: self._prototype(mdb, t) for t in _PRODUCT_TABLES}
+        price_list_rows = self._price_list_rows(snapshot, mdb)
 
         self.context.material_picking_service.ensure_package_defaults(snapshot)
         product = snapshot.product
@@ -176,7 +177,7 @@ class OcdExportService(BaseService):
         material_map_id = self._material_map_id(
             mdb, package_id, self.context.material_picking_service.DEFAULT_MAP
         )
-        price_lists = self._price_lists_by_currency(mdb)
+        price_lists = self._price_lists_by_currency(mdb, snapshot)
         inserts = self._build(
             snapshot, package_id, comgroup_id, series_id, protos, price_lists,
             material_map_id, result
@@ -194,6 +195,8 @@ class OcdExportService(BaseService):
         ops.append({"op": "update", "table": "tCOMd_ComGroup",
                     "set": {"com_ComGroupCode": series_id, "com_ComGroupLabel": label},
                     "where": {"com_ComGroupID": comgroup_id}})
+        if price_list_rows:
+            ops.append({"op": "insert", "table": "tCOMd_PriceList2", "rows": price_list_rows})
         for table, rows in inserts:
             if rows:
                 ops.append({"op": "insert", "table": table, "rows": rows})
@@ -1110,11 +1113,8 @@ class OcdExportService(BaseService):
 
     # -- Prices ---------------------------------------------------------
 
-    def _price_lists_by_currency(self, mdb: Path) -> dict[str, dict[str, Any]]:
-        """Map each currency to the template's kept ``tCOMd_PriceList2`` list (its
-        id + validity window). Price lists are infra kept unchanged, so new price
-        rows attach to the existing list per currency (EUR/GBP). ``NOPRICE`` is
-        skipped; the bridge's ``/Date(ms)/`` dates are decoded to ``YYYYMMDD``."""
+    def _price_lists_by_currency(self, mdb: Path, snapshot: Snapshot | None = None) -> dict[str, dict[str, Any]]:
+        """Resolve the price list driving each currency price rows."""
         bridge_ymd = self.context.price_update_service._bridge_ymd
         out: dict[str, dict[str, Any]] = {}
         for r in self.context.mdb_service.read_table(
@@ -1130,8 +1130,49 @@ class OcdExportService(BaseService):
                 "date_from": bridge_ymd(r.get("com_PriceValidFrom")) or _DATE_MIN,
                 "date_to": _DATE_MAX if date_to.startswith("9999") else date_to,
             }
+        for price_list in (getattr(snapshot, "price_lists", None) or []):
+            ccy = (price_list.currency or "").upper()
+            if not ccy or "NOPRICE" in (price_list.label or "").upper():
+                continue
+            out[ccy] = {
+                "id": price_list.id,
+                "date_from": price_list.date_from or _DATE_MIN,
+                "date_to": price_list.date_to or _DATE_MAX,
+            }
         return out
 
+    def _price_list_rows(self, snapshot: Snapshot, mdb: Path) -> list[dict[str, Any]]:
+        """Create MDB rows for snapshot price lists not already in the template."""
+        defined = getattr(snapshot, "price_lists", None) or []
+        if not defined:
+            return []
+        existing = self.context.mdb_service.read_table(
+            mdb, "SELECT com_PriceListID FROM tCOMd_PriceList2"
+        )
+        existing_ids = {str(row.get("com_PriceListID") or "").upper() for row in existing}
+        numeric_ids = []
+        for row in existing:
+            try:
+                numeric_ids.append(int(row.get("com_PriceListID")))
+            except (TypeError, ValueError):
+                continue
+        next_id = max(numeric_ids, default=0) + 1
+        proto = self._prototype(mdb, "tCOMd_PriceList2")
+        rows: list[dict[str, Any]] = []
+        for price_list in defined:
+            list_id = (price_list.id or "").strip().upper()
+            if not list_id or list_id in existing_ids:
+                continue
+            rows.append(self._row(proto, {
+                "com_PriceListID": next_id,
+                "com_PriceListLabel": (price_list.label or list_id).strip().upper(),
+                "sys_ISOCurrencyCode": (price_list.currency or "").strip().upper(),
+                "com_PriceValidFrom": _mdb_date_literal(price_list.date_from or _DATE_MIN),
+                "com_PriceValidTo": _mdb_date_literal(price_list.date_to or _DATE_MAX),
+            }))
+            existing_ids.add(list_id)
+            next_id += 1
+        return rows
     def _prices(
         self, snapshot: Snapshot, article_index: dict[str, int],
         price_lists: dict[str, dict[str, Any]], package_id: Any,
