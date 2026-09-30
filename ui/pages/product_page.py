@@ -700,11 +700,14 @@ class ProductPage(BasePage):
             repository_snapshot=self._context.repository_snapshot,
         )
         self._context.register_maintenance_snapshot(maintenance_state)
-        self._context.maintenance_alignment_service.align(maintenance_state)
+        alignment = self._context.maintenance_alignment_service.align(maintenance_state)
 
         self._repository_workspace._repository_status.setText(
-            f"Maintenance ready: MDB baseline + PDM scope "
-            f"{self._maintenance_pdm_scope} | {len(pdm_snapshot.articles):,} articles."
+            f"Maintenance alignment {alignment.status}: "
+            f"{len(alignment.relations):,} matched, "
+            f"{len(alignment.unresolved_article_ids):,} unresolved | "
+            f"PDM scope {self._maintenance_pdm_scope} | "
+            f"{len(pdm_snapshot.articles):,} articles."
         )
         self.snapshot_changed.emit()
 
