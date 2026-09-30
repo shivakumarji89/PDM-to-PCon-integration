@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.progress import ProgressReporter
+from ui.dialogs.progress_dialog import ProgressDialog
 
 
 class _RepositoryExtractSignals(QObject):
@@ -349,8 +350,20 @@ class RepositoryWorkspace(QWidget):
         self._repository_extract_signals.failed.connect(
             self._on_repository_extraction_failed
         )
-        reporter.begin(4, title="Open Repository", subject=Path(path).name)
+        reporter.begin(5, title="Open Repository", subject=Path(path).name)
         reporter.log("info", f"Opening repository {Path(path).name}")
+
+        # Use the same visible progress monitor as Product loading. The
+        # repository worker already reports each extraction stage through the
+        # shared ProgressReporter; without this binding those updates were
+        # invisible even though the backend was progressing.
+        progress_dialog = getattr(self, "_repository_progress_dialog", None)
+        if progress_dialog is None:
+            progress_dialog = ProgressDialog(self)
+            self._repository_progress_dialog = progress_dialog
+        progress_dialog.bind(reporter)
+        progress_dialog.show()
+        progress_dialog.raise_()
 
         worker = _RepositoryExtractWorker(
             self._context, path, reporter, self._repository_extract_signals, token
