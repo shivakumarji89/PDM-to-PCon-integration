@@ -14,6 +14,7 @@ class MaintenanceAlignmentService(BaseService):
     """Align Maintenance PDM articles against released MDB base articles."""
 
     def align(self, state: MaintenanceSnapshot) -> MaintenanceAlignment:
+        """Align Maintenance PDM articles using PDM's authoritative slice length."""
         pdm = state.pdm_snapshot
         repository = state.repository_snapshot
         if pdm is None:
@@ -31,10 +32,6 @@ class MaintenanceAlignmentService(BaseService):
             state.alignment.message = "Released MDB contains no base articles."
             return state.alignment
 
-        ordered = sorted(
-            rules,
-            key=lambda rule: (-len(rule.base_code), rule.base_code.casefold()),
-        )
         mdb_by_code = {
             str(article.code or "").strip().casefold(): article
             for article in repository.articles
@@ -51,13 +48,18 @@ class MaintenanceAlignmentService(BaseService):
             if not code or not article_id:
                 continue
 
-            rule = self._match_rule(code, ordered)
-            if rule is None:
+            base_length, method = self._authoritative_base_length(pdm, article)
+            if base_length <= 0:
+                unresolved_ids.append(article_id)
+                unresolved_codes.append(code)
+                continue
+            if base_length > len(code):
                 unresolved_ids.append(article_id)
                 unresolved_codes.append(code)
                 continue
 
-            mdb_article = mdb_by_code.get(rule.base_code.casefold())
+            base_code = code[:base_length]
+            mdb_article = mdb_by_code.get(base_code.casefold())
             if mdb_article is None:
                 unresolved_ids.append(article_id)
                 unresolved_codes.append(code)
@@ -69,10 +71,10 @@ class MaintenanceAlignmentService(BaseService):
                     pdm_article_code=code,
                     mdb_article_id=str(mdb_article.id or ""),
                     mdb_article_code=str(mdb_article.code or ""),
-                    base_code=rule.base_code,
-                    base_length=rule.base_length,
-                    slicing_method=rule.slicing_method,
-                    reason="Applied released MDB base-article rule.",
+                    base_code=base_code,
+                    base_length=base_length,
+                    slicing_method=method,
+                    reason="Base derived from PDM article prefix length.",
                 )
             )
 
@@ -83,15 +85,48 @@ class MaintenanceAlignmentService(BaseService):
             unresolved_article_ids=unresolved_ids,
             unresolved_article_codes=unresolved_codes,
             message=(
-                f"Applied {len(rules)} released MDB base rule(s) to "
-                f"{len(relations):,} PDM article(s)."
+                f"Aligned {len(relations):,} PDM article(s) using PDM slicing rules."
                 + (
-                    f" {len(unresolved_ids):,} PDM article(s) could not be aligned."
+                    f" {len(unresolved_ids):,} article(s) remain unresolved."
                     if unresolved_ids else ""
                 )
             ),
         )
         return state.alignment
+
+    @staticmethod
+    def _authoritative_base_length(snapshot, article) -> tuple[int, str]:
+        code = str(article.code or "").strip()
+
+        # An explicit Maintenance/base-length registry override is authoritative
+        # when present. It is keyed by article CODE, not ItemId.
+        overrides = getattr(snapshot, "base_length_overrides", {}) or {}
+        override = overrides.get(code)
+        if isinstance(override, int) and override > 0:
+            return override, "MAINTENANCE_BASE_LENGTH_OVERRIDE"
+
+        # PDMService populates this from Item.Notes, with category-master fallback.
+        prefix_by_id = getattr(snapshot, "article_prefix_length", {}) or {}
+        prefix = prefix_by_id.get(str(article.id))
+        if isinstance(prefix, int) and prefix > 0:
+            return prefix, "PDM_ITEM_NOTES_PREFIX_LENGTH"
+
+        # Family loading normally materializes ArticleSets. Use their stored
+        # base boundary only as a fallback when PDM did not provide a prefix.
+        for article_set in getattr(snapshot, "article_sets", []) or []:
+            if str(article.id) in (str(item_id) for item_id in article_set.article_ids):
+                length = int(article_set.base_length or 0)
+                if length > 0:
+                    return length, "PDM_ARTICLE_SET_BASE_LENGTH"
+
+        # A dot-delimited article is a final deterministic fallback already used
+        # by the existing pricing semantics, but it is marked explicitly.
+        if "." in code:
+            length = code.find(".")
+            if length > 0:
+                return length, "ARTICLE_DOT_BOUNDARY"
+
+        return 0, "UNRESOLVED"
 
     @staticmethod
     def _released_base_rules(repository) -> list[MaintenanceBaseRule]:
