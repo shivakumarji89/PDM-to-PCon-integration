@@ -380,6 +380,8 @@ class ReviewPage(BasePage):
         signals = task.signals
         signals.finished.connect(self._on_mdb_preview_finished)
         signals.failed.connect(self._on_mdb_preview_failed)
+        signals.finished.connect(self._on_mdb_preview_task_finished)
+        signals.failed.connect(self._on_mdb_preview_task_finished)
         self._preview_task = task
         self._preview_signals = signals
         QThreadPool.globalInstance().start(task)
@@ -562,13 +564,13 @@ class ReviewPage(BasePage):
         self._mdb_preview_status.setText(f"MDB generation data failed: {error}")
         self._clear_generation_summary()
 
-    @Slot()
-    def _on_mdb_preview_thread_finished(self) -> None:
+    def _on_mdb_preview_task_finished(self, *_args) -> None:
+        """Clear page-owned task state after the shared worker completes."""
         self._preview_running = False
         self._preview_elapsed_timer.stop()
         self._mdb_preview_progress.hide()
-        self._preview_thread = None
-        self._preview_worker = None
+        self._preview_task = None
+        self._preview_signals = None
         self._refresh_btn.setEnabled(True)
 
     @staticmethod
