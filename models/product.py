@@ -22,6 +22,7 @@ class Product:
     category: str = ""
     catalogue_id: str | None = None
     range_name: str = ""
+    series_id: str | None = None
     status: str = ""
     is_super_product: bool = False
     new_product: bool = False
