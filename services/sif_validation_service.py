@@ -985,11 +985,6 @@ class SifValidationService(BaseService):
             })
             option_data_items = sorted(set(option_items) | set(inc_items))
             skipped_option_items: set[str] = set()
-            # The repository may retain skipped-option diagnostics from a
-            # previous chunk. Clear that state before each fresh option lookup
-            # so a later chunk cannot inherit a stale skip decision.
-            if option_data_items and hasattr(repo, "last_skipped_option_items"):
-                repo.last_skipped_option_items = []
             option_rows = (
                 repo.fetch_item_validation_options(
                     option_data_items, currency, mydate, site, conn
@@ -1001,6 +996,10 @@ class SifValidationService(BaseService):
                 skipped_option_items = set(
                     getattr(repo, "last_skipped_option_items", [])
                 )
+                # Consume the repository diagnostic for this chunk. It must
+                # not leak into the next PDM batch.
+                if hasattr(repo, "last_skipped_option_items"):
+                    repo.last_skipped_option_items = []
             if obx:
                 us_increment_items = sorted({
                     line.base for line in chunk
