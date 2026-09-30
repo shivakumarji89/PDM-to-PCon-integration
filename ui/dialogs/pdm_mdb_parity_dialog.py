@@ -22,7 +22,7 @@ from services.maintenance_parity_service import MaintenanceParityService
 from ui.workers.background_task import BackgroundTask
 
 
-class PdmMdbParityDialog(QDialog):
+class MaintenanceParityDialog(QDialog):
     """Read-only comparison of the PDM Snapshot against a reference MDB."""
 
     def __init__(self, context, parent=None) -> None:
