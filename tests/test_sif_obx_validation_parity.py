@@ -1508,7 +1508,8 @@ def test_obx_does_not_recover_structural_xml_corruption():
     ],
 )
 def test_adaptive_price_window_scales_down_for_large_workloads(line_count, expected_window):
-    assert SifValidationService._adaptive_price_window(line_count) == expected_window
+    service = SifValidationService(None)
+    assert service._adaptive_price_window(line_count) == expected_window
 
 
 def test_adaptive_price_window_respects_smaller_test_or_safety_window():
