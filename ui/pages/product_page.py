@@ -156,6 +156,34 @@ class _FamilyLoadWorker(QRunnable):
             self._signals.finished.emit(result)
 
 
+class _MaintenancePdmLoadSignals(QObject):
+    """Signals for the automatic PDM load after a Maintenance repository is ready."""
+
+    finished = Signal(object)  # ProductLoadResult
+    failed = Signal(str)
+
+
+class _MaintenancePdmLoadWorker(QRunnable):
+    """Load the selected PDM Maintenance scope without blocking the UI."""
+
+    def __init__(self, pdm_service, products, scope_name, signals) -> None:
+        super().__init__()
+        self._pdm_service = pdm_service
+        self._products = products
+        self._scope_name = scope_name
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            result = self._pdm_service.load_family(
+                self._products, self._scope_name
+            )
+        except Exception as error:
+            self._signals.failed.emit(f"Unexpected error: {error}")
+        else:
+            self._signals.finished.emit(result)
+
+
 class _AddFamilyWorker(QRunnable):
     """Merges a family into the CURRENT session's snapshot off the UI thread."""
 
@@ -591,6 +619,92 @@ class ProductPage(BasePage):
     def _on_shared_repository_loaded(self, snapshot) -> None:
         self._update_repository_actions()
         self.snapshot_changed.emit()
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            self._start_maintenance_pdm_selection()
+
+    def _start_maintenance_pdm_selection(self) -> None:
+        """After MDB extraction, select and load the matching PDM scope."""
+        from ui.dialogs.pdm_maintenance_scope_dialog import PdmMaintenanceScopeDialog
+
+        # A new repository invalidates the previous Maintenance PDM pairing.
+        self._context.register_pdm_snapshot(None)
+
+        try:
+            products = self._context.pdm_service.get_cached_products()
+        except Exception as error:
+            QMessageBox.warning(self, "Maintenance PDM", str(error))
+            return
+
+        if not products:
+            QMessageBox.warning(
+                self,
+                "Maintenance PDM",
+                "No PDM products are available for the current PDM connection.",
+            )
+            return
+
+        dialog = PdmMaintenanceScopeDialog(products, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._repository_workspace._repository_status.setText(
+                "MDB repository loaded. PDM scope selection cancelled."
+            )
+            return
+
+        selected = dialog.selected_products
+        if not selected:
+            return
+
+        series = selected[0].range_name or "(Unassigned Series)"
+        category = selected[0].category or "(Unassigned Category)"
+        catalog = selected[0].description or "(Unassigned Catalog)"
+        scope_name = f"{series} / {category} / {catalog}"
+
+        self._repository_workspace._repository_status.setText(
+            f"MDB loaded. Loading PDM scope: {scope_name} ({len(selected):,} products)..."
+        )
+        self._start_maintenance_pdm_load(selected, scope_name)
+
+    def _start_maintenance_pdm_load(self, products, scope_name: str) -> None:
+        signals = _MaintenancePdmLoadSignals()
+        signals.finished.connect(self._on_maintenance_pdm_loaded)
+        signals.failed.connect(self._on_maintenance_pdm_load_failed)
+        self._maintenance_pdm_signals = signals
+        self._maintenance_pdm_scope = scope_name
+        worker = _MaintenancePdmLoadWorker(
+            self._context.pdm_service, products, scope_name, signals
+        )
+        self._pool.start(worker)
+
+    def _on_maintenance_pdm_loaded(self, result) -> None:
+        if not result.ok:
+            self._on_maintenance_pdm_load_failed(result.message)
+            return
+
+        pdm_snapshot = self._context.active_snapshot
+        try:
+            self._context.engineering_initialization_service.initialize(pdm_snapshot)
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Maintenance PDM",
+                f"PDM data loaded, but engineering initialization failed: {error}",
+            )
+
+        self._context.register_pdm_snapshot(pdm_snapshot)
+        self._context.activate_snapshot_source("repository")
+        self._repository_workspace._repository_status.setText(
+            f"Maintenance ready: MDB baseline + PDM scope "
+            f"{self._maintenance_pdm_scope} | {len(pdm_snapshot.articles):,} articles."
+        )
+        self.snapshot_changed.emit()
+
+    def _on_maintenance_pdm_load_failed(self, message: str) -> None:
+        self._context.activate_snapshot_source("repository")
+        self._repository_workspace._repository_status.setText(
+            f"MDB repository loaded, but PDM scope loading failed: {message}"
+        )
+        QMessageBox.warning(self, "Maintenance PDM", message)
+
 
     def _on_shared_repository_cleared(self) -> None:
         self._update_repository_actions()
