@@ -1044,6 +1044,14 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
             for k, v in (data.get("base_length_overrides") or {}).items()
             if v is not None
         },
+        maintenance_base_rules=dict(data.get("maintenance_base_rules") or {}),
+        maintenance_article_relations=dict(data.get("maintenance_article_relations") or {}),
+        maintenance_unresolved_article_ids=list(
+            data.get("maintenance_unresolved_article_ids") or []
+        ),
+        maintenance_alignment_status=str(
+            data.get("maintenance_alignment_status", "UNRESOLVED") or "UNRESOLVED"
+        ),
         option_increments={
             str(k): list(v or [])
             for k, v in (data.get("option_increments") or {}).items()
