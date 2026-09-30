@@ -103,6 +103,13 @@ class PdmMdbParityDialog(QDialog):
             )
             return
 
+        if snapshot.maintenance_alignment_status != "ALIGNED":
+            self._status.setText(
+                "Maintenance alignment is incomplete. "
+                "Resolve the released MDB base-article alignment before parity."
+            )
+            return
+
         self._run.setEnabled(False)
         self._progress.show()
         self._table.setRowCount(0)
