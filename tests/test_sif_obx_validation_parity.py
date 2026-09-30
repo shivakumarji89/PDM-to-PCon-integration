@@ -1518,3 +1518,76 @@ def test_adaptive_price_window_respects_smaller_test_or_safety_window():
 
     assert service._adaptive_price_window(128) == 3
     assert service._adaptive_price_window(1000) == 3
+
+
+def test_obx_filtered_export_preserves_selected_source_articles(tmp_path):
+    service = ObxValidationService(None)
+    source = tmp_path / "source.obx"
+    target = tmp_path / "source_Failed.obx"
+    source.write_text(
+        """<?xml version="1.0"?>
+<root>
+  <header value="keep"/>
+  <bskArticle itemType="BasketArticle">
+    <artNr type="base">A</artNr>
+    <artNr type="final">A RED</artNr>
+    <itemPrice type="sale" pd="1" currency="EUR" value="100"/>
+  </bskArticle>
+  <bskArticle itemType="BasketArticle">
+    <artNr type="base">B</artNr>
+    <artNr type="final">B BLUE</artNr>
+    <itemPrice type="sale" pd="1" currency="EUR" value="200"/>
+  </bskArticle>
+</root>
+""",
+        encoding="utf-8",
+    )
+
+    currency, lines = service.parse_obx(source.read_text(encoding="utf-8"))
+
+    assert currency == "EUR"
+    assert [line.source_index for line in lines] == [0, 1]
+
+    written = service.export_filtered_obx(str(source), [lines[1]], str(target))
+
+    assert written == 1
+    filtered_currency, filtered = service.parse_obx(target.read_text(encoding="utf-8"))
+    assert filtered_currency == "EUR"
+    assert len(filtered) == 1
+    assert filtered[0].base == "B"
+    assert filtered[0].final_article == "B BLUE"
+    assert filtered[0].obx_price == 200.0
+
+
+def test_obx_filtered_export_supports_recovered_truncated_source(tmp_path):
+    service = ObxValidationService(None)
+    source = tmp_path / "truncated.obx"
+    target = tmp_path / "truncated_Failed.obx"
+    source.write_text(
+        """<root>
+  <bskArticle itemType="BasketArticle">
+    <artNr type="base">A</artNr>
+    <artNr type="final">A RED</artNr>
+    <itemPrice type="sale" pd="1" currency="GBP" value="100"/>
+  </bskArticle>
+  <bskArticle itemType="BasketArticle">
+    <artNr type="base">B</artNr>
+    <artNr type="final">B BLUE</artNr>
+    <itemPrice type="sale" pd="1" currency="GBP" value="200"/>
+  </bskArticle>
+""",
+        encoding="utf-8",
+    )
+
+    currency, lines = service.parse_obx(source.read_text(encoding="utf-8"))
+
+    assert currency == "GBP"
+    assert len(lines) == 2
+    assert service.last_parse_recovered is True
+
+    written = service.export_filtered_obx(str(source), [lines[0]], str(target))
+
+    assert written == 1
+    filtered_currency, filtered = service.parse_obx(target.read_text(encoding="utf-8"))
+    assert filtered_currency == "GBP"
+    assert [line.base for line in filtered] == ["A"]
