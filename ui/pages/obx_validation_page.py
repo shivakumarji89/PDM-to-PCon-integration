@@ -622,6 +622,7 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setText("Pause Validation")
         self._results = results
         self._pending_lines = []
+        self._save_session()
         self._is_paused = False
         self._launch_btn.setEnabled(bool(self._lines))
         self._pause_btn.setEnabled(False)
