@@ -30,7 +30,15 @@ class _ObxSignals(QObject):
 
 
 class _ObxWorker(QRunnable):
-    """Run OBX validation off the UI thread with recovery and checkpoints."""
+    """Run OBX validation off the UI thread with recovery and checkpoints.
+
+    BATCH_SIZE is the workload boundary: the worker sends one batch to the
+    validation engine, waits for that batch to finish, then automatically
+    sends the next batch. The validation engine keeps its own smaller PDM
+    query window internally.
+    """
+
+    _BATCH_SIZE = 1000  # Tunable workload batch; independent from PDM query window.
 
     def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals, control):
         super().__init__()
@@ -70,6 +78,7 @@ class _ObxWorker(QRunnable):
         sites: dict = {}
         recovery_attempts = 0
         total = len(self._lines)
+        batch_size = max(1, int(self._BATCH_SIZE))
         self._reporter.begin(max(total, 1), title="Validate OBX", subject=f"{total} order line(s)")
 
         def on_result(result) -> None:
@@ -81,10 +90,17 @@ class _ObxWorker(QRunnable):
             self._signals.line_done.emit(result)
 
         while pending:
+            batch = pending[:batch_size]
+            completed_before_batch = len(completed)
+            batch_end = min(total, completed_before_batch + len(batch))
+            self._reporter.note(
+                f"Processing OBX batch: {len(batch)} line(s), "
+                f"through line {batch_end} of {total}."
+            )
             try:
                 self._control.checkpoint()
                 site, results = self._svc.validate(
-                    self._currency, pending, site=self._site_id,
+                    self._currency, batch, site=self._site_id,
                     validation_date=self._validation_date, progress=None,
                     stage=lambda text: self._reporter.note(text),
                     on_result=on_result, operation_control=self._control,
@@ -100,7 +116,7 @@ class _ObxWorker(QRunnable):
                 if skipped_items:
                     skipped_set = set(skipped_items)
                     skipped_lines = [
-                        line for line in pending
+                        line for line in batch
                         if getattr(line, "base", "") in skipped_set
                     ]
                     self._reporter.note(
@@ -108,7 +124,7 @@ class _ObxWorker(QRunnable):
                         f"{len(skipped_items)} article lookup(s); "
                         "these will remain pending for retry."
                     )
-                    pending = skipped_lines
+                    pending = skipped_lines + pending[len(batch):]
                     self._signals.paused.emit((
                         sites,
                         pending,
@@ -116,7 +132,10 @@ class _ObxWorker(QRunnable):
                     ))
                     return
 
-                pending = [line for line in pending if getattr(line, "seq", None) not in completed]
+                pending = [
+                    line for line in pending
+                    if getattr(line, "seq", None) not in completed
+                ]
                 recovery_attempts = 0
                 if not pending:
                     break
@@ -542,6 +561,7 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pause_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
+        self._save_session()
         self._write_checkpoint()
         self._progress_state.setText("FAILED")
         QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
@@ -562,6 +582,7 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pending_lines = list(remaining_lines)
         self._is_paused = True
+        self._save_session()
         self._write_checkpoint()
         self._launch_btn.setEnabled(False)
         self._pause_btn.setText("Resume Validation")
@@ -596,7 +617,6 @@ class ObxValidationPage(BasePage):
 
     def _on_line_done(self, r) -> None:
         self._results.append(r)
-        self._save_session()
         self._export_btn.setEnabled(True)
         self._failed_export_btn.setEnabled(True)
         self._live["lines"] += 1
@@ -612,6 +632,7 @@ class ObxValidationPage(BasePage):
         if self._show_all or r.status != "ok":
             self._append_row(r)
         if self._live["lines"] - self._last_checkpoint_count >= 100:
+            self._save_session()
             self._write_checkpoint()
             self._last_checkpoint_count = self._live["lines"]
 
