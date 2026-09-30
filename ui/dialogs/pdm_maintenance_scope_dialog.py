@@ -1,9 +1,6 @@
 """PDM scope selection for the Maintenance repository workflow."""
 from __future__ import annotations
 
-from collections import defaultdict
-
-from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
