@@ -626,8 +626,11 @@ class ProductPage(BasePage):
         """After MDB extraction, select and load the matching PDM scope."""
         from ui.dialogs.pdm_maintenance_scope_dialog import PdmMaintenanceScopeDialog
 
-        # A new repository invalidates the previous Maintenance PDM pairing.
+        # A new repository invalidates the previous Maintenance pairing.
+        # Clear both snapshots so parity cannot accidentally reuse the prior
+        # repository/PDM alignment while the new scope is being selected.
         self._context.register_pdm_snapshot(None)
+        self._context.register_maintenance_snapshot(None)
 
         try:
             products = self._context.pdm_service.get_cached_products()
