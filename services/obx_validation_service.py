@@ -7,6 +7,7 @@ shared pricing implementation until OBX-specific mapping is added.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -27,6 +28,10 @@ class ObxLine:
     qty: int = 1
     plc: str = ""
     source_date: str = ""
+    # Zero-based position of the source bskArticle in the parsed OBX file.
+    # It lets filtered validation exports recover the original article XML
+    # without keeping a second copy of the complete source document in memory.
+    source_index: int = -1
 
     @property
     def _final_tokens(self) -> list[str]:
@@ -171,7 +176,7 @@ class ObxValidationService(BaseService):
         file_currency = ""
         skipped = 0
 
-        for article in articles:
+        for source_index, article in enumerate(articles):
             item_type = (article.get("itemType") or "").strip().lower()
             if item_type not in {"basketarticle", "basketaggregate"}:
                 continue
@@ -197,6 +202,7 @@ class ObxValidationService(BaseService):
                     qty=1,
                     plc=plc,
                     source_date=source_date,
+                    source_index=source_index,
                 )
             )
         self.last_parse_skipped_count = skipped
@@ -289,6 +295,50 @@ class ObxValidationService(BaseService):
                 unique.append(line)
             groups[key].append(line)
         return unique, groups
+
+    @staticmethod
+    def _filtered_obx_document(source_path: str, selected_lines: list[ObxLine]) -> str:
+        """Build a valid OBX containing only the selected source articles.
+
+        The source document is parsed again only when an export is requested,
+        so normal validation does not retain large XML strings in memory.
+        Selected bskArticle elements are copied from the original source;
+        their original attributes and article content are therefore preserved.
+        """
+        text = Path(source_path).read_text(encoding="utf-8", errors="ignore")
+        articles, _recovered = ObxValidationService._completed_articles(text)
+        selected_indexes = {
+            int(line.source_index) for line in selected_lines
+            if getattr(line, "source_index", -1) >= 0
+        }
+        selected = [
+            article for index, article in enumerate(articles)
+            if index in selected_indexes
+        ]
+        if not selected:
+            return ""
+
+        # A compact OBX document is sufficient for revalidation: the validator
+        # consumes bskArticle elements and their source price/article data.
+        root = ET.Element("root")
+        for article in selected:
+            root.append(ET.fromstring(ET.tostring(article, encoding="unicode")))
+        return ET.tostring(root, encoding="unicode", xml_declaration=True)
+
+    def export_filtered_obx(
+        self,
+        source_path: str,
+        selected_lines: list[ObxLine],
+        target_path: str,
+    ) -> int:
+        """Export selected source articles and return the number written."""
+        if not selected_lines:
+            return 0
+        xml = self._filtered_obx_document(source_path, selected_lines)
+        if not xml:
+            return 0
+        Path(target_path).write_text(xml, encoding="utf-8")
+        return len(selected_lines)
 
     def _lookup_cache(self) -> dict:
         """Return the in-memory PDM lookup cache shared across OBX runs."""
