@@ -67,8 +67,10 @@ class _RepositoryClassTypeDialog(QDialog):
             0, QHeaderView.ResizeMode.Stretch
         )
         self._table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
+            1, QHeaderView.ResizeMode.Fixed
         )
+        self._table.setColumnWidth(1, 190)
+        self._table.verticalHeader().setDefaultSectionSize(40)
 
         classes = list(snapshot.engineering.classes if snapshot.engineering else [])
         self._table.setRowCount(len(classes))
@@ -81,6 +83,14 @@ class _RepositoryClassTypeDialog(QDialog):
 
             combo = QComboBox(self._table)
             combo.addItems(self.TYPES)
+            # The global QComboBox stylesheet uses vertical padding that can
+            # clip text when the combo is embedded in a table cell. Give the
+            # editor enough height and width for the complete class type.
+            combo.setMinimumHeight(30)
+            combo.setMinimumWidth(170)
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToContents
+            )
             current = existing.get(str(cls.id), "Unclassified")
             combo.setCurrentText(current if current in self.TYPES else "Unclassified")
             self._table.setCellWidget(row, 1, combo)
