@@ -79,25 +79,9 @@ class SifResult:
 class SifValidationService(BaseService):
     """Validate a CET SIF order file's prices against PDM."""
 
-    _PRICE_WINDOW = 16  # normal PDM query window; one validation connection is reused
-
-    def _adaptive_price_window(self, line_count: int) -> int:
-        """Keep PDM query batches small as an OBX/SIF workload grows.
-
-        The window is deliberately conservative: it changes query size, not
-        connection concurrency. The existing validation call still owns one
-        PDM connection and reuses it across all windows, while the connection
-        recovery logic in the caller remains unchanged.
-        """
-        base = max(1, int(self._PRICE_WINDOW))
-        count = max(0, int(line_count))
-        if count <= 128:
-            return base
-        if count <= 512:
-            return min(base, 8)
-        if count <= 2000:
-            return min(base, 4)
-        return min(base, 2)
+    # Internal PDM query window. This is deliberately independent from the
+    # OBX worker's larger workload batch size.
+    _PRICE_WINDOW = 16
 
     @staticmethod
     def _num(value: str) -> float:
@@ -870,12 +854,9 @@ class SifValidationService(BaseService):
         if stage:
             stage(f"Pricing {len({l.base for l in lines if l.base})} items from PDM (site {site}, {currency})...")
 
-        # Price in small windows so rows appear steadily while keeping PDM queries bulk and parity exact.
-        # For large workloads, shrink the query window rather than increasing
-        # connection concurrency. The same validation connection is reused.
-        window = self._adaptive_price_window(len(lines))
-        if stage and window < self._PRICE_WINDOW:
-            stage(f"Large validation workload: using PDM query window {window} (connection reuse protected).")
+        # Keep the internal PDM query window stable. Large-workload batching
+        # is handled by the OBX worker at a separate, higher level.
+        window = self._PRICE_WINDOW
         for start in range(0, len(lines), window):
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
