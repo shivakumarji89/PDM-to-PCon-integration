@@ -279,7 +279,7 @@ class ObxValidationPage(BasePage):
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
             ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
-        ("unique", "Unique"), ("requests", "PDM batches"),
+        ("unique", "Unique"),
         ]
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
@@ -582,7 +582,7 @@ class ObxValidationPage(BasePage):
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
         self._recovery_attempt = 0
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "unique", "requests"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "unique"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
         self._set_metric("completed", f"0/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
