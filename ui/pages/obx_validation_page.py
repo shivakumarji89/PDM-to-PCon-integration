@@ -596,6 +596,7 @@ class ObxValidationPage(BasePage):
 
     def _on_line_done(self, r) -> None:
         self._results.append(r)
+        self._save_session()
         self._export_btn.setEnabled(True)
         self._failed_export_btn.setEnabled(True)
         self._live["lines"] += 1
