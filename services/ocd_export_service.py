@@ -332,6 +332,10 @@ class OcdExportService(BaseService):
             if rows:
                 retained[table] = rows
 
+        generated_price_lists = self._price_list_rows(preview_snapshot, template)
+        if generated_price_lists:
+            retained.setdefault("tCOMd_PriceList2", []).extend(generated_price_lists)
+
         retained["Generation CAD Base-Length Registry"] = [
             {
                 "Program": program_code,
