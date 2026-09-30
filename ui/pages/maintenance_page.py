@@ -156,7 +156,7 @@ class MaintenancePage(BasePage):
         BaseLengthCheckDialog(self._context, self._default_repo(), self).exec()
 
     def _on_parity(self) -> None:
-        from ui.dialogs.pdm_mdb_parity_dialog import MaintenanceParityDialog
+        from ui.dialogs.maintenance_parity_dialog import MaintenanceParityDialog
 
         MaintenanceParityDialog(self._context, self).exec()
 
