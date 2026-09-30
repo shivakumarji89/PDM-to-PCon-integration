@@ -92,14 +92,15 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     ),
-    # Maintenance is a comparison workflow, not a second Development
-    # engineering workbench. The user loads the released MDB, selects the
-    # PDM product through the normal Product workflow, establishes the link,
-    # then compares the two sources side-by-side.
-    #
-    # Keep Development's full engineering workflow completely independent.
+    # Maintenance keeps its existing workflow order.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
+        WorkflowStep.ARTICLES,
+        WorkflowStep.CLASS_CREATION,
+        WorkflowStep.TEXT,
+        WorkflowStep.RELATION,
+        WorkflowStep.PRICING,
+        WorkflowStep.PRICING_RELATION,
         WorkflowStep.MAINTENANCE_COMPARISON,
     ),
     WorkbenchModule.BULK_UPDATE: (
