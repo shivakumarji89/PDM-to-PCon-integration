@@ -6,8 +6,6 @@ into the Maintenance snapshot and records explicit PDM -> MDB relationships.
 """
 from __future__ import annotations
 
-from typing import Any
-
 from models.maintenance_alignment import (
     MaintenanceAlignmentResult,
     MaintenanceArticleRelation,
@@ -47,7 +45,6 @@ class MaintenanceAlignmentService(BaseService):
         # Longest base first is important when a released MDB contains base
         # codes where one is a prefix of another. The MDB definitions remain
         # authoritative; this only selects the most specific applicable rule.
-        rules_by_code = {rule.base_code.casefold(): rule for rule in rules}
         ordered_rules = sorted(
             rules,
             key=lambda rule: (-len(rule.base_code), rule.base_code.casefold()),
