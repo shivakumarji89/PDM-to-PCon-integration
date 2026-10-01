@@ -845,6 +845,8 @@ def relation_object_to_dict(relation: RelationObject) -> dict[str, Any]:
         "rel_obj_id": relation.rel_obj_id,
         "relation_id": relation.relation_id,
         "relation_name": relation.relation_name,
+        "article_codes": list(relation.article_codes),
+        "article_classes": [list(pair) for pair in relation.article_classes],
     }
 
 
@@ -863,6 +865,11 @@ def relation_object_from_dict(data: dict[str, Any]) -> RelationObject:
         rel_obj_id=str(data.get("rel_obj_id", "")),
         relation_id=str(data.get("relation_id", "")),
         relation_name=str(data.get("relation_name", "")),
+        article_codes=[str(code) for code in data.get("article_codes", [])],
+        article_classes=[
+            (str(pair[0]), str(pair[1]))
+            for pair in data.get("article_classes", []) if len(pair) == 2
+        ],
     )
 
 

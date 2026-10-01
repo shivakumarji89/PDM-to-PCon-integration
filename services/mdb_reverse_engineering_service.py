@@ -397,6 +397,31 @@ class MdbReverseEngineeringService(BaseService):
             if obj_id and value_id:
                 value_relobj.setdefault(obj_id, []).append(value_id)
 
+        # Article / ArticleClass bindings use their own RelObjID foreign key:
+        #
+        #   tCOMd_Article.com_RelObjID      -> tCOMd_RelObj.com_RelObjID
+        #   tCOMd_ArticleClass.com_RelObjID -> tCOMd_RelObj.com_RelObjID
+        #
+        # Kept by article code / (article code, class name) - the identities the
+        # exporters write - so a shared relation object stays shared.
+        code_by_article = {
+            _mdb_id(key): article.code for key, article in article_by_mdb.items()
+        }
+        name_by_class = {_mdb_id(key): cls.name for key, cls in class_by_mdb.items()}
+        article_relobj: dict[str, list[str]] = {}
+        for row in data.rows("tCOMd_Article"):
+            obj_id = _mdb_id(row.get("com_RelObjID"))
+            code = code_by_article.get(_mdb_id(row.get("com_ArticleID")))
+            if obj_id and code:
+                article_relobj.setdefault(obj_id, []).append(code)
+        articleclass_relobj: dict[str, list[tuple[str, str]]] = {}
+        for row in data.rows("tCOMd_ArticleClass"):
+            obj_id = _mdb_id(row.get("com_RelObjID"))
+            code = code_by_article.get(_mdb_id(row.get("com_ArticleID")))
+            class_name = name_by_class.get(_mdb_id(row.get("com_ClassID")))
+            if obj_id and code and class_name:
+                articleclass_relobj.setdefault(obj_id, []).append((code, class_name))
+
         for obj_id, obj_row in relobj_by_id.items():
             property_mdb_ids = prop_relobj.get(obj_id, [])
             value_mdb_ids = value_relobj.get(obj_id, [])
@@ -428,6 +453,8 @@ class MdbReverseEngineeringService(BaseService):
                     rel_obj_id=obj_id,
                     relation_id=relation_id,
                     relation_name=str(rel.get("com_RelationName") or ""),
+                    article_codes=list(dict.fromkeys(article_relobj.get(obj_id, []))),
+                    article_classes=list(dict.fromkeys(articleclass_relobj.get(obj_id, []))),
                 ))
 
         # Repository value-combination tables are persisted validity

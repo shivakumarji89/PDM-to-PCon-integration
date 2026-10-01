@@ -25,6 +25,7 @@ from services.base_service import BaseService
 from services.engineering.engineering_reduction_service import collapse_duplicate_values
 from services.engineering.engineering_text_service import text_block_name
 from services.price_update_service import _mdb_date_literal
+from core.export_readiness import resolve_entity_bindings
 from services.xocd_export_service import XocdExportService
 
 #: Broad "always valid" fallback window (YYYYMMDD) when neither the price list
@@ -117,6 +118,12 @@ class OcdExportService(BaseService):
         if snapshot.product is None:
             result.error = "No product loaded."
             return result
+        _, _, conflicts = resolve_entity_bindings(snapshot.relation_objects)
+        if conflicts:
+            # Fail before copying the template: never guess which relation
+            # object an Article/ArticleClass should carry.
+            result.error = "Relation binding conflict: " + "; ".join(m for _, m in conflicts)
+            return result
 
         mdb_svc = self.context.mdb_service
         if not mdb_svc.is_available():
@@ -182,6 +189,8 @@ class OcdExportService(BaseService):
             snapshot, package_id, comgroup_id, series_id, protos, price_lists,
             material_map_id, result
         )
+        if result.error:
+            return result
 
         ops: list[dict[str, Any]] = [{"op": "delete", "table": t} for t in _PRODUCT_TABLES]
         ops.append({"op": "update", "table": "tCOMd_Package",
@@ -521,13 +530,19 @@ class OcdExportService(BaseService):
         token_by_base = xocd._group_token_by_base(snapshot, classes)
 
         text_rows, text_index = self._text(snapshot, package_id, protos["tCOMd_Text"])
+        entity_bindings: dict[str, Any] = {}
         (
             relobj_rows,
             relation_rows,
             relobjrel_rows,
             property_relobj,
             value_relobj,
-        ) = self._relations(snapshot, package_id, protos)
+        ) = self._relations(snapshot, package_id, protos, entity_bindings)
+        if entity_bindings.get("conflicts"):
+            # Never guess which object an Article/ArticleClass should carry.
+            result.error = "Relation binding conflict: " + "; ".join(
+                message for _, message in entity_bindings["conflicts"]
+            )
         scheme_rows, scheme_index, scheme_by_code = self._code_schemes(
             snapshot, package_id, base_codes, classes, codes, protos["tCOMd_CodeScheme"]
         )
@@ -542,11 +557,11 @@ class OcdExportService(BaseService):
         )
         article_rows, article_index = self._articles(
             base_codes, comgroup_id, package_id, text_index, scheme_index,
-            scheme_by_code, protos["tCOMd_Article"]
+            scheme_by_code, protos["tCOMd_Article"], entity_bindings.get("article"),
         )
         articleclass_rows = self._article_classes(
             base_codes, token_by_base, classes, article_index, class_index,
-            protos["tCOMd_ArticleClass"]
+            protos["tCOMd_ArticleClass"], entity_bindings.get("article_class"),
         )
         artbase_rows = self._artbase(snapshot, article_index, classes, codes, protos["tCOMd_ArtBase"])
         package2mat_rows, article2mat_rows = self._material_mappings(
@@ -663,10 +678,15 @@ class OcdExportService(BaseService):
         return f"{parts[0]}A_{parts[1]}" if len(parts) == 2 else name
 
     def _relations(
-        self, snapshot: Snapshot, package_id: Any, protos: dict[str, dict[str, Any]]
+        self, snapshot: Snapshot, package_id: Any, protos: dict[str, dict[str, Any]],
+        entity_bindings: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, int]]:
         """tCOMd_RelObj + tCOMd_Relation + tCOMd_RelObjRel rows and the
-        ``{value_id: relobj_id}`` back-reference for value preconditions."""
+        ``{value_id: relobj_id}`` back-reference for value preconditions.
+
+        When ``entity_bindings`` is given it is filled with the Article /
+        ArticleClass ``com_RelObjID`` maps (``article``: code -> id,
+        ``article_class``: (code, class) -> id) and any binding ``conflicts``."""
         # Preserve relation objects already imported or edited in the active
         # snapshot. Derive canonical relations only when the snapshot has none.
         relation_objects = self.context.engineering_relation_service.ensure_relation_objects(snapshot)
@@ -769,6 +789,17 @@ class OcdExportService(BaseService):
                 property_relobj.setdefault(property_id, obj_id)
             for value_id in _bindings(rel, "value_id", "value_ids"):
                 value_relobj.setdefault(value_id, obj_id)
+
+        if entity_bindings is not None:
+            # Same object identity as the grouping above (relation_object_key).
+            articles, article_classes, conflicts = resolve_entity_bindings(relation_objects)
+            entity_bindings["article"] = {
+                code: obj_ids[key] for code, key in articles.items() if key in obj_ids
+            }
+            entity_bindings["article_class"] = {
+                pair: obj_ids[key] for pair, key in article_classes.items() if key in obj_ids
+            }
+            entity_bindings["conflicts"] = conflicts
 
         return obj_rows, rel_rows, relrel_rows, property_relobj, value_relobj
 
@@ -993,17 +1024,19 @@ class OcdExportService(BaseService):
         self, base_codes: list[str], comgroup_id: Any, package_id: Any,
         text_index: dict[tuple[str, str], int], scheme_index: dict[str, int],
         scheme_by_code: dict[str, str], proto: dict[str, Any],
+        article_relobj: dict[str, int] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """tCOMd_Article rows (one per base article) + ``{code: com_ArticleID}``."""
         rows: list[dict[str, Any]] = []
         index: dict[str, int] = {}
+        article_relobj = article_relobj or {}
         for aid, code in enumerate(base_codes, start=1):
             index[code] = aid
             scheme_pk = scheme_index.get(scheme_by_code.get(code, ""))
             rows.append(self._row(proto, {
                 "com_ArticleID": aid, "com_ArticleCode": code, "com_ArticleTypeCode": "C",
                 "com_ComGroupID": comgroup_id, "com_PackageID": package_id,
-                "com_CodeSchemeID": scheme_pk, "com_RelObjID": None,
+                "com_CodeSchemeID": scheme_pk, "com_RelObjID": article_relobj.get(code),
                 "com_ShortTextID": text_index.get(("artshort", code)),
                 "com_LongTextID": text_index.get(("artlong", code)),
                 "com_Discountable": True, "com_OrderUnitCode": "C62",
@@ -1013,10 +1046,12 @@ class OcdExportService(BaseService):
     def _article_classes(
         self, base_codes: list[str], token_by_base: dict[str, str], classes: list,
         article_index: dict[str, int], class_index: dict[str, int], proto: dict[str, Any],
+        articleclass_relobj: dict[tuple[str, str], int] | None = None,
     ) -> list[dict[str, Any]]:
         """tCOMd_ArticleClass rows: bind each base article to its own group's
         classes (unknown base -> all classes, never dropping data)."""
         rows: list[dict[str, Any]] = []
+        articleclass_relobj = articleclass_relobj or {}
         acid = 0
         for code in base_codes:
             article_pk = article_index.get(code)
@@ -1031,7 +1066,8 @@ class OcdExportService(BaseService):
                 rows.append(self._row(proto, {
                     "com_ArticleClassID": acid, "com_ArticleID": article_pk,
                     "com_ClassID": class_index[str(cls.id)], "com_ArticleClassOrder": order,
-                    "com_RelObjID": None, "com_TextID": None,
+                    "com_RelObjID": articleclass_relobj.get((code, cls.name)),
+                    "com_TextID": None,
                 }))
                 order += 10
         return rows

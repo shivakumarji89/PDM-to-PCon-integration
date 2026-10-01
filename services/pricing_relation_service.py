@@ -117,12 +117,22 @@ class PricingRelationService(BaseService):
             domain="P",      # Price
             order=100,
             body=result.body,
+            # The one non-super price relation is generated over every article
+            # of the snapshot, so each exported base article carries it
+            # (tCOMd_Article.com_RelObjID, as legacy PDM bound each article to
+            # its price relation). An imported article binding takes precedence.
+            article_codes=self._base_article_codes(snapshot),
         )
         snapshot.relation_objects = [
             r for r in snapshot.relation_objects if r.name != rel.name
         ]
         snapshot.relation_objects.append(rel)
         return rel
+
+    def _base_article_codes(self, snapshot: Snapshot) -> list[str]:
+        """Base article codes exactly as the exporters write them."""
+        xocd = getattr(getattr(self, "context", None), "xocd_export_service", None)
+        return list(xocd._base_codes(snapshot)) if xocd is not None else []
 
     def _varcond_service(self) -> VarCondService:
         """A VarCondService that works even without a bound context, since its

@@ -1,7 +1,9 @@
 """Engineering relation service.
 
 Preserves imported OCD relations and derives configuration-domain
-``A_Code_<Prop>`` encoding actions. Article coverage is used only for
+``A_Code_<Prop>`` encoding actions and the value-bound
+``B_<ChildOption>_<ParentCode>`` preconditions of ``DependentOptionValues``
+(one object shared by every child value). Article coverage is used only for
 generic/base ArtBase classification; it is not evidence for a validity
 precondition. A validity relation is retained only when it already exists as
 an explicitly authored, target-bound OCD Relation Object.
@@ -15,6 +17,7 @@ from models.relation_object import RelationObject
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.engineering.engineering_text_service import text_block_name
+from services.xocd_export_service import XocdExportService
 
 
 def validate_relation_body(body: str) -> tuple[bool, str]:
@@ -119,12 +122,105 @@ class EngineeringRelationService(BaseService):
 
         # Option values carry the bulk of the configurable choice relations (e.g.
         # fabrics), authored identically to property value preconditions.
-        for option in self._ordered_options(snapshot):
-            option_name = text_block_name(option.name)
-            if not option_name:
-                continue
+        for rel in self._option_dependency_preconditions(snapshot):
+            add(rel)
 
         return relations
+
+    def _option_dependency_preconditions(
+        self, snapshot: Snapshot
+    ) -> list[RelationObject]:
+        """Value-bound validity preconditions from ``DependentOptionValues``.
+
+        One relation object per (parent option value, child option), shared by
+        every child value that parent value enables - the real MDB shape, e.g.
+        ``B_FABRIC_COLOUR_V26`` = ``(SPECIFIED Fabric) AND (Fabric IN ('V26'))``
+        bound to all ``V26xx`` colour values. Type 1 (Precondition), domain C.
+
+        A PropValue holds a single ``com_RelObjID``, so a child value enabled by
+        several values of the same parent option gets ONE object listing them
+        all (``Parent IN ('A', 'B')``), shared by every child with that same
+        parent set.
+        """
+        edges = getattr(snapshot, "option_option_dependencies", None) or {}
+        if not edges:
+            return []
+        options = self._ordered_options(snapshot)
+        option_of_value: dict[str, object] = {}
+        child_rank: dict[str, int] = {}
+        for option in options:
+            for rank, value in enumerate(self._ordered_values(option.values)):
+                option_of_value[str(value.id)] = option
+                child_rank[str(value.id)] = rank
+
+        # Exported com_PropName identifier: keeps "(Secondary)" qualifiers so
+        # primary/secondary fabric options stay distinct in names and bodies.
+        ident = XocdExportService._prop_ident
+        child_order = {str(o.id): n for n, o in enumerate(options)}
+        result: dict[str, RelationObject] = {}
+        for parent_option in options:
+            parent_name = ident(parent_option.name) if parent_option.name else ""
+            if not parent_name:
+                continue
+            # child value -> the parent tokens (in parent order) enabling it.
+            parents_of: dict[str, list[str]] = {}
+            for parent_value in self._ordered_values(parent_option.values):
+                token = self._config_token(parent_value)
+                if not token:
+                    continue
+                for child_id in dict.fromkeys(
+                    str(c) for c in edges.get(str(parent_value.id)) or []
+                ):
+                    child_option = option_of_value.get(child_id)
+                    if child_option is None or child_option is parent_option:
+                        continue
+                    tokens = parents_of.setdefault(child_id, [])
+                    if token not in tokens:
+                        tokens.append(token)
+            # (parent token set, child option) -> its child values.
+            groups: dict[tuple, list[str]] = {}
+            for child_id, tokens in parents_of.items():
+                key = (tuple(tokens), str(option_of_value[child_id].id))
+                groups.setdefault(key, []).append(child_id)
+            token_order = {
+                t: n for n, t in enumerate(dict.fromkeys(
+                    self._config_token(v)
+                    for v in self._ordered_values(parent_option.values)
+                ))
+            }
+            for tokens, child_option_id in sorted(
+                groups,
+                key=lambda k: ([token_order[t] for t in k[0]], child_order[k[1]]),
+            ):
+                value_ids = groups[(tokens, child_option_id)]
+                child_option = options[child_order[child_option_id]]
+                child_name = ident(child_option.name) if child_option.name else ""
+                if not child_name:
+                    continue
+                suffix = f"{child_name.upper()}_{'_'.join(tokens)}"
+                in_list = ", ".join(f"'{t}'" for t in tokens)
+                body = (
+                    f"(SPECIFIED {parent_name}) AND "
+                    f"({parent_name} IN ({in_list}))"
+                )
+                existing = result.get(f"B_{suffix}")
+                if existing is not None:
+                    # Same condition from two parent values sharing a token:
+                    # merge the children into the one shared object.
+                    if existing.body == body:
+                        merged = dict.fromkeys(existing.value_ids + value_ids)
+                        existing.value_ids = sorted(merged, key=child_rank.__getitem__)
+                    continue
+                result[f"B_{suffix}"] = RelationObject(
+                    name=f"B_{suffix}",
+                    type_code="1",
+                    domain="C",
+                    order=100,
+                    body=body,
+                    value_ids=sorted(value_ids, key=child_rank.__getitem__),
+                    relation_name=f"BA_{suffix}",
+                )
+        return list(result.values())
 
     def _classify_article_coverage(self, snapshot: Snapshot) -> dict[str, str]:
         """Classify coverage for ArtBase only; never infer a dependency from it."""

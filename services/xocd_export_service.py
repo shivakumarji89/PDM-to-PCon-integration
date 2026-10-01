@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.export_readiness import relation_object_key, resolve_entity_bindings
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.engineering.engineering_reduction_service import collapse_duplicate_values
@@ -137,6 +139,11 @@ class XocdExportService(BaseService):
         if snapshot.product is None:
             result.error = "No product loaded."
             return result
+        _, _, conflicts = resolve_entity_bindings(snapshot.relation_objects)
+        if conflicts:
+            # Same rule as the MDB export: never guess an entity's RelObjID.
+            result.error = "Relation binding conflict: " + "; ".join(m for _, m in conflicts)
+            return result
 
         product = snapshot.product
         program = program or self.program_key(product)
@@ -192,7 +199,8 @@ class XocdExportService(BaseService):
         without touching disk. ``key_value`` is the value the upsert replaces."""
         program = ctx["program"]
         classes = self.context.engineering_class_service.get_classes(snapshot)
-        relobj_rows, relation_rows, value_relobj = self._relations(snapshot, ctx)
+        entity_bindings: dict[str, Any] = {}
+        relobj_rows, relation_rows, value_relobj = self._relations(snapshot, ctx, entity_bindings)
         scheme_rows, scheme_by_code = self._code_schemes(snapshot, ctx, classes)
         plan: list[tuple[Path, int, str, list[list[Any]]]] = [
             (out / "xocd_programs.csv", 0, program,
@@ -201,8 +209,10 @@ class XocdExportService(BaseService):
              [[ctx["text_category"], "Default"]]),
             (out / "xocd_relationobj.csv", 0, program, relobj_rows),
             (out / "xocd_relation.csv", 0, program, relation_rows),
-            (out / "xocd_article.csv", 0, program, self._articles(snapshot, ctx, scheme_by_code)),
-            (out / "xocd_propertyclass.csv", 0, program, self._property_classes(snapshot, ctx, classes)),
+            (out / "xocd_article.csv", 0, program, self._articles(
+                snapshot, ctx, scheme_by_code, entity_bindings.get("article"))),
+            (out / "xocd_propertyclass.csv", 0, program, self._property_classes(
+                snapshot, ctx, classes, entity_bindings.get("article_class"))),
             (out / "xocd_property.csv", 0, program, self._properties(snapshot, ctx, classes)),
             (out / "xocd_propertyvalue.csv", 0, program,
              self._property_values(snapshot, ctx, classes, value_relobj)),
@@ -362,23 +372,30 @@ class XocdExportService(BaseService):
 
 
     def _articles(
-        self, snapshot: Snapshot, ctx: dict[str, Any], scheme_by_code: dict[str, str]
+        self, snapshot: Snapshot, ctx: dict[str, Any], scheme_by_code: dict[str, str],
+        article_relobj: dict[str, int] | None = None,
     ) -> list[list[Any]]:
         """xocd_article rows (one per distinct base article), linked to their
-        generated code scheme via ``SchemeID``."""
+        generated code scheme via ``SchemeID`` and, when bound, their relation
+        object via ``RelObjID`` (0 = none)."""
+        article_relobj = article_relobj or {}
         rows: list[list[Any]] = []
         for code in self._base_codes(snapshot):
             rows.append([
                 ctx["program"], "", code, "C", _MANUFACTURER_ID, ctx["program_id"],
-                code, code, 0, True, "C62", scheme_by_code.get(code, ""),
+                code, code, article_relobj.get(code, 0), True, "C62",
+                scheme_by_code.get(code, ""),
             ])
         return rows
 
     def _property_classes(
-        self, snapshot: Snapshot, ctx: dict[str, Any], classes: list
+        self, snapshot: Snapshot, ctx: dict[str, Any], classes: list,
+        articleclass_relobj: dict[tuple[str, str], int] | None = None,
     ) -> list[list[Any]]:
         """xocd_propertyclass rows: bind each base article only to the classes of
-        its own group (the article set it belongs to), not every class."""
+        its own group (the article set it belongs to), not every class. The
+        ``RelObjID`` is the ArticleClass relation object (0 = none)."""
+        articleclass_relobj = articleclass_relobj or {}
         token_by_base = self._group_token_by_base(snapshot, classes)
         rows: list[list[Any]] = []
         for code in self._base_codes(snapshot):
@@ -389,7 +406,10 @@ class XocdExportService(BaseService):
                 # to all (never drop data).
                 if token is not None and cls.name.rsplit("_", 1)[0] != token:
                     continue
-                rows.append([ctx["program"], code, 100 + position * 10, cls.name, "", 0])
+                rows.append([
+                    ctx["program"], code, 100 + position * 10, cls.name, "",
+                    articleclass_relobj.get((code, cls.name), 0),
+                ])
                 position += 1
         return rows
 
@@ -492,31 +512,48 @@ class XocdExportService(BaseService):
         return rows
 
     def _relations(
-        self, snapshot: Snapshot, ctx: dict[str, Any]
+        self, snapshot: Snapshot, ctx: dict[str, Any],
+        entity_bindings: dict[str, Any] | None = None,
     ) -> tuple[list[list[Any]], list[list[Any]], dict[str, int]]:
         """xocd_relationobj + xocd_relation rows, plus ``{value_id: relobj_id}``.
 
         XOCD links a relation object to its knowledge by NAME (``RelName`` ==
         ``RelationName``); the body is split into ``BlockNr`` lines of <= 255
         characters. ``RelObjID`` is the only numeric key in the XOCD data.
+        When ``entity_bindings`` is given it is filled with the Article /
+        ArticleClass RelObjID maps and conflicts, resolved exactly as the MDB
+        export resolves them.
         """
         relation_objects = self.context.engineering_relation_service.build_relation_objects(snapshot)
         obj_rows: list[list[Any]] = []
         rel_rows: list[list[Any]] = []
         value_relobj: dict[str, int] = {}
-        next_id = 1
+        # Rows of one imported relation object (shared rel_obj_id) are one
+        # container: they share a RelObjID, so an Article/ArticleClass bound to
+        # the container references every relation in it (as the MDB export does).
+        ids_by_key: dict[str, int] = {}
+        rows_per_key = Counter(relation_object_key(rel) for rel in relation_objects)
+        written_relations: set[str] = set()
         for rel in relation_objects:
-            rel_id = next_id
-            next_id += 1
-            obj_rows.append([ctx["program"], rel_id, rel.order, rel.name, rel.type_code, rel.domain])
+            key = relation_object_key(rel)
+            rel_id = ids_by_key.setdefault(key, len(ids_by_key) + 1)
+            # A multi-relation container's rows carry their own relation name
+            # (else their bodies would merge under the shared object name).
+            rel_name = (
+                (rel.relation_name or rel.name) if rows_per_key[key] > 1 else rel.name
+            )
+            obj_rows.append([ctx["program"], rel_id, rel.order, rel_name, rel.type_code, rel.domain])
+            # A relation shared by several containers is written once.
+            shared = rows_per_key[key] > 1 and rel_name in written_relations
+            written_relations.add(rel_name)
             block_nr = 1
-            for line in (rel.body or "").splitlines() or [""]:
+            for line in [] if shared else (rel.body or "").splitlines() or [""]:
                 chunk = line
                 while len(chunk) > _CODE_BLOCK_MAX:
-                    rel_rows.append([ctx["program"], rel.name, block_nr, chunk[:_CODE_BLOCK_MAX]])
+                    rel_rows.append([ctx["program"], rel_name, block_nr, chunk[:_CODE_BLOCK_MAX]])
                     block_nr += 1
                     chunk = chunk[_CODE_BLOCK_MAX:]
-                rel_rows.append([ctx["program"], rel.name, block_nr, chunk])
+                rel_rows.append([ctx["program"], rel_name, block_nr, chunk])
                 block_nr += 1
             value_ids = list(getattr(rel, "value_ids", []) or [])
             value_id = str(getattr(rel, "value_id", "") or "")
@@ -525,6 +562,15 @@ class XocdExportService(BaseService):
             for bound_value_id in value_ids:
                 if bound_value_id:
                     value_relobj[str(bound_value_id)] = rel_id
+        if entity_bindings is not None:
+            articles, article_classes, conflicts = resolve_entity_bindings(relation_objects)
+            entity_bindings["article"] = {
+                code: ids_by_key[key] for code, key in articles.items() if key in ids_by_key
+            }
+            entity_bindings["article_class"] = {
+                pair: ids_by_key[key] for pair, key in article_classes.items() if key in ids_by_key
+            }
+            entity_bindings["conflicts"] = conflicts
         return obj_rows, rel_rows, value_relobj
 
     def _code_schemes(

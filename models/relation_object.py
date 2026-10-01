@@ -52,3 +52,9 @@ class RelationObject:
     relation_id: str = ""
     # Defined relation name from tCOMd_Relation.com_RelationName.
     relation_name: str = ""
+    # Article-level bindings (tCOMd_Article.com_RelObjID), by base article code,
+    # and ArticleClass bindings (tCOMd_ArticleClass.com_RelObjID), by
+    # (base article code, class name). One relation object may be shared by
+    # several articles / article classes.
+    article_codes: list[str] = field(default_factory=list)
+    article_classes: list[tuple[str, str]] = field(default_factory=list)

@@ -146,7 +146,8 @@ def _scan_text_blocks(snapshot: Snapshot, out: list[ExportFinding]) -> None:
 
 
 def _scan_relations(snapshot: Snapshot, out: list[ExportFinding]) -> None:
-    for relation in getattr(snapshot, "relation_objects", []) or []:
+    relations = getattr(snapshot, "relation_objects", []) or []
+    for relation in relations:
         name = (getattr(relation, "name", "") or "").strip()
         if not name:
             out.append(ExportFinding(KIND_RELATION, name, "Name", ERROR, "empty name"))
@@ -154,6 +155,65 @@ def _scan_relations(snapshot: Snapshot, out: list[ExportFinding]) -> None:
         bad = _check_identifier(name)
         if bad:
             out.append(ExportFinding(KIND_RELATION, name, "Name", ERROR, bad))
+    _, _, conflicts = resolve_entity_bindings(relations)
+    for entity, message in conflicts:
+        out.append(ExportFinding(KIND_RELATION, entity, "RelObjID", ERROR, message))
+
+
+def relation_object_key(relation) -> str:
+    """Identity of the OCD relation object a RelationObject row belongs to.
+
+    Rows sharing an imported ``rel_obj_id`` are one container; a generated row
+    (no id) is its own object. Matches the exporters' RelObj grouping."""
+    raw = str(getattr(relation, "rel_obj_id", "") or "").strip()
+    return raw or f"generated:{id(relation)}"
+
+
+def resolve_entity_bindings(relations) -> tuple[
+    dict[str, str], dict[tuple[str, str], str], list[tuple[str, str]]
+]:
+    """Resolve Article / ArticleClass relation-object bindings.
+
+    Returns ``(article -> object key, (article, class) -> object key, conflicts)``.
+    An entity holds a single ``com_RelObjID``. A binding carried by an imported
+    relation object (real ``rel_obj_id``) takes precedence over a tool-generated
+    one; two distinct objects of the same precedence claiming one entity is a
+    genuine conflict - reported, never resolved by picking first or last.
+    """
+    claims: dict[object, dict[bool, dict[str, str]]] = {}
+    for rel in relations or []:
+        key = relation_object_key(rel)
+        explicit = bool(str(getattr(rel, "rel_obj_id", "") or "").strip())
+        targets = [("article", str(c)) for c in getattr(rel, "article_codes", []) or [] if str(c)]
+        targets += [
+            ("article_class", (str(a), str(c)))
+            for a, c in getattr(rel, "article_classes", []) or [] if str(a) and str(c)
+        ]
+        for target in targets:
+            by_rank = claims.setdefault(target, {})
+            by_rank.setdefault(explicit, {}).setdefault(key, getattr(rel, "name", "") or key)
+
+    articles: dict[str, str] = {}
+    article_classes: dict[tuple[str, str], str] = {}
+    conflicts: list[tuple[str, str]] = []
+    for (kind, entity), by_rank in claims.items():
+        owners = by_rank.get(True) or by_rank.get(False) or {}
+        if len(owners) > 1:
+            label = entity if kind == "article" else f"{entity[0]}/{entity[1]}"
+            names = ", ".join(sorted(owners.values()))
+            conflicts.append((
+                label,
+                f"{'Article' if kind == 'article' else 'ArticleClass'} {label} is bound "
+                f"to {len(owners)} different relation objects ({names}); "
+                "an entity holds one RelObjID",
+            ))
+            continue
+        [key] = owners
+        if kind == "article":
+            articles[entity] = key
+        else:
+            article_classes[entity] = key
+    return articles, article_classes, sorted(conflicts)
 
 
 def summarise(findings: list[ExportFinding]) -> tuple[int, int]:
