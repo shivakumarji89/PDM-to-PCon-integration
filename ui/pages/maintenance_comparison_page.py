@@ -92,7 +92,7 @@ class MaintenanceComparisonPage(BasePage):
             self._table.setRowCount(0)
             return
 
-        if state.repository_snapshot is None:
+        if state.mdb_snapshot is None:
             self._status.setText("Load the released MDB repository first.")
             self._alignment.setText(state.alignment.status)
             self._pdm.setText(str(len(state.pdm_snapshot.articles)))
@@ -105,7 +105,7 @@ class MaintenanceComparisonPage(BasePage):
 
         self._alignment.setText(state.alignment.status)
         self._pdm.setText(str(len(state.pdm_snapshot.articles)))
-        self._mdb.setText(str(len(state.repository_snapshot.articles)))
+        self._mdb.setText(str(len(state.mdb_snapshot.articles)))
         self._pdm_identity.setText(self._pdm_source_text(state.pdm_snapshot))
         self._mdb_identity.setText(self._mdb_source_text(state))
 
@@ -130,7 +130,7 @@ class MaintenanceComparisonPage(BasePage):
 
     @staticmethod
     def _mdb_source_text(state) -> str:
-        snapshot = state.repository_snapshot
+        snapshot = state.mdb_snapshot
         metadata = getattr(snapshot, "metadata", None)
         source = str(getattr(metadata, "source", "") or "MDB")
         notes = str(getattr(metadata, "notes", "") or "")
@@ -144,7 +144,7 @@ class MaintenanceComparisonPage(BasePage):
         return bool(
             state
             and state.pdm_snapshot
-            and state.repository_snapshot
+            and state.mdb_snapshot
             and state.alignment.is_aligned
         )
 

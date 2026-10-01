@@ -152,6 +152,7 @@ class MaintenanceRepositoryLinkDialog(QDialog):
         state = MaintenanceSnapshot(
             pdm_snapshot=pdm_snapshot,
             repository_snapshot=self._context.repository_snapshot,
+            mdb_snapshot=self._context.mdb_snapshot,
         )
         self._context.register_maintenance_snapshot(state)
         alignment = MaintenanceAlignmentService(self._context).align(state)

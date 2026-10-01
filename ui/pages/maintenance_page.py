@@ -136,7 +136,7 @@ class MaintenancePage(BasePage):
         if getattr(self, "_repository_link_button", None) is None:
             return
         self._repository_link_button.setEnabled(
-            self._context.repository_snapshot is not None
+            self._context.mdb_snapshot is not None
             and self._context.pdm_snapshot is not None
         )
 

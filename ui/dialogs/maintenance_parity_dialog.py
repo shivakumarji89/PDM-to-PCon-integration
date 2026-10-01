@@ -97,7 +97,7 @@ class MaintenanceParityDialog(QDialog):
             return
 
         state = self._context.maintenance_snapshot
-        if state is None or state.pdm_snapshot is None or state.repository_snapshot is None:
+        if state is None or state.pdm_snapshot is None or state.mdb_snapshot is None:
             self._status.setText(
                 "Maintenance state is incomplete. Load the MDB repository and Maintenance PDM scope first."
             )

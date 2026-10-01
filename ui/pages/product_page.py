@@ -1477,16 +1477,16 @@ class ProductPage(BasePage):
             # Maintenance may use the already-loaded released MDB as the
             # authoritative base-length source. This is deliberately opt-in;
             # Development keeps the standard PDM loading semantics unchanged.
-            if self._context.repository_snapshot is not None:
+            if self._context.mdb_snapshot is not None:
                 from services.maintenance_alignment_service import MaintenanceAlignmentService
-                MaintenanceAlignmentService(self._context).apply_released_mdb_base_lengths(
+                MaintenanceAlignmentService(self._context).prepare_pdm_scope(
                     pdm_snapshot,
-                    self._context.repository_snapshot,
+                    self._context.mdb_snapshot,
                 )
         self._context.engineering_initialization_service.initialize(pdm_snapshot)
         self._context.register_pdm_snapshot(pdm_snapshot)
         if self._context_module == WorkbenchModule.MAINTENANCE:
-            if self._context.repository_snapshot is not None:
+            if self._context.mdb_snapshot is not None:
                 self._repository_workspace._repository_status.setText(
                     "PDM product loaded. Establish Repository Link to continue."
                 )

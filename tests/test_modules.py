@@ -32,10 +32,14 @@ def test_module_workflow_mapping_uses_existing_workflows():
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     )
-    # Maintenance is intentionally a two-source comparison workflow:
-    # Product loads the PDM side; the comparison step shows PDM vs released MDB.
     assert module_workflows(WorkbenchModule.MAINTENANCE) == (
         WorkflowStep.PRODUCT,
+        WorkflowStep.ARTICLES,
+        WorkflowStep.CLASS_CREATION,
+        WorkflowStep.TEXT,
+        WorkflowStep.RELATION,
+        WorkflowStep.PRICING,
+        WorkflowStep.PRICING_RELATION,
         WorkflowStep.MAINTENANCE_COMPARISON,
     )
     assert module_workflows(WorkbenchModule.QA_VALIDATION) == (

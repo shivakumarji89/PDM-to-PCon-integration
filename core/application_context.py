@@ -82,6 +82,10 @@ class ApplicationContext:
         # in separate snapshots so repository imports never overwrite Development.
         self._pdm_snapshot: Snapshot | None = None
         self._repository_snapshot: Snapshot | None = None
+        # Released MDB imported from the selected repository. Maintenance-only
+        # reference data: never loaded into the SnapshotManager, so it can not
+        # replace the active PDM or repository snapshot.
+        self._mdb_snapshot: Snapshot | None = None
         self._maintenance_repository_info: dict | None = None
         self._maintenance_snapshot: MaintenanceSnapshot | None = None
         # UI-independent session state for long-running validation workflows.
@@ -175,6 +179,15 @@ class ApplicationContext:
     @property
     def repository_snapshot(self) -> Snapshot | None:
         return self._repository_snapshot
+
+    @property
+    def mdb_snapshot(self) -> Snapshot | None:
+        """Released MDB snapshot used by Maintenance alignment and comparison."""
+        return self._mdb_snapshot
+
+    def register_mdb_snapshot(self, snapshot: Snapshot | None) -> None:
+        """Store the released MDB snapshot without touching the active snapshot."""
+        self._mdb_snapshot = snapshot
 
     def register_pdm_snapshot(self, snapshot: Snapshot | None) -> None:
         self._pdm_snapshot = snapshot

@@ -50,10 +50,20 @@ class MaintenanceAlignment:
 
 @dataclass
 class MaintenanceSnapshot:
-    """Complete Maintenance workflow state; never used by Development."""
+    """Complete Maintenance workflow state; never used by Development.
+
+    The three snapshots are independent objects:
+
+    * ``pdm_snapshot`` - the loaded PDM product (Maintenance Product workflow).
+    * ``repository_snapshot`` - the repository working snapshot shared with the
+      existing repository workflows (Bulk Update, QA, Article OBX).
+    * ``mdb_snapshot`` - the released MDB imported from the selected repository;
+      the authoritative source for Maintenance alignment and comparison.
+    """
 
     pdm_snapshot: Snapshot | None = None
     repository_snapshot: Snapshot | None = None
+    mdb_snapshot: Snapshot | None = None
     alignment: MaintenanceAlignment = field(default_factory=MaintenanceAlignment)
 
     def clear_alignment(self) -> None:

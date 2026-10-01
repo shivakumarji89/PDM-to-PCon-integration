@@ -1,4 +1,19 @@
-"""Maintenance-only PDM ↔ released-MDB article alignment."""
+"""Maintenance-only PDM ↔ released-MDB article alignment.
+
+In Maintenance the released MDB is the authority for the Base Article boundary.
+Every released MDB article (``tCOMd_Article``) is a base article, so:
+
+    PDM article
+        → its released MDB base article (code begins the PDM article number)
+        → base length = len(MDB base article code)
+        → PDM ``base_length_overrides[article.code]``
+          (the same input Development's manual Articles boundary uses)
+        → unchanged PDM engine ``materialize_article_sets``
+
+``align()`` uses the same resolver, so for every resolved article
+``base_code == pdm_code[:len(mdb_code)]``. Development never calls this service
+and keeps PDM's own ``article_prefix_length`` behaviour.
+"""
 from __future__ import annotations
 
 from models.maintenance_snapshot import (
@@ -13,30 +28,31 @@ from services.base_service import BaseService
 class MaintenanceAlignmentService(BaseService):
     """Align Maintenance PDM articles against released MDB base articles."""
 
-    @staticmethod
-    def apply_released_mdb_base_lengths(pdm_snapshot, repository_snapshot) -> int:
-        """Apply released-MDB base lengths to a Maintenance PDM snapshot.
+    def prepare_pdm_scope(self, pdm_snapshot, mdb_snapshot) -> int:
+        """Feed released-MDB base lengths into the existing PDM engine.
 
-        This is intentionally an opt-in Maintenance operation. Development never
-        calls it, so the shared PDM loading semantics remain unchanged.
-
-        For each PDM article, the longest released-MDB article code that is a
-        prefix of the PDM code supplies the Maintenance base length. Articles
-        with no released-MDB prefix are left untouched so the existing PDM
-        length resolution remains available as the fallback.
+        Writes the MDB base lengths into ``base_length_overrides`` and re-runs
+        the unchanged Development reduction engine (``materialize_article_sets``,
+        also run by PDMService during loading) so the Article Sets use them.
         """
-        if pdm_snapshot is None or repository_snapshot is None:
+        applied = self.apply_released_mdb_base_lengths(pdm_snapshot, mdb_snapshot)
+        if applied:
+            self.context.engineering_reduction_service.materialize_article_sets(pdm_snapshot)
+        return applied
+
+    @classmethod
+    def apply_released_mdb_base_lengths(cls, pdm_snapshot, mdb_snapshot) -> int:
+        """Set ``base_length_overrides[code] = len(released MDB base code)``.
+
+        The MDB length wins over the PDM ``article_prefix_length`` and over any
+        earlier override. Articles without a single released base are left
+        unchanged here and reported UNRESOLVED by :meth:`align`.
+        """
+        if pdm_snapshot is None or mdb_snapshot is None:
             return 0
 
-        mdb_codes = sorted(
-            {
-                str(article.code or "").strip()
-                for article in repository_snapshot.articles
-                if str(article.code or "").strip()
-            },
-            key=lambda value: (-len(value), value.casefold()),
-        )
-        if not mdb_codes:
+        mdb_by_code = cls._mdb_by_code(mdb_snapshot)
+        if not mdb_by_code:
             return 0
 
         overrides = dict(getattr(pdm_snapshot, "base_length_overrides", {}) or {})
@@ -45,14 +61,10 @@ class MaintenanceAlignmentService(BaseService):
             code = str(article.code or "").strip()
             if not code:
                 continue
-            folded = code.casefold()
-            base_code = next(
-                (candidate for candidate in mdb_codes if folded.startswith(candidate.casefold())),
-                None,
-            )
-            if base_code is None:
+            mdb_article, _reason = cls.resolve_released_base(article, mdb_by_code)
+            if mdb_article is None:
                 continue
-            length = len(base_code)
+            length = len(str(mdb_article.code).strip())
             if overrides.get(code) != length:
                 overrides[code] = length
                 applied += 1
@@ -61,29 +73,25 @@ class MaintenanceAlignmentService(BaseService):
         return applied
 
     def align(self, state: MaintenanceSnapshot) -> MaintenanceAlignment:
-        """Align Maintenance PDM articles using PDM's authoritative slice length."""
+        """Relate each Maintenance PDM article to its released MDB base article."""
         pdm = state.pdm_snapshot
-        repository = state.repository_snapshot
+        mdb = state.mdb_snapshot
         if pdm is None:
             state.clear_alignment()
             state.alignment.message = "Maintenance PDM snapshot is not loaded."
             return state.alignment
-        if repository is None:
+        if mdb is None:
             state.clear_alignment()
-            state.alignment.message = "Maintenance MDB repository is not loaded."
+            state.alignment.message = "Maintenance released MDB snapshot is not loaded."
             return state.alignment
 
-        rules = self._released_base_rules(repository)
+        rules = self._released_base_rules(mdb)
         if not rules:
             state.clear_alignment()
             state.alignment.message = "Released MDB contains no base articles."
             return state.alignment
 
-        mdb_by_code = {
-            str(article.code or "").strip().casefold(): article
-            for article in repository.articles
-            if str(article.code or "").strip()
-        }
+        mdb_by_code = self._mdb_by_code(mdb)
 
         relations: list[MaintenanceArticleRelation] = []
         unresolved_ids: list[str] = []
@@ -95,33 +103,22 @@ class MaintenanceAlignmentService(BaseService):
             if not code or not article_id:
                 continue
 
-            base_length, method = self._authoritative_base_length(pdm, article)
-            if base_length <= 0:
-                unresolved_ids.append(article_id)
-                unresolved_codes.append(code)
-                continue
-            if base_length > len(code):
-                unresolved_ids.append(article_id)
-                unresolved_codes.append(code)
-                continue
-
-            base_code = code[:base_length]
-            mdb_article = mdb_by_code.get(base_code.casefold())
+            mdb_article, reason = self.resolve_released_base(article, mdb_by_code)
             if mdb_article is None:
                 unresolved_ids.append(article_id)
                 unresolved_codes.append(code)
                 continue
 
+            base_length = len(str(mdb_article.code).strip())
             relations.append(
                 MaintenanceArticleRelation(
                     pdm_article_id=article_id,
                     pdm_article_code=code,
                     mdb_article_id=str(mdb_article.id or ""),
                     mdb_article_code=str(mdb_article.code or ""),
-                    base_code=base_code,
+                    base_code=code[:base_length],
                     base_length=base_length,
-                    slicing_method=method,
-                    reason="Base derived from PDM article prefix length.",
+                    reason=reason,
                 )
             )
 
@@ -132,7 +129,7 @@ class MaintenanceAlignmentService(BaseService):
             unresolved_article_ids=unresolved_ids,
             unresolved_article_codes=unresolved_codes,
             message=(
-                f"Aligned {len(relations):,} PDM article(s) using PDM slicing rules."
+                f"Aligned {len(relations):,} PDM article(s) to released MDB base articles."
                 + (
                     f" {len(unresolved_ids):,} article(s) remain unresolved."
                     if unresolved_ids else ""
@@ -142,48 +139,40 @@ class MaintenanceAlignmentService(BaseService):
         return state.alignment
 
     @staticmethod
-    def _authoritative_base_length(snapshot, article) -> tuple[int, str]:
-        code = str(article.code or "").strip()
+    def resolve_released_base(article, mdb_by_code) -> tuple[object | None, str]:
+        """Return (released MDB base article or None, reason) for a PDM article.
 
-        # An explicit Maintenance/base-length registry override is authoritative
-        # when present. It is keyed by article CODE, not ItemId.
-        overrides = getattr(snapshot, "base_length_overrides", {}) or {}
-        override = overrides.get(code)
-        if isinstance(override, int) and override > 0:
-            return override, "MAINTENANCE_BASE_LENGTH_OVERRIDE"
-
-        # PDMService populates this from Item.Notes, with category-master fallback.
-        prefix_by_id = getattr(snapshot, "article_prefix_length", {}) or {}
-        prefix = prefix_by_id.get(str(article.id))
-        if isinstance(prefix, int) and prefix > 0:
-            return prefix, "PDM_ITEM_NOTES_PREFIX_LENGTH"
-
-        # Family loading normally materializes ArticleSets. Use their stored
-        # base boundary only as a fallback when PDM did not provide a prefix.
-        for article_set in getattr(snapshot, "article_sets", []) or []:
-            if str(article.id) in (str(item_id) for item_id in article_set.article_ids):
-                length = int(article_set.base_length or 0)
-                if length > 0:
-                    return length, "PDM_ARTICLE_SET_BASE_LENGTH"
-
-        return 0, "UNRESOLVED"
+        Candidates are the released base articles whose code begins the PDM
+        article number (case-insensitive). One candidate is the base. When
+        released bases nest (e.g. ``ABC`` and ``ABC123``), MDB data alone
+        cannot say which one is correct, so nothing is guessed: PDM's
+        ``article_prefix_length`` and ``base_length_overrides`` never decide
+        the Maintenance base, and the article is left unresolved.
+        """
+        folded = str(article.code or "").strip().casefold()
+        candidates = [mdb_by_code[base] for base in mdb_by_code if folded.startswith(base)]
+        if not candidates:
+            return None, "No released MDB base article begins this article number."
+        if len(candidates) == 1:
+            return candidates[0], "Released MDB base article."
+        return None, "Ambiguous: several released MDB base articles begin this article number."
 
     @staticmethod
-    def _released_base_rules(repository) -> list[MaintenanceBaseRule]:
+    def _mdb_by_code(mdb_snapshot) -> dict:
+        return {
+            str(article.code or "").strip().casefold(): article
+            for article in mdb_snapshot.articles
+            if str(article.code or "").strip()
+        }
+
+    @staticmethod
+    def _released_base_rules(mdb_snapshot) -> list[MaintenanceBaseRule]:
         rules: list[MaintenanceBaseRule] = []
         seen: set[str] = set()
-        for article in repository.articles:
+        for article in mdb_snapshot.articles:
             code = str(article.code or "").strip()
             if not code or code.casefold() in seen:
                 continue
             seen.add(code.casefold())
             rules.append(MaintenanceBaseRule(base_code=code, base_length=len(code)))
         return rules
-
-    @staticmethod
-    def _match_rule(code: str, rules: list[MaintenanceBaseRule]):
-        folded = code.casefold()
-        for rule in rules:
-            if folded.startswith(rule.base_code.casefold()):
-                return rule
-        return None

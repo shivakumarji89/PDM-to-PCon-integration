@@ -125,8 +125,8 @@ class MaintenanceParityService:
         """Compare the loaded Maintenance PDM scope directly with its released MDB snapshot."""
         if maintenance_snapshot is None or maintenance_snapshot.pdm_snapshot is None:
             raise ValueError("A Maintenance PDM snapshot is required.")
-        if maintenance_snapshot.repository_snapshot is None:
-            raise ValueError("A released MDB repository snapshot is required.")
+        if maintenance_snapshot.mdb_snapshot is None:
+            raise ValueError("A released MDB snapshot is required.")
         if not maintenance_snapshot.alignment.is_aligned:
             raise ValueError("Maintenance article alignment must be complete before comparison.")
 
@@ -136,7 +136,7 @@ class MaintenanceParityService:
 
         report = ParityReport()
         pdm_snapshot = maintenance_snapshot.pdm_snapshot
-        mdb_snapshot = maintenance_snapshot.repository_snapshot
+        mdb_snapshot = maintenance_snapshot.mdb_snapshot
         comparisons = (
             ("Articles", self._maintenance_article_keys(maintenance_snapshot), self._article_keys(mdb_snapshot)),
             ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
