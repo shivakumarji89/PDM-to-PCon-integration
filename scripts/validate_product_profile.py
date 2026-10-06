@@ -13,8 +13,6 @@ Run:  $env:QT_QPA_PLATFORM="offscreen"; $env:PYTHONPATH="."; \
 """
 from __future__ import annotations
 
-import sys
-
 from core.application_context import ApplicationContext
 from models.product import Product
 from models.property import Property

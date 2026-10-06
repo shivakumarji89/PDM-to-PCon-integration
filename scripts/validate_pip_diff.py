@@ -10,8 +10,6 @@ Run:  $env:PYTHONPATH="."; python scripts/validate_pip_diff.py
 """
 from __future__ import annotations
 
-import sys
-
 from core.application_context import ApplicationContext
 from models.article import Article
 from models.option import Option

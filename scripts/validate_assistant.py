@@ -9,8 +9,6 @@ Run:  $env:PYTHONPATH="."; python scripts/validate_assistant.py
 """
 from __future__ import annotations
 
-import sys
-
 from ai.actions import Action, ActionType
 from ai.assistant import EngineeringAssistant
 from core.application_context import ApplicationContext

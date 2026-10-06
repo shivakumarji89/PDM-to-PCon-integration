@@ -8,8 +8,6 @@ Run:  $env:PYTHONPATH="."; python scripts/validate_price_list.py
 """
 from __future__ import annotations
 
-import sys
-
 from core.application_context import ApplicationContext
 from models.product import Product
 from services.snapshot_serialization import snapshot_from_dict, snapshot_to_dict

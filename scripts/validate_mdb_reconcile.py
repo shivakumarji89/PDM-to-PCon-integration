@@ -8,7 +8,6 @@ Run:  $env:PYTHONPATH="."; python scripts/validate_mdb_reconcile.py
 """
 from __future__ import annotations
 
-import sys
 import tempfile
 from pathlib import Path
 
