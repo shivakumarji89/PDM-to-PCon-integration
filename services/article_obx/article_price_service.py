@@ -76,7 +76,7 @@ class ArticlePriceService(BaseService):
         if not request.effective_date.strip():
             raise ValueError("effective_date is required")
 
-        snapshot = self.context.repository_snapshot or self.context.active_snapshot
+        snapshot = self.context.mdb_import_snapshot or self.context.active_snapshot
         if snapshot is None:
             return [
                 ArticlePrice(

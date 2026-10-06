@@ -1,7 +1,4 @@
-"""Maintenance-only snapshot and alignment state.
-
-This state is intentionally separate from the shared Development Snapshot.
-"""
+"""Maintenance alignment state referencing the shared PDM and MDB Import data."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -50,20 +47,14 @@ class MaintenanceAlignment:
 
 @dataclass
 class MaintenanceSnapshot:
-    """Complete Maintenance workflow state; never used by Development.
+    """Maintenance workflow state; it does not own or copy source snapshots.
 
-    The three snapshots are independent objects:
-
-    * ``pdm_snapshot`` - the loaded PDM product (Maintenance Product workflow).
-    * ``repository_snapshot`` - the repository working snapshot shared with the
-      existing repository workflows (Bulk Update, QA, Article OBX).
-    * ``mdb_snapshot`` - the released MDB imported from the selected repository;
-      the authoritative source for Maintenance alignment and comparison.
+    * ``pdm_snapshot`` references the shared PDM source.
+    * ``mdb_import_snapshot`` references the existing MDB comparison state.
     """
 
     pdm_snapshot: Snapshot | None = None
-    repository_snapshot: Snapshot | None = None
-    mdb_snapshot: Snapshot | None = None
+    mdb_import_snapshot: Snapshot | None = None
     alignment: MaintenanceAlignment = field(default_factory=MaintenanceAlignment)
 
     def clear_alignment(self) -> None:

@@ -16,7 +16,7 @@ from services.article_obx.article_permutation_service import ArticlePermutationS
 
 class _Context:
     active_snapshot = None
-    repository_snapshot = None
+    mdb_import_snapshot = None
 
 
 def _base_snapshot() -> Snapshot:
@@ -637,7 +637,7 @@ class ArticleObxRealCodeSchemeFidelityTests(unittest.TestCase):
 
 
 class ArticleObxPriceTests(unittest.TestCase):
-    def test_resolves_price_from_repository_snapshot(self):
+    def test_resolves_price_from_mdb_import_snapshot(self):
         from services.article_obx.article_price_service import (
             ArticlePriceRequest,
             ArticlePriceService,
@@ -657,7 +657,7 @@ class ArticleObxPriceTests(unittest.TestCase):
         ]
 
         context = _Context()
-        context.repository_snapshot = snapshot
+        context.mdb_import_snapshot = snapshot
         permutation = ArticlePermutationService(context).build(snapshot)[0]
         prices = ArticlePriceService(context).resolve(
             [permutation],
@@ -712,7 +712,7 @@ class ArticleObxXmlTests(unittest.TestCase):
             )
         ]
         context = _Context()
-        context.repository_snapshot = snapshot
+        context.mdb_import_snapshot = snapshot
 
         result = ArticleObxService(context).generate(
             currency="EUR", effective_date="20260903", series_id="TEST"

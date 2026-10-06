@@ -74,6 +74,13 @@ def module_title(module: WorkbenchModule) -> str:
     return module.name.replace("_", " ").title()
 
 
+def snapshot_source_for_module(module: WorkbenchModule | None) -> str:
+    """Return the active data source required by each module's workflow."""
+    if module in (WorkbenchModule.BULK_UPDATE, WorkbenchModule.QA_VALIDATION):
+        return "mdb_import"
+    return "pdm"
+
+
 # Workflows exposed after entering each module. Existing workflow/page
 # implementations are reused; this mapping only controls which ones are shown.
 # Engineering remains available to the application internally, but is not

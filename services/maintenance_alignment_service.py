@@ -28,30 +28,58 @@ from services.base_service import BaseService
 class MaintenanceAlignmentService(BaseService):
     """Align Maintenance PDM articles against released MDB base articles."""
 
-    def prepare_pdm_scope(self, pdm_snapshot, mdb_snapshot) -> int:
+    def prepare_pdm_scope(self, pdm_snapshot, mdb_import_snapshot) -> int:
         """Feed released-MDB base lengths into the existing PDM engine.
 
         Writes the MDB base lengths into ``base_length_overrides`` and re-runs
         the unchanged Development reduction engine (``materialize_article_sets``,
         also run by PDMService during loading) so the Article Sets use them.
         """
-        applied = self.apply_released_mdb_base_lengths(pdm_snapshot, mdb_snapshot)
+        session = self.context.workflow_session("maintenance_base_length_overrides")
+        new_scope = (
+            session.get("pdm_snapshot") is not pdm_snapshot
+            or session.get("mdb_import_snapshot") is not mdb_import_snapshot
+        )
+        if new_scope:
+            self.restore_pdm_scope()
+            session = self.context.workflow_session("maintenance_base_length_overrides")
+            session["pdm_snapshot"] = pdm_snapshot
+            session["mdb_import_snapshot"] = mdb_import_snapshot
+            session["original_overrides"] = dict(
+                getattr(pdm_snapshot, "base_length_overrides", {}) or {}
+            )
+
+        applied = self.apply_released_mdb_base_lengths(pdm_snapshot, mdb_import_snapshot)
         if applied:
             self.context.engineering_reduction_service.materialize_article_sets(pdm_snapshot)
+        elif new_scope:
+            self.context.clear_workflow_session("maintenance_base_length_overrides")
         return applied
 
+    def restore_pdm_scope(self) -> bool:
+        """Restore the shared PDM overrides after Maintenance stops using them."""
+        session = self.context.workflow_session("maintenance_base_length_overrides")
+        pdm_snapshot = session.get("pdm_snapshot")
+        if pdm_snapshot is None:
+            return False
+
+        pdm_snapshot.base_length_overrides = dict(session.get("original_overrides", {}))
+        self.context.engineering_reduction_service.materialize_article_sets(pdm_snapshot)
+        self.context.clear_workflow_session("maintenance_base_length_overrides")
+        return True
+
     @classmethod
-    def apply_released_mdb_base_lengths(cls, pdm_snapshot, mdb_snapshot) -> int:
+    def apply_released_mdb_base_lengths(cls, pdm_snapshot, mdb_import_snapshot) -> int:
         """Set ``base_length_overrides[code] = len(released MDB base code)``.
 
         The MDB length wins over the PDM ``article_prefix_length`` and over any
         earlier override. Articles without a single released base are left
         unchanged here and reported UNRESOLVED by :meth:`align`.
         """
-        if pdm_snapshot is None or mdb_snapshot is None:
+        if pdm_snapshot is None or mdb_import_snapshot is None:
             return 0
 
-        mdb_by_code = cls._mdb_by_code(mdb_snapshot)
+        mdb_by_code = cls._mdb_by_code(mdb_import_snapshot)
         if not mdb_by_code:
             return 0
 
@@ -75,14 +103,14 @@ class MaintenanceAlignmentService(BaseService):
     def align(self, state: MaintenanceSnapshot) -> MaintenanceAlignment:
         """Relate each Maintenance PDM article to its released MDB base article."""
         pdm = state.pdm_snapshot
-        mdb = state.mdb_snapshot
+        mdb = state.mdb_import_snapshot
         if pdm is None:
             state.clear_alignment()
             state.alignment.message = "Maintenance PDM snapshot is not loaded."
             return state.alignment
         if mdb is None:
             state.clear_alignment()
-            state.alignment.message = "Maintenance released MDB snapshot is not loaded."
+            state.alignment.message = "Maintenance MDB Import Snapshot is not loaded."
             return state.alignment
 
         rules = self._released_base_rules(mdb)
@@ -158,18 +186,18 @@ class MaintenanceAlignmentService(BaseService):
         return None, "Ambiguous: several released MDB base articles begin this article number."
 
     @staticmethod
-    def _mdb_by_code(mdb_snapshot) -> dict:
+    def _mdb_by_code(mdb_import_snapshot) -> dict:
         return {
             str(article.code or "").strip().casefold(): article
-            for article in mdb_snapshot.articles
+            for article in mdb_import_snapshot.articles
             if str(article.code or "").strip()
         }
 
     @staticmethod
-    def _released_base_rules(mdb_snapshot) -> list[MaintenanceBaseRule]:
+    def _released_base_rules(mdb_import_snapshot) -> list[MaintenanceBaseRule]:
         rules: list[MaintenanceBaseRule] = []
         seen: set[str] = set()
-        for article in mdb_snapshot.articles:
+        for article in mdb_import_snapshot.articles:
             code = str(article.code or "").strip()
             if not code or code.casefold() in seen:
                 continue

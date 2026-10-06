@@ -94,6 +94,7 @@ class MaintenanceParityService:
         comparisons = (
             ("Articles", self._maintenance_article_keys(maintenance_snapshot), self._article_keys(mdb_snapshot)),
             ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
+            ("Relation Objects", self._relation_objects(pdm_snapshot), self._relation_objects(mdb_snapshot)),
             (
                 "Property Values",
                 self._property_values(pdm_snapshot),
@@ -125,7 +126,7 @@ class MaintenanceParityService:
         """Compare the loaded Maintenance PDM scope directly with its released MDB snapshot."""
         if maintenance_snapshot is None or maintenance_snapshot.pdm_snapshot is None:
             raise ValueError("A Maintenance PDM snapshot is required.")
-        if maintenance_snapshot.mdb_snapshot is None:
+        if maintenance_snapshot.mdb_import_snapshot is None:
             raise ValueError("A released MDB snapshot is required.")
         if not maintenance_snapshot.alignment.is_aligned:
             raise ValueError("Maintenance article alignment must be complete before comparison.")
@@ -136,10 +137,11 @@ class MaintenanceParityService:
 
         report = ParityReport()
         pdm_snapshot = maintenance_snapshot.pdm_snapshot
-        mdb_snapshot = maintenance_snapshot.mdb_snapshot
+        mdb_snapshot = maintenance_snapshot.mdb_import_snapshot
         comparisons = (
             ("Articles", self._maintenance_article_keys(maintenance_snapshot), self._article_keys(mdb_snapshot)),
             ("Properties", self._properties(pdm_snapshot), self._properties(mdb_snapshot)),
+            ("Relation Objects", self._relation_objects(pdm_snapshot), self._relation_objects(mdb_snapshot)),
             ("Property Values", self._property_values(pdm_snapshot), self._property_values(mdb_snapshot)),
             ("Options", self._options(pdm_snapshot), self._options(mdb_snapshot)),
             ("Option Values", self._option_values(pdm_snapshot), self._option_values(mdb_snapshot)),
@@ -225,6 +227,19 @@ class MaintenanceParityService:
             )
             for p in snapshot.properties
             if p.code or p.name
+        }
+
+    @staticmethod
+    def _relation_objects(snapshot: Snapshot) -> dict[str, str]:
+        return {
+            "|".join((
+                _norm(item.relation_name or item.name),
+                _norm(item.class_name),
+                _norm(item.type_code),
+                _norm(item.domain),
+            )): _pack(item.order, item.body)
+            for item in snapshot.relation_objects
+            if item.relation_name or item.name
         }
 
     @staticmethod

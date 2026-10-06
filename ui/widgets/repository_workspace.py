@@ -2,17 +2,14 @@
 
 Provides the single repository-browser/open/extract workflow used by modules
 that consume published repository snapshots. Module-specific pages consume the
-resulting ApplicationContext.repository_snapshot instead of implementing their
+resulting ApplicationContext.mdb_import_snapshot instead of implementing their
 own repository loader.
 
-The imported released MDB is additionally registered as an independent
-ApplicationContext.mdb_snapshot (a separate object), which Maintenance alignment
-and comparison use as the authoritative released-MDB dataset. Neither
-registration touches the PDM snapshot.
+The imported released MDB is registered once as ApplicationContext.mdb_import_snapshot.
+Maintenance alignment and comparison use it without replacing the PDM snapshot.
 """
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal
@@ -343,8 +340,10 @@ class RepositoryWorkspace(QWidget):
         # still being extracted in the background.
         self._repository_load_token += 1
         token = self._repository_load_token
-        self._context.register_repository_snapshot(None)
-        self._context.register_mdb_snapshot(None)
+        if self._context.snapshot_source == "pdm":
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
+        self._context.register_mdb_import_snapshot(None)
         self._context.register_maintenance_repository_info(None)
         self.repository_cleared.emit()
         try:
@@ -410,12 +409,13 @@ class RepositoryWorkspace(QWidget):
             )
             return
 
-        # The released MDB is kept as its own object so repository workflows
-        # editing the repository working snapshot can never alter the
-        # authoritative Maintenance comparison data (and vice versa).
-        self._context.register_mdb_snapshot(copy.deepcopy(snapshot))
-        self._context.register_repository_snapshot(snapshot)
-        self._context.activate_snapshot_source("repository")
+        self._context.register_mdb_import_snapshot(snapshot)
+        if self._context.snapshot_source == "pdm" and self._context.pdm_snapshot is not None:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).prepare_pdm_scope(
+                self._context.pdm_snapshot,
+                snapshot,
+            )
         self._repository_status.setText(
             f"Loaded {repository['name']} | {total_rows:,} MDB rows mapped into Workbench."
         )
@@ -442,8 +442,8 @@ class RepositoryWorkspace(QWidget):
             "Click Open Repository to select a series from Seating or Tables."
         )
         self._clear_repository_btn.setEnabled(False)
-        self._context.register_repository_snapshot(None)
-        self._context.register_mdb_snapshot(None)
-        if self._context.snapshot_source == "repository":
-            self._context.activate_snapshot_source("repository")
+        if self._context.snapshot_source == "pdm":
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
+        self._context.register_mdb_import_snapshot(None)
         self.repository_cleared.emit()

@@ -44,7 +44,7 @@ from core.errors import PDMError
 from core.progress import ProgressReporter
 from core.activity import ActivityType, LogLevel
 from models.product import Product
-from core.modules import WorkbenchModule
+from core.modules import WorkbenchModule, snapshot_source_for_module
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 from ui.widgets.repository_workspace import RepositoryWorkspace
@@ -643,18 +643,30 @@ class ProductPage(BasePage):
 
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
+        previous_module = self._context_module
+        if previous_module == WorkbenchModule.MAINTENANCE and module != previous_module:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
         self._context_module = module
         repository_context = module in (
             WorkbenchModule.MAINTENANCE,
             WorkbenchModule.BULK_UPDATE,
             WorkbenchModule.QA_VALIDATION,
         )
-        self._context.activate_snapshot_source(
-            "repository" if repository_context else "pdm"
-        )
+        self._context.activate_snapshot_source(snapshot_source_for_module(module))
         self._context_stack.setCurrentIndex(1 if repository_context else 0)
         if repository_context:
             self._repository_workspace.refresh()
+        if (
+            module == WorkbenchModule.MAINTENANCE
+            and self._context.pdm_snapshot is not None
+            and self._context.mdb_import_snapshot is not None
+        ):
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).prepare_pdm_scope(
+                self._context.pdm_snapshot,
+                self._context.mdb_import_snapshot,
+            )
         self._update_repository_actions()
 
     # -- search ------------------------------------------------------------
@@ -1449,6 +1461,9 @@ class ProductPage(BasePage):
 
     def _do_load(self, product: Product) -> None:
         # Load on a worker thread; a token ignores superseded loads.
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
         self._load_token += 1
         token = self._load_token
         self._pending_product = product
@@ -1468,25 +1483,22 @@ class ProductPage(BasePage):
             return
 
         self._loaded_product = product
-        # PDMService creates the newly loaded PDM snapshot as active. Capture
-        # that snapshot explicitly before restoring a repository source used by
-        # Maintenance, so a PDM load can never replace the repository workspace
-        # or vice versa.
+        # PDMService creates the newly loaded PDM snapshot as active.
         pdm_snapshot = self._context.active_snapshot
         if self._context_module == WorkbenchModule.MAINTENANCE:
             # Maintenance may use the already-loaded released MDB as the
             # authoritative base-length source. This is deliberately opt-in;
             # Development keeps the standard PDM loading semantics unchanged.
-            if self._context.mdb_snapshot is not None:
+            if self._context.mdb_import_snapshot is not None:
                 from services.maintenance_alignment_service import MaintenanceAlignmentService
                 MaintenanceAlignmentService(self._context).prepare_pdm_scope(
                     pdm_snapshot,
-                    self._context.mdb_snapshot,
+                    self._context.mdb_import_snapshot,
                 )
         self._context.engineering_initialization_service.initialize(pdm_snapshot)
         self._context.register_pdm_snapshot(pdm_snapshot)
         if self._context_module == WorkbenchModule.MAINTENANCE:
-            if self._context.mdb_snapshot is not None:
+            if self._context.mdb_import_snapshot is not None:
                 self._repository_workspace._repository_status.setText(
                     "PDM product loaded. Establish Repository Link to continue."
                 )
@@ -1494,8 +1506,8 @@ class ProductPage(BasePage):
                 self._repository_workspace._repository_status.setText(
                     "PDM product loaded. Open the released MDB repository before linking."
                 )
-        if self._context.snapshot_source == "repository":
-            self._context.activate_snapshot_source("repository")
+        if self._context.snapshot_source == "mdb_import":
+            self._context.activate_snapshot_source("mdb_import")
         self._refresh_display(product, duration, result.warnings)
         self._highlight_active_node(product)
         self.product_loaded.emit(f"Product: {product.code} - {product.name}")
@@ -1511,6 +1523,9 @@ class ProductPage(BasePage):
         self._refresh_hierarchy_btn.setEnabled(enabled)
 
     def _on_clear_snapshot(self) -> None:
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
         self._context.clear_active_snapshot()
         if self._context_module == WorkbenchModule.MAINTENANCE:
             self._context.register_pdm_snapshot(None)

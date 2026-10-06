@@ -167,7 +167,7 @@ class ArticleObxGeneratorPage(BasePage):
         )
 
     def _build_permutations(self) -> None:
-        snapshot = self._context.repository_snapshot
+        snapshot = self._context.mdb_import_snapshot
         self._table.setRowCount(0)
         self._permutations = []
 
@@ -222,7 +222,7 @@ class ArticleObxGeneratorPage(BasePage):
         reporter = self._build_reporter
         self._permutations = list(permutations or [])
         self._populate_permutation_table()
-        snapshot = self._context.repository_snapshot
+        snapshot = self._context.mdb_import_snapshot
         if snapshot is not None:
             self._status.setText(
                 f"Repository snapshot loaded: "
@@ -272,7 +272,7 @@ class ArticleObxGeneratorPage(BasePage):
                 self._table.setItem(row - 1, column, item)
 
     def refresh(self) -> None:
-        snapshot = self._context.repository_snapshot
+        snapshot = self._context.mdb_import_snapshot
         self._currency.clear()
 
         if snapshot is None:
@@ -293,4 +293,4 @@ class ArticleObxGeneratorPage(BasePage):
         self._build_button.setEnabled(bool(snapshot.articles))
 
     def is_ready(self) -> bool:
-        return self._context.repository_snapshot is not None
+        return self._context.mdb_import_snapshot is not None

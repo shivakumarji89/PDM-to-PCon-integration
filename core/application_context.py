@@ -8,7 +8,9 @@ Phase 2: wiring only - services contain no implementation yet.
 """
 from __future__ import annotations
 
+import copy
 from typing import TYPE_CHECKING, TypeVar
+from uuid import uuid4
 
 from core.activity import ActivityService
 from core.config import AppConfig
@@ -78,14 +80,9 @@ class ApplicationContext:
         self.config: AppConfig = config or AppConfig()
         self.project: Project = Project()
         self.snapshot_manager: SnapshotManager = SnapshotManager()
-        # Keep PDM Development data and published-repository Maintenance data
-        # in separate snapshots so repository imports never overwrite Development.
         self._pdm_snapshot: Snapshot | None = None
-        self._repository_snapshot: Snapshot | None = None
-        # Released MDB imported from the selected repository. Maintenance-only
-        # reference data: never loaded into the SnapshotManager, so it can not
-        # replace the active PDM or repository snapshot.
-        self._mdb_snapshot: Snapshot | None = None
+        self._mdb_import_snapshot: Snapshot | None = None
+        self._mdb_export_snapshot: Snapshot | None = None
         self._maintenance_repository_info: dict | None = None
         self._maintenance_snapshot: MaintenanceSnapshot | None = None
         # UI-independent session state for long-running validation workflows.
@@ -177,19 +174,36 @@ class ApplicationContext:
         return self._pdm_snapshot
 
     @property
-    def repository_snapshot(self) -> Snapshot | None:
-        return self._repository_snapshot
+    def mdb_import_snapshot(self) -> Snapshot | None:
+        return self._mdb_import_snapshot
 
     @property
-    def mdb_snapshot(self) -> Snapshot | None:
-        """Released MDB snapshot used by Maintenance alignment and comparison."""
-        return self._mdb_snapshot
+    def mdb_export_snapshot(self) -> Snapshot | None:
+        return self._mdb_export_snapshot
 
-    def register_mdb_snapshot(self, snapshot: Snapshot | None) -> None:
-        """Store the released MDB snapshot without touching the active snapshot."""
-        self._mdb_snapshot = snapshot
+    def register_mdb_import_snapshot(self, snapshot: Snapshot | None) -> None:
+        """Store imported MDB state without replacing the PDM source."""
+        self._mdb_import_snapshot = snapshot
+        if self._snapshot_source == "mdb_import":
+            if snapshot is None:
+                self.snapshot_manager.clear_snapshot()
+            else:
+                self.snapshot_manager.load_snapshot(snapshot)
+
+    def register_mdb_export_snapshot(self, snapshot: Snapshot | None) -> None:
+        """Store Development output prepared for MDB export."""
+        self._mdb_export_snapshot = snapshot
+
+    def prepare_mdb_export_snapshot(self, development_snapshot: Snapshot) -> Snapshot:
+        """Capture Development's current state as the MDB Export Snapshot."""
+        snapshot = copy.deepcopy(development_snapshot)
+        snapshot.id = uuid4().hex
+        self.register_mdb_export_snapshot(snapshot)
+        return snapshot
 
     def register_pdm_snapshot(self, snapshot: Snapshot | None) -> None:
+        if snapshot is not self._pdm_snapshot:
+            self._mdb_export_snapshot = None
         self._pdm_snapshot = snapshot
         if self._snapshot_source == "pdm":
             if snapshot is None:
@@ -197,19 +211,11 @@ class ApplicationContext:
             else:
                 self.snapshot_manager.load_snapshot(snapshot)
 
-    def register_repository_snapshot(self, snapshot: Snapshot | None) -> None:
-        self._repository_snapshot = snapshot
-        if self._snapshot_source == "repository":
-            if snapshot is None:
-                self.snapshot_manager.clear_snapshot()
-            else:
-                self.snapshot_manager.load_snapshot(snapshot)
-
     def activate_snapshot_source(self, source: str) -> None:
-        if source not in {"pdm", "repository"}:
+        if source not in {"pdm", "mdb_import"}:
             raise ValueError(f"Unknown snapshot source: {source}")
         self._snapshot_source = source
-        snapshot = self._pdm_snapshot if source == "pdm" else self._repository_snapshot
+        snapshot = self._pdm_snapshot if source == "pdm" else self._mdb_import_snapshot
         if snapshot is None:
             self.snapshot_manager.clear_snapshot()
         else:
@@ -218,8 +224,9 @@ class ApplicationContext:
     def clear_active_snapshot(self) -> None:
         if self._snapshot_source == "pdm":
             self._pdm_snapshot = None
+            self._mdb_export_snapshot = None
         else:
-            self._repository_snapshot = None
+            self._mdb_import_snapshot = None
         self.snapshot_manager.clear_snapshot()
 
     def set_product_registry(self, products) -> None:

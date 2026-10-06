@@ -93,12 +93,12 @@ class WorkflowManager(QObject):
         # Article OBX Generator works from the published repository snapshot,
         # not from the active PDM product snapshot. Loading the repository must
         # therefore unlock this workflow even when no PDM product is selected.
-        repository_ready = (
+        mdb_import_ready = (
             WorkflowStep.ARTICLE_OBX_GENERATOR in self._steps
-            and self._context.repository_snapshot is not None
+            and self._context.mdb_import_snapshot is not None
         )
         always = {self._steps[0]} | (standalone & set(self._steps))
-        if repository_ready:
+        if mdb_import_ready:
             always.add(WorkflowStep.ARTICLE_OBX_GENERATOR)
 
         if self._product_loaded():

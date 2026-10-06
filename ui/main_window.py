@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
         if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
-            if self._context.repository_snapshot is None:
+            if self._context.mdb_import_snapshot is None:
                 self.statusBar().showMessage(
                     "Article OBX Generator - load a repository snapshot first"
                 )
@@ -1342,7 +1342,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Export XOCD", message)
 
     def _on_export_mdb(self) -> None:
-        """Export the active product directly as a ``pcr_data_com_ocd.mdb``.
+        """Export Development output as a ``pcr_data_com_ocd.mdb``.
 
         Copies the category template, wipes its example product, and writes the
         snapshot's ``tCOMd_*`` rows. This is the alternative to the XOCD CSV
@@ -1350,6 +1350,11 @@ class MainWindow(QMainWindow):
         """
         from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
+        if self._active_module != WorkbenchModule.DEVELOPMENT:
+            QMessageBox.information(
+                self, "Export MDB", "MDB Export is available from Development."
+            )
+            return
         if not self._context.snapshot_manager.has_snapshot():
             QMessageBox.information(self, "Export MDB", "Load a product first.")
             return
@@ -1371,7 +1376,10 @@ class MainWindow(QMainWindow):
         # Standardise base article lengths to the registry (CAD) before export.
         psvc = self._context.price_update_service
         standardised = psvc.apply_registry(snapshot, psvc.registry_path())
-        result = self._context.ocd_export_service.export(snapshot, directory, kind)
+        export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
+        result = self._context.ocd_export_service.export(
+            export_snapshot, directory, kind
+        )
 
         if not result.ok or result.error:
             QMessageBox.warning(

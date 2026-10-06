@@ -22,9 +22,9 @@ def _service() -> MaintenanceAlignmentService:
     return MaintenanceAlignmentService(ApplicationContext())
 
 
-def _align(pdm, mdb, repository=None):
+def _align(pdm, mdb_import):
     state = MaintenanceSnapshot(
-        pdm_snapshot=pdm, repository_snapshot=repository, mdb_snapshot=mdb
+        pdm_snapshot=pdm, mdb_import_snapshot=mdb_import
     )
     return MaintenanceAlignmentService(None).align(state)
 
@@ -91,6 +91,36 @@ def test_existing_engine_uses_mdb_base_length():
     assert {s.base_length for s in pdm.article_sets} == {6}  # MDB-derived
 
 
+def test_maintenance_base_override_restores_before_development_reuses_pdm():
+    context = ApplicationContext()
+    service = MaintenanceAlignmentService(context)
+    pdm = _snapshot("ABC123-RED", "ABC123-BLUE", prefix=3)
+    pdm.base_length_overrides = {"ABC123-RED": 2}
+
+    service.prepare_pdm_scope(pdm, _snapshot("ABC123"))
+    assert pdm.base_length_overrides == {
+        "ABC123-RED": 6,
+        "ABC123-BLUE": 6,
+    }
+    assert service.restore_pdm_scope()
+
+    assert pdm.base_length_overrides == {"ABC123-RED": 2}
+    assert {article_set.base_length for article_set in pdm.article_sets} == {2}
+
+
+def test_replacing_mdb_import_does_not_retain_previous_boundary():
+    context = ApplicationContext()
+    service = MaintenanceAlignmentService(context)
+    pdm = _snapshot("ABC123-RED", prefix=3)
+    pdm.base_length_overrides = {"ABC123-RED": 2}
+
+    assert service.prepare_pdm_scope(pdm, _snapshot("ABC123")) == 1
+    assert service.prepare_pdm_scope(pdm, _snapshot("OTHER")) == 0
+
+    assert pdm.base_length_overrides == {"ABC123-RED": 2}
+    assert {article_set.base_length for article_set in pdm.article_sets} == {2}
+
+
 def test_prepare_delegates_to_engine_and_skips_it_when_nothing_changes(monkeypatch):
     service = _service()
     calls = []
@@ -100,11 +130,14 @@ def test_prepare_delegates_to_engine_and_skips_it_when_nothing_changes(monkeypat
         lambda snapshot: calls.append(snapshot),
     )
     pdm = _snapshot("ABC123-RED", prefix=3)
+    mdb_import = _snapshot("ABC123")
 
-    assert service.prepare_pdm_scope(pdm, _snapshot("ABC123")) == 1
-    assert service.prepare_pdm_scope(pdm, _snapshot("ABC123")) == 0
-    assert service.prepare_pdm_scope(_snapshot("NOPE-1"), _snapshot("ABC123")) == 0
+    assert service.prepare_pdm_scope(pdm, mdb_import) == 1
+    assert service.prepare_pdm_scope(pdm, mdb_import) == 0
     assert calls == [pdm]
+    assert service.restore_pdm_scope()
+    assert service.prepare_pdm_scope(_snapshot("NOPE-1"), _snapshot("ABC123")) == 0
+    assert calls == [pdm, pdm]
 
 
 # 3. Multiple PDM articles share one MDB base ----------------------------------
@@ -194,12 +227,12 @@ def test_alignment_state_stays_off_the_shared_snapshot():
     assert not hasattr(pdm, "maintenance_article_relations")
 
 
-# 7. Repository snapshot is irrelevant -----------------------------------------
+# 7. MDB Import supplies the Maintenance base boundary --------------------------
 
-def test_repository_snapshot_is_not_an_mdb_base_source():
+def test_alignment_requires_a_matching_mdb_import_base():
     pdm = _snapshot("ABC123-RED", prefix=3)
 
-    result = _align(pdm, mdb=_snapshot("OTHER"), repository=_snapshot("ABC123"))
+    result = _align(pdm, _snapshot("OTHER"))
 
     assert result.relations == []
     assert result.unresolved_article_codes == ["ABC123-RED"]
