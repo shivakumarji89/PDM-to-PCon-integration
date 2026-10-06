@@ -39,7 +39,7 @@ class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
     def build(self, snapshot: Snapshot | None = None, *, reporter=None) -> list[ArticlePermutation]:
-        snapshot = snapshot or self.context.mdb_import_snapshot
+        snapshot = snapshot or self.context.qa_snapshot
         if snapshot is None:
             if reporter is not None:
                 reporter.begin(1, title="Building Article Permutations")

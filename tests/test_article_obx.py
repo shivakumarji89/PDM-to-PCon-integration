@@ -17,6 +17,7 @@ from services.article_obx.article_permutation_service import ArticlePermutationS
 class _Context:
     active_snapshot = None
     mdb_import_snapshot = None
+    qa_snapshot = None
 
 
 def _base_snapshot() -> Snapshot:
@@ -637,7 +638,7 @@ class ArticleObxRealCodeSchemeFidelityTests(unittest.TestCase):
 
 
 class ArticleObxPriceTests(unittest.TestCase):
-    def test_resolves_price_from_mdb_import_snapshot(self):
+    def test_resolves_price_from_qa_snapshot(self):
         from services.article_obx.article_price_service import (
             ArticlePriceRequest,
             ArticlePriceService,
@@ -657,7 +658,7 @@ class ArticleObxPriceTests(unittest.TestCase):
         ]
 
         context = _Context()
-        context.mdb_import_snapshot = snapshot
+        context.qa_snapshot = snapshot
         permutation = ArticlePermutationService(context).build(snapshot)[0]
         prices = ArticlePriceService(context).resolve(
             [permutation],
@@ -712,7 +713,7 @@ class ArticleObxXmlTests(unittest.TestCase):
             )
         ]
         context = _Context()
-        context.mdb_import_snapshot = snapshot
+        context.qa_snapshot = snapshot
 
         result = ArticleObxService(context).generate(
             currency="EUR", effective_date="20260903", series_id="TEST"
@@ -724,6 +725,17 @@ class ArticleObxXmlTests(unittest.TestCase):
         self.assertEqual(codes, {"BASEAC", "BASEAD", "BASEBC", "BASEBD"})
         root = ET.fromstring(result.xml)
         self.assertEqual(len(root.findall("./items/bskArticle")), 4)
+
+    def test_generation_does_not_consume_mdb_import_without_qa_snapshot(self):
+        context = _Context()
+        context.mdb_import_snapshot = _base_snapshot()
+
+        result = ArticleObxService(context).generate(
+            currency="EUR", effective_date="20260903", series_id="TEST"
+        )
+
+        self.assertEqual(result.rows, [])
+        self.assertEqual(result.warnings, ["No active snapshot."])
 
 
 if __name__ == "__main__":

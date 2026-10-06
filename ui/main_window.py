@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
         if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
-            if self._context.mdb_import_snapshot is None:
+            if self._context.ensure_qa_snapshot() is None:
                 self.statusBar().showMessage(
                     "Article OBX Generator - load a repository snapshot first"
                 )

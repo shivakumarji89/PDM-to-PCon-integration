@@ -82,7 +82,7 @@ class ArticleObxGeneratorPage(BasePage):
         self._date.setDisplayFormat("yyyy-MM-dd")
         self._date.setDate(QDate.currentDate())
 
-        self._status = QLabel("No repository snapshot loaded.", self)
+        self._status = QLabel("No QA snapshot loaded.", self)
         self._status.setWordWrap(True)
 
         self._build_button = QPushButton("Build Permutations", self)
@@ -98,8 +98,8 @@ class ArticleObxGeneratorPage(BasePage):
         source = QGroupBox("Repository Source", self)
         source_layout = QVBoxLayout(source)
         source_layout.addWidget(SectionHeader(
-            "Repository Snapshot",
-            "Only the repository snapshot is used. Existing materialized articles are not the permutation output."
+            "QA Snapshot",
+            "Only the QA snapshot is used. Existing materialized articles are not the permutation output."
         ))
         source_layout.addWidget(self._status)
 
@@ -167,13 +167,13 @@ class ArticleObxGeneratorPage(BasePage):
         )
 
     def _build_permutations(self) -> None:
-        snapshot = self._context.mdb_import_snapshot
+        snapshot = self._context.ensure_qa_snapshot()
         self._table.setRowCount(0)
         self._permutations = []
 
         if snapshot is None:
             self._status.setText(
-                "No repository snapshot is loaded. Load/select the published "
+                "No QA snapshot is available. Load/select the published "
                 "repository through the existing repository workflow first."
             )
             return
@@ -222,10 +222,10 @@ class ArticleObxGeneratorPage(BasePage):
         reporter = self._build_reporter
         self._permutations = list(permutations or [])
         self._populate_permutation_table()
-        snapshot = self._context.mdb_import_snapshot
+        snapshot = self._context.qa_snapshot
         if snapshot is not None:
             self._status.setText(
-                f"Repository snapshot loaded: "
+                f"QA snapshot loaded: "
                 f"{snapshot.product.code or snapshot.product.name} "
                 f"| Repository articles: {len(snapshot.articles)} "
                 f"| Generated permutations: {len(self._permutations)} "
@@ -272,12 +272,12 @@ class ArticleObxGeneratorPage(BasePage):
                 self._table.setItem(row - 1, column, item)
 
     def refresh(self) -> None:
-        snapshot = self._context.mdb_import_snapshot
+        snapshot = self._context.ensure_qa_snapshot()
         self._currency.clear()
 
         if snapshot is None:
             self._status.setText(
-                "No repository snapshot is loaded. Load/select the published repository "
+                "No QA snapshot is available. Load/select the published repository "
                 "through the existing repository workflow, then return here."
             )
             self._build_button.setEnabled(False)
@@ -293,4 +293,4 @@ class ArticleObxGeneratorPage(BasePage):
         self._build_button.setEnabled(bool(snapshot.articles))
 
     def is_ready(self) -> bool:
-        return self._context.mdb_import_snapshot is not None
+        return self._context.ensure_qa_snapshot() is not None

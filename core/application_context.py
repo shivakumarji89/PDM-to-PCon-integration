@@ -83,6 +83,7 @@ class ApplicationContext:
         self._pdm_snapshot: Snapshot | None = None
         self._mdb_import_snapshot: Snapshot | None = None
         self._mdb_export_snapshot: Snapshot | None = None
+        self._qa_snapshot: Snapshot | None = None
         self._maintenance_repository_info: dict | None = None
         self._maintenance_snapshot: MaintenanceSnapshot | None = None
         # UI-independent session state for long-running validation workflows.
@@ -181,6 +182,10 @@ class ApplicationContext:
     def mdb_export_snapshot(self) -> Snapshot | None:
         return self._mdb_export_snapshot
 
+    @property
+    def qa_snapshot(self) -> Snapshot | None:
+        return self._qa_snapshot
+
     def register_mdb_import_snapshot(self, snapshot: Snapshot | None) -> None:
         """Store imported MDB state without replacing the PDM source."""
         self._mdb_import_snapshot = snapshot
@@ -193,6 +198,28 @@ class ApplicationContext:
     def register_mdb_export_snapshot(self, snapshot: Snapshot | None) -> None:
         """Store Development output prepared for MDB export."""
         self._mdb_export_snapshot = snapshot
+
+    def register_qa_snapshot(self, snapshot: Snapshot | None) -> None:
+        """Store QA state independently from imported and exported MDB data."""
+        self._qa_snapshot = snapshot
+
+    def prepare_qa_snapshot(self, source: Snapshot | None = None) -> Snapshot:
+        """Replace QA state with an independently identified source copy."""
+        source = source or self._mdb_import_snapshot
+        if source is None:
+            raise ValueError("An MDB Import Snapshot is required to prepare QA state")
+
+        snapshot = copy.deepcopy(source)
+        snapshot.id = uuid4().hex
+        snapshot.metadata.source = "QA"
+        self.register_qa_snapshot(snapshot)
+        return snapshot
+
+    def ensure_qa_snapshot(self) -> Snapshot | None:
+        """Lazily seed QA state from MDB Import without tracking later replacements."""
+        if self._qa_snapshot is None and self._mdb_import_snapshot is not None:
+            return self.prepare_qa_snapshot()
+        return self._qa_snapshot
 
     def prepare_mdb_export_snapshot(self, development_snapshot: Snapshot) -> Snapshot:
         """Capture Development's current state as the MDB Export Snapshot."""

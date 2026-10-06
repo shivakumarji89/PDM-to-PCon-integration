@@ -37,12 +37,13 @@ def _load_mdb_import(context: ApplicationContext, imported: Snapshot) -> None:
     context.register_mdb_import_snapshot(imported)
 
 
-def test_application_context_exposes_exactly_the_required_snapshot_roles():
+def test_application_context_exposes_independent_snapshot_roles():
     context = ApplicationContext()
 
     assert context.pdm_snapshot is None
     assert context.mdb_import_snapshot is None
     assert context.mdb_export_snapshot is None
+    assert context.qa_snapshot is None
     assert not hasattr(context, "repository_snapshot")
     assert not hasattr(context, "mdb_snapshot")
 
@@ -108,6 +109,78 @@ def test_mdb_export_snapshot_is_a_copy_of_development_output():
 
     context.register_pdm_snapshot(_pdm())
     assert context.mdb_export_snapshot is None
+
+
+def test_qa_snapshot_is_an_independent_copy_of_mdb_import():
+    context = ApplicationContext()
+    pdm = _pdm()
+    imported = _mdb("AER1A11")
+    context.register_pdm_snapshot(pdm)
+    context.register_mdb_import_snapshot(imported)
+    qa = context.prepare_qa_snapshot()
+
+    assert qa is context.qa_snapshot
+    assert qa is not imported
+    assert qa.id != imported.id
+    assert qa.metadata.source == "QA"
+    assert not MdbClassificationService.is_mdb_snapshot(qa)
+
+    context.prepare_mdb_export_snapshot(pdm)
+    qa.articles[0].code = "QA-EDITED"
+    assert pdm.articles[0].code == "AER1A11AF"
+    assert imported.articles[0].code == "AER1A11"
+    assert context.mdb_export_snapshot.articles[0].code == "AER1A11AF"
+
+
+def test_qa_snapshot_can_be_reset_and_reprepared_independently():
+    context = ApplicationContext()
+    context.register_mdb_import_snapshot(_mdb("AER1A11"))
+    original = context.prepare_qa_snapshot()
+
+    context.register_qa_snapshot(None)
+    assert context.qa_snapshot is None
+
+    replacement = context.prepare_qa_snapshot(_mdb("AER2B22"))
+    assert replacement is context.qa_snapshot
+    assert replacement is not original
+    assert replacement.id != original.id
+    assert [article.code for article in replacement.articles] == ["AER2B22"]
+    assert [article.code for article in context.mdb_import_snapshot.articles] == ["AER1A11"]
+
+
+def test_replacing_mdb_import_does_not_replace_qa_snapshot():
+    context = ApplicationContext()
+    context.register_mdb_import_snapshot(_mdb("AER1A11"))
+    qa = context.prepare_qa_snapshot()
+
+    context.register_mdb_import_snapshot(_mdb("AER2B22"))
+
+    assert context.qa_snapshot is qa
+    assert [article.code for article in qa.articles] == ["AER1A11"]
+
+
+def test_replacing_mdb_export_does_not_replace_qa_snapshot():
+    context = ApplicationContext()
+    context.register_mdb_import_snapshot(_mdb("AER1A11"))
+    qa = context.prepare_qa_snapshot()
+
+    context.prepare_mdb_export_snapshot(_pdm())
+    first_export = context.mdb_export_snapshot
+    context.prepare_mdb_export_snapshot(_pdm())
+
+    assert context.qa_snapshot is qa
+    assert context.mdb_export_snapshot is not first_export
+
+
+def test_replacing_pdm_does_not_replace_qa_snapshot():
+    context = ApplicationContext()
+    context.register_mdb_import_snapshot(_mdb("AER1A11"))
+    qa = context.prepare_qa_snapshot()
+
+    context.register_pdm_snapshot(_pdm())
+
+    assert context.qa_snapshot is qa
+    assert [article.code for article in qa.articles] == ["AER1A11"]
 
 
 def test_maintenance_snapshot_holds_pdm_and_mdb_import_references():

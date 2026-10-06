@@ -19,7 +19,7 @@ class ArticleObxService(BaseService):
                  ofml_class_suffix: str = "_OPT",
                  exclude_features: set[str] | None = None) -> ArticleObxResult:
         # Article OBX is repository-driven. Never fall back to a PDM snapshot.
-        snapshot = self.context.mdb_import_snapshot
+        snapshot = self.context.qa_snapshot
         result = ArticleObxResult()
         if snapshot is None or snapshot.product is None:
             result.warnings.append("No active snapshot.")
