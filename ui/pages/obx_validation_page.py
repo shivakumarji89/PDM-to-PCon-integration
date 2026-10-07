@@ -230,6 +230,11 @@ class ObxValidationPage(BasePage):
         self._export_btn.clicked.connect(self._on_export)
         layout.addWidget(self._export_btn)
 
+        self._duplicate_export_btn = QPushButton("Export Duplicate Details...", container)
+        self._duplicate_export_btn.setEnabled(False)
+        self._duplicate_export_btn.clicked.connect(self._on_export_duplicate_details)
+        layout.addWidget(self._duplicate_export_btn)
+
         self._failed_export_btn = QToolButton(container)
         self._failed_export_btn.setText("Export Failed OBX...")
         self._failed_export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -402,6 +407,7 @@ class ObxValidationPage(BasePage):
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
+        self._duplicate_export_btn.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
@@ -849,6 +855,64 @@ class ObxValidationPage(BasePage):
                 f"Exported {written} {state} beside the source OBX file(s).",
             )
 
+    def _on_export_duplicate_details(self) -> None:
+        """Export duplicate OBX source-row details without running validation."""
+        lines = list(self._lines)
+        if not lines:
+            return
+
+        svc = self._context.obx_validation_service
+        report = svc.build_duplicate_report(
+            lines,
+            file_of_seq=getattr(self, "_file_of_seq", {}),
+            paths=getattr(self, "_paths", []),
+        )
+        if not report.duplicate_groups:
+            QMessageBox.information(
+                self,
+                "OBX Duplicate Details",
+                f"No duplicate rows found.\n\n"
+                f"Total rows: {report.total_rows}\n"
+                f"Unique rows: {report.unique_rows}",
+            )
+            return
+
+        default_dir = str(Path(getattr(self, "_paths", [])[0]).parent) if getattr(self, "_paths", []) else ""
+        target, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Duplicate Details",
+            str(Path(default_dir) / "OBX_Duplicate_Details.csv") if default_dir else "OBX_Duplicate_Details.csv",
+            "CSV files (*.csv);;All files (*.*)",
+        )
+        if not target:
+            return
+
+        try:
+            written = svc.export_duplicate_report_csv(report, target)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "OBX Duplicate Details",
+                f"Duplicate details could not be written:\n{exc}",
+            )
+            return
+
+        multi_file_groups = sum(
+            1 for group in report.duplicate_groups if len(group.source_paths) > 1
+        )
+        QMessageBox.information(
+            self,
+            "OBX Duplicate Details",
+            f"Duplicate details exported successfully.\n\n"
+            f"Total rows: {report.total_rows}\n"
+            f"Unique rows: {report.unique_rows}\n"
+            f"Duplicate rows: {report.duplicate_rows}\n"
+            f"Duplicate groups: {len(report.duplicate_groups)}\n"
+            f"Groups across multiple files: {multi_file_groups}\n"
+            f"CSV occurrence rows: {written}\n\n"
+            f"File: {target}",
+        )
+
     def _export_failed_obx(self, status: str | None = None) -> None:
         """Write failed source articles back to filtered OBX files.
 
@@ -1053,6 +1117,7 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setChecked(True)
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
+        self._duplicate_export_btn.setEnabled(bool(self._lines))
         self._failed_export_btn.setEnabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
