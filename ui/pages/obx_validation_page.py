@@ -480,8 +480,10 @@ class ObxValidationPage(BasePage):
         reporter.step_changed.connect(self._on_progress_step)
         if fresh:
             self._begin_live()
-            self._validation_start_time = time.perf_counter()
             self._validation_elapsed_seconds = 0.0
+        # Start a new wall-clock segment for every validation/resume run.
+        # _validation_elapsed_seconds carries the completed segments.
+        self._validation_start_time = time.perf_counter()
         self._is_paused = False
         self._pause_btn.setText("Pause Validation")
         self._pause_btn.setEnabled(True)
@@ -1132,7 +1134,13 @@ class ObxValidationPage(BasePage):
         )
 
     def _finalize_validation_elapsed(self) -> None:
+        # Worker completion is not wired through ProgressReporter.finish(), so
+        # explicitly stop its timer here. Clear the wall-clock anchor so a
+        # completed validation cannot continue accumulating elapsed time.
         self._validation_elapsed_seconds = self._current_validation_elapsed()
+        if self._active_reporter is not None:
+            self._active_reporter.stop_timer()
+        self._validation_start_time = 0.0
 
     def _set_metric(self, key: str, value: str) -> None:
         label = self._metrics.get(key)
