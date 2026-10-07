@@ -59,8 +59,56 @@ class ObxLine:
         return self.obx_price
 
 
+@dataclass
+class DuplicateOccurrence:
+    """One original source row belonging to a duplicate group."""
+
+    seq: int
+    source_file: str
+    source_path: str
+    base_article: str
+    final_article: str
+    currency: str
+    obx_price: float
+    plc: str = ""
+    source_date: str = ""
+
+
+@dataclass
+class DuplicateGroup:
+    """All source rows sharing one currency + normalised final article."""
+
+    currency: str
+    base_article: str
+    final_article: str
+    occurrences: list[DuplicateOccurrence]
+    source_files: list[str]
+    source_paths: list[str]
+    price_consistency: str  # "SAME" or "DIFFERENT"
+
+    @property
+    def occurrence_count(self) -> int:
+        return len(self.occurrences)
+
+
+@dataclass
+class DuplicateReport:
+    """Diagnostic breakdown of duplicate OBX source rows (not validation)."""
+
+    total_rows: int = 0
+    unique_rows: int = 0
+    duplicate_rows: int = 0
+    duplicate_groups: list[DuplicateGroup] = field(default_factory=list)
+
+
 class ObxValidationService(BaseService):
     """Validate incoming OBX prices against PDM using shared pricing logic."""
+
+    DUPLICATE_CSV_HEADER = [
+        "Duplicate Group", "Currency", "Base Article", "Final Article",
+        "Occurrence", "Source File", "Source Path", "Source Row", "OBX Price",
+        "PLC", "Source Date", "Occurrence Count", "Price Consistency",
+    ]
 
     _CALIBRATION_SAMPLE = 10
 
@@ -234,6 +282,83 @@ class ObxValidationService(BaseService):
                 seen.add(key)
         return duplicates
 
+    def build_duplicate_report(
+        self,
+        lines: list[ObxLine],
+        file_of_seq: dict[int, str] | None = None,
+        paths: list[str] | None = None,
+    ) -> DuplicateReport:
+        """Explain where duplicate OBX rows came from (diagnostic only).
+
+        Operates purely on already-loaded lines and source mappings; it never
+        touches PDM, workers, SQL or validation. Grouping reuses
+        ``_deduplicate`` so the duplicate definition (currency + normalised
+        final article) is identical to validation and ``duplicate_count``.
+        Files are identified by full path, so equal filenames in different
+        folders stay distinct.
+        """
+        file_of_seq = file_of_seq or {}
+        default_path = paths[0] if paths and len(paths) == 1 else ""
+        unique, groups = self._deduplicate(lines)
+        report = DuplicateReport(
+            total_rows=len(lines),
+            unique_rows=len(unique),
+            duplicate_rows=len(lines) - len(unique),
+        )
+        for key, members in groups.items():
+            if len(members) < 2:
+                continue
+            occurrences = []
+            for line in members:
+                path = file_of_seq.get(line.seq, default_path)
+                occurrences.append(DuplicateOccurrence(
+                    seq=line.seq,
+                    source_file=Path(path).name if path else "",
+                    source_path=path,
+                    base_article=line.base_article,
+                    final_article=line.final_article,
+                    currency=line.currency,
+                    obx_price=line.obx_price,
+                    plc=line.plc,
+                    source_date=line.source_date,
+                ))
+            prices = [o.obx_price for o in occurrences]
+            consistency = "SAME" if max(prices) - min(prices) <= 0.005 else "DIFFERENT"
+            source_paths = list(dict.fromkeys(o.source_path for o in occurrences))
+            first = members[0]
+            report.duplicate_groups.append(DuplicateGroup(
+                currency=key[0],
+                base_article=first.base_article,
+                final_article=first.final_article,
+                occurrences=occurrences,
+                source_files=list(dict.fromkeys(o.source_file for o in occurrences)),
+                source_paths=source_paths,
+                price_consistency=consistency,
+            ))
+        return report
+
+    def duplicate_report_csv_rows(self, report: DuplicateReport) -> list[list]:
+        """One CSV row per original occurrence, preceded by the header."""
+        rows: list[list] = [list(self.DUPLICATE_CSV_HEADER)]
+        for index, group in enumerate(report.duplicate_groups, start=1):
+            for number, occ in enumerate(group.occurrences, start=1):
+                rows.append([
+                    index, group.currency, occ.base_article, occ.final_article,
+                    number, occ.source_file, occ.source_path, occ.seq,
+                    occ.obx_price, occ.plc, occ.source_date,
+                    group.occurrence_count, group.price_consistency,
+                ])
+        return rows
+
+    def export_duplicate_report_csv(self, report: DuplicateReport, path: str | Path) -> int:
+        """Write the report to CSV; returns the number of occurrence rows."""
+        import csv
+
+        rows = self.duplicate_report_csv_rows(report)
+        with open(path, "w", newline="", encoding="utf-8-sig") as handle:
+            csv.writer(handle).writerows(rows)
+        return len(rows) - 1
+
     def _pricing_service(self, operation_control=None) -> SifValidationService:
         if operation_control is None:
             return self.context.sif_validation_service
@@ -295,6 +420,40 @@ class ObxValidationService(BaseService):
                 unique.append(line)
             groups[key].append(line)
         return unique, groups
+
+    def dispatch_plan(
+        self, lines: list[ObxLine]
+    ) -> tuple[list[ObxLine], dict[int, list[ObxLine]]]:
+        """Split source lines into unique validation lines before worker dispatch.
+
+        Uses the same currency + normalised final article key as
+        ``_deduplicate``. Returns the unique lines (first source occurrence of
+        each key) and, per unique line ``seq``, every source line it stands for.
+        """
+        unique, groups = self._deduplicate(lines)
+        return unique, {line.seq: groups[self._validation_key(line)] for line in unique}
+
+    def expand_unique_result(
+        self, result: SifResult, groups_by_seq: dict[int, list[ObxLine]]
+    ) -> list[SifResult]:
+        """Fan one unique result back to every source line it represents."""
+        group = groups_by_seq.get(result.seq)
+        if not group:
+            return [result]
+        return [self._result_for_line(result, line) for line in group]
+
+    def expand_pending(
+        self,
+        remaining: list[ObxLine],
+        source_lines: list[ObxLine],
+        completed_seqs: set,
+    ) -> list[ObxLine]:
+        """Return the not-yet-completed source lines behind unique ``remaining``."""
+        keys = {self._validation_key(line) for line in remaining}
+        return [
+            line for line in source_lines
+            if line.seq not in completed_seqs and self._validation_key(line) in keys
+        ]
 
     @staticmethod
     def _filtered_obx_document(source_path: str, selected_lines: list[ObxLine]) -> str:

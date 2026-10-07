@@ -93,7 +93,7 @@ class _ObxWorker(QRunnable):
                     self._currency, pending, site=self._site_id,
                     validation_date=self._validation_date, progress=None,
                     stage=lambda text: self._reporter.note(text),
-                    on_result=on_result,
+                    on_result=on_result, operation_control=self._control,
                 )
                 if site:
                     sites.update(site)
@@ -184,6 +184,9 @@ class ObxValidationPage(BasePage):
         self._validation_start_time = 0.0
         self._validation_elapsed_seconds = 0.0
         self._last_checkpoint_count = 0
+        self._dispatch_groups: dict = {}
+        self._unique_done = 0
+        self._unique_total = 0
         self._session = self._context.workflow_session("obx_validation")
         self.add_content(self._build_controls())
         self.add_content(self._build_progress_panel())
@@ -481,12 +484,21 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(self._results))
         self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
-        self._dispatch_remaining = list(lines)
+        # Only globally unique articles reach the 8 + 8 workers; every unique
+        # result is fanned back to its duplicate source rows in _on_unique_result.
+        unique_lines, self._dispatch_groups = self._context.obx_validation_service.dispatch_plan(lines)
+        self._dispatch_remaining = list(unique_lines)
         self._dispatch_batch_remaining = []
         self._dispatch_sites = {}
         self._dispatch_workers = 0
-        self._dispatch_total = len(lines)
-        reporter.begin(max(len(self._lines), 1), title="Validate OBX", subject=f"{len(self._lines)} order line(s)")
+        self._dispatch_total = len(unique_lines)
+        self._unique_total = max(len(self._lines) - self._duplicate_count, len(unique_lines))
+        self._unique_done = self._unique_total - len(unique_lines)
+        self._set_metric("completed", self._completed_text())
+        reporter.begin(
+            max(len(unique_lines), 1), title="Validate OBX",
+            subject=f"{len(unique_lines)} unique of {len(self._lines)} order line(s)",
+        )
         self._dispatch_memory_batch()
 
     @staticmethod
@@ -537,7 +549,7 @@ class ObxValidationPage(BasePage):
             signals.paused.connect(self._on_paused)
             signals.cancelled.connect(self._on_cancelled)
             signals.recovery.connect(self._on_recovery)
-            signals.line_done.connect(self._on_line_done)
+            signals.line_done.connect(self._on_unique_result)
             self._dispatch_workers += 1
             QThreadPool.globalInstance().start(
                 _ObxWorker(
@@ -647,7 +659,11 @@ class ObxValidationPage(BasePage):
         self._finalize_validation_elapsed()
         sites, remaining_lines, reason = payload
         self._release_active_control()
-        self._pending_lines = list(remaining_lines)
+        # Workers hold only unique lines; restore every pending duplicate source row.
+        self._pending_lines = self._context.obx_validation_service.expand_pending(
+            list(remaining_lines), self._lines,
+            {getattr(result, "seq", None) for result in self._results},
+        )
         self._is_paused = True
         self._save_session()
         self._write_checkpoint()
@@ -682,6 +698,19 @@ class ObxValidationPage(BasePage):
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(False)
 
+    def _completed_text(self) -> str:
+        """Unique PDM validations while running; source-row count otherwise."""
+        if self._active_control is not None and self._unique_total:
+            return f"{self._unique_done}/{self._unique_total} unique"
+        return f"{len(self._results)}/{len(self._lines)}"
+
+    def _on_unique_result(self, result) -> None:
+        self._unique_done += 1
+        for mapped in self._context.obx_validation_service.expand_unique_result(
+            result, self._dispatch_groups
+        ):
+            self._on_line_done(mapped)
+
     def _on_line_done(self, r) -> None:
         self._results.append(r)
         self._export_btn.setEnabled(True)
@@ -689,8 +718,7 @@ class ObxValidationPage(BasePage):
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
-        completed = self._live["lines"]
-        self._set_metric("completed", f"{completed}/{len(self._lines)}")
+        self._set_metric("completed", self._completed_text())
         self._set_metric("matched", str(self._live["ok"]))
         self._set_metric("mismatch", str(self._live["mismatch"]))
         self._set_metric("unresolved", str(self._live["unresolved"]))
