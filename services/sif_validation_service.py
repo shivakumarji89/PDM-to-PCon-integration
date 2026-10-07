@@ -449,7 +449,7 @@ class SifValidationService(BaseService):
     def _match_component_increments(
         cls, rows, codes: list[str], item: str = ""
     ) -> float:
-        """Allocate component increments by GetPrice position and option group."""
+        """Allocate increments per BOM occurrence, position, and option group."""
         normalized_item = (item or "").upper()
         prepared = []
         for row in rows:
@@ -472,13 +472,24 @@ class SifValidationService(BaseService):
                 "base_display": base_display,
                 "option_id": option_id,
                 "component": str(getattr(row, "CompItem", "") or ""),
+                "component_key": (
+                    str(getattr(row, "CompItem", "") or ""),
+                    str(getattr(row, "SubItemId", "") or ""),
+                    str(getattr(row, "ComponentSequence", "") or ""),
+                ),
             })
 
         total = 0.0
         deferred = 0.0
-        applied_option_ids: set[str] = set()
+        applied_options: set[tuple[tuple[str, str, str], str]] = set()
         work = list(prepared)
-        for position, raw in enumerate(codes, start=1):
+        component_keys = list(dict.fromkeys(entry["component_key"] for entry in prepared))
+        selections = (
+            (position, raw, component_key)
+            for position, raw in enumerate(codes, start=1)
+            for component_key in component_keys
+        )
+        for position, raw, component_key in selections:
             selected = (raw or "").strip().upper()
             if not selected:
                 continue
@@ -489,7 +500,8 @@ class SifValidationService(BaseService):
                     (
                         (index, entry) for index, entry in enumerate(work)
                         if index >= search_from
-                        and entry["option_id"] not in applied_option_ids
+                        and entry["component_key"] == component_key
+                        and (component_key, entry["option_id"]) not in applied_options
                         and cls._increment_key_match(selected, {entry["code"]: entry})
                     ),
                     None,
@@ -502,7 +514,8 @@ class SifValidationService(BaseService):
                     later = next(
                         (
                             candidate for candidate in range(index + 1, len(work))
-                            if work[candidate]["tertiary"] == position
+                            if work[candidate]["component_key"] == component_key
+                            and work[candidate]["tertiary"] == position
                         ),
                         None,
                     )
@@ -510,7 +523,8 @@ class SifValidationService(BaseService):
                         later = next(
                             (
                                 candidate for candidate in range(index + 1, len(work))
-                                if work[candidate]["display"] == position
+                                if work[candidate]["component_key"] == component_key
+                                and work[candidate]["display"] == position
                             ),
                             None,
                         )
@@ -548,9 +562,10 @@ class SifValidationService(BaseService):
                 continue
             _, chosen_entry = chosen
             option_id = chosen_entry["option_id"]
-            if option_id in applied_option_ids:
+            applied_key = (component_key, option_id)
+            if applied_key in applied_options:
                 continue
-            applied_option_ids.add(option_id)
+            applied_options.add(applied_key)
 
             row = chosen_entry["row"]
             price = getattr(row, "IncPrice", None)
@@ -569,14 +584,13 @@ class SifValidationService(BaseService):
                         deferred = 0.0
                 total += amount * int(getattr(row, "Quantity", 1) or 1)
 
-            component = chosen_entry["component"]
             work = [
                 entry for entry in work
                 if entry is chosen_entry
-                or entry["component"] != component
+                or entry["component_key"] != component_key
                 and not (
                     entry["option_id"] == option_id
-                    and entry["component"] == component
+                    and entry["component_key"] == component_key
                     and entry["code"] != selected
                 )
             ]

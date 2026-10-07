@@ -106,12 +106,13 @@ def _option_row(code, group=1, status=1, increment=0.0, item="SKU1"):
 
 def _component_option_row(
     code, option_id, price, *, component="PART", quantity=1,
-    display=1, tertiary=1, feature_positions=None,
+    display=1, tertiary=1, feature_positions=None, sequence="",
 ):
     return SimpleNamespace(
         OrderCodeValue2=code, OptionId=option_id, IncPrice=price,
         CompItem=component, Quantity=quantity, DisplayOrder=display,
         TertiaryOption=tertiary, FeaturePositionString=feature_positions,
+        ComponentSequence=sequence,
     )
 
 
@@ -779,14 +780,14 @@ def test_component_increment_matching_uses_feature_position_mapping():
     ) == 12.0
 
 
-def test_component_increment_matching_consumes_repeated_codes_without_duplicate_charge():
+def test_component_increment_matching_consumes_repeated_codes_per_component():
     repeated_groups = [
         _component_option_row("RED", 10, 5.0, component="PART-A"),
         _component_option_row(
             "RED", 20, 7.0, component="PART-B", display=2, tertiary=2
         ),
     ]
-    duplicate_group = [
+    shared_group = [
         _component_option_row("RED", 10, 5.0, component="PART-A"),
         _component_option_row(
             "RED", 10, 7.0, component="PART-B", display=2, tertiary=2
@@ -797,8 +798,91 @@ def test_component_increment_matching_consumes_repeated_codes_without_duplicate_
         repeated_groups, ["RED", "RED"], "SUPER"
     ) == 12.0
     assert SifValidationService._match_component_increments(
-        duplicate_group, ["RED", "RED"], "SUPER"
+        shared_group, ["RED", "RED"], "SUPER"
+    ) == 12.0
+
+
+def test_component_increment_matching_charges_shared_option_for_each_component():
+    rows = [
+        _component_option_row("RED", 10, 5.0, component="PART-A"),
+        _component_option_row("RED", 10, 7.0, component="PART-B"),
+    ]
+
+    assert SifValidationService._match_component_increments(
+        rows, ["RED"], "SUPER"
+    ) == 12.0
+
+
+def test_component_increment_matching_preserves_occurrences_and_deduplicates_rows():
+    first = _component_option_row("RED", 10, 5.0, quantity=2, sequence="1")
+    second = _component_option_row("RED", 10, 5.0, quantity=3, sequence="2")
+
+    assert SifValidationService._match_component_increments(
+        [first, SimpleNamespace(**vars(first)), second, SimpleNamespace(**vars(second))],
+        ["RED", "RED"], "SUPER",
+    ) == 25.0
+
+
+def test_non_superproduct_increment_matching_still_consumes_option_group_once():
+    assert SifValidationService._match_inc_groups(
+        {"10": {"RED": (5.0, 1)}}, ["RED", "RED"]
     ) == 5.0
+
+
+@pytest.mark.parametrize("item, quantity, expected", [("BIB3S", 1, 9389.0), ("BIB4S", 2, 12110.0)])
+@pytest.mark.parametrize("colour", ["T5QA05", "T0J703"])
+def test_bib_superproduct_validation_prices_each_component_increment(
+    monkeypatch, item, quantity, expected, colour
+):
+    service = SifValidationService(None)
+    monkeypatch.setattr(service, "_fetch_plc", lambda *args: {})
+    components = [
+        ("BIBENDRX", "1", 1, 3194.0, 140.0),
+        ("BIBENDLX", "2", 1, 3194.0, 140.0),
+        ("BIBINT", "3", quantity, 2608.0, 113.0),
+    ]
+    bom_rows = [
+        SimpleNamespace(
+            ParentItemId=123, SubItem=component,
+            ComponentSequence=sequence, Quantity=bom_quantity,
+        )
+        for component, sequence, bom_quantity, base, increment in components
+    ]
+    component_rows = [
+        SimpleNamespace(
+            ParentItem=item, ComponentItem=component,
+            ComponentSequence=sequence, Quantity=bom_quantity, price=base,
+        )
+        for component, sequence, bom_quantity, base, increment in components
+    ]
+    increment_rows = [
+        _component_option_row(
+            "S", 9421, increment, component=component, quantity=bom_quantity,
+            sequence=sequence, tertiary=0, feature_positions="9421|8512|8513|",
+        )
+        for component, sequence, bom_quantity, base, increment in components
+    ]
+    for row in increment_rows:
+        row.ParentItem = item
+    repo = _superproduct_validation_repo(
+        bom_rows, component_rows, increment_rows,
+        option_rows=[
+            _option_row("S", group=9421, item=item),
+            _option_row(colour[:-2] + "#", group=8512, item=item),
+        ],
+    )
+    line = ObxLine(
+        seq=1, base_article=item, final_article=f"{item} S {colour}",
+        currency="GBP", obx_price=expected,
+    )
+
+    results = service._validate_group(
+        "GBP", [line], 1, repo, None, "2026-11-03", [0], 1, None, None, obx=True
+    )
+
+    assert results[0].sku == line.final_article
+    assert results[0].pdm_price == expected
+    assert results[0].status == "ok", results[0].message
 
 
 @pytest.mark.parametrize(
