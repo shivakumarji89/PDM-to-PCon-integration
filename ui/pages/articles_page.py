@@ -914,7 +914,7 @@ class ArticlesPage(BasePage):
             if has_length:
                 len_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
             len_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._set_readonly(len_item)
+            len_item.setToolTip("Edit the base length for this article.")
             self._table.setItem(row, _COL_LEN, len_item)
 
             # Editable: short text defaults to the generic product-TYPE name
@@ -1002,7 +1002,9 @@ class ArticlesPage(BasePage):
             count_item = QTableWidgetItem()
             count_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._set_readonly(count_item)
+            count_item.setToolTip(
+                "Edit the base length for every article in this base group."
+            )
             self._table.setItem(row, _COL_LEN, count_item)
 
             variants_item = QTableWidgetItem()
@@ -1095,6 +1097,9 @@ class ArticlesPage(BasePage):
         if self._populating:
             return
         column = item.column()
+        if column == _COL_LEN:
+            self._on_base_length_cell_changed(item)
+            return
         if column not in (_COL_SHORT, _COL_LONG, _COL_RELATION, _COL_SCHEME):
             return
         source = self._table.item(item.row(), _COL_SOURCE)
@@ -1114,6 +1119,42 @@ class ArticlesPage(BasePage):
                 service.set_relation_object(member, text)
             else:
                 service.set_code_scheme(member, text)
+
+    def _on_base_length_cell_changed(self, item: QTableWidgetItem) -> None:
+        """Apply an edited base length to the current article or base group."""
+        source = self._table.item(item.row(), _COL_SOURCE)
+        record = source.data(Qt.ItemDataRole.UserRole) if source else None
+        if not record:
+            return
+
+        raw = item.text().strip()
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            self._apply_filter()
+            return
+
+        if value < 0:
+            self._apply_filter()
+            return
+
+        if record[0] == "__base__":
+            members = list(record[2])
+            ids = {
+                str(article.id)
+                for _family, member, article in self._rows
+                if article is not None and member in members
+            }
+        else:
+            article = record[2]
+            ids = {str(article.id)} if article is not None else set()
+
+        if not ids:
+            self._apply_filter()
+            return
+
+        self._apply_set(ids, value, refresh=True)
+        self._context.snapshot_manager.mark_modified()
 
     # -- clear (per shown subset) ------------------------------------------
     def _on_clear_length(self) -> None:
