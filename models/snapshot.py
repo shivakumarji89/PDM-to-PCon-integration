@@ -180,6 +180,7 @@ class Snapshot:
     # automatic suggestion (redundant duplicates ignored). Persisted; user wins.
     config_ignore_overrides: dict[str, bool] = field(default_factory=dict)
 
+    # User selection for MDB export: property id -> export? (True = include).\n    # Absent defaults to included so existing projects remain unchanged.\n    mdb_export_property_overrides: dict[str, bool] = field(default_factory=dict)\n
     # Ordered OFML ProgInfo control-table rows. The first matching
     # @PropInfoPicPrefix entry wins, so row order is persisted exactly.
     prog_info_rows: list[dict[str, str]] = field(default_factory=list)
