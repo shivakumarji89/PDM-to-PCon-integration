@@ -85,6 +85,7 @@ class PricingPage(BasePage):
         #: Diff state keyed like PriceRecord.key(): "added" / "changed" / prior value.
         self._added_keys: set = set()
         self._changed: dict = {}
+        self._pricing_currencies: set[str] = set()
 
         # Debounce search typing so the table repopulates once the user pauses.
         self._filter_timer = QTimer(self)
@@ -313,6 +314,7 @@ class PricingPage(BasePage):
             c.upper()
             for c in PricingService(self._context).target_currencies(snapshot, params)
         }
+        self._pricing_currencies = currencies
         self._baseline = [
             r for r in snapshot.price_records if (r.currency or "").upper() in currencies
         ]
