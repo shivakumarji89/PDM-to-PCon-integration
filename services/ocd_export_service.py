@@ -464,7 +464,7 @@ class OcdExportService(BaseService):
         adding useful Review information.
         """
         xocd = self.context.xocd_export_service
-        classes = self.context.engineering_class_service.get_classes(snapshot)
+        classes = self._mdb_export_classes(snapshot)
         codes = xocd._value_code_map(snapshot)
         digits = xocd._value_lengths(snapshot)
         base_codes = xocd._base_codes(snapshot)
@@ -852,6 +852,30 @@ class OcdExportService(BaseService):
         return rows, index, scheme_by_code
 
     # -- Classes / properties / values ----------------------------------
+
+    @staticmethod
+    def _mdb_export_classes(snapshot: Snapshot) -> list:
+        """Return export-only class copies with unchecked properties removed.
+
+        The live Engineering classes are never mutated. Missing overrides default
+        to True so existing projects export exactly as before.
+        """
+        import copy
+
+        overrides = getattr(snapshot, "mdb_export_property_overrides", None) or {}
+        if not overrides:
+            return list(snapshot.engineering.classes)
+
+        classes = []
+        for cls in snapshot.engineering.classes:
+            export_cls = copy.copy(cls)
+            export_cls.properties = [
+                assignment
+                for assignment in cls.properties
+                if bool(overrides.get(str(assignment.property_id), True))
+            ]
+            classes.append(export_cls)
+        return classes
 
     def _classes(
         self, classes: list, package_id: Any, proto: dict[str, Any]
