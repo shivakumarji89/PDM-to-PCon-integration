@@ -527,11 +527,8 @@ class ClassCreationPage(BasePage):
         self._attr_master.setObjectName("classAttributePropertiesTable")
         self._attr_master.setColumnCount(6)
         self._attr_master.setHorizontalHeaderLabels(
-            ["Property", "Width", "Ignore", "Type", "Usage", "Relation Object"]
+            ["Property", "Width", "Export MDB", "Type", "Usage", "Relation Object"]
         )
-        # Ignore is temporarily disconnected from Class Creation. Keep the
-        # backing compatibility column but do not expose or edit it.
-        self._attr_master.setColumnHidden(2, True)
         self._attr_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._attr_master.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._attr_master.setEditTriggers(
@@ -686,20 +683,19 @@ class ClassCreationPage(BasePage):
             width_item.setData(Qt.ItemDataRole.UserRole, (prop, group_name, backing))
             self._attr_master.setItem(row, 1, width_item)
 
-            ignore = self._ignore_state_for_property(prop.id)
-            ignore_cb = QCheckBox()
-            ignore_cb.setChecked(ignore)
-            ignore_cb.setToolTip("Keep this property in the base and do not slice it.")
-            ignore_cb.toggled.connect(
-                lambda checked, p=prop, g=group_name, b=backing:
-                self._on_visible_attr_ignore(p, g, b, checked)
+            export_cb = QCheckBox()
+            export_cb.setChecked(self._mdb_export_state_for_property(prop.id))
+            export_cb.setToolTip("Export this property to MDB.")
+            export_cb.toggled.connect(
+                lambda checked, p=prop:
+                self._on_mdb_export_toggled(p.id, checked)
             )
-            ignore_host = QWidget(self._attr_master)
-            il = QHBoxLayout(ignore_host)
-            il.setContentsMargins(0, 0, 0, 0)
-            il.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            il.addWidget(ignore_cb)
-            self._attr_master.setCellWidget(row, 2, ignore_host)
+            export_host = QWidget(self._attr_master)
+            el = QHBoxLayout(export_host)
+            el.setContentsMargins(0, 0, 0, 0)
+            el.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            el.addWidget(export_cb)
+            self._attr_master.setCellWidget(row, 2, export_host)
 
             type_combo = QComboBox(self._attr_master)
             for code, desc in _TYPE_OPTIONS:
@@ -742,6 +738,21 @@ class ClassCreationPage(BasePage):
             self._selected_attr_value = None
         self._populating = False
         self._on_attribute_master_selected()
+
+    def _mdb_export_state_for_property(self, prop_id: str) -> bool:
+        overrides = getattr(
+            self._context.active_snapshot, "mdb_export_property_overrides", None
+        ) or {}
+        return bool(overrides.get(str(prop_id), True))
+
+    def _on_mdb_export_toggled(self, prop_id: str, checked: bool) -> None:
+        if self._populating:
+            return
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return
+        snapshot.mdb_export_property_overrides[str(prop_id)] = bool(checked)
+        self._context.snapshot_manager.mark_modified()
 
     def _ignore_state_for_property(self, prop_id: str) -> bool:
         overrides = getattr(self._context.active_snapshot, "config_ignore_overrides", None) or {}
