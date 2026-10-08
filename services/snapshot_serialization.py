@@ -955,6 +955,7 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "config_code_overrides": snapshot.config_code_overrides,
         "config_value_codes": snapshot.config_value_codes,
         "config_ignore_overrides": snapshot.config_ignore_overrides,
+        "mdb_export_property_overrides": snapshot.mdb_export_property_overrides,
         "prog_info_rows": snapshot.prog_info_rows,
         "material_manufacturer_code": snapshot.material_manufacturer_code,
         "material_package_code": snapshot.material_package_code,
@@ -1109,6 +1110,10 @@ def snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
         config_ignore_overrides={
             str(k): bool(v)
             for k, v in (data.get("config_ignore_overrides") or {}).items()
+        },
+        mdb_export_property_overrides={
+            str(k): bool(v)
+            for k, v in (data.get("mdb_export_property_overrides") or {}).items()
         },
         prog_info_rows=[
             {
