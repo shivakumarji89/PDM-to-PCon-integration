@@ -156,12 +156,18 @@ class PricingPage(BasePage):
         return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
 
     def _price_list_currencies(self) -> list[str]:
-        """Use currencies already present in the pricing context; otherwise use the
-        selected currency. This keeps new-list creation tied to the actual pricing
-        run instead of inventing a range-specific naming scheme."""
+        """Return currencies for the price-list workflow.
+        
+        Development creates the initial price-list set for both supported
+        currencies. Maintenance continues from the currencies already present
+        in the snapshot, with the selected currency used only when no list exists.
+        """
         snapshot = self._context.active_snapshot
         if snapshot is None:
             return []
+        if self._price_list_mode() == "new_creation":
+            return ["GBP", "EUR"]
+
         currencies: list[str] = []
         for record in snapshot.price_records:
             currency = (record.currency or "").upper()
