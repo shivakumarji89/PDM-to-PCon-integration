@@ -28,45 +28,168 @@ from services.base_service import BaseService
 class MaintenanceAlignmentService(BaseService):
     """Align Maintenance PDM articles against released MDB base articles."""
 
+    _SESSION = "maintenance_base_length_overrides"
+
     def prepare_pdm_scope(self, pdm_snapshot, mdb_import_snapshot) -> int:
         """Feed released-MDB base lengths into the existing PDM engine.
 
         Writes the MDB base lengths into ``base_length_overrides`` and re-runs
         the unchanged Development reduction engine (``materialize_article_sets``,
         also run by PDMService during loading) so the Article Sets use them.
+
+        The overlay is transient: the pre-scope overrides are kept on the
+        snapshot's runtime-only ``base_length_overrides_original`` marker (so no
+        serializer ever writes the overlay) and restored by
+        :meth:`restore_pdm_scope`.
         """
-        session = self.context.workflow_session("maintenance_base_length_overrides")
+        session = self.context.workflow_session(self._SESSION)
         new_scope = (
             session.get("pdm_snapshot") is not pdm_snapshot
             or session.get("mdb_import_snapshot") is not mdb_import_snapshot
         )
         if new_scope:
             self.restore_pdm_scope()
-            session = self.context.workflow_session("maintenance_base_length_overrides")
+            session = self.context.workflow_session(self._SESSION)
             session["pdm_snapshot"] = pdm_snapshot
             session["mdb_import_snapshot"] = mdb_import_snapshot
             session["original_overrides"] = dict(
                 getattr(pdm_snapshot, "base_length_overrides", {}) or {}
+            )
+            session["reduced"] = {}
+            session["reduction_signature"] = None
+            # Marker first: classification must already see the scope when the
+            # overlay is materialised.
+            pdm_snapshot.base_length_overrides_original = dict(
+                session["original_overrides"]
             )
 
         applied = self.apply_released_mdb_base_lengths(pdm_snapshot, mdb_import_snapshot)
         if applied:
             self.context.engineering_reduction_service.materialize_article_sets(pdm_snapshot)
         elif new_scope:
-            self.context.clear_workflow_session("maintenance_base_length_overrides")
+            pdm_snapshot.base_length_overrides_original = None
+            pdm_snapshot.scope_reduced_articles = {}
+            self.context.clear_workflow_session(self._SESSION)
         return applied
 
     def restore_pdm_scope(self) -> bool:
-        """Restore the shared PDM overrides after Maintenance stops using them."""
-        session = self.context.workflow_session("maintenance_base_length_overrides")
+        """Restore the shared PDM overrides and reductions after Maintenance."""
+        session = self.context.workflow_session(self._SESSION)
         pdm_snapshot = session.get("pdm_snapshot")
         if pdm_snapshot is None:
             return False
 
         pdm_snapshot.base_length_overrides = dict(session.get("original_overrides", {}))
+        pdm_snapshot.base_length_overrides_original = None
+        self._clear_scope_reductions(pdm_snapshot, session)
+        pdm_snapshot.scope_reduced_articles = {}
         self.context.engineering_reduction_service.materialize_article_sets(pdm_snapshot)
-        self.context.clear_workflow_session("maintenance_base_length_overrides")
+        self.context.clear_workflow_session(self._SESSION)
         return True
+
+    def ensure_pdm_scope(self, pdm_snapshot, mdb_import_snapshot, force: bool = False) -> int:
+        """Prepare the scope and reduce every mapped PDM member to its MDB base.
+
+        The single entry point every Maintenance page uses, so the overlay,
+        Article Sets and member reductions never depend on which page opened
+        first. Idempotent: reductions are re-derived only when the mapping
+        (PDM/MDB identity, article set, resolved lengths) changes, so deliberate
+        manual edits survive page refreshes; ``force`` re-derives regardless.
+        Unmapped articles get no length (any earlier one is cleared). Source
+        data is untouched: only derived ``reduced_article`` values are written,
+        and every one is recorded so :meth:`restore_pdm_scope` can clear it.
+        Returns the number of members whose reduction was (re)written.
+        """
+        if pdm_snapshot is None or mdb_import_snapshot is None:
+            return 0
+        self.prepare_pdm_scope(pdm_snapshot, mdb_import_snapshot)
+        session = self.context.workflow_session(self._SESSION)
+        if session.get("pdm_snapshot") is not pdm_snapshot:
+            return 0  # nothing mapped: no scope, nothing to reduce
+        lengths, unresolved = self.derived_base_lengths(pdm_snapshot, mdb_import_snapshot)
+        members = [
+            member
+            for family in pdm_snapshot.engineering.families
+            for member in family.members
+        ]
+        signature = (
+            id(pdm_snapshot), id(mdb_import_snapshot),
+            frozenset(lengths.items()), tuple(unresolved), len(members),
+        )
+        if not force and session.get("reduction_signature") == signature:
+            return 0
+        session["reduction_signature"] = signature
+
+        code_of = {str(a.id): str(a.code or "").strip() for a in pdm_snapshot.articles}
+        service = self.context.engineering_member_service
+        # member id -> (value the scope wrote, value before the scope first did)
+        tracked: dict = session.setdefault("reduced", {})
+        pdm_snapshot.scope_reduced_articles = tracked
+        written = 0
+        for member in members:
+            length = lengths.get(str(member.article_id))
+            # Mapped -> MDB base; unmapped -> no MDB length (stale one cleared).
+            target = code_of.get(str(member.article_id), "")[:length] if length is not None else ""
+            current = member.reduced_article or ""
+            entry = tracked.get(member.id)
+            previous = entry[1] if entry else current
+            if current != target:
+                service.set_reduced_article(member, target)
+                written += 1
+            if target != previous or entry:
+                tracked[member.id] = (target, previous)
+        return written
+
+    @staticmethod
+    def _clear_scope_reductions(pdm_snapshot, session) -> None:
+        """Put back the pre-scope reductions (unless since edited by hand)."""
+        tracked = session.get("reduced") or {}
+        for family in pdm_snapshot.engineering.families:
+            for member in family.members:
+                entry = tracked.get(member.id)
+                if entry and (member.reduced_article or "") == entry[0]:
+                    member.reduced_article = entry[1]
+
+    @classmethod
+    def resolve_articles(cls, pdm_snapshot, mdb_import_snapshot) -> list[tuple]:
+        """(article, released MDB base article | None, reason) per coded PDM article.
+
+        The single place every Maintenance consumer (base-length overlay,
+        alignment, Articles status) resolves PDM articles to MDB bases; it only
+        calls :meth:`resolve_released_base`. Read-only: nothing is mutated.
+        """
+        if pdm_snapshot is None or mdb_import_snapshot is None:
+            return []
+        mdb_by_code = cls._mdb_by_code(mdb_import_snapshot)
+        if not mdb_by_code:
+            return []
+        resolved = []
+        for article in pdm_snapshot.articles:
+            if not str(article.code or "").strip():
+                continue
+            mdb_article, reason = cls.resolve_released_base(article, mdb_by_code)
+            resolved.append((article, mdb_article, reason))
+        return resolved
+
+    @classmethod
+    def derived_base_lengths(cls, pdm_snapshot, mdb_import_snapshot):
+        """Derived (never stored) Maintenance base lengths.
+
+        Returns ``(lengths, unresolved)``: ``lengths`` maps ``str(article.id)``
+        to ``len(MDB base code)`` for every unambiguously mapped PDM article;
+        ``unresolved`` lists ``(article code, reason)`` for the rest, to which no
+        length is applied.
+        """
+        lengths: dict[str, int] = {}
+        unresolved: list[tuple[str, str]] = []
+        for article, mdb_article, reason in cls.resolve_articles(
+            pdm_snapshot, mdb_import_snapshot
+        ):
+            if mdb_article is None:
+                unresolved.append((str(article.code).strip(), reason))
+            else:
+                lengths[str(article.id)] = len(str(mdb_article.code).strip())
+        return lengths, unresolved
 
     @classmethod
     def apply_released_mdb_base_lengths(cls, pdm_snapshot, mdb_import_snapshot) -> int:
@@ -79,19 +202,14 @@ class MaintenanceAlignmentService(BaseService):
         if pdm_snapshot is None or mdb_import_snapshot is None:
             return 0
 
-        mdb_by_code = cls._mdb_by_code(mdb_import_snapshot)
-        if not mdb_by_code:
-            return 0
-
         overrides = dict(getattr(pdm_snapshot, "base_length_overrides", {}) or {})
         applied = 0
-        for article in pdm_snapshot.articles:
-            code = str(article.code or "").strip()
-            if not code:
-                continue
-            mdb_article, _reason = cls.resolve_released_base(article, mdb_by_code)
+        for article, mdb_article, _reason in cls.resolve_articles(
+            pdm_snapshot, mdb_import_snapshot
+        ):
             if mdb_article is None:
                 continue
+            code = str(article.code or "").strip()
             length = len(str(mdb_article.code).strip())
             if overrides.get(code) != length:
                 overrides[code] = length
@@ -119,19 +237,15 @@ class MaintenanceAlignmentService(BaseService):
             state.alignment.message = "Released MDB contains no base articles."
             return state.alignment
 
-        mdb_by_code = self._mdb_by_code(mdb)
-
         relations: list[MaintenanceArticleRelation] = []
         unresolved_ids: list[str] = []
         unresolved_codes: list[str] = []
 
-        for article in pdm.articles:
+        for article, mdb_article, reason in self.resolve_articles(pdm, mdb):
             code = str(article.code or "").strip()
             article_id = str(article.id or "").strip()
-            if not code or not article_id:
+            if not article_id:
                 continue
-
-            mdb_article, reason = self.resolve_released_base(article, mdb_by_code)
             if mdb_article is None:
                 unresolved_ids.append(article_id)
                 unresolved_codes.append(code)

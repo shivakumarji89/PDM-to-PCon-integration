@@ -398,6 +398,15 @@ class EngineeringReductionService(BaseService):
         range_of = getattr(snapshot, "product_range", {}) or {}
 
         groups: dict[tuple, list[str]] = {}
+        # Maintenance overlay only (marker set by MaintenanceAlignmentService):
+        # articles mapped to MDB bases of different lengths are different sets,
+        # so a set never has to carry a minimum length. Development has no
+        # marker and is unchanged.
+        overlay_lengths = (
+            getattr(snapshot, "base_length_overrides", {}) or {}
+            if getattr(snapshot, "base_length_overrides_original", None) is not None
+            else None
+        )
         for article in snapshot.articles:
             article_id = str(getattr(article, "id", "") or "")
             product_id = str(getattr(article, "product_id", "") or "")
@@ -424,7 +433,12 @@ class EngineeringReductionService(BaseService):
                 }
             signature = tuple(sorted(signature_values))
             scope = str(range_of.get(product_id, "") or "")
-            groups.setdefault((scope, signature), []).append(article_id)
+            overlay_length = (
+                overlay_lengths.get(str(getattr(article, "code", "") or ""))
+                if overlay_lengths is not None
+                else None
+            )
+            groups.setdefault((scope, signature, overlay_length), []).append(article_id)
 
         classes = [
             PropertyClass(
@@ -433,7 +447,7 @@ class EngineeringReductionService(BaseService):
                 article_ids=tuple(ids),
                 product_range=scope,
             )
-            for (scope, signature), ids in groups.items()
+            for (scope, signature, _overlay_length), ids in groups.items()
         ]
         return tuple(sorted(classes, key=lambda c: len(c.article_ids), reverse=True))
 

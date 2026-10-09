@@ -43,6 +43,7 @@ from core.engines.status import warnings_text
 from ui import theme
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
+    SOURCE_PDM,
     MaintenanceSourceMixin,
     read_only_in_mdb,
 )
@@ -133,6 +134,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._group_by_base = True  # group by base by default
         self._syncing = False  # guard while programmatically syncing widgets
         self._last_module = None
+        # Maintenance PDM view: derived MDB base lengths (None = not applicable).
+        self._mdb_mapping: tuple[dict[str, int], list[tuple[str, str]]] | None = None
 
         # Debounce search typing: validation is snapshot-scoped
         # (term-independent), so coalesce keystrokes into one filter pass.
@@ -493,6 +496,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._snapshot_key = key
             self._base_len_by_member.clear()
             self._active_family_id = None
+        self._mdb_mapping = self._maintenance_mapping()
         self._rows = self._collect_rows()
         self._rebuild_family_list()
         self._populate_sets()
@@ -501,7 +505,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # derived lengths change (e.g. the user toggled an Ignore box in Class
         # Creation) so the Length column tracks the current slicing; skip when
         # unchanged. Gate on the MATERIALISED article_sets (real base lengths).
-        set_len_signature = frozenset(self._set_len_by_ids.items())
+        set_len_signature = (
+            frozenset(self._set_len_by_ids.items()),
+            self._mapping_signature(),
+        )
         if (
             not self.is_mdb_view()
             and snapshot is not None
@@ -511,6 +518,48 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._auto_reduce_all_sets()
             self._auto_reduced_signature = set_len_signature
         self._apply_filter()
+
+    def _maintenance_mapping(self):
+        """Derived MDB base lengths for the PDM tab, else ``None``.
+
+        Only the Maintenance PDM view with a released MDB loaded adopts MDB
+        lengths. Resolution is the alignment service's (``resolve_released_base``);
+        nothing is stored on either snapshot.
+        """
+        if self._context.source != SOURCE_PDM:
+            return None
+        snapshot = self._context.active_snapshot
+        mdb = self._context.real.mdb_import_snapshot
+        if snapshot is None or mdb is None:
+            return None
+        from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+        return MaintenanceAlignmentService.derived_base_lengths(snapshot, mdb)
+
+    def _mapping_signature(self):
+        if self._mdb_mapping is None:
+            return None
+        lengths, unresolved = self._mdb_mapping
+        return (frozenset(lengths.items()), tuple(unresolved))
+
+    def _mdb_mapping_note(self) -> tuple[str, bool]:
+        """(status text, is_problem) describing the MDB base-length adoption."""
+        if self._mdb_mapping is None:
+            return "", False
+        lengths, unresolved = self._mdb_mapping
+        total = len(lengths) + len(unresolved)
+        if total == 0:
+            return "", False
+        text = f"MDB base length applied to {len(lengths)} of {total} article(s)."
+        if not unresolved:
+            return text, False
+        shown = ", ".join(code for code, _reason in unresolved[:5])
+        more = f" (+{len(unresolved) - 5} more)" if len(unresolved) > 5 else ""
+        return (
+            f"{text} No length applied to {len(unresolved)} unmapped article(s): "
+            f"{shown}{more} - {unresolved[0][1]}",
+            True,
+        )
 
     def _lockable_widgets(self) -> list:
         return [
@@ -523,10 +572,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     def _validate_articles(self):
         """Validate the articles of the snapshot this page is showing."""
-        if self.is_mdb_view():
-            from services.article_service import ArticleService
-
-            return ArticleService(self._context).validate()
         return self._context.article_service.validate()
 
     def _collect_rows(self) -> list[tuple]:
@@ -745,6 +790,22 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 + ", ".join(sorted({v.status for v in held}))
                 + f": {held[0].reason}"
             )
+        # Maintenance PDM view with a released MDB: the MDB base article is the
+        # authority for each mapped article's base length (the legacy
+        # ProductsList confirmation above still reports partial ranges but does
+        # not gate it). Unmapped articles get no length.
+        if self._mdb_mapping is not None:
+            # The shared Maintenance scope (``ensure_pdm_scope``, run by every
+            # page's refresh) already reduced mapped members to their MDB base
+            # and cleared unmapped ones. Drop this page's per-member overrides
+            # so the view follows that derived state, and mark mapped articles.
+            lengths, _unresolved = self._mdb_mapping
+            article_service = self._context.article_service
+            for _family, member, article in self._rows:
+                self._base_len_by_member.pop(getattr(member, "id", ""), None)
+                if article is not None and str(article.id) in lengths:
+                    article_service.set_selected(article, True)
+            return
         # In Development the Class Creation materializer already wrote
         # each member's reduced_article. Do not replace that transformed base
         # with the legacy prefix-only reduction.
@@ -1353,10 +1414,21 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         return ""
 
     def _apply_reduction_status(self) -> None:
-        warning = self._blocked_reason or self._reduction_warning()
+        # PDM-side completeness findings never describe the MDB baseline.
+        blocked = "" if self.is_mdb_view() else self._blocked_reason
+        warning = blocked or self._reduction_warning()
+        note, note_problem = self._mdb_mapping_note()
         if warning:
-            self._s_reduction.setText(f"\u26A0 {warning}")
+            text = f"⚠ {warning}"
+            if note:
+                text += "\n" + note
+            self._s_reduction.setText(text)
             self._s_reduction.setStyleSheet(f"color: {theme.COLOR_WARNING};")
+        elif note:
+            self._s_reduction.setText(f"⚠ {note}" if note_problem else note)
+            self._s_reduction.setStyleSheet(
+                f"color: {theme.COLOR_WARNING if note_problem else theme.COLOR_OK};"
+            )
         else:
             self._s_reduction.setText("Consistent")
             self._s_reduction.setStyleSheet(f"color: {theme.COLOR_OK};")

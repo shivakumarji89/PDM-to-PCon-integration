@@ -74,3 +74,63 @@ class RepositoryLinkActionsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealProductPageLinkTest(unittest.TestCase):
+    """Drive the real ProductPage tree/selection (not mocks)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+        cls._app = QApplication.instance() or QApplication([])
+
+    def _page(self):
+        from core.application_context import ApplicationContext
+        from core.modules import WorkbenchModule
+        # Hermetic: never start the background navigator (registry cache / PDM).
+        with patch.object(ProductPage, "_load_navigator", lambda *a, **k: None):
+            page = ProductPage(ApplicationContext())
+        page.set_module(WorkbenchModule.MAINTENANCE)
+        products = [
+            Product(id=str(i), code=f"AL{i}", name=f"P{i}", category="Bolster",
+                    description="Cat", catalogue_id="C1", range_name="R")
+            for i in range(3)
+        ]
+        page._populate_results(products, expand=True, lazy=False)
+        return page
+
+    def test_enablement_follows_repository_and_selected_leaf(self):
+        page = self._page()
+        btn = page._establish_repository_btn
+        category = page._tree.topLevelItem(0).child(0)
+        leaf = category.child(0)
+
+        # No repository: disabled even with a leaf selected, reason says so.
+        leaf.setSelected(True)
+        self.assertFalse(btn.isEnabled())
+        self.assertIn("repository", btn.toolTip().lower())
+
+        # Repository loaded, but only a category (family) node selected and
+        # nothing loaded: disabled, reason points at the missing product.
+        page._repository_workspace._repository_path_value = "C:/repo"
+        leaf.setSelected(False)
+        category.setSelected(True)
+        self.assertFalse(btn.isEnabled())
+        self.assertIn("product", btn.toolTip().lower())
+
+        # Leaf selected: enabled.
+        category.setSelected(False)
+        leaf.setSelected(True)
+        self.assertTrue(btn.isEnabled())
+        self.assertIn("Persist", btn.toolTip())
+
+    def test_loaded_product_enables_link_with_category_selected(self):
+        page = self._page()
+        page._repository_workspace._repository_path_value = "C:/repo"
+        page._tree.topLevelItem(0).child(0).setSelected(True)
+        self.assertFalse(page._establish_repository_btn.isEnabled())
+        page._loaded_product = _product("LOADED")
+        page._update_repository_actions()
+        self.assertTrue(page._establish_repository_btn.isEnabled())

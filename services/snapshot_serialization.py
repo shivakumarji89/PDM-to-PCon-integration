@@ -901,6 +901,19 @@ def value_table_from_dict(data: dict[str, Any]) -> ValueCombinationTable:
     )
 
 
+def _engineering_document(snapshot: Snapshot) -> dict[str, Any]:
+    """Engineering section, without MDB-derived Maintenance reductions."""
+    document = engineering_to_dict(snapshot.engineering)
+    derived = getattr(snapshot, "scope_reduced_articles", None) or {}
+    if derived:
+        for family in document.get("families", []):
+            for member in family.get("members", []):
+                entry = derived.get(member["id"])
+                if entry and entry[0] == member["reduced_article"]:
+                    member["reduced_article"] = entry[1]
+    return document
+
+
 def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
     """Serialize a whole Snapshot (source + engineering) to a JSON-ready dict."""
     return {
@@ -930,7 +943,11 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
         "component_head_attrs": snapshot.component_head_attrs,
         "article_varcond_terms": snapshot.article_varcond_terms,
         "article_prefix_length": snapshot.article_prefix_length,
-        "base_length_overrides": snapshot.base_length_overrides,
+        "base_length_overrides": (
+            snapshot.base_length_overrides
+            if snapshot.base_length_overrides_original is None
+            else snapshot.base_length_overrides_original
+        ),
         "option_increments": snapshot.option_increments,
         "attribute_value_exclusions": snapshot.attribute_value_exclusions,
         "attribute_option_dependencies": snapshot.attribute_option_dependencies,
@@ -974,7 +991,7 @@ def snapshot_to_dict(snapshot: Snapshot) -> dict[str, Any]:
             _exclusion_delta_to_dict(snapshot, snapshot.exclusion_baseline)
             if snapshot.exclusion_baseline else None
         ),
-        "engineering": engineering_to_dict(snapshot.engineering),
+        "engineering": _engineering_document(snapshot),
     }
 
 

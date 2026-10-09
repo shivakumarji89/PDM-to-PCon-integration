@@ -238,6 +238,24 @@ class ApplicationContext:
             else:
                 self.snapshot_manager.load_snapshot(snapshot)
 
+    def adopt_loaded_pdm_snapshot(self) -> Snapshot | None:
+        """Register the snapshot a PDM load just made active as the PDM snapshot.
+
+        PDMService / ProjectService load straight into the snapshot manager.
+        Maintenance pages resolve their PDM tab from ``pdm_snapshot``, so every
+        load path must publish its result here (as the single-product load
+        does). The previously selected source is restored afterwards, so an
+        active MDB source keeps its own snapshot.
+        """
+        snapshot = self.snapshot_manager.get_active_snapshot()
+        if snapshot is None or snapshot is self._mdb_import_snapshot:
+            # Never alias the released MDB baseline as the PDM source.
+            return None
+        self.register_pdm_snapshot(snapshot)
+        if self._snapshot_source != "pdm":
+            self.activate_snapshot_source(self._snapshot_source)
+        return snapshot
+
     def activate_snapshot_source(self, source: str) -> None:
         if source not in {"pdm", "mdb_import"}:
             raise ValueError(f"Unknown snapshot source: {source}")

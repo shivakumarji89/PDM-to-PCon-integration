@@ -7,7 +7,10 @@ QWidget {
     background-color: #f4f6f8;
     color: #1f2733;
     font-family: "Segoe UI", "Inter", Arial, sans-serif;
-    font-size: 13px;
+    /* 9.75pt == 13px at 96 DPI. A pixel base size makes Qt log
+     * "QFont::setPointSize: Point size <= 0 (-1)" once when a QPushButton with a
+     * QMenu (Articles "Clear", OBX "Load") is polished; a point size does not. */
+    font-size: 9.75pt;
 }
 
 QMainWindow {

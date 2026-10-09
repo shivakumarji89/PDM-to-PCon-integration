@@ -110,6 +110,19 @@ class Snapshot:
     # user override, else CAD Maintenance). Empty by default (no effect); when
     # populated it wins over the reduction/PDM length in the base article split.
     base_length_overrides: dict[str, int] = field(default_factory=dict)
+    # Runtime only (never serialized, ignored by ==): while a Maintenance scope
+    # overlays MDB-derived lengths onto ``base_length_overrides``, the pre-scope
+    # values are kept here. Serialization writes these instead of the overlay,
+    # and set classification separates articles whose overlay lengths differ.
+    base_length_overrides_original: dict[str, int] | None = field(
+        default=None, repr=False, compare=False
+    )
+    # Runtime only: member id -> (value the scope wrote, value before the scope)
+    # for ``reduced_article``, so serialization and restore can put back the
+    # pre-scope value instead of the Maintenance view.
+    scope_reduced_articles: dict[str, tuple[str, str]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     # Option increment prices (PDM ``ItemOptionValues.IncrementalPrice``): item
     # prefix (name up to and including the first ``.``) -> option-value rows,

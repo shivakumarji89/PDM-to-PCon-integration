@@ -1191,7 +1191,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     # -- data --------------------------------------------------------------
     def _lockable_widgets(self) -> list:
-        views = self.findChildren(QAbstractItemView)
+        views = self._page_item_views()
         return [
             getattr(self, "_move_up_btn", None),
             getattr(self, "_move_down_btn", None),
@@ -1278,6 +1278,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._populate_visual_tables()
         self._populating = False
         self._last_render_sig = self._render_signature()
+        # The rebuild replaced the views' contents (and their cell editors):
+        # register whatever is new and lock the fresh editors in the MDB view.
+        self._apply_lock_state()
         if self.is_mdb_view():
             self._lock_embedded_editors()
 

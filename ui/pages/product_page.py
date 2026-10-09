@@ -336,6 +336,9 @@ class _NavigatorWorker(QRunnable):
             self._signals.finished.emit(self._token, products, grouped)
 
 
+_ESTABLISH_TOOLTIP = "Persist the selected PDM product <-> repository relationship"
+
+
 class ProductPage(BasePage):
     """Product engineering dashboard: search, load and review a product."""
 
@@ -577,9 +580,7 @@ class ProductPage(BasePage):
         link_section = QGroupBox("Product Link", page)
         link_layout = QHBoxLayout(link_section)
         self._establish_repository_btn = QPushButton("Establish Link", link_section)
-        self._establish_repository_btn.setToolTip(
-            "Persist the selected PDM product <-> repository relationship"
-        )
+        self._establish_repository_btn.setToolTip(_ESTABLISH_TOOLTIP)
         self._establish_repository_btn.setEnabled(False)
         self._establish_repository_btn.clicked.connect(self._on_establish_repository)
         link_layout.addWidget(self._establish_repository_btn)
@@ -644,9 +645,20 @@ class ProductPage(BasePage):
         return self._selected_product() or self._loaded_product
 
     def _update_repository_actions(self) -> None:
-        self._establish_repository_btn.setEnabled(
-            bool(self._repository_workspace.repository_path and self._repository_link_product())
-        )
+        has_repository = bool(self._repository_workspace.repository_path)
+        has_product = self._repository_link_product() is not None
+        self._establish_repository_btn.setEnabled(has_repository and has_product)
+        # Say why the link is unavailable instead of leaving the button inert.
+        if not has_repository:
+            reason = "Open a repository series first."
+        elif not has_product:
+            reason = (
+                "Select a PDM product leaf in Product Explorer, or load a "
+                "product/family (a category node alone is not a product)."
+            )
+        else:
+            reason = _ESTABLISH_TOOLTIP
+        self._establish_repository_btn.setToolTip(reason)
 
     def set_module(self, module: WorkbenchModule | None) -> None:
         """Switch Product context presentation for the selected module."""
@@ -1008,6 +1020,26 @@ class ProductPage(BasePage):
             return "family"
         return "catalogue" if item.parent() is None else "category"
 
+    def _prepare_maintenance_scope(self) -> None:
+        """Maintenance only: derive PDM base lengths from the released MDB.
+
+        Every PDM load path calls this once the new snapshot is registered, so
+        Family loads behave like the single-product load. No-op in other
+        modules and while either source snapshot is missing.
+        """
+        if self._context_module != WorkbenchModule.MAINTENANCE:
+            return
+        pdm, mdb = self._context.pdm_snapshot, self._context.mdb_import_snapshot
+        if pdm is None or mdb is None:
+            return
+        from services.maintenance_alignment_service import MaintenanceAlignmentService
+        MaintenanceAlignmentService(self._context).prepare_pdm_scope(pdm, mdb)
+
+    def _restore_maintenance_scope(self) -> None:
+        if self._context_module == WorkbenchModule.MAINTENANCE:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+            MaintenanceAlignmentService(self._context).restore_pdm_scope()
+
     def _on_selection_changed(self) -> None:
         # Selection state is used by explorer interactions and repository linking.
         item = self._current_item()
@@ -1157,6 +1189,8 @@ class ProductPage(BasePage):
             self._search_status.setText("Select product(s) or categories to load.")
             return
 
+        self._restore_maintenance_scope()
+
         # One reusable reporter drives both the progress dialog and the Activity
         # panel; business logic in the service only calls the reporter methods.
         reporter = ProgressReporter(self)
@@ -1282,7 +1316,8 @@ class ProductPage(BasePage):
             self._finalize_load()
             return
 
-        snapshot = self._context.active_snapshot
+        # PDMService merged into the active snapshot: publish it as the PDM source.
+        snapshot = self._context.adopt_loaded_pdm_snapshot()
         self._loaded_product = snapshot.product if snapshot is not None else None
         # Additive engineering sync: add members for the new articles without
         # discarding existing families / reduction work.
@@ -1291,6 +1326,7 @@ class ProductPage(BasePage):
             self._context.engineering_initialization_service.sync(snapshot)
         except Exception as error:  # never let sync break the add
             reporter.log("error", f"Engineering sync: {error}")
+        self._prepare_maintenance_scope()
         # Re-group everything across the combined session.
         self.product_loaded.emit(
             f"Session: {len(snapshot.articles)} articles"
@@ -1364,6 +1400,8 @@ class ProductPage(BasePage):
 
         # Publish the COMPLETE snapshot + engineering to every workspace at once.
         reporter.advance("Finalizing Workspaces")
+        self._context.adopt_loaded_pdm_snapshot()
+        self._prepare_maintenance_scope()
         self._refresh_display(products[0], 0.0, result.warnings)
         self.product_loaded.emit(f"Family: {family_name}")
         self.snapshot_published.emit()

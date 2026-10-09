@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import functools
 
+import shiboken6
+
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QTabBar,
@@ -28,6 +31,11 @@ from PySide6.QtWidgets import (
 )
 
 from core.modules import WorkbenchModule
+from services.article_service import ArticleService
+from services.option_service import OptionService
+from services.option_value_service import OptionValueService
+from services.property_service import PropertyService
+from services.property_value_service import PropertyValueService
 
 SOURCE_PDM = "pdm"
 SOURCE_MDB = "mdb"
@@ -54,6 +62,7 @@ class SourceContext:
     def __init__(self, context) -> None:
         object.__setattr__(self, "_real", context)
         object.__setattr__(self, "source", None)
+        object.__setattr__(self, "_bound_services", {})
 
     @property
     def real(self):
@@ -74,6 +83,42 @@ class SourceContext:
         if self.source == SOURCE_MDB:
             return _ReadOnlySnapshotManager(manager)
         return manager
+
+    def _bound(self, service_type):
+        """A snapshot-implicit service reading *this* source's snapshot.
+
+        These services resolve ``context.active_snapshot`` internally, so the
+        shared instance on the real context would read the global snapshot
+        whichever tab is selected. Without a source (Development / other
+        modules) the shared service is returned unchanged.
+        """
+        if self.source is None:
+            return self._real.get_service(service_type)
+        service = self._bound_services.get(service_type)
+        if service is None:
+            service = service_type(self)
+            self._bound_services[service_type] = service
+        return service
+
+    @property
+    def article_service(self) -> ArticleService:
+        return self._bound(ArticleService)
+
+    @property
+    def property_service(self) -> PropertyService:
+        return self._bound(PropertyService)
+
+    @property
+    def property_value_service(self) -> PropertyValueService:
+        return self._bound(PropertyValueService)
+
+    @property
+    def option_service(self) -> OptionService:
+        return self._bound(OptionService)
+
+    @property
+    def option_value_service(self) -> OptionValueService:
+        return self._bound(OptionValueService)
 
     def __getattr__(self, name):
         return getattr(self._real, name)
@@ -236,6 +281,24 @@ class MaintenanceSourceMixin:
             text = ""
         self._source_tabs.set_indicator(text)
 
+    def _ensure_pdm_scope(self) -> None:
+        """Maintenance PDM view with a released MDB: make sure the derived MDB
+        base lengths (Article Sets overlay + member reductions) are in place.
+
+        Done here, for every Maintenance page, so no page depends on another
+        having been opened first (Open Project, repository change, ...).
+        Idempotent and cached; a no-op for the MDB view and other modules.
+        """
+        if self._context.source != SOURCE_PDM:
+            return
+        real = self._context.real
+        pdm, mdb = real.pdm_snapshot, real.mdb_import_snapshot
+        if pdm is None or mdb is None:
+            return
+        from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+        MaintenanceAlignmentService(real).ensure_pdm_scope(pdm, mdb)
+
     def _begin_refresh(self) -> bool:
         """Sync source/lock state. Return True when the refresh can be skipped.
 
@@ -243,6 +306,7 @@ class MaintenanceSourceMixin:
         MDB view is immutable, so it is rendered once per MDB snapshot.
         """
         self._sync_source()
+        self._ensure_pdm_scope()
         mdb = self.is_mdb_view()
         self._set_widgets_locked(mdb)
         if not mdb:
@@ -260,11 +324,44 @@ class MaintenanceSourceMixin:
         """Widgets that edit/compute/generate. Override per page."""
         return []
 
+    def _page_item_views(self) -> list[QAbstractItemView]:
+        """The page's own item views, never a view that belongs to an editor.
+
+        ``findChildren(QAbstractItemView)`` also returns the popup ``QListView``
+        of every ``QComboBox`` embedded in a table/tree cell. Those belong to
+        the cell editors, which are destroyed whenever the page rebuilds its
+        views, so they must never be registered as lockable.
+        """
+        views = []
+        for view in self.findChildren(QAbstractItemView):
+            ancestor = view.parentWidget()
+            inside_editor = False
+            while ancestor is not None and ancestor is not self:
+                if isinstance(ancestor, QComboBox):
+                    inside_editor = True
+                    break
+                ancestor = ancestor.parentWidget()
+            if not inside_editor:
+                views.append(view)
+        return views
+
+    def _apply_lock_state(self) -> None:
+        """Re-assert the lock for the current source (call after a rebuild)."""
+        self._set_widgets_locked(self.is_mdb_view())
+
     def _set_widgets_locked(self, locked: bool) -> None:
-        """Lock/unlock the page's mutating widgets, restoring prior state."""
+        """Lock/unlock the page's mutating widgets, restoring prior state.
+
+        ``self._lockable_widgets()`` is the single authority on which widgets
+        currently belong to the page. Every call first reconciles the saved
+        state against it, so a widget the page has since replaced or deleted
+        never survives in the lock table (and is never restored).
+        """
+        current = [w for w in self._lockable_widgets() if w is not None]
+        self._reconcile_locked(current)
         if locked:
-            for widget in self._lockable_widgets():
-                if widget is None or widget in self._locked_widgets:
+            for widget in current:
+                if widget in self._locked_widgets:
                     continue
                 if isinstance(widget, QAbstractItemView):
                     self._locked_widgets[widget] = widget.editTriggers()
@@ -273,11 +370,32 @@ class MaintenanceSourceMixin:
                     self._locked_widgets[widget] = widget.isEnabled()
                     widget.installEventFilter(self._keep_disabled)
                     widget.setEnabled(False)
+                # A widget that is destroyed later leaves the table at once
+                # (hooked once per widget, not once per lock cycle).
+                if not widget.property("_sourceLockHooked"):
+                    widget.setProperty("_sourceLockHooked", True)
+                    widget.destroyed.connect(
+                        lambda _obj=None, key=widget: self._locked_widgets.pop(key, None)
+                    )
             return
-        for widget, previous in self._locked_widgets.items():
-            if isinstance(widget, QAbstractItemView):
-                widget.setEditTriggers(previous)
-            else:
-                widget.removeEventFilter(self._keep_disabled)
-                widget.setEnabled(previous)
-        self._locked_widgets = {}
+        states, self._locked_widgets = self._locked_widgets, {}
+        for widget, previous in states.items():
+            self._restore_widget(widget, previous)
+
+    def _reconcile_locked(self, current: list) -> None:
+        """Drop lock state for widgets that are no longer the page's own."""
+        keep = set(current)
+        for widget in [w for w in self._locked_widgets if w not in keep]:
+            previous = self._locked_widgets.pop(widget)
+            # Replaced but still alive (e.g. re-parented): give its state back.
+            # Destroyed: nothing to restore - the entry is simply discarded.
+            self._restore_widget(widget, previous)
+
+    def _restore_widget(self, widget, previous) -> None:
+        if not shiboken6.isValid(widget):  # defensive only; entries are pruned
+            return
+        if isinstance(widget, QAbstractItemView):
+            widget.setEditTriggers(previous)
+        else:
+            widget.removeEventFilter(self._keep_disabled)
+            widget.setEnabled(previous)

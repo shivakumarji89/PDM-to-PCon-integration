@@ -98,6 +98,9 @@ class ProjectService(BaseService):
 
         snapshot = snapshot_from_dict(document.get("snapshot") or {})
         self.context.snapshot_manager.load_snapshot(snapshot)
+        # A saved project is a PDM-side working snapshot: publish it as such so
+        # Maintenance's PDM tab resolves it (the MDB snapshot is left alone).
+        self.context.adopt_loaded_pdm_snapshot()
 
         project = Project(
             name=document.get("name", "") or source.stem,
