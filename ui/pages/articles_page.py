@@ -42,6 +42,10 @@ from core.modules import WorkbenchModule
 from core.engines.status import warnings_text
 from ui import theme
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 from ui.widgets.busy_popup import BusyPopup
 
 # Column indices for the articles reduction table.
@@ -94,7 +98,13 @@ class _ArticleTextDelegate(QStyledItemDelegate):
         editor.setGeometry(x, rect.y(), width, rect.height())
 
 
-class ArticlesPage(BasePage):
+@read_only_in_mdb(
+    "_apply_set", "_auto_reduce_all_sets", "_on_copy_long_to_short",
+    "_on_filter_components", "_on_rebuild_from_class_creation",
+    "_on_apply_base_length", "_on_item_changed", "_on_base_length_cell_changed",
+    "_on_clear_length", "_on_clear_long", "_on_clear_short",
+)
+class ArticlesPage(MaintenanceSourceMixin, BasePage):
     """Engineering reduction workspace for the active snapshot's articles."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -106,7 +116,7 @@ class ArticlesPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self._rows: list[tuple] = []
         self._validation = None
         self._populating = False
@@ -463,6 +473,8 @@ class ArticlesPage(BasePage):
     # -- data / refresh ----------------------------------------------------
     def refresh(self) -> None:
         """Reload engineering members from the active snapshot and rebuild."""
+        if self._begin_refresh():
+            return
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
         if module != self._last_module:
@@ -491,13 +503,31 @@ class ArticlesPage(BasePage):
         # unchanged. Gate on the MATERIALISED article_sets (real base lengths).
         set_len_signature = frozenset(self._set_len_by_ids.items())
         if (
-            snapshot is not None
+            not self.is_mdb_view()
+            and snapshot is not None
             and getattr(snapshot, "article_sets", None)
             and set_len_signature != self._auto_reduced_signature
         ):
             self._auto_reduce_all_sets()
             self._auto_reduced_signature = set_len_signature
         self._apply_filter()
+
+    def _lockable_widgets(self) -> list:
+        return [
+            getattr(self, name, None)
+            for name in (
+                "_apply_len_btn", "_copy_long_btn", "_components_btn",
+                "_clear_btn", "_base_len_spin", "_table",
+            )
+        ]
+
+    def _validate_articles(self):
+        """Validate the articles of the snapshot this page is showing."""
+        if self.is_mdb_view():
+            from services.article_service import ArticleService
+
+            return ArticleService(self._context).validate()
+        return self._context.article_service.validate()
 
     def _collect_rows(self) -> list[tuple]:
         """Build (family, member, article) rows from the engineering hierarchy.
@@ -823,7 +853,7 @@ class ArticlesPage(BasePage):
         self._filter_timer.start()
 
     def _apply_filter(self, *_args) -> None:
-        self._validation = self._context.article_service.validate()
+        self._validation = self._validate_articles()
         term = self._search.text().strip().lower()
 
         filtered: list[tuple] = []
@@ -1254,7 +1284,7 @@ class ArticlesPage(BasePage):
         # before this) instead of validating the snapshot a second time.
         validation = self._validation
         if validation is None:
-            validation = self._context.article_service.validate()
+            validation = self._validate_articles()
             self._validation = validation
         self._s_loaded.setText(str(validation.total))
         self._s_selected.setText(str(validation.selected))

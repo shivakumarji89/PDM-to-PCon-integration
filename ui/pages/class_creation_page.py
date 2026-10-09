@@ -65,6 +65,10 @@ from services.engineering.engineering_reduction_service import (
 from services.mdb_classification_service import MdbClassificationService
 from ui import theme
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 from ui.widgets.data_table import standardize_table
 
 # Tree columns.
@@ -223,7 +227,50 @@ class _CollapsibleCard(QGroupBox):
 
 
 
-class ClassCreationPage(BasePage):
+@read_only_in_mdb(
+    "_on_mdb_export_toggled",
+    "_on_attribute_value_changed",
+    "_on_visible_attr_ignore",
+    "_on_visible_attr_type",
+    "_on_visible_attr_usage",
+    "_on_attribute_master_changed",
+    "_on_split_toggled",
+    "_on_basis_changed",
+    "_rename_group_inline",
+    "_on_resolve_remaining",
+    "_open_clarification_dialog",
+    "_on_code_selected",
+    "_on_type_selected",
+    "_on_usage_selected",
+    "_on_ignore_toggled",
+    "_on_opt_type_selected",
+    "_on_opt_usage_selected",
+    "_on_visual_type_selected",
+    "_on_visual_usage_selected",
+    "_on_attr_context_menu",
+    "_move_selected_attr_property",
+    "_move_attr_property",
+    "_add_pdm_value",
+    "_add_pdm_values",
+    "_add_attr_value",
+    "_remove_attr_value",
+    "_on_visual_context_menu",
+    "_add_visual_value",
+    "_remove_visual_value",
+    "_apply_sliced",
+    "_on_attr_item_changed",
+    "_commit_property_inferred",
+    "_on_option_value_changed",
+    "_on_option_master_changed",
+    "_add_selected_option_value",
+    "_on_visual_master_changed",
+    "_on_visual_value_changed",
+    "_add_selected_visual_value",
+    "_on_item_changed",
+    "_delete_definition",
+    "_sync_development_article_sets",
+)
+class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     """Unified Attributes + Options + Visual/Misc class-creation workspace."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -237,7 +284,7 @@ class ClassCreationPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self._populating = False
         self._active_class_id: str | None = None
         self._cards: list[_CollapsibleCard] = []
@@ -1143,6 +1190,23 @@ class ClassCreationPage(BasePage):
         return self._misc_box
 
     # -- data --------------------------------------------------------------
+    def _lockable_widgets(self) -> list:
+        views = self.findChildren(QAbstractItemView)
+        return [
+            getattr(self, "_move_up_btn", None),
+            getattr(self, "_move_down_btn", None),
+            getattr(self, "_split_cb", None),
+            getattr(self, "_basis_combo", None),
+            *views,
+        ]
+
+    def _lock_embedded_editors(self) -> None:
+        """Disable the per-row combo/check editors of the freshly built views."""
+        for view in self.findChildren(QAbstractItemView):
+            for kind in (QComboBox, QCheckBox):
+                for editor in view.findChildren(kind):
+                    editor.setEnabled(False)
+
     def refresh(self) -> None:
         """Rebuild the cards from the active snapshot.
 
@@ -1151,6 +1215,8 @@ class ClassCreationPage(BasePage):
         group's ``<Group>_*`` classes the cards show; the backend classes for
         every group are kept in sync (auto-created + auto-grouped).
         """
+        if self._begin_refresh():
+            return
         self._populating = True
         category = self._category_label()
         snap = self._context.active_snapshot
@@ -1159,8 +1225,11 @@ class ClassCreationPage(BasePage):
             self._user_edited_props.clear()
             self._edited_snap_id = id(snap)
         service = self._context.engineering_class_service
-        service.ensure_standard_classes(snap, category)
-        self._sync_development_article_sets()
+        if not self.is_mdb_view():
+            # The imported MDB baseline is displayed as-is: no standard-class
+            # creation and no Development article-set synchronisation.
+            service.ensure_standard_classes(snap, category)
+            self._sync_development_article_sets()
 
         groups = service.resolve_class_groups(snap, category) if snap else []
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
@@ -1209,6 +1278,8 @@ class ClassCreationPage(BasePage):
         self._populate_visual_tables()
         self._populating = False
         self._last_render_sig = self._render_signature()
+        if self.is_mdb_view():
+            self._lock_embedded_editors()
 
     def _on_split_toggled(self, checked: bool) -> None:
         """Persist the split opt-in and rebuild."""
@@ -1279,10 +1350,11 @@ class ClassCreationPage(BasePage):
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
+        source_changed = self._resync_on_show()
         # The Articles reduction mutates the snapshot IN PLACE (same object), so
         # id() can't detect it - re-render when the grouping inputs (article_sets)
         # or overrides have changed since the last populate, and not otherwise.
-        if self._render_signature() != getattr(self, "_last_render_sig", None):
+        if source_changed or self._render_signature() != getattr(self, "_last_render_sig", None):
             self.refresh()
 
     def _render_signature(self):

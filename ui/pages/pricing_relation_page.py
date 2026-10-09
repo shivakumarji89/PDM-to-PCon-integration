@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
 
 from services.pricing_relation_service import PricingRelationService
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MDB_NOT_LOADED_TEXT,
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 
 
 def _v(parent: QWidget) -> QVBoxLayout:
@@ -30,7 +35,8 @@ def _v(parent: QWidget) -> QVBoxLayout:
     return layout
 
 
-class PricingRelationPage(BasePage):
+@read_only_in_mdb("_on_generate", "_render_components")
+class PricingRelationPage(MaintenanceSourceMixin, BasePage):
     """Generate the PA_PRICING relation for the active snapshot."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -41,7 +47,7 @@ class PricingRelationPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self.add_content(self._build_toolbar())
         self.add_content(self._build_view())
 
@@ -70,7 +76,49 @@ class PricingRelationPage(BasePage):
 
     def on_enter(self) -> None:
         """Generate PA_PRICING relations automatically when entering."""
+        self._sync_source()
+        if self.is_mdb_view():
+            self.refresh()
+            return
         self._on_generate()
+
+    def refresh(self) -> None:
+        """Maintenance MDB view only; PDM keeps its enter-time generation."""
+        if self._begin_refresh():
+            return
+        if self.is_mdb_view():
+            self._render_mdb()
+
+    def _on_source_changed(self, _source: str) -> None:
+        if self._begin_refresh():
+            return
+        if self.is_mdb_view():
+            self._render_mdb()
+        else:
+            self._on_generate()
+
+    def _render_mdb(self) -> None:
+        """Show the imported PA_* relation objects. Never generates or stores."""
+        snapshot = self._context.active_snapshot
+        self._count_label.setStyleSheet("")
+        if snapshot is None:
+            self._name_label.setText(MDB_NOT_LOADED_TEXT)
+            self._count_label.setText("")
+            self._editor.setPlainText("")
+            return
+        relations = [
+            r for r in snapshot.relation_objects if (r.name or "").startswith("PA_")
+        ]
+        self._name_label.setText(
+            f"{len(relations)} imported PA_* relation(s) (MDB, read-only)"
+        )
+        self._count_label.setText(
+            f"{sum(len(r.body or '') for r in relations):,} chars"
+        )
+        blocks = [f"* {r.name}" + "\r\n" + (r.body or "") for r in relations]
+        self._editor.setPlainText(
+            "\r\n\r\n".join(blocks) or "(no PA_* relations in the imported MDB)"
+        )
 
     def _on_generate(self) -> None:
         service = PricingRelationService(self._context)
@@ -145,7 +193,9 @@ class PricingRelationPage(BasePage):
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
-        self._name_label.setText("")
+        self._sync_source()
+        if not self.is_mdb_view():
+            self._name_label.setText("")
 
     def is_ready(self) -> bool:
         snapshot = self._context.active_snapshot

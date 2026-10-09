@@ -591,9 +591,12 @@ class ProductPage(BasePage):
     def _on_shared_repository_loaded(self, snapshot) -> None:
         self._update_repository_actions()
         if self._context_module == WorkbenchModule.MAINTENANCE:
-            self._repository_workspace._repository_status.setText(
-                "MDB repository loaded. Select a PDM product from the Product workflow to compare."
+            message = (
+                "MDB repository loaded. Ready to establish PDM ↔ MDB link."
+                if self._repository_link_product() is not None
+                else "MDB repository loaded. Load/select a PDM product to establish the link."
             )
+            self._repository_workspace._repository_status.setText(message)
         self.snapshot_changed.emit()
 
     def _on_shared_repository_cleared(self) -> None:
@@ -603,13 +606,13 @@ class ProductPage(BasePage):
 
     def _on_establish_repository(self) -> None:
         """Persist the Product <-> Repository relationship for the shared workspace."""
-        product = self._selected_product()
+        product = self._repository_link_product()
         repository_path = self._repository_workspace.repository_path
         if product is None:
             QMessageBox.information(
                 self,
                 "Repository",
-                "Select a PDM product in Product Explorer before establishing the link.",
+                "Load a PDM product before establishing the link.",
             )
             return
         if not repository_path:
@@ -636,9 +639,13 @@ class ProductPage(BasePage):
             f"({record['repository']['name']})."
         )
 
+    def _repository_link_product(self) -> Product | None:
+        """PDM product for Repository Link: selected leaf, else the loaded product."""
+        return self._selected_product() or self._loaded_product
+
     def _update_repository_actions(self) -> None:
         self._establish_repository_btn.setEnabled(
-            bool(self._repository_workspace.repository_path and self._selected_product())
+            bool(self._repository_workspace.repository_path and self._repository_link_product())
         )
 
     def set_module(self, module: WorkbenchModule | None) -> None:

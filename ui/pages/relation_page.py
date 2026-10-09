@@ -37,6 +37,10 @@ from models.relation_object import (
 from services.engineering.engineering_relation_service import validate_relation_body
 from ui import theme
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 
 _COL_NAME = 0
 _COL_RELATION = 1
@@ -53,7 +57,11 @@ _GROUP_TYPE = "Group by type"
 _GROUP_PROPERTY = "Group by property"
 
 
-class RelationPage(BasePage):
+@read_only_in_mdb(
+    "_on_name_edited", "_on_type_changed", "_on_domain_changed", "_on_body_changed",
+    "_on_new", "_on_delete", "_on_rebuild", "_on_view_value_table",
+)
+class RelationPage(MaintenanceSourceMixin, BasePage):
     """Engineering workspace for the active snapshot's relation objects."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -64,7 +72,7 @@ class RelationPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self._all_relations: list[RelationObject] = []
         self._row_relations: list[RelationObject | None] = []
         self._ui_relation_map: dict[int, RelationObject] = {}
@@ -192,13 +200,28 @@ class RelationPage(BasePage):
     # -- data --------------------------------------------------------------
     def on_enter(self) -> None:
         """Load preserved relations; derive them only when the snapshot has none."""
+        self._sync_source()
+        if self.is_mdb_view():
+            self.refresh()
+            return
         snapshot = self._context.active_snapshot
         service = self._context.engineering_relation_service
         service.ensure_relation_objects(snapshot)
         self._context.engineering_value_table_service.rebuild_value_tables(snapshot)
         self.refresh()
 
+    def _lockable_widgets(self) -> list:
+        return [
+            getattr(self, name, None)
+            for name in (
+                "_rebuild_btn", "_new_btn", "_delete_btn", "_value_table_btn",
+                "_name_edit", "_type_combo", "_domain_combo", "_body_edit",
+            )
+        ]
+
     def refresh(self) -> None:
+        if self._begin_refresh():
+            return
         snapshot = self._context.active_snapshot
         self._entity_names = {}
         self._value_texts = {}
@@ -211,6 +234,14 @@ class RelationPage(BasePage):
                 self._value_texts[str(value.id)] = value.value
             for value in snapshot.option_values:
                 self._value_texts[str(value.id)] = value.value
+        if self.is_mdb_view():
+            # Imported baseline: show stored relation objects only. No ensure_*,
+            # no value-table / constraint synchronisation.
+            self._all_relations = (
+                list(snapshot.relation_objects) if snapshot is not None else []
+            )
+            self._apply_filter()
+            return
         self._all_relations = (
             self._context.engineering_relation_service.ensure_relation_objects(
                 snapshot
@@ -220,6 +251,11 @@ class RelationPage(BasePage):
         # they exist so the constraints show in the relation list.
         self._context.engineering_value_table_service.ensure_value_tables(snapshot)
         self._apply_filter()
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(event)
+        if self._resync_on_show():
+            self.refresh()
 
     def _schedule_filter(self) -> None:
         """Debounce search typing so the table rebuilds once, not per keystroke."""

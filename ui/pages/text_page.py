@@ -27,6 +27,10 @@ from core.engines.filtering import text_match
 from models.text_block import TEXT_TYPE_CODES, TextBlock
 from ui import theme
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 
 _COL_TYPE = 0
 _COL_NAME = 1
@@ -45,7 +49,8 @@ _GROUP_NONE = "No grouping"
 _GROUP_TYPE = "Group by type"
 
 
-class TextPage(BasePage):
+@read_only_in_mdb("_on_item_changed", "_on_fill_from_en", "_on_rebuild")
+class TextPage(MaintenanceSourceMixin, BasePage):
     """Engineering workspace for the active snapshot's text blocks."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -56,7 +61,7 @@ class TextPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self._all_blocks: list[TextBlock] = []
         self._row_blocks: list[TextBlock] = []
         self._populating = False
@@ -120,6 +125,10 @@ class TextPage(BasePage):
     # -- data --------------------------------------------------------------
     def on_enter(self) -> None:
         """Load imported MDB text as-is; derive text only for generated snapshots."""
+        self._sync_source()
+        if self.is_mdb_view():
+            self.refresh()
+            return
         snapshot = self._context.active_snapshot
         service = self._context.engineering_text_service
         if snapshot is not None and snapshot.metadata.source == "MDB":
@@ -129,8 +138,18 @@ class TextPage(BasePage):
             self._all_blocks = service.ensure_text_blocks(snapshot)
         self._apply_filter()
 
+    def _lockable_widgets(self) -> list:
+        return [getattr(self, "_fill_btn", None), getattr(self, "_table", None)]
+
     def refresh(self) -> None:
+        if self._begin_refresh():
+            return
         snapshot = self._context.active_snapshot
+        if self.is_mdb_view():
+            # Imported baseline: display stored text only, never derive/mutate.
+            self._all_blocks = list(snapshot.text_blocks) if snapshot is not None else []
+            self._apply_filter()
+            return
         self._all_blocks = self._context.engineering_text_service.ensure_text_blocks(
             snapshot
         )

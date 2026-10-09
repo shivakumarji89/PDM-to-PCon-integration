@@ -38,6 +38,10 @@ from models.price_record import PriceRecord
 from services.pricing_service import PriceParams, PricingService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
+from ui.widgets.maintenance_source_tabs import (
+    MaintenanceSourceMixin,
+    read_only_in_mdb,
+)
 from ui.dialogs.price_list_manager_dialog import PriceListManagerDialog
 from core.modules import WorkbenchModule
 
@@ -69,7 +73,11 @@ _CHANGED_BG = QColor(255, 244, 204)
 _ADDED_BG = QColor(223, 245, 223)
 
 
-class PricingPage(BasePage):
+@read_only_in_mdb(
+    "_on_compute", "_on_pricing_finished", "_on_pricing_failed",
+    "_open_price_list_manager", "_on_manage_price_lists",
+)
+class PricingPage(MaintenanceSourceMixin, BasePage):
     """Compute and review OCD price records for the active snapshot."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
@@ -80,7 +88,7 @@ class PricingPage(BasePage):
             show_placeholder=False,
             content_stretch=True,
         )
-        self._context = context
+        self._init_source_tabs(context)
         self._records: list[PriceRecord] = []
         #: Diff state keyed like PriceRecord.key(): "added" / "changed" / prior value.
         self._added_keys: set = set()
@@ -270,12 +278,22 @@ class PricingPage(BasePage):
     # -- data --------------------------------------------------------------
     def refresh(self) -> None:
         """Reload from the active snapshot's stored price records."""
+        if self._begin_refresh():
+            return
         snapshot = self._context.active_snapshot
         self._records = list(snapshot.price_records) if snapshot else []
         self._added_keys = set()
         self._changed = {}
         self._populate()
         self._update_summary(unresolved=0)
+        if self.is_mdb_view() and snapshot is not None:
+            self._summary.setText(
+                f"Imported MDB: {len(self._records):,} price record(s), "
+                f"{len(snapshot.price_lists):,} price list(s)."
+            )
+
+    def _lockable_widgets(self) -> list:
+        return [getattr(self, "_compute_btn", None), getattr(self, "_pricelists_btn", None)]
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         # Reload from the snapshot whenever the page is shown, matching every
