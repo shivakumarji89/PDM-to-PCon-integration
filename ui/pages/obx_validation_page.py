@@ -354,6 +354,25 @@ class ObxValidationPage(BasePage):
             return
         self._load_paths(paths)
 
+    @staticmethod
+    def _date_from_source_lines(lines: list) -> QDate | None:
+        """Return the first valid priceDate found in the loaded OBX articles.
+
+        OBX exports commonly use dd-MMM-yyyy (for example, 03-Sep-2026).
+        Accept ISO and numeric variants as well, but never fall back to file
+        timestamps or silently invent a source date.
+        """
+        formats = ("dd-MMM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "yyyyMMdd")
+        for line in lines:
+            source_date = str(getattr(line, "source_date", "") or "").strip()
+            if not source_date:
+                continue
+            for date_format in formats:
+                parsed = QDate.fromString(source_date, date_format)
+                if parsed.isValid():
+                    return parsed
+        return None
+
     def _load_paths(self, paths: list[str]) -> None:
         svc = self._context.obx_validation_service
         currency, lines = "", []
@@ -391,6 +410,11 @@ class ObxValidationPage(BasePage):
                 self._file_of_seq[line.seq] = path
         self._currency = currency
         self._lines = lines
+        # Default to the OBX's own priceDate, not today's date or file metadata.
+        # The selector remains editable; this is only the initial default for
+        # this load operation. If no valid source date exists, use today's date.
+        source_date = self._date_from_source_lines(lines)
+        self._validation_date.setDate(source_date if source_date is not None else QDate.currentDate())
         self._paths = loaded_paths
         self._source_path = loaded_paths[0] if loaded_paths else ""
         self._skipped_count = skipped_count
