@@ -1,3 +1,4 @@
+import ast
 import csv
 import tempfile
 import unittest
@@ -127,16 +128,45 @@ class DuplicateReportTests(unittest.TestCase):
         self.assertEqual(svc.context.mock_calls, [])
 
     def test_not_called_from_validation_paths(self):
-        import ast
-        allowed = {"build_duplicate_report", "duplicate_report_csv_rows", "export_duplicate_report_csv"}
         for path in ("services/obx_validation_service.py", "ui/pages/obx_validation_page.py"):
             tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-            for fn in ast.walk(tree):
-                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name in allowed:
-                    continue
-                for node in ast.walk(fn):
-                    name = getattr(node, "attr", None) or getattr(node, "id", None)
-                    self.assertNotIn(name, allowed, f"{fn.name} in {path} uses {name}")
+            self._assert_duplicate_report_separation(tree, path)
+
+    def _assert_duplicate_report_separation(self, tree, path):
+        report_functions = {"build_duplicate_report", "duplicate_report_csv_rows", "export_duplicate_report_csv"}
+        export_handler = "_on_export_duplicate_details"
+        export_functions = {
+            "services/obx_validation_service.py": report_functions,
+            "ui/pages/obx_validation_page.py": {export_handler},
+        }
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if fn.name in export_functions.get(path, set()):
+                continue
+            for node in ast.walk(fn):
+                name = getattr(node, "attr", None) or getattr(node, "id", None)
+                self.assertNotIn(name, report_functions, f"{fn.name} in {path} uses {name}")
+                if isinstance(node, ast.Call):
+                    called = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+                    self.assertNotEqual(called, export_handler, f"{fn.name} in {path} calls {called}")
+
+    def test_validation_guard_rejects_direct_report_calls(self):
+        for path in ("services/obx_validation_service.py", "ui/pages/obx_validation_page.py"):
+            for name in ("build_duplicate_report", "duplicate_report_csv_rows", "export_duplicate_report_csv"):
+                for prefix in ("", "async "):
+                    with self.subTest(path=path, name=name, prefix=prefix):
+                        tree = ast.parse(f"{prefix}def validate(self):\n    self.{name}()\n")
+                        with self.assertRaisesRegex(AssertionError, f"validate in {path} uses {name}"):
+                            self._assert_duplicate_report_separation(tree, path)
+
+    def test_validation_guard_rejects_export_handler_calls(self):
+        for path in ("services/obx_validation_service.py", "ui/pages/obx_validation_page.py"):
+            for prefix in ("", "async "):
+                with self.subTest(path=path, prefix=prefix):
+                    tree = ast.parse(f"{prefix}def validate(self):\n    self._on_export_duplicate_details()\n")
+                    with self.assertRaisesRegex(AssertionError, "validate.*calls _on_export_duplicate_details"):
+                        self._assert_duplicate_report_separation(tree, path)
 
 
 if __name__ == "__main__":
