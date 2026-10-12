@@ -306,11 +306,14 @@ class SifValidationService(BaseService):
         """Validate selected order codes against active PDM option groups."""
         groups: dict[str, dict[str, object]] = {}
         order: list[str] = []
+        dependent_colours: list[object] = []
+        selected_codes = {(code or "").strip().upper() for code in codes}
         for row in option_rows:
             try:
                 if int(getattr(row, "Status", None)) != 1:
                     continue
                 if int(getattr(row, "IsFabric", 0) or 0) == 2:
+                    dependent_colours.append(row)
                     continue
             except (TypeError, ValueError):
                 continue
@@ -322,6 +325,36 @@ class SifValidationService(BaseService):
                 groups[group] = {}
                 order.append(group)
             groups[group][code] = row
+
+        for row in dependent_colours:
+            parent_group = str(getattr(row, "ParentOptId", "") or "")
+            parent_code = str(getattr(row, "ParentOptValCode", "") or "").strip().upper()
+            parent = groups.get(parent_group, {}).get(parent_code)
+            if parent is None:
+                continue
+            parent_value = getattr(row, "ParentOptValId", None)
+            if parent_value is None or str(getattr(parent, "OptionValueId", "")) != str(parent_value):
+                continue
+            if int(getattr(parent, "IsFabric", 0) or 0) != 1:
+                continue
+            ancestor = parent
+            visited: set[str] = set()
+            while getattr(ancestor, "ParentOptId", None):
+                ancestor_group = str(getattr(ancestor, "ParentOptId", ""))
+                ancestor_code = str(getattr(ancestor, "ParentOptValCode", "") or "").strip().upper()
+                ancestor_value = getattr(ancestor, "ParentOptValId", None)
+                ancestor = groups.get(ancestor_group, {}).get(ancestor_code)
+                if (
+                    ancestor is None or ancestor_value is None or ancestor_group in visited
+                    or str(getattr(ancestor, "OptionValueId", "")) != str(ancestor_value)
+                    or ancestor_code not in selected_codes
+                ):
+                    break
+                visited.add(ancestor_group)
+            else:
+                code = str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+                if code and code not in {"!", "#"}:
+                    groups[parent_group].setdefault(code, row)
 
         used: set[str] = set()
         for position, raw in enumerate(codes, start=1):

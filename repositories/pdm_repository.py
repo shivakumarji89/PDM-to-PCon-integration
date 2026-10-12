@@ -28,6 +28,7 @@ class _IncPriceRow:
     __slots__ = (
         "Item", "OptionId", "OptionValueId", "OrderCodeValue2", "Status",
         "IncPrice", "IsFabric", "Quantity", "ParentOptId",
+        "ParentOptValId", "ParentOptValCode",
         "FeaturePositionString", "TertiaryOption", "DisplayOrder", "DisplayOrdinal",
     )
 
@@ -41,6 +42,8 @@ class _IncPriceRow:
         self.IsFabric = getattr(row, "IsFabric", None)
         self.Quantity = getattr(row, "Quantity", None)
         self.ParentOptId = getattr(row, "ParentOptId", None)
+        self.ParentOptValId = getattr(row, "ParentOptValId", None)
+        self.ParentOptValCode = getattr(row, "ParentOptValCode", None)
         self.FeaturePositionString = getattr(row, "FeaturePositionString", None)
         self.TertiaryOption = getattr(
             row, "TertiaryOption", getattr(row, "TertiayOption", None)

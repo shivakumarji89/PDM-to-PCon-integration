@@ -1,4 +1,7 @@
+import csv
+import json
 from datetime import date, datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -750,6 +753,177 @@ def test_verifyoptions_excludes_dependent_fabric_colour_rows_but_accepts_their_b
     assert "invalid option string" in SifValidationService._verify_selected_options(
         [rows[1]], ["1HA01"]
     )
+
+
+_OBX_AUDIT = Path(__file__).resolve().parents[1] / "docs/04_Reference/OBX_724_Investigation"
+with (_OBX_AUDIT / "reconciliation.csv").open(encoding="utf-8-sig", newline="") as _stream:
+    _OBX_FAILED_RECORDS = list(csv.DictReader(_stream))
+_OBX_PDM_REFERENCE = json.loads((_OBX_AUDIT / "pdm_reference.json").read_text(encoding="utf-8"))
+with (_OBX_AUDIT / "original_valid.csv").open(encoding="utf-8-sig", newline="") as _stream:
+    _OBX_VALID_RECORDS = list(csv.DictReader(_stream))
+
+
+@pytest.mark.parametrize(
+    "record", _OBX_VALID_RECORDS,
+    ids=[record["Report CSV Row"] + ":" + record["SKU"] for record in _OBX_VALID_RECORDS],
+)
+def test_verifyoptions_all_1292_original_valid_records_preserve_baseline(record):
+    base, *codes = record["SKU"].split()
+    rows = [SimpleNamespace(**row) for row in _OBX_PDM_REFERENCE["items"][base]]
+    original_rows = [row for row in rows if row.IsFabric != 2]
+
+    assert SifValidationService._verify_selected_options(rows, codes) == (
+        SifValidationService._verify_selected_options(original_rows, codes)
+    )
+
+
+def test_obx_audit_accounts_for_all_records():
+    assert len(_OBX_FAILED_RECORDS) == 724
+    assert len(_OBX_VALID_RECORDS) == 1292
+    assert len({row["Report CSV Row"] for row in [*_OBX_FAILED_RECORDS, *_OBX_VALID_RECORDS]}) == 2016
+
+
+def test_obx_live_reconciliation_all_failed_and_valid_prices_match_reference_date():
+    trials = json.loads((_OBX_AUDIT / "currency_trials.json").read_text(encoding="utf-8"))
+    for record in [*_OBX_FAILED_RECORDS, *_OBX_VALID_RECORDS]:
+        values = trials["2026-11-03"][record["Report CSV Row"]]
+        assert any(value["corrected_behavior"] == "VALID" for value in values.values())
+        if record["Result"] == "VALID":
+            for dated_values in trials.values():
+                for value in dated_values[record["Report CSV Row"]].values():
+                    assert value["original_behavior"] == value["corrected_behavior"]
+                    assert value["baseline_pdm_price"] == value["pdm_price"]
+
+
+def test_obx_audit_preserves_duplicate_records_and_excludes_short_summary(tmp_path):
+    from scripts.investigate_obx_failures import inventory, load_report
+
+    report = tmp_path / "report.csv"
+    report.write_text(
+        "SKU,Result,OBX Qty\n"
+        "BUNLC G 01FED,invalid option string in order code at position 2: 01FED,1\n"
+        "BUNLC G 01FED,invalid option string in order code at position 2: 01FED,1\n"
+        "Validation Time\n", encoding="utf-8",
+    )
+
+    records, summaries = load_report(report)
+    failed = inventory(records, report)
+
+    assert len(failed) == 2
+    assert [row["Report CSV Row"] for row in failed] == ["2", "3"]
+    assert summaries[0]["Report CSV Row"] == "4"
+
+
+def test_obx_audit_records_malformed_source_without_aborting(tmp_path):
+    from scripts.investigate_obx_failures import source_matches
+
+    path = tmp_path / "bad.obx"
+    path.write_text("<root><broken></root>", encoding="utf-8")
+
+    matches, errors = source_matches([], tmp_path)
+
+    assert matches == {}
+    assert str(path) in errors
+
+
+@pytest.mark.parametrize(
+    "record", _OBX_FAILED_RECORDS,
+    ids=[record["Report CSV Row"] + ":" + record["SKU"] for record in _OBX_FAILED_RECORDS],
+)
+def test_verifyoptions_all_724_report_failures_against_captured_live_pdm(record):
+    base, *codes = record["SKU"].split()
+    rows = [SimpleNamespace(**row) for row in _OBX_PDM_REFERENCE["items"][base]]
+
+    assert SifValidationService._verify_selected_options(rows, codes) is None
+
+    colour = next(row for row in rows if row.OrderCodeValue2 == codes[1])
+    parent = next(row for row in rows if row.OptionValueId == colour.ParentOptValId)
+    incompatible = next(
+        row for row in rows if row.OptionId == parent.ParentOptId
+        and row.OptionValueId != parent.ParentOptValId
+    )
+    assert SifValidationService._verify_selected_options(
+        rows, [incompatible.OrderCodeValue2, codes[1]]
+    ) is not None
+
+
+@pytest.mark.parametrize("fabric_codes", [[], ["FED#"], ["HER#"]])
+def test_verifyoptions_requires_a_matching_active_parent_for_suffix_colour(fabric_codes):
+    rows = [_option_row(code, group=8512) for code in fabric_codes]
+    for row in rows:
+        row.IsFabric = 1
+    rows.append(SimpleNamespace(
+        OptionId=8513, OptionValueId=284849, OrderCodeValue2="01FED", Status=1,
+        IsFabric=2, ParentOptId=8512, ParentOptValId=851200, ParentOptValCode="FED#",
+    ))
+
+    error = SifValidationService._verify_selected_options(rows, ["01FED"])
+
+    assert (error is None) == (fabric_codes == ["FED#"])
+
+
+def test_verifyoptions_suffix_colour_consumes_parent_once():
+    parent = _option_row("FED#", group=8512)
+    parent.IsFabric = 1
+    colour = SimpleNamespace(
+        OptionId=8513, OptionValueId=284849, OrderCodeValue2="01FED", Status=1,
+        IsFabric=2, ParentOptId=8512, ParentOptValId=parent.OptionValueId,
+        ParentOptValCode="FED#",
+    )
+
+    assert "position 2" in SifValidationService._verify_selected_options(
+        [parent, colour, colour], ["01FED", "01FED"]
+    )
+    colour.Status = 2
+    assert SifValidationService._verify_selected_options([parent, colour], ["01FED"])
+    colour.Status = 1
+    assert SifValidationService._verify_selected_options([parent, colour], ["UNKNOWN"])
+    colour.ParentOptValId = None
+    assert SifValidationService._verify_selected_options([parent, colour], ["01FED"])
+
+
+def test_validation_option_wrapper_preserves_parent_value_metadata():
+    source = SimpleNamespace(ParentOptValId=284845, ParentOptValCode="FED#")
+
+    row = _IncPriceRow("BUNLC", source)
+
+    assert row.ParentOptValId == 284845
+    assert row.ParentOptValCode == "FED#"
+
+
+@pytest.mark.parametrize("codes,valid", [
+    (["G", "01FED"], True),
+    (["01FED", "G"], True),
+    (["S", "01FED"], False),
+    (["G", "UNKNOWN"], False),
+])
+def test_obx_suffix_colour_validation_reaches_pricing_only_when_compatible(monkeypatch, codes, valid):
+    service = SifValidationService(None)
+    monkeypatch.setattr(service, "_fetch_plc", lambda *args: {})
+    rows = [SimpleNamespace(**row) for row in _OBX_PDM_REFERENCE["items"]["BUNLC"]]
+    priced = []
+
+    def base_prices(items, *args, **kwargs):
+        priced.extend(items)
+        return [SimpleNamespace(Item=item, price=100.0) for item in items]
+
+    repo = SimpleNamespace(**_eligible_validation_repo_methods(
+        fetch_item_validation_options=lambda *args: rows,
+        fetch_validation_get_price_ext_base_prices=base_prices,
+    ))
+    line = ObxLine(seq=1, base_article="BUNLC", final_article="BUNLC " + " ".join(codes),
+                   currency="EUR", obx_price=100.0)
+
+    results = service._validate_group(
+        "EUR", [line], 1, repo, None, "2026-10-12", [0], 1, None, None, obx=True,
+    )
+
+    assert (results[0].status == "ok") == valid
+    assert priced == (["BUNLC"] if valid else [])
+    if valid:
+        assert results[0].pdm_price == 100.0
+    else:
+        assert "invalid option string" in results[0].message
 
 
 def test_component_increment_matching_uses_positions_across_components_and_quantity():
