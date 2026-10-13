@@ -209,26 +209,31 @@ class ObxValidationPage(BasePage):
         load_menu.addAction("Select file(s)...", self._on_load)
         load_menu.addAction("Select folder (including subfolders)...", self._on_load_folder)
         self._load_btn.setMenu(load_menu)
-        self._launch_btn = QPushButton("Launch Item Entry", container)
+        self._launch_btn = QPushButton("Start Validation", container)
         self._launch_btn.setEnabled(False)
-        self._launch_btn.clicked.connect(self._on_launch)
+        self._launch_btn.setObjectName("obxPrimaryAction")
+        self._launch_btn.setStyleSheet(
+            "QPushButton#obxPrimaryAction { background: #2563EB; color: white; "
+            "border: 1px solid #1D4ED8; border-radius: 5px; padding: 7px 14px; font-weight: 600; }"
+            "QPushButton#obxPrimaryAction:hover { background: #1D4ED8; }"
+            "QPushButton#obxPrimaryAction:disabled { background: #E8EDF5; color: #8A96A8; border-color: #D5DDE8; }"
+        )
+        self._launch_btn.clicked.connect(self._on_run_toggle)
         self._load_btn.setFixedSize(self._launch_btn.sizeHint())
-        self._pause_btn = QPushButton("Pause Validation", container)
-        self._pause_btn.setEnabled(False)
-        self._pause_btn.clicked.connect(self._on_pause_resume)
-        self._cancel_btn = QPushButton("Cancel Validation", container)
+        self._cancel_btn = QPushButton("Cancel", container)
         self._cancel_btn.setEnabled(False)
         self._cancel_btn.clicked.connect(self._on_cancel)
-        layout.addWidget(self._load_btn)
-        layout.addWidget(self._launch_btn)
-        layout.addWidget(self._pause_btn)
-        layout.addWidget(self._cancel_btn)
-        layout.addWidget(QLabel("Validation date:", container))
+        self._validation_date_label = QLabel("Validation date:", container)
         self._validation_date = QDateEdit(container)
         self._validation_date.setDisplayFormat("dd-MMM-yyyy")
         self._validation_date.setCalendarPopup(True)
         self._validation_date.setDate(QDate.currentDate())
+        layout.addWidget(self._load_btn)
+        layout.addWidget(self._launch_btn)
+        layout.addWidget(self._validation_date_label)
         layout.addWidget(self._validation_date)
+        layout.addStretch(1)
+        layout.addWidget(self._cancel_btn)
         self._export_btn = QToolButton(container)
         self._export_btn.setText("Export...")
         self._export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -508,14 +513,21 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(bool(lines))
         self._duplicate_export_action.setEnabled(bool(lines))
         self._refresh_export_menu_enabled()
-        self._pause_btn.setEnabled(False)
-        self._pause_btn.setText("Pause Validation")
+        self._launch_btn.setEnabled(False)
+        self._launch_btn.setText("Start Validation")
         self._cancel_btn.setEnabled(False)
         self._pending_lines = []
         self._is_paused = False
         self._reset_results()
         self._save_session()
         self._offer_checkpoint_resume()
+
+    def _on_run_toggle(self) -> None:
+        # One primary control handles Start, Pause, and Resume.
+        if self._active_control is not None or self._pending_lines:
+            self._on_pause_resume()
+        elif self._lines:
+            self._on_launch()
 
     def _on_launch(self) -> None:
         if self._lines:
@@ -532,7 +544,7 @@ class ObxValidationPage(BasePage):
                 control.resume()
                 if self._active_reporter is not None:
                     self._active_reporter.start_timer()
-                self._pause_btn.setText("Pause Validation")
+                self._launch_btn.setText("Pause Validation")
                 self._progress_state.setText("VALIDATING")
             else:
                 self._on_pause()
@@ -548,8 +560,8 @@ class ObxValidationPage(BasePage):
         control.pause()
         reporter.stop_timer()
         reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
-        self._pause_btn.setText("Resume Validation")
-        self._pause_btn.setEnabled(True)
+        self._launch_btn.setText("Resume Validation")
+        self._launch_btn.setEnabled(True)
         self._progress_state.setText("PAUSING")
 
     def _on_resume(self) -> None:
@@ -564,7 +576,7 @@ class ObxValidationPage(BasePage):
         if self._active_reporter is not None:
             self._active_reporter.stop_timer()
         self._cancel_btn.setEnabled(False)
-        self._pause_btn.setEnabled(False)
+        self._launch_btn.setEnabled(False)
         self._progress_state.setText("CANCELLING")
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
@@ -585,8 +597,8 @@ class ObxValidationPage(BasePage):
         # _validation_elapsed_seconds carries the completed segments.
         self._validation_start_time = time.perf_counter()
         self._is_paused = False
-        self._pause_btn.setText("Pause Validation")
-        self._pause_btn.setEnabled(True)
+        self._launch_btn.setText("Pause Validation")
+        self._launch_btn.setEnabled(True)
         self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
         self._individual_export_action.setEnabled(bool(self._results))
@@ -701,7 +713,7 @@ class ObxValidationPage(BasePage):
         self._active_control = None
         self._active_reporter = None
         self._reporter = None
-        self._pause_btn.setEnabled(False)
+        self._launch_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
 
     def _on_progress_changed(self, percent: int) -> None:
@@ -747,7 +759,7 @@ class ObxValidationPage(BasePage):
     def _on_failed(self, message: str) -> None:
         self._finalize_validation_elapsed()
         self._release_active_control()
-        self._pause_btn.setText("Pause Validation")
+        self._launch_btn.setText("Start Validation")
         self._launch_btn.setEnabled(bool(self._lines))
         self._save_session()
         self._write_checkpoint()
@@ -759,7 +771,7 @@ class ObxValidationPage(BasePage):
         self._release_active_control()
         self._pending_lines = []
         self._is_paused = False
-        self._pause_btn.setText("Pause Validation")
+        self._launch_btn.setText("Pause Validation")
         self._launch_btn.setEnabled(bool(self._lines))
         self._delete_checkpoint()
         self._progress_state.setText("CANCELLED")
@@ -777,8 +789,8 @@ class ObxValidationPage(BasePage):
         self._save_session()
         self._write_checkpoint()
         self._launch_btn.setEnabled(False)
-        self._pause_btn.setText("Resume Validation")
-        self._pause_btn.setEnabled(bool(self._pending_lines))
+        self._launch_btn.setText("Resume Validation")
+        self._launch_btn.setEnabled(bool(self._pending_lines))
         self._progress_state.setText("PAUSED")
         self._set_metric("completed", f"{len(self._results)}/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
@@ -845,13 +857,13 @@ class ObxValidationPage(BasePage):
         self._finalize_validation_elapsed()
         sites, results = payload
         self._release_active_control()
-        self._pause_btn.setText("Pause Validation")
+        self._launch_btn.setText("Pause Validation")
         self._results = results
         self._pending_lines = []
         self._save_session()
         self._is_paused = False
         self._launch_btn.setEnabled(bool(self._lines))
-        self._pause_btn.setEnabled(False)
+        self._launch_btn.setEnabled(False)
         ok = sum(1 for r in results if r.status == "ok")
         mism = sum(1 for r in results if r.status == "price_mismatch")
         unres = sum(1 for r in results if r.status == "unresolved")
@@ -1263,8 +1275,8 @@ class ObxValidationPage(BasePage):
         self._duplicate_export_action.setEnabled(bool(self._lines))
         self._refresh_export_menu_enabled()
         self._set_failed_export_actions_enabled(False)
-        self._pause_btn.setEnabled(False)
-        self._pause_btn.setText("Pause Validation")
+        self._launch_btn.setEnabled(False)
+        self._launch_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
 
     def _current_validation_elapsed(self) -> float:
