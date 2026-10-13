@@ -191,9 +191,44 @@ class ObxValidationPage(BasePage):
         self._unique_done = 0
         self._unique_total = 0
         self._session = self._context.workflow_session("obx_validation")
+        self._install_inline_header_status()
         self.add_content(self._build_controls())
-        self.add_content(self._build_progress_panel())
+        self._progress_panel = self._build_progress_panel()
+        self._progress_panel.hide()
+        self.add_content(self._progress_panel)
         self.add_content(self._build_results())
+
+    def _install_inline_header_status(self) -> None:
+        """Place the live OBX status beside the existing page title."""
+        root = self.layout()
+        if root is None or root.count() < 3:
+            return
+        title_item = root.takeAt(0)
+        old_title = title_item.widget()
+        title = QLabel("OBX Validation", self)
+        title.setObjectName("pageTitle")
+        title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        header = QWidget(self)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(theme.SPACE_2)
+        header_layout.addWidget(title)
+        self._inline_status = QLabel("", header)
+        self._inline_status.setStyleSheet(f"color: {theme.MUTED};")
+        self._inline_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._inline_status.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._inline_status.hide()
+        header_layout.addWidget(self._inline_status, 1)
+        root.insertWidget(0, header)
+        if old_title is not None:
+            old_title.deleteLater()
+
+    def _set_inline_status(self, text: str) -> None:
+        label = getattr(self, "_inline_status", None)
+        if label is None:
+            return
+        label.setText(text)
+        label.setVisible(bool(text))
 
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
