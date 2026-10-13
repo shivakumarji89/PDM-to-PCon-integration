@@ -540,7 +540,7 @@ class ObxValidationPage(BasePage):
                 return
             # Toggle a pending pause request. This keeps the same button usable:
             # Pause -> Resume can cancel the request before the next DB checkpoint.
-            if self._pause_btn.text() == "Resume Validation":
+            if self._launch_btn.text() == "Resume Validation":
                 control.resume()
                 if self._active_reporter is not None:
                     self._active_reporter.start_timer()
@@ -857,13 +857,13 @@ class ObxValidationPage(BasePage):
         self._finalize_validation_elapsed()
         sites, results = payload
         self._release_active_control()
-        self._launch_btn.setText("Pause Validation")
+        self._launch_btn.setText("Start Validation")
         self._results = results
         self._pending_lines = []
         self._save_session()
         self._is_paused = False
         self._launch_btn.setEnabled(bool(self._lines))
-        self._launch_btn.setEnabled(False)
+        self._launch_btn.setText("Start Validation")
         ok = sum(1 for r in results if r.status == "ok")
         mism = sum(1 for r in results if r.status == "price_mismatch")
         unres = sum(1 for r in results if r.status == "unresolved")
@@ -1275,8 +1275,8 @@ class ObxValidationPage(BasePage):
         self._duplicate_export_action.setEnabled(bool(self._lines))
         self._refresh_export_menu_enabled()
         self._set_failed_export_actions_enabled(False)
-        self._launch_btn.setEnabled(False)
-        self._launch_btn.setText("Pause Validation")
+        self._launch_btn.setEnabled(bool(self._lines))
+        self._launch_btn.setText("Start Validation")
         self._cancel_btn.setEnabled(False)
 
     def _current_validation_elapsed(self) -> float:
