@@ -39,10 +39,18 @@ def test_result_matches_each_clickable_metric_filter():
     page._table_filter = "unresolved"
     assert ObxValidationPage._result_matches_filter(page, _result(4, "unresolved"))
 
+    page._table_filter = "skipped"
+    assert ObxValidationPage._result_matches_filter(page, _result(5, "skipped"))
+    assert not ObxValidationPage._result_matches_filter(page, _result(4, "unresolved"))
+
     page._table_filter = "duplicate"
     assert ObxValidationPage._result_matches_filter(page, _result(2, "price_mismatch"))
     assert ObxValidationPage._result_matches_filter(page, _result(3, "ok"))
     assert not ObxValidationPage._result_matches_filter(page, _result(1, "ok"))
+
+    page._table_filter = "unique"
+    assert ObxValidationPage._result_matches_filter(page, _result(1, "ok"))
+    assert not ObxValidationPage._result_matches_filter(page, _result(2, "price_mismatch"))
 
     page._table_filter = "all"
     assert ObxValidationPage._result_matches_filter(page, _result(1, "ok"))
