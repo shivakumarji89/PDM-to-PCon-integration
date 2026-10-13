@@ -191,55 +191,10 @@ class ObxValidationPage(BasePage):
         self._unique_done = 0
         self._unique_total = 0
         self._session = self._context.workflow_session("obx_validation")
-        self._install_inline_header_status()
         self.add_content(self._build_controls())
         self._progress_panel = self._build_progress_panel()
-        self._progress_panel.hide()
         self.add_content(self._progress_panel)
         self.add_content(self._build_results())
-
-    def _install_inline_header_status(self) -> None:
-        """Place the live OBX status beside the existing page title."""
-        root = self.layout()
-        if root is None or root.count() < 3:
-            return
-        title_item = root.takeAt(0)
-        old_title = title_item.widget()
-        title = QLabel("OBX Validation", self)
-        title.setObjectName("pageTitle")
-        title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        header = QWidget(self)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(theme.SPACE_2)
-        header_layout.addWidget(title)
-        self._inline_status = QLabel("", header)
-        self._inline_status.setStyleSheet(f"color: {theme.MUTED};")
-        self._inline_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._inline_status.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self._inline_status.hide()
-        header_layout.addWidget(self._inline_status, 1)
-        root.insertWidget(0, header)
-        if old_title is not None:
-            old_title.deleteLater()
-
-    def _set_inline_status(self, text: str) -> None:
-        label = getattr(self, "_inline_status", None)
-        if label is None:
-            return
-        label.setText(text)
-        label.setVisible(bool(text))
-
-    def _refresh_inline_status(self) -> None:
-        state = self._progress_state.text().strip()
-        details = self._file_label.text().strip()
-        percent = self._progress_percent.text().strip()
-        parts = [state] if state else []
-        if details and details != "No OBX file loaded.":
-            parts.append(details)
-        if state.startswith(("VALIDATING", "PAUSED", "PAUSING", "CANCELLING")):
-            parts.append(percent)
-        self._set_inline_status("   •   ".join(parts))
 
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
@@ -554,8 +509,6 @@ class ObxValidationPage(BasePage):
                     self._active_reporter.start_timer()
                 self._pause_btn.setText("Pause Validation")
                 self._progress_state.setText("VALIDATING")
-                self._progress_panel.show()
-                self._refresh_inline_status()
             else:
                 self._on_pause()
             return
@@ -614,8 +567,6 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(self._results))
         self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
-        self._progress_panel.show()
-        self._refresh_inline_status()
         # Only globally unique articles reach the 8 + 8 workers; every unique
         # result is fanned back to its duplicate source rows in _on_unique_result.
         unique_lines, self._dispatch_groups = self._context.obx_validation_service.dispatch_plan(lines)
@@ -730,7 +681,6 @@ class ObxValidationPage(BasePage):
     def _on_progress_changed(self, percent: int) -> None:
         self._progress_bar.setValue(percent)
         self._progress_percent.setText(f"{percent}%")
-        self._refresh_inline_status()
 
     def _on_elapsed_changed(self, seconds: int) -> None:
         self._set_metric("elapsed", self._format_duration(seconds))
