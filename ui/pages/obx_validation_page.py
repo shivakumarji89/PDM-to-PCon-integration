@@ -779,13 +779,27 @@ class ObxValidationPage(BasePage):
         self._progress_percent.setText(f"{min(100, overall)}%")
 
     def _on_elapsed_changed(self, seconds: int) -> None:
-        self._set_metric("elapsed", self._format_duration(seconds))
-        completed = len(self._results)
-        if seconds > 0 and completed:
-            self._set_metric("speed", f"{completed / seconds:.1f}/s")
+        # ProgressReporter starts a fresh clock on resume; add its current
+        # segment to the elapsed time accumulated before the pause.
+        elapsed = self._validation_elapsed_seconds + max(0, int(seconds))
+        self._set_metric("elapsed", self._format_duration(elapsed))
+        if elapsed > 0 and self._results:
+            self._set_metric("speed", f"{len(self._results) / elapsed:.1f}/s")
 
     def _on_remaining_changed(self, seconds: int) -> None:
-        self._set_metric("eta", self._format_duration(seconds) if seconds else "-")
+        # Recalculate ETA from the whole run, not only the current
+        # ProgressReporter segment. This keeps ETA meaningful after resume.
+        elapsed = self._current_validation_elapsed()
+        completed = min(self._unique_done, self._unique_total)
+        remaining = max(0, self._unique_total - completed)
+        if remaining == 0 and self._unique_total:
+            self._set_metric("eta", "0:00")
+        elif completed > 0 and elapsed > 0:
+            unique_speed = completed / elapsed
+            estimate = math.ceil(remaining / unique_speed) if unique_speed > 0 else 0
+            self._set_metric("eta", self._format_duration(estimate) if estimate else "0:00")
+        else:
+            self._set_metric("eta", "-")
 
     def _on_progress_step(self, text: str) -> None:
         # SIF/OBX pricing reports the exact currency group currently being sent
@@ -908,9 +922,7 @@ class ObxValidationPage(BasePage):
         self._individual_export_action.setEnabled(False)
 
     def _completed_text(self) -> str:
-        """Unique PDM validations while running; source-row count otherwise."""
-        if self._active_control is not None and self._unique_total:
-            return f"{self._unique_done}/{self._unique_total} unique"
+        """Show completed source rows against all loaded source rows."""
         return f"{len(self._results)}/{len(self._lines)}"
 
     def _on_unique_result(self, result) -> None:
@@ -1370,9 +1382,11 @@ class ObxValidationPage(BasePage):
     def _current_validation_elapsed(self) -> float:
         if self._validation_start_time <= 0:
             return self._validation_elapsed_seconds
-        return max(
-            self._validation_elapsed_seconds,
-            time.perf_counter() - self._validation_start_time,
+        # _validation_elapsed_seconds stores all finished active segments;
+        # add the current segment rather than taking max(), which loses time
+        # whenever validation is paused and resumed more than once.
+        return self._validation_elapsed_seconds + max(
+            0.0, time.perf_counter() - self._validation_start_time,
         )
 
     def _finalize_validation_elapsed(self) -> None:
