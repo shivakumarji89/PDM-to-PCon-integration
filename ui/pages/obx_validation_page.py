@@ -422,10 +422,14 @@ class ObxValidationPage(BasePage):
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
-        # Fit columns to their contents while preserving a wide Result column.
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
+        # Keep compact/numeric columns sized to their contents and let the
+        # descriptive columns share the remaining viewport width. This avoids
+        # the OBX file column alone absorbing the available space.
+        for column in (0, 2, 4, 5, 6, 7):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        for column in (1, 3, 8, 9):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(False)
         layout.addWidget(self._table, 1)
         return container
 
