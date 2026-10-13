@@ -291,35 +291,43 @@ class ObxValidationPage(BasePage):
         filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
                        "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate",
                        "unique": "unique"}
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(theme.SPACE_2)
-        grid.setVerticalSpacing(0)
-        for column in range(6):
-            grid.setColumnStretch(column, 1)
-        for index, (key, title) in enumerate(metrics):
-            if key in filter_keys:
-                label = QToolButton(panel)
-                label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-                label.setAutoRaise(True)
-                label.setCheckable(True)
-                label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                label.setMinimumWidth(0)
-                label.setText(f"{title}: -")
-                label.setStyleSheet(
-                    "QToolButton { text-align: left; padding: 0px; border: none; }"
-                    "QToolButton:hover { text-decoration: underline; }"
-                    "QToolButton:checked { font-weight: 600; text-decoration: underline; }"
-                )
-                filter_key = filter_keys[key]
-                label.clicked.connect(
-                    lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
-                )
-                self._metric_filters[filter_key] = label
-            else:
-                label = QLabel(f"{title}: -", panel)
-            self._metrics[key] = label
-            grid.addWidget(label, index // 6, index % 6)
-        layout.addLayout(grid)
+        # Use two explicit horizontal rows rather than QGridLayout. Grid cells
+        # sized from each label's sizeHint caused the counters in row two to
+        # drift horizontally relative to the counters above them.
+        metrics_layout = QVBoxLayout()
+        metrics_layout.setContentsMargins(0, 0, 0, 0)
+        metrics_layout.setSpacing(0)
+        for start in range(0, len(metrics), 6):
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(theme.SPACE_2)
+            for key, title in metrics[start:start + 6]:
+                if key in filter_keys:
+                    label = QToolButton(panel)
+                    label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                    label.setAutoRaise(True)
+                    label.setCheckable(True)
+                    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                    label.setMinimumWidth(0)
+                    label.setText(f"{title}: -")
+                    label.setStyleSheet(
+                        "QToolButton { text-align: left; padding: 0px; border: none; }"
+                        "QToolButton:hover { text-decoration: underline; }"
+                        "QToolButton:checked { font-weight: 600; text-decoration: underline; }"
+                    )
+                    filter_key = filter_keys[key]
+                    label.clicked.connect(
+                        lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
+                    )
+                    self._metric_filters[filter_key] = label
+                else:
+                    label = QLabel(f"{title}: -", panel)
+                    label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                self._metrics[key] = label
+                row.addWidget(label, 1)
+            metrics_layout.addLayout(row)
+        layout.addLayout(metrics_layout)
         panel.setMaximumHeight(160)
         return panel
 
