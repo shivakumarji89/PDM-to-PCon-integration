@@ -176,7 +176,7 @@ class ObxValidationPage(BasePage):
         self._source_path = ""
         self._show_all = True
         self._table_filter = "all"
-        self._metric_filters: dict[str, QToolButton] = {}
+        self._metric_filters: dict[str, QPushButton] = {}
         self._duplicate_seq_set: set[int] = set()
         self._is_paused = False
         self._skipped_count = 0
@@ -279,8 +279,8 @@ class ObxValidationPage(BasePage):
         progress_row.addWidget(self._progress_bar, 1)
         progress_row.addWidget(self._progress_percent)
         layout.addLayout(progress_row)
-        self._metrics: dict[str, QLabel | QToolButton] = {}
-        self._metric_filters: dict[str, QToolButton] = {}
+        self._metrics: dict[str, QLabel | QPushButton] = {}
+        self._metric_filters: dict[str, QPushButton] = {}
         metrics = [
             ("completed", "Completed"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
@@ -298,10 +298,10 @@ class ObxValidationPage(BasePage):
         grid.setHorizontalSpacing(theme.SPACE_2)
         grid.setVerticalSpacing(theme.SPACE_1)
         card_style = (
-            "QToolButton { text-align: left; padding: 6px 9px; "
+            "QPushButton { text-align: left; padding: 6px 9px; "
             "border: 1px solid #D7DEE8; border-radius: 5px; background: #FFFFFF; color: #172B4D; }"
-            "QToolButton:hover { border: 1px solid #7186A5; background: #F7F9FC; }"
-            "QToolButton:checked { border: 1px solid #5579AD; background: #EAF1FB; }"
+            "QPushButton:hover { border: 1px solid #7186A5; background: #F7F9FC; }"
+            "QPushButton:checked { border: 1px solid #5579AD; background: #EAF1FB; }"
         )
         label_style = (
             "QLabel { padding: 6px 9px; border: 1px solid #D7DEE8; "
@@ -312,10 +312,9 @@ class ObxValidationPage(BasePage):
         for index, (key, title) in enumerate(metrics):
             row_index, column_index = divmod(index, 6)
             if key in filter_keys:
-                label = QToolButton(panel)
-                label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-                label.setAutoRaise(False)
+                label = QPushButton(panel)
                 label.setCheckable(True)
+                label.setFlat(False)
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 label.setMinimumWidth(0)
                 label.setMinimumHeight(44)
