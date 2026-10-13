@@ -291,43 +291,50 @@ class ObxValidationPage(BasePage):
         filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
                        "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate",
                        "unique": "unique"}
-        # Use two explicit horizontal rows rather than QGridLayout. Grid cells
-        # sized from each label's sizeHint caused the counters in row two to
-        # drift horizontally relative to the counters above them.
-        metrics_layout = QVBoxLayout()
-        metrics_layout.setContentsMargins(0, 0, 0, 0)
-        metrics_layout.setSpacing(0)
-        for start in range(0, len(metrics), 6):
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(theme.SPACE_2)
-            for key, title in metrics[start:start + 6]:
-                if key in filter_keys:
-                    label = QToolButton(panel)
-                    label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-                    label.setAutoRaise(True)
-                    label.setCheckable(True)
-                    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                    label.setMinimumWidth(0)
-                    label.setText(f"{title}: -")
-                    label.setStyleSheet(
-                        "QToolButton { text-align: left; padding: 0px; border: none; }"
-                        "QToolButton:hover { text-decoration: underline; }"
-                        "QToolButton:checked { font-weight: 600; text-decoration: underline; }"
-                    )
-                    filter_key = filter_keys[key]
-                    label.clicked.connect(
-                        lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
-                    )
-                    self._metric_filters[filter_key] = label
-                else:
-                    label = QLabel(f"{title}: -", panel)
-                    label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                self._metrics[key] = label
-                row.addWidget(label, 1)
-            metrics_layout.addLayout(row)
-        layout.addLayout(metrics_layout)
+        # Counters are rendered as equal-width cards. This avoids text-based
+        # alignment drift and makes the clickable filters visually discoverable.
+        grid = QGridLayout()
+        grid.setContentsMargins(0, theme.SPACE_1, 0, 0)
+        grid.setHorizontalSpacing(theme.SPACE_2)
+        grid.setVerticalSpacing(theme.SPACE_1)
+        card_style = (
+            "QToolButton { text-align: left; padding: 6px 9px; "
+            "border: 1px solid #D7DEE8; border-radius: 5px; background: #FFFFFF; color: #172B4D; }"
+            "QToolButton:hover { border: 1px solid #7186A5; background: #F7F9FC; }"
+            "QToolButton:checked { border: 1px solid #5579AD; background: #EAF1FB; }"
+        )
+        label_style = (
+            "QLabel { padding: 6px 9px; border: 1px solid #D7DEE8; "
+            "border-radius: 5px; background: #FFFFFF; color: #172B4D; }"
+        )
+        for column in range(6):
+            grid.setColumnStretch(column, 1)
+        for index, (key, title) in enumerate(metrics):
+            row_index, column_index = divmod(index, 6)
+            if key in filter_keys:
+                label = QToolButton(panel)
+                label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                label.setAutoRaise(False)
+                label.setCheckable(True)
+                label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                label.setMinimumWidth(0)
+                label.setMinimumHeight(44)
+                label.setText(f"{title}\\n-")
+                label.setStyleSheet(card_style)
+                filter_key = filter_keys[key]
+                label.clicked.connect(
+                    lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
+                )
+                self._metric_filters[filter_key] = label
+            else:
+                label = QLabel(f"{title}\\n- ", panel)
+                label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                label.setMinimumHeight(44)
+                label.setStyleSheet(label_style)
+            self._metrics[key] = label
+            grid.addWidget(label, row_index, column_index)
+        layout.addLayout(grid)
         panel.setMaximumHeight(160)
         return panel
 
@@ -1239,8 +1246,8 @@ class ObxValidationPage(BasePage):
     def _set_metric(self, key: str, value: str) -> None:
         label = self._metrics.get(key)
         if label is not None:
-            title = label.text().split(":", 1)[0]
-            label.setText(f"{title}: {value}")
+            title = label.text().splitlines()[0].split(":", 1)[0]
+            label.setText(f"{title}\\n{value}")
 
     def _set_site_metrics(self, sites: dict) -> None:
         if not sites:
