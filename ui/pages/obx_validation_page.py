@@ -311,8 +311,8 @@ class ObxValidationPage(BasePage):
         self._progress_bar.setTextVisible(False)
         self._progress_bar.setMinimumWidth(120)
         layout.addWidget(self._progress_bar, 2)
-        self._progress_percent = QLabel("0%", container)
-        self._progress_percent.setMinimumWidth(42)
+        self._progress_percent = QLabel("0% · - rows/s", container)
+        self._progress_percent.setMinimumWidth(120)
         self._progress_percent.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self._progress_percent)
         layout.addStretch(1)
@@ -390,7 +390,6 @@ class ObxValidationPage(BasePage):
             ("completed", "Completed"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
-            ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
         ]
         filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
                        "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate"}
@@ -821,20 +820,51 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
 
+    def _update_progress_summary(self, percent: int | None = None) -> None:
+        """Show validation throughput next to the progress percentage."""
+        if percent is None:
+            percent = self._progress_bar.value()
+        elapsed = self._current_validation_elapsed()
+        speed = len(self._results) / elapsed if elapsed > 0 and self._results else 0.0
+        speed_text = f"{speed:.1f} rows/s" if speed > 0 else "- rows/s"
+        self._progress_percent.setText(f"{min(100, max(0, int(percent)))}% · {speed_text}")
+
+    def _update_bottom_status(self) -> None:
+        """Show PDM connection and recovery details in the main window status bar."""
+        try:
+            connected = bool(self._context.pdm_service.is_connected())
+        except (AttributeError, RuntimeError):
+            connected = False
+        state = "Connected" if connected else "Disconnected"
+        if not hasattr(self, "_bottom_status_label") or self._bottom_status_label is None:
+            window = self.window()
+            status_bar = window.statusBar() if hasattr(window, "statusBar") else None
+            if status_bar is None:
+                return
+            existing = status_bar.findChild(QLabel, "obxPdmStatus")
+            if existing is not None:
+                self._bottom_status_label = existing
+            else:
+                self._bottom_status_label = QLabel(status_bar)
+                self._bottom_status_label.setObjectName("obxPdmStatus")
+                status_bar.addPermanentWidget(self._bottom_status_label)
+        self._bottom_status_label.setText(
+            f"PDM: {state}  |  Recovery attempts: {self._recovery_attempt}"
+        )
+
     def _on_progress_changed(self, percent: int) -> None:
         overall = self._progress_base_percent + int(
             self._progress_span_percent * percent / 100
         )
         self._progress_bar.setValue(min(100, overall))
-        self._progress_percent.setText(f"{min(100, overall)}%")
+        self._update_progress_summary(min(100, overall))
 
     def _on_elapsed_changed(self, seconds: int) -> None:
         # ProgressReporter starts a fresh clock on resume; add its current
         # segment to the elapsed time accumulated before the pause.
         elapsed = self._validation_elapsed_seconds + max(0, int(seconds))
         self._set_metric("elapsed", self._format_duration(elapsed))
-        if elapsed > 0 and self._results:
-            self._set_metric("speed", f"{len(self._results) / elapsed:.1f}/s")
+        self._update_progress_summary()
 
     def _on_remaining_changed(self, seconds: int) -> None:
         # Recalculate ETA from the whole run, not only the current
@@ -861,8 +891,9 @@ class ObxValidationPage(BasePage):
                 detail = text.rsplit("(", 1)[1].split(")", 1)[0]
                 site_text, currency = [part.strip() for part in detail.split(",", 1)]
                 if site_text.lower().startswith("site "):
-                    self._set_metric("site", f"{currency} / {site_text[5:].strip()}")
-                self._progress_state.setText(f"VALIDATING {currency}")
+                    self._progress_state.setText(f"VALIDATING {currency} / {site_text[5:].strip()}")
+                else:
+                    self._progress_state.setText(f"VALIDATING {currency}")
             except (IndexError, ValueError):
                 pass
         if text.startswith("PDM connection lost.") and "attempt " in text:
@@ -870,12 +901,12 @@ class ObxValidationPage(BasePage):
                 self._recovery_attempt = int(text.split("attempt ", 1)[1].split(")", 1)[0].rstrip("."))
             except (ValueError, IndexError):
                 pass
-            self._set_metric("recovery", str(self._recovery_attempt))
+            self._update_bottom_status()
 
     def _on_recovery(self, payload) -> None:
         attempt, _maximum, message = payload
         self._recovery_attempt = attempt
-        self._set_metric("recovery", str(attempt))
+        self._update_bottom_status()
         QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
@@ -959,14 +990,14 @@ class ObxValidationPage(BasePage):
         self._table.setRowCount(0)
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
-        self._progress_percent.setText("0%")
+        self._update_progress_summary(0)
         self._recovery_attempt = 0
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
         self._set_metric("completed", f"0/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._set_metric("recovery", "0")
+        self._update_bottom_status()
         self._set_table_filter("all")
         self._individual_export_action.setEnabled(False)
 
@@ -1028,7 +1059,7 @@ class ObxValidationPage(BasePage):
         self._delete_checkpoint()
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
-        self._progress_percent.setText("100%")
+        self._update_progress_summary(100)
         self._individual_export_action.setEnabled(bool(results))
         self._set_failed_export_actions_enabled(bool(results))
         self._render_table()
@@ -1415,7 +1446,7 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "recovery"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta"):
             self._set_metric(key, "-")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
@@ -1454,10 +1485,9 @@ class ObxValidationPage(BasePage):
             label.setText(f"{title}: {value}")
 
     def _set_site_metrics(self, sites: dict) -> None:
-        if not sites:
-            self._set_metric("site", "-")
-            return
-        self._set_metric("site", ", ".join(f"{cur} / {site}" for cur, site in sites.items()))
+        if sites:
+            currency, site = next(iter(sites.items()))
+            self._progress_state.setText(f"VALIDATING {currency} / {site}")
 
     @staticmethod
     def _format_duration(seconds: int) -> str:
