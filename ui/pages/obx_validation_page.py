@@ -248,6 +248,8 @@ class ObxValidationPage(BasePage):
         self._export_btn.setText("Export...")
         self._export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._export_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        # Match the height of the primary validation action.
+        self._export_btn.setFixedHeight(self._launch_btn.sizeHint().height())
         export_menu = QMenu(self._export_btn)
         self._individual_export_action = export_menu.addAction(
             "Export Individual CSVs...", self._on_export
