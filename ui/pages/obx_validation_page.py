@@ -416,7 +416,7 @@ class ObxValidationPage(BasePage):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_1)
         self._table = QTableWidget(0, 10, container)
-        self._table.setHorizontalHeaderLabels(["#", "OBX file", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
+        self._table.setHorizontalHeaderLabels(["#", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result", "OBX file"])
         self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1433,7 +1433,6 @@ class ObxValidationPage(BasePage):
         source_name = Path(source_path).name if source_path else Path(self._source_path).name if self._source_path else "-"
         cells = [
             str(r.seq),
-            source_name,
             r.sku,
             getattr(r, "currency", "") or "-",
             r.plc,
@@ -1442,10 +1441,11 @@ class ObxValidationPage(BasePage):
             "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
             r.source_date or "-",
             r.result,
+            source_name,
         ]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
-            if col in (0, 5, 6, 7):
+            if col in (0, 4, 5, 6):
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if r.status != "ok":
                 cell.setForeground(Qt.GlobalColor.red)
