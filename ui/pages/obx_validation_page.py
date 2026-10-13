@@ -415,15 +415,16 @@ class ObxValidationPage(BasePage):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_1)
-        self._table = QTableWidget(0, 9, container)
-        self._table.setHorizontalHeaderLabels(["#", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
+        self._table = QTableWidget(0, 10, container)
+        self._table.setHorizontalHeaderLabels(["#", "OBX file", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result"])
         self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, 1)
         return container
 
@@ -1426,8 +1427,11 @@ class ObxValidationPage(BasePage):
 
     def _put_row(self, row: int, r) -> None:
         self._table.insertRow(row)
+        source_path = self._file_of_seq.get(seq, "")
+        source_name = Path(source_path).name if source_path else Path(self._source_path).name if self._source_path else "-"
         cells = [
             str(r.seq),
+            source_name,
             r.sku,
             getattr(r, "currency", "") or "-",
             r.plc,
@@ -1439,7 +1443,7 @@ class ObxValidationPage(BasePage):
         ]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
-            if col in (0, 4, 5, 6):
+            if col in (0, 5, 6, 7):
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if r.status != "ok":
                 cell.setForeground(Qt.GlobalColor.red)
