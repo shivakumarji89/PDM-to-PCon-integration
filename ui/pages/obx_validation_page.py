@@ -209,8 +209,12 @@ class ObxValidationPage(BasePage):
         header_title.setObjectName("pageTitle")
         header_subtitle = QLabel(self._description, header)
         header_subtitle.setObjectName("pageSubtitle")
-        # Keep the title and description on one horizontal line.
+        # Keep both labels on the same row. A fixed horizontal size policy
+        # lets the description retain its full one-line sizeHint instead of
+        # shrinking and wrapping when the action controls occupy the right side.
         header_subtitle.setWordWrap(False)
+        header_title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        header_subtitle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(header_title)
         header_layout.addWidget(header_subtitle)
         header_layout.addStretch(1)
