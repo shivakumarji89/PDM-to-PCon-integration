@@ -340,15 +340,19 @@ class ObxValidationPage(BasePage):
         grid.setContentsMargins(0, theme.SPACE_1, 0, 0)
         grid.setHorizontalSpacing(theme.SPACE_2)
         grid.setVerticalSpacing(theme.SPACE_1)
-        card_style = (
+        card_colors = {
+            "completed": ("#EFF6FF", "#BFDBFE", "#1D4ED8"),
+            "matched": ("#ECFDF5", "#A7F3D0", "#047857"),
+            "mismatch": ("#FEF2F2", "#FECACA", "#B91C1C"),
+            "unresolved": ("#FFF7ED", "#FED7AA", "#C2410C"),
+            "skipped": ("#F8FAFC", "#CBD5E1", "#475569"),
+            "duplicate": ("#F5F3FF", "#DDD6FE", "#6D28D9"),
+            "unique": ("#ECFEFF", "#A5F3FC", "#0E7490"),
+        }
+        neutral_card_style = (
             "QPushButton { text-align: left; padding: 6px 9px; "
-            "border: 1px solid #D7DEE8; border-radius: 5px; background: #FFFFFF; color: #172B4D; }"
-            "QPushButton:hover { border: 1px solid #7186A5; background: #F7F9FC; }"
-            "QPushButton:checked { border: 1px solid #5579AD; background: #EAF1FB; }"
-        )
-        label_style = (
-            "QLabel { padding: 6px 9px; border: 1px solid #D7DEE8; "
-            "border-radius: 5px; background: #FFFFFF; color: #172B4D; }"
+            "border: 1px solid #D7DEE8; border-radius: 5px; "
+            "background: #F8FAFC; color: #334155; }"
         )
         for column in range(6):
             grid.setColumnStretch(column, 1)
@@ -362,7 +366,15 @@ class ObxValidationPage(BasePage):
                 label.setMinimumWidth(0)
                 label.setMinimumHeight(44)
                 label.setText(f"{title}: -")
-                label.setStyleSheet(card_style)
+                background, border_color, foreground = card_colors[key]
+                label.setStyleSheet(
+                    "QPushButton { text-align: left; padding: 6px 9px; "
+                    f"border: 1px solid {border_color}; border-radius: 5px; "
+                    f"background: {background}; color: {foreground}; font-weight: 600; }}"
+                    f"QPushButton:hover {{ border: 1px solid {foreground}; }}"
+                    f"QPushButton:checked {{ background: {border_color}; "
+                    f"border: 2px solid {foreground}; color: {foreground}; }}"
+                )
                 filter_key = filter_keys[key]
                 label.clicked.connect(
                     lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
@@ -375,7 +387,7 @@ class ObxValidationPage(BasePage):
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 label.setMinimumWidth(0)
                 label.setMinimumHeight(44)
-                label.setStyleSheet(card_style)
+                label.setStyleSheet(neutral_card_style)
                 label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 label.setCursor(Qt.CursorShape.ArrowCursor)
             self._metrics[key] = label
