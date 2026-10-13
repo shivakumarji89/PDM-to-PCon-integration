@@ -234,8 +234,14 @@ class ObxValidationPage(BasePage):
         for key in ("elapsed", "eta"):
             metric = self._metrics[key]
             metric.setParent(action_column)
-            metric.setMinimumHeight(28)
-            metric.setMaximumHeight(30)
+            # These are compact header indicators, not full-size dashboard cards.
+            # setFixedHeight also clears the 44px minimum set for the main metric grid.
+            metric.setFixedHeight(26)
+            metric.setStyleSheet(
+                "QPushButton { text-align: left; padding: 2px 8px; "
+                "border: 1px solid #D7DEE8; border-radius: 4px; "
+                "background: #F8FAFC; color: #334155; font-weight: 500; }"
+            )
             metric.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._time_metrics_row.addWidget(metric)
         self.add_content(self._progress_panel)
