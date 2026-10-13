@@ -333,6 +333,15 @@ class ObxValidationPage(BasePage):
                 label.setStyleSheet(label_style)
             self._metrics[key] = label
             grid.addWidget(label, row_index, column_index)
+        # Keep second-row cards in the same six-column positions as the first
+        # row. The last row has fewer metrics, so add placeholders for the
+        # remaining columns instead of allowing Qt to redistribute them.
+        if len(metrics) % 6:
+            for column_index in range(len(metrics) % 6, 6):
+                spacer = QWidget(panel)
+                spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                spacer.setMinimumHeight(44)
+                grid.addWidget(spacer, (len(metrics) - 1) // 6, column_index)
         layout.addLayout(grid)
         panel.setMaximumHeight(160)
         return panel
