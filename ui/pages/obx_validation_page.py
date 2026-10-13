@@ -12,7 +12,7 @@ from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QDateEdit, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
     QHeaderView, QLabel, QMenu, QMessageBox, QProgressBar, QPushButton,
-    QSizePolicy, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
+    QSizePolicy, QStyle, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.errors import PDMConnectionError
@@ -246,7 +246,8 @@ class ObxValidationPage(BasePage):
         layout.addWidget(self._cancel_btn)
         self._export_btn = QToolButton(container)
         self._export_btn.setText("Export...")
-        self._export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._export_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        self._export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._export_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         # Match the height of the primary validation action.
         self._export_btn.setFixedHeight(self._launch_btn.sizeHint().height())
@@ -279,6 +280,8 @@ class ObxValidationPage(BasePage):
     def _set_run_button_state(self, text: str) -> None:
         self._launch_btn.setText(text)
         state = "pause" if text == "Pause Validation" else "resume" if text == "Resume Validation" else "start"
+        icon_key = QStyle.StandardPixmap.SP_MediaPause if state == "pause" else QStyle.StandardPixmap.SP_MediaPlay
+        self._launch_btn.setIcon(self.style().standardIcon(icon_key))
         self._launch_btn.setProperty("actionState", state)
         self._launch_btn.style().unpolish(self._launch_btn)
         self._launch_btn.style().polish(self._launch_btn)
