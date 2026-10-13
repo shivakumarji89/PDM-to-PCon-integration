@@ -554,8 +554,8 @@ class ObxValidationPage(BasePage):
                     self._active_reporter.start_timer()
                 self._pause_btn.setText("Pause Validation")
                 self._progress_state.setText("VALIDATING")
-        self._progress_panel.show()
-        self._refresh_inline_status()
+                self._progress_panel.show()
+                self._refresh_inline_status()
             else:
                 self._on_pause()
             return
