@@ -238,7 +238,6 @@ class ObxValidationPage(BasePage):
             "Export Individual CSVs...", self._on_export
         )
         self._individual_export_action.setEnabled(False)
-        self._refresh_export_menu_enabled()
         self._duplicate_export_action = export_menu.addAction(
             "Export Duplicate Details...", self._on_export_duplicate_details
         )
