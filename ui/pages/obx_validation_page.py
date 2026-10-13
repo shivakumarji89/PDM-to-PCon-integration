@@ -258,6 +258,7 @@ class ObxValidationPage(BasePage):
             self._time_metrics_row.addWidget(metric)
         self.add_content(self._progress_panel)
         self.add_content(self._build_results())
+        self._update_bottom_status()
 
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
@@ -1026,6 +1027,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("unresolved", str(self._live["unresolved"]))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
+        self._update_progress_summary()
         if self._result_matches_filter(r):
             self._append_row(r)
         if self._live["lines"] - self._last_checkpoint_count >= 100:
@@ -1054,7 +1056,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._set_metric("eta", "0:00")
-        self._set_metric("recovery", str(self._recovery_attempt))
+        self._update_bottom_status()
         self._set_site_metrics(sites)
         self._delete_checkpoint()
         self._progress_state.setText("COMPLETE")
@@ -1445,7 +1447,8 @@ class ObxValidationPage(BasePage):
         self._table.setRowCount(0)
         self._progress_state.setText("READY")
         self._progress_bar.setValue(0)
-        self._progress_percent.setText("0%")
+        self._update_progress_summary(0)
+        self._update_bottom_status()
         for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta"):
             self._set_metric(key, "-")
         self._set_metric("skipped", str(self._skipped_count))
