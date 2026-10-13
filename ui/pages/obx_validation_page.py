@@ -191,6 +191,7 @@ class ObxValidationPage(BasePage):
         self._unique_done = 0
         self._paused_worker_sites: dict = {}
         self._paused_worker_remaining: list = []
+        self._pause_finalization_pending = False
         self._progress_base_percent = 0
         self._progress_span_percent = 100
         self._unique_total = 0
@@ -585,6 +586,7 @@ class ObxValidationPage(BasePage):
         reporter = self._active_reporter
         if control is None or reporter is None:
             return
+        self._pause_finalization_pending = True
         control.pause()
         reporter.stop_timer()
         reporter.pause("Pause requested. The active SQL operation will finish, then validation will pause before the next DB operation.")
@@ -616,6 +618,7 @@ class ObxValidationPage(BasePage):
         self._reporter = reporter
         self._paused_worker_sites = {}
         self._paused_worker_remaining = []
+        self._pause_finalization_pending = False
         reporter.progress_changed.connect(self._on_progress_changed)
         reporter.elapsed_changed.connect(self._on_elapsed_changed)
         reporter.remaining_changed.connect(self._on_remaining_changed)
@@ -726,7 +729,7 @@ class ObxValidationPage(BasePage):
         self._dispatch_workers = max(0, self._dispatch_workers - 1)
         if self._active_control is None:
             return
-        if self._active_control.is_paused():
+        if self._pause_finalization_pending:
             if self._dispatch_workers == 0:
                 self._finalize_pause()
             return
@@ -821,7 +824,8 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("CANCELLED")
 
     def _on_paused(self, payload) -> None:
-        sites, remaining_lines, _reason = payload
+        sites, remaining_lines, reason = payload
+        self._pause_finalization_pending = True
         self._paused_worker_sites.update(sites or {})
         self._paused_worker_remaining.extend(remaining_lines or [])
         self._dispatch_workers = max(0, self._dispatch_workers - 1)
@@ -854,6 +858,7 @@ class ObxValidationPage(BasePage):
                 candidates.append(line)
                 seen.add(seq)
         self._release_active_control()
+        self._pause_finalization_pending = False
         self._pending_lines = self._context.obx_validation_service.expand_pending(
             candidates, self._lines, completed_seqs,
         )
