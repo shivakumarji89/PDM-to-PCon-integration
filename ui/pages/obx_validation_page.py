@@ -308,7 +308,6 @@ class ObxValidationPage(BasePage):
         progress_stack_layout = QVBoxLayout(progress_stack)
         progress_stack_layout.setContentsMargins(0, 0, 0, 0)
         progress_stack_layout.setSpacing(1)
-        progress_stack_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         status_row = QHBoxLayout()
         status_row.setContentsMargins(0, 0, 0, 0)
         status_row.setSpacing(theme.SPACE_1)
@@ -474,7 +473,7 @@ class ObxValidationPage(BasePage):
                 grid.addWidget(label, row_index, column_index)
                 visible_metric_index += 1
         layout.addLayout(grid)
-        panel.setMaximumHeight(160)
+        panel.setMaximumHeight(82)
         return panel
 
     def _build_results(self) -> QWidget:
