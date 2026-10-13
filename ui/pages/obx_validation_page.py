@@ -175,6 +175,9 @@ class ObxValidationPage(BasePage):
         self._pending_lines: list = []
         self._source_path = ""
         self._show_all = True
+        self._table_filter = "all"
+        self._metric_filters: dict[str, QToolButton] = {}
+        self._duplicate_seq_set: set[int] = set()
         self._is_paused = False
         self._skipped_count = 0
         self._duplicate_count = 0
@@ -246,12 +249,6 @@ class ObxValidationPage(BasePage):
         self._failed_export_btn.setMenu(failed_menu)
         self._failed_export_btn.setEnabled(False)
         layout.addWidget(self._failed_export_btn)
-        self._toggle_btn = QPushButton("Show errors only", container)
-        self._toggle_btn.setCheckable(True)
-        self._toggle_btn.setChecked(True)
-        self._toggle_btn.toggled.connect(self._on_toggle_all)
-        self._toggle_btn.setEnabled(False)
-        layout.addWidget(self._toggle_btn)
         layout.addStretch(1)
         return container
 
@@ -282,19 +279,39 @@ class ObxValidationPage(BasePage):
         progress_row.addWidget(self._progress_bar, 1)
         progress_row.addWidget(self._progress_percent)
         layout.addLayout(progress_row)
-        self._metrics: dict[str, QLabel] = {}
+        self._metrics: dict[str, QLabel | QToolButton] = {}
+        self._metric_filters: dict[str, QToolButton] = {}
         metrics = [
             ("completed", "Completed"), ("matched", "Matched"),
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
             ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
-        ("unique", "Unique"),
+            ("unique", "Unique"),
         ]
+        filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
+                       "unresolved": "unresolved", "duplicate": "duplicate"}
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
         grid.setVerticalSpacing(0)
         for index, (key, title) in enumerate(metrics):
-            label = QLabel(f"{title}: -", panel)
+            if key in filter_keys:
+                label = QToolButton(panel)
+                label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                label.setAutoRaise(True)
+                label.setCheckable(True)
+                label.setText(f"{title}: -")
+                label.setStyleSheet(
+                    "QToolButton { text-align: left; padding: 0px; border: none; }"
+                    "QToolButton:hover { text-decoration: underline; }"
+                    "QToolButton:checked { font-weight: 600; text-decoration: underline; }"
+                )
+                filter_key = filter_keys[key]
+                label.clicked.connect(
+                    lambda checked=False, selected=filter_key: self._on_metric_filter_clicked(selected, checked)
+                )
+                self._metric_filters[filter_key] = label
+            else:
+                label = QLabel(f"{title}: -", panel)
             self._metrics[key] = label
             grid.addWidget(label, index // 6, index % 6)
         layout.addLayout(grid)
@@ -419,6 +436,7 @@ class ObxValidationPage(BasePage):
         self._source_path = loaded_paths[0] if loaded_paths else ""
         self._skipped_count = skipped_count
         self._duplicate_count = svc.duplicate_count(lines)
+        self._duplicate_seq_set = self._duplicate_source_seqs(lines)
         if recovered_files:
             QMessageBox.warning(
                 self,
@@ -727,7 +745,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("duplicate", str(self._duplicate_count))
         self._set_metric("unique", str(max(0, len(self._lines) - self._duplicate_count)))
         self._set_metric("recovery", "0")
-        self._toggle_btn.setEnabled(True)
+        self._set_table_filter("all")
         self._export_btn.setEnabled(False)
 
     def _completed_text(self) -> str:
@@ -756,7 +774,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("unresolved", str(self._live["unresolved"]))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        if self._show_all or r.status != "ok":
+        if self._result_matches_filter(r):
             self._append_row(r)
         if self._live["lines"] - self._last_checkpoint_count >= 100:
             self._save_session()
@@ -790,7 +808,6 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
         self._progress_percent.setText("100%")
-        self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
         self._failed_export_btn.setEnabled(bool(results))
         self._render_table()
@@ -803,10 +820,47 @@ class ObxValidationPage(BasePage):
         if mism == 0 and unres == 0:
             QMessageBox.information(self, "OBX Validation", f"All {len(results)} line(s) match PDM ({site_text}).")
 
-    def _on_toggle_all(self, checked: bool) -> None:
-        self._show_all = checked
-        self._toggle_btn.setText("Show errors only" if checked else "Show all lines")
+    @staticmethod
+    def _duplicate_source_seqs(lines: list) -> set[int]:
+        """Return every source row belonging to a repeated currency/article key."""
+        counts: dict[tuple[str, str], int] = {}
+        keys_by_seq: dict[int, tuple[str, str]] = {}
+        for line in lines:
+            key = (
+                str(getattr(line, "currency", "") or "").strip().upper(),
+                " ".join(str(getattr(line, "final_article", "") or "").strip().upper().split()),
+            )
+            keys_by_seq[int(getattr(line, "seq", 0) or 0)] = key
+            counts[key] = counts.get(key, 0) + 1
+        return {seq for seq, key in keys_by_seq.items() if counts.get(key, 0) > 1}
+
+    def _on_metric_filter_clicked(self, filter_key: str, checked: bool) -> None:
+        # Clicking an already-selected count clears the filter; selecting another
+        # count switches the same table to that category.
+        self._set_table_filter(filter_key if checked else "all")
+
+    def _set_table_filter(self, filter_key: str) -> None:
+        self._table_filter = filter_key
+        self._show_all = filter_key == "all"
+        for key, button in self._metric_filters.items():
+            button.blockSignals(True)
+            button.setChecked(key == filter_key)
+            button.blockSignals(False)
         self._render_table()
+
+    def _result_matches_filter(self, result) -> bool:
+        filter_key = getattr(self, "_table_filter", "all")
+        if filter_key == "all":
+            return True
+        if filter_key == "matched":
+            return result.status == "ok"
+        if filter_key == "price_mismatch":
+            return result.status == "price_mismatch"
+        if filter_key == "unresolved":
+            return result.status == "unresolved"
+        if filter_key == "duplicate":
+            return self._seq_key(result.seq) in getattr(self, "_duplicate_seq_set", set())
+        return True
 
     def _export_consolidated(self) -> bool:
         """Write one consolidated CSV after the complete validation finishes."""
@@ -1140,8 +1194,7 @@ class ObxValidationPage(BasePage):
             self._set_metric(key, "-")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._toggle_btn.setChecked(True)
-        self._toggle_btn.setEnabled(False)
+        self._set_table_filter("all")
         self._export_btn.setEnabled(False)
         self._duplicate_export_btn.setEnabled(bool(self._lines))
         self._failed_export_btn.setEnabled(False)
@@ -1188,7 +1241,7 @@ class ObxValidationPage(BasePage):
         return f"{minutes}:{seconds:02d}"
 
     def _render_table(self) -> None:
-        rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]
+        rows = [r for r in self._results if self._result_matches_filter(r)]
         rows = sorted(rows, key=lambda r: self._seq_key(r.seq))
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
