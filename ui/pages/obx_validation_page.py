@@ -279,7 +279,7 @@ class ObxValidationPage(BasePage):
         progress_row.addWidget(self._progress_bar, 1)
         progress_row.addWidget(self._progress_percent)
         layout.addLayout(progress_row)
-        self._metrics: dict[str, QLabel | QPushButton] = {}
+        self._metrics: dict[str, QPushButton] = {}
         self._metric_filters: dict[str, QPushButton] = {}
         metrics = [
             ("completed", "Completed"), ("matched", "Matched"),
@@ -326,11 +326,15 @@ class ObxValidationPage(BasePage):
                 )
                 self._metric_filters[filter_key] = label
             else:
-                label = QLabel(f"{title}: -", panel)
-                label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                # Use the same button widget and stylesheet as the clickable
+                # metrics so both rows have identical text inset and alignment.
+                label = QPushButton(f"{title}: -", panel)
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                label.setMinimumWidth(0)
                 label.setMinimumHeight(44)
-                label.setStyleSheet(label_style)
+                label.setStyleSheet(card_style)
+                label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                label.setCursor(Qt.CursorShape.ArrowCursor)
             self._metrics[key] = label
             grid.addWidget(label, row_index, column_index)
         # Keep second-row cards in the same six-column positions as the first
