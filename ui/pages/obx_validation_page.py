@@ -189,6 +189,8 @@ class ObxValidationPage(BasePage):
         self._last_checkpoint_count = 0
         self._dispatch_groups: dict = {}
         self._unique_done = 0
+        self._paused_worker_sites: dict = {}
+        self._paused_worker_remaining: list = []
         self._progress_base_percent = 0
         self._progress_span_percent = 100
         self._unique_total = 0
@@ -612,6 +614,8 @@ class ObxValidationPage(BasePage):
         self._active_control = control
         self._active_reporter = reporter
         self._reporter = reporter
+        self._paused_worker_sites = {}
+        self._paused_worker_remaining = []
         reporter.progress_changed.connect(self._on_progress_changed)
         reporter.elapsed_changed.connect(self._on_elapsed_changed)
         reporter.remaining_changed.connect(self._on_remaining_changed)
@@ -719,8 +723,14 @@ class ObxValidationPage(BasePage):
     def _on_worker_finished(self, payload) -> None:
         sites, _results = payload
         self._dispatch_sites.update(sites or {})
-        self._dispatch_workers -= 1
-        if self._dispatch_workers > 0 or self._active_control is None:
+        self._dispatch_workers = max(0, self._dispatch_workers - 1)
+        if self._active_control is None:
+            return
+        if self._active_control.is_paused():
+            if self._dispatch_workers == 0:
+                self._finalize_pause()
+            return
+        if self._dispatch_workers > 0:
             return
 
         completed_seqs = {
@@ -811,27 +821,55 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("CANCELLED")
 
     def _on_paused(self, payload) -> None:
+        sites, remaining_lines, _reason = payload
+        self._paused_worker_sites.update(sites or {})
+        self._paused_worker_remaining.extend(remaining_lines or [])
+        self._dispatch_workers = max(0, self._dispatch_workers - 1)
+        # Each of the two workers reports its own remainder. Wait until both
+        # workers have reached a terminal state before building the resume list.
+        if self._dispatch_workers > 0:
+            return
+        self._finalize_pause()
+
+    def _finalize_pause(self) -> None:
+        if self._active_control is None:
+            return
         self._finalize_validation_elapsed()
-        sites, remaining_lines, reason = payload
+        self._dispatch_sites.update(self._paused_worker_sites)
+        completed_seqs = {
+            getattr(result, "seq", None) for result in self._results
+        }
+        # The outer dispatch queues still contain lines assigned to both workers.
+        # Rebuild from all uncompleted unique source lines, not just the last
+        # worker's pause payload, so a pause cannot silently drop a whole chunk.
+        candidates = []
+        seen = set()
+        for line in (
+            list(self._dispatch_remaining)
+            + list(self._dispatch_batch_remaining)
+            + list(self._paused_worker_remaining)
+        ):
+            seq = getattr(line, "seq", None)
+            if seq not in completed_seqs and seq not in seen:
+                candidates.append(line)
+                seen.add(seq)
         self._release_active_control()
-        # Workers hold only unique lines; restore every pending duplicate source row.
         self._pending_lines = self._context.obx_validation_service.expand_pending(
-            list(remaining_lines), self._lines,
-            {getattr(result, "seq", None) for result in self._results},
+            candidates, self._lines, completed_seqs,
         )
         self._is_paused = True
         self._save_session()
         self._write_checkpoint()
-        self._launch_btn.setEnabled(False)
         self._set_run_button_state("Resume Validation")
         self._launch_btn.setEnabled(bool(self._pending_lines))
+        self._cancel_btn.setEnabled(False)
         self._progress_state.setText("PAUSED")
         self._set_metric("completed", f"{len(self._results)}/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._individual_export_action.setEnabled(bool(self._results))
         self._set_failed_export_actions_enabled(bool(self._results))
-        self._set_site_metrics(sites)
+        self._set_site_metrics(self._dispatch_sites)
 
     def _begin_live(self) -> None:
         self._results = []
