@@ -1428,6 +1428,7 @@ class ObxValidationPage(BasePage):
 
     def _put_row(self, row: int, r) -> None:
         self._table.insertRow(row)
+        seq = self._seq_key(getattr(r, "seq", 0))
         source_path = self._file_of_seq.get(seq, "")
         source_name = Path(source_path).name if source_path else Path(self._source_path).name if self._source_path else "-"
         cells = [
