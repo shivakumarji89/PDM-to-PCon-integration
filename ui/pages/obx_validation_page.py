@@ -238,6 +238,7 @@ class ObxValidationPage(BasePage):
             "Export Individual CSVs...", self._on_export
         )
         self._individual_export_action.setEnabled(False)
+        self._refresh_export_menu_enabled()
         self._duplicate_export_action = export_menu.addAction(
             "Export Duplicate Details...", self._on_export_duplicate_details
         )
@@ -255,7 +256,7 @@ class ObxValidationPage(BasePage):
         for action in (self._failed_all_action, self._failed_mismatch_action, self._failed_unresolved_action):
             action.setEnabled(False)
         self._export_btn.setMenu(export_menu)
-        self._individual_export_action.setEnabled(False)
+        self._refresh_export_menu_enabled()
         layout.addWidget(self._export_btn)
         layout.addStretch(1)
         return container
@@ -507,6 +508,7 @@ class ObxValidationPage(BasePage):
         self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
         self._duplicate_export_action.setEnabled(bool(lines))
+        self._refresh_export_menu_enabled()
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
@@ -589,6 +591,7 @@ class ObxValidationPage(BasePage):
         self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
         self._individual_export_action.setEnabled(bool(self._results))
+        self._refresh_export_menu_enabled()
         self._set_failed_export_actions_enabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
         # Only globally unique articles reach the 8 + 8 workers; every unique
@@ -821,6 +824,7 @@ class ObxValidationPage(BasePage):
     def _on_line_done(self, r) -> None:
         self._results.append(r)
         self._individual_export_action.setEnabled(True)
+        self._refresh_export_menu_enabled()
         self._set_failed_export_actions_enabled(True)
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
@@ -865,8 +869,8 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("COMPLETE")
         self._progress_bar.setValue(100)
         self._progress_percent.setText("100%")
-        self._export_btn.setEnabled(bool(results))
-        self._failed_export_btn.setEnabled(bool(results))
+        self._individual_export_action.setEnabled(bool(results))
+        self._set_failed_export_actions_enabled(bool(results))
         self._render_table()
 
         # Automatic consolidated export happens only after the worker reports
@@ -1258,6 +1262,7 @@ class ObxValidationPage(BasePage):
         self._set_table_filter("all")
         self._individual_export_action.setEnabled(False)
         self._duplicate_export_action.setEnabled(bool(self._lines))
+        self._refresh_export_menu_enabled()
         self._set_failed_export_actions_enabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
