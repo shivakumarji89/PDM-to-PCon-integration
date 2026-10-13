@@ -319,7 +319,7 @@ class ObxValidationPage(BasePage):
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 label.setMinimumWidth(0)
                 label.setMinimumHeight(44)
-                label.setText(f"{title}\n-")
+                label.setText(f"{title}: -")
                 label.setStyleSheet(card_style)
                 filter_key = filter_keys[key]
                 label.clicked.connect(
@@ -327,7 +327,7 @@ class ObxValidationPage(BasePage):
                 )
                 self._metric_filters[filter_key] = label
             else:
-                label = QLabel(f"{title}\n- ", panel)
+                label = QLabel(f"{title}: -", panel)
                 label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 label.setMinimumHeight(44)
@@ -1246,8 +1246,8 @@ class ObxValidationPage(BasePage):
     def _set_metric(self, key: str, value: str) -> None:
         label = self._metrics.get(key)
         if label is not None:
-            title = label.text().splitlines()[0].split(":", 1)[0]
-            label.setText(f"{title}\n{value}")
+            title = label.text().split(":", 1)[0]
+            label.setText(f"{title}: {value}")
 
     def _set_site_metrics(self, sites: dict) -> None:
         if not sites:
