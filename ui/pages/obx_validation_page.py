@@ -208,14 +208,36 @@ class ObxValidationPage(BasePage):
         header_title.setObjectName("pageTitle")
         header_layout.addWidget(header_title)
         header_layout.addStretch(1)
+        action_column = QWidget(header)
+        action_column_layout = QVBoxLayout(action_column)
+        action_column_layout.setContentsMargins(0, 0, 0, 0)
+        action_column_layout.setSpacing(theme.SPACE_1)
+        action_buttons = QHBoxLayout()
+        action_buttons.setContentsMargins(0, 0, 0, 0)
+        action_buttons.setSpacing(theme.SPACE_2)
         for action in (self._launch_btn, self._cancel_btn, self._export_btn):
-            action.setParent(header)
-            header_layout.addWidget(action)
+            action.setParent(action_column)
+            action_buttons.addWidget(action)
+        action_column_layout.addLayout(action_buttons)
+        self._time_metrics_row = QHBoxLayout()
+        self._time_metrics_row.setContentsMargins(0, 0, 0, 0)
+        self._time_metrics_row.setSpacing(theme.SPACE_1)
+        action_column_layout.addLayout(self._time_metrics_row)
+        header_layout.addWidget(action_column)
         root_layout.insertWidget(0, header)
         root_layout.removeWidget(title_label)
         title_label.deleteLater()
         self.add_content(controls)
         self._progress_panel = self._build_progress_panel()
+        # Reuse the existing elapsed and ETA metric cards under the action buttons,
+        # avoiding duplicate values that could drift out of sync.
+        for key in ("elapsed", "eta"):
+            metric = self._metrics[key]
+            metric.setParent(action_column)
+            metric.setMinimumHeight(28)
+            metric.setMaximumHeight(30)
+            metric.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self._time_metrics_row.addWidget(metric)
         self.add_content(self._progress_panel)
         self.add_content(self._build_results())
 
