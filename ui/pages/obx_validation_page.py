@@ -304,18 +304,35 @@ class ObxValidationPage(BasePage):
         self._progress_state.setStyleSheet("font-weight: 600;")
         self._file_label = QLabel("No OBX file loaded.", container)
         self._file_label.setStyleSheet(f"color: {theme.MUTED};")
-        layout.addWidget(self._progress_state)
-        layout.addWidget(self._file_label, 1)
-        self._progress_bar = QProgressBar(container)
+        progress_stack = QWidget(container)
+        progress_stack_layout = QVBoxLayout(progress_stack)
+        progress_stack_layout.setContentsMargins(0, 0, 0, 0)
+        progress_stack_layout.setSpacing(1)
+        progress_stack_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(theme.SPACE_1)
+        status_row.addWidget(self._progress_state)
+        status_row.addWidget(self._file_label, 1)
+        progress_stack_layout.addLayout(status_row)
+        progress_row = QHBoxLayout()
+        progress_row.setContentsMargins(0, 0, 0, 0)
+        progress_row.setSpacing(theme.SPACE_1)
+        self._progress_bar = QProgressBar(progress_stack)
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
         self._progress_bar.setTextVisible(False)
         self._progress_bar.setMinimumWidth(120)
-        layout.addWidget(self._progress_bar, 2)
-        self._progress_percent = QLabel("0% · - rows/s", container)
+        self._progress_bar.setFixedHeight(7)
+        progress_row.addWidget(self._progress_bar, 1)
+        self._progress_percent = QLabel("0% · - rows/s", progress_stack)
         self._progress_percent.setMinimumWidth(120)
         self._progress_percent.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self._progress_percent)
+        progress_row.addWidget(self._progress_percent)
+        progress_stack_layout.addLayout(progress_row)
+        progress_stack.setMinimumWidth(240)
+        progress_stack.setMaximumHeight(self._launch_btn.sizeHint().height())
+        layout.addWidget(progress_stack, 1)
         layout.addStretch(1)
         self._export_btn = QToolButton(container)
         self._export_btn.setText("Export...")
@@ -415,8 +432,9 @@ class ObxValidationPage(BasePage):
         )
         for column in range(6):
             grid.setColumnStretch(column, 1)
+        visible_metric_index = 0
         for index, (key, title) in enumerate(metrics):
-            row_index, column_index = divmod(index, 6)
+            row_index, column_index = divmod(visible_metric_index, 6)
             if key in filter_keys:
                 label = QPushButton(panel)
                 label.setCheckable(True)
@@ -450,16 +468,11 @@ class ObxValidationPage(BasePage):
                 label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 label.setCursor(Qt.CursorShape.ArrowCursor)
             self._metrics[key] = label
-            grid.addWidget(label, row_index, column_index)
-        # Keep second-row cards in the same six-column positions as the first
-        # row. The last row has fewer metrics, so add placeholders for the
-        # remaining columns instead of allowing Qt to redistribute them.
-        if len(metrics) % 6:
-            for column_index in range(len(metrics) % 6, 6):
-                spacer = QWidget(panel)
-                spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                spacer.setMinimumHeight(44)
-                grid.addWidget(spacer, (len(metrics) - 1) // 6, column_index)
+            # Elapsed and ETA are reused in the compact header under the action
+            # buttons; do not leave empty placeholders for them in the grid.
+            if key not in {"elapsed", "eta"}:
+                grid.addWidget(label, row_index, column_index)
+                visible_metric_index += 1
         layout.addLayout(grid)
         panel.setMaximumHeight(160)
         return panel
