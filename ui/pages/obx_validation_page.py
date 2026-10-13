@@ -230,6 +230,17 @@ class ObxValidationPage(BasePage):
         label.setText(text)
         label.setVisible(bool(text))
 
+    def _refresh_inline_status(self) -> None:
+        state = self._progress_state.text().strip()
+        details = self._file_label.text().strip()
+        percent = self._progress_percent.text().strip()
+        parts = [state] if state else []
+        if details and details != "No OBX file loaded.":
+            parts.append(details)
+        if state.startswith(("VALIDATING", "PAUSED", "PAUSING", "CANCELLING")):
+            parts.append(percent)
+        self._set_inline_status("   •   ".join(parts))
+
     def _build_controls(self) -> QWidget:
         container = QWidget(self)
         layout = QHBoxLayout(container)
@@ -543,6 +554,8 @@ class ObxValidationPage(BasePage):
                     self._active_reporter.start_timer()
                 self._pause_btn.setText("Pause Validation")
                 self._progress_state.setText("VALIDATING")
+        self._progress_panel.show()
+        self._refresh_inline_status()
             else:
                 self._on_pause()
             return
@@ -601,6 +614,8 @@ class ObxValidationPage(BasePage):
         self._export_btn.setEnabled(bool(self._results))
         self._failed_export_btn.setEnabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
+        self._progress_panel.show()
+        self._refresh_inline_status()
         # Only globally unique articles reach the 8 + 8 workers; every unique
         # result is fanned back to its duplicate source rows in _on_unique_result.
         unique_lines, self._dispatch_groups = self._context.obx_validation_service.dispatch_plan(lines)
@@ -715,6 +730,7 @@ class ObxValidationPage(BasePage):
     def _on_progress_changed(self, percent: int) -> None:
         self._progress_bar.setValue(percent)
         self._progress_percent.setText(f"{percent}%")
+        self._refresh_inline_status()
 
     def _on_elapsed_changed(self, seconds: int) -> None:
         self._set_metric("elapsed", self._format_duration(seconds))
