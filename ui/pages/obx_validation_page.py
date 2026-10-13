@@ -396,10 +396,12 @@ class ObxValidationPage(BasePage):
     def _build_progress_panel(self) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("obxProgressPanel")
-        panel.setFrameShape(QFrame.Shape.StyledPanel)
+        # The metric cards should sit directly on the page, without a second
+        # enclosing frame or the padding that created dead space around them.
+        panel.setFrameShape(QFrame.Shape.NoFrame)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(theme.SPACE_2, theme.SPACE_1, theme.SPACE_2, theme.SPACE_1)
-        layout.setSpacing(theme.SPACE_1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         # Status and progress now live beside the validation date in the toolbar.
         self._metrics: dict[str, QPushButton] = {};
         self._metric_filters: dict[str, QPushButton] = {}
@@ -413,9 +415,9 @@ class ObxValidationPage(BasePage):
         # Counters are rendered as equal-width cards. This avoids text-based
         # alignment drift and makes the clickable filters visually discoverable.
         grid = QGridLayout()
-        grid.setContentsMargins(0, theme.SPACE_1, 0, 0)
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(theme.SPACE_2)
-        grid.setVerticalSpacing(theme.SPACE_1)
+        grid.setVerticalSpacing(0)
         card_colors = {
             "completed": ("#EFF6FF", "#BFDBFE", "#1D4ED8"),
             "matched": ("#ECFDF5", "#A7F3D0", "#047857"),
@@ -440,7 +442,7 @@ class ObxValidationPage(BasePage):
                 label.setFlat(False)
                 label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 label.setMinimumWidth(0)
-                label.setMinimumHeight(44)
+                label.setMinimumHeight(36)
                 label.setText(f"{title}: -")
                 background, border_color, foreground = card_colors[key]
                 label.setStyleSheet(
@@ -473,7 +475,7 @@ class ObxValidationPage(BasePage):
                 grid.addWidget(label, row_index, column_index)
                 visible_metric_index += 1
         layout.addLayout(grid)
-        panel.setMaximumHeight(82)
+        panel.setMaximumHeight(42)
         return panel
 
     def _build_results(self) -> QWidget:
