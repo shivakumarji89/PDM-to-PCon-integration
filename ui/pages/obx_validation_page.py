@@ -189,6 +189,8 @@ class ObxValidationPage(BasePage):
         self._last_checkpoint_count = 0
         self._dispatch_groups: dict = {}
         self._unique_done = 0
+        self._progress_base_percent = 0
+        self._progress_span_percent = 100
         self._unique_total = 0
         self._session = self._context.workflow_session("obx_validation")
         self.add_content(self._build_controls())
@@ -638,6 +640,12 @@ class ObxValidationPage(BasePage):
         self._dispatch_total = len(unique_lines)
         self._unique_total = max(len(self._lines) - self._duplicate_count, len(unique_lines))
         self._unique_done = self._unique_total - len(unique_lines)
+        # On resume, keep the overall progress at the amount already completed.
+        self._progress_base_percent = (
+            min(99, int(self._unique_done * 100 / self._unique_total))
+            if not fresh and self._unique_total else 0
+        )
+        self._progress_span_percent = 100 - self._progress_base_percent
         self._set_metric("completed", self._completed_text())
         reporter.begin(
             max(len(unique_lines), 1), title="Validate OBX",
@@ -740,8 +748,11 @@ class ObxValidationPage(BasePage):
         self._cancel_btn.setEnabled(False)
 
     def _on_progress_changed(self, percent: int) -> None:
-        self._progress_bar.setValue(percent)
-        self._progress_percent.setText(f"{percent}%")
+        overall = self._progress_base_percent + int(
+            self._progress_span_percent * percent / 100
+        )
+        self._progress_bar.setValue(min(100, overall))
+        self._progress_percent.setText(f"{min(100, overall)}%")
 
     def _on_elapsed_changed(self, seconds: int) -> None:
         self._set_metric("elapsed", self._format_duration(seconds))
