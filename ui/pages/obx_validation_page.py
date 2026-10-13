@@ -204,7 +204,9 @@ class ObxValidationPage(BasePage):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(theme.SPACE_2)
-        header_layout.addWidget(title_label)
+        header_title = QLabel(self._title, header)
+        header_title.setObjectName("pageTitle")
+        header_layout.addWidget(header_title)
         header_layout.addStretch(1)
         for action in (self._launch_btn, self._cancel_btn, self._export_btn):
             action.setParent(header)
