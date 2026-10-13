@@ -267,7 +267,6 @@ class ObxValidationPage(BasePage):
         self._export_btn.setMenu(export_menu)
         self._refresh_export_menu_enabled()
         layout.addWidget(self._export_btn)
-        layout.addStretch(1)
         return container
 
     def _set_run_button_state(self, text: str) -> None:
