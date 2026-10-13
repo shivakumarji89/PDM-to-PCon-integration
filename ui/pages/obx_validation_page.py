@@ -289,16 +289,21 @@ class ObxValidationPage(BasePage):
             ("unique", "Unique"),
         ]
         filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
-                       "unresolved": "unresolved", "duplicate": "duplicate"}
+                       "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate",
+                       "unique": "unique"}
         grid = QGridLayout()
         grid.setHorizontalSpacing(theme.SPACE_2)
         grid.setVerticalSpacing(0)
+        for column in range(6):
+            grid.setColumnStretch(column, 1)
         for index, (key, title) in enumerate(metrics):
             if key in filter_keys:
                 label = QToolButton(panel)
                 label.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                 label.setAutoRaise(True)
                 label.setCheckable(True)
+                label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                label.setMinimumWidth(0)
                 label.setText(f"{title}: -")
                 label.setStyleSheet(
                     "QToolButton { text-align: left; padding: 0px; border: none; }"
@@ -858,8 +863,12 @@ class ObxValidationPage(BasePage):
             return result.status == "price_mismatch"
         if filter_key == "unresolved":
             return result.status == "unresolved"
+        if filter_key == "skipped":
+            return result.status == "skipped"
         if filter_key == "duplicate":
             return self._seq_key(result.seq) in getattr(self, "_duplicate_seq_set", set())
+        if filter_key == "unique":
+            return self._seq_key(result.seq) not in getattr(self, "_duplicate_seq_set", set())
         return True
 
     def _export_consolidated(self) -> bool:
