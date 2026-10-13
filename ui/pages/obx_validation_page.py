@@ -422,9 +422,10 @@ class ObxValidationPage(BasePage):
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # Fit columns to their contents while preserving a wide Result column.
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
         layout.addWidget(self._table, 1)
         return container
 
