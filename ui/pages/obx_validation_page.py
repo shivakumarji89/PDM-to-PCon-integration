@@ -229,29 +229,53 @@ class ObxValidationPage(BasePage):
         self._validation_date.setCalendarPopup(True)
         self._validation_date.setDate(QDate.currentDate())
         layout.addWidget(self._validation_date)
-        self._export_btn = QPushButton("Export Individual CSVs...", container)
-        self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._on_export)
+        self._export_btn = QToolButton(container)
+        self._export_btn.setText("Export...")
+        self._export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._export_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        export_menu = QMenu(self._export_btn)
+        self._individual_export_action = export_menu.addAction(
+            "Export Individual CSVs...", self._on_export
+        )
+        self._individual_export_action.setEnabled(False)
+        self._duplicate_export_action = export_menu.addAction(
+            "Export Duplicate Details...", self._on_export_duplicate_details
+        )
+        self._duplicate_export_action.setEnabled(False)
+        failed_menu = export_menu.addMenu("Export Failed OBX")
+        self._failed_all_action = failed_menu.addAction(
+            "All failed articles", lambda: self._export_failed_obx()
+        )
+        self._failed_mismatch_action = failed_menu.addAction(
+            "Price mismatches only", lambda: self._export_failed_obx("price_mismatch")
+        )
+        self._failed_unresolved_action = failed_menu.addAction(
+            "Unresolved articles only", lambda: self._export_failed_obx("unresolved")
+        )
+        for action in (self._failed_all_action, self._failed_mismatch_action, self._failed_unresolved_action):
+            action.setEnabled(False)
+        self._export_btn.setMenu(export_menu)
+        self._individual_export_action.setEnabled(False)
         layout.addWidget(self._export_btn)
-
-        self._duplicate_export_btn = QPushButton("Export Duplicate Details...", container)
-        self._duplicate_export_btn.setEnabled(False)
-        self._duplicate_export_btn.clicked.connect(self._on_export_duplicate_details)
-        layout.addWidget(self._duplicate_export_btn)
-
-        self._failed_export_btn = QToolButton(container)
-        self._failed_export_btn.setText("Export Failed OBX...")
-        self._failed_export_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._failed_export_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        failed_menu = QMenu(self._failed_export_btn)
-        failed_menu.addAction("All failed articles", lambda: self._export_failed_obx())
-        failed_menu.addAction("Price mismatches only", lambda: self._export_failed_obx("price_mismatch"))
-        failed_menu.addAction("Unresolved articles only", lambda: self._export_failed_obx("unresolved"))
-        self._failed_export_btn.setMenu(failed_menu)
-        self._failed_export_btn.setEnabled(False)
-        layout.addWidget(self._failed_export_btn)
         layout.addStretch(1)
         return container
+
+    def _set_failed_export_actions_enabled(self, enabled: bool) -> None:
+        for action in (
+            self._failed_all_action,
+            self._failed_mismatch_action,
+            self._failed_unresolved_action,
+        ):
+            action.setEnabled(enabled)
+        self._refresh_export_menu_enabled()
+
+    def _refresh_export_menu_enabled(self) -> None:
+        enabled = (
+            self._individual_export_action.isEnabled()
+            or self._duplicate_export_action.isEnabled()
+            or self._failed_all_action.isEnabled()
+        )
+        self._export_btn.setEnabled(enabled)
 
     def _build_progress_panel(self) -> QWidget:
         panel = QFrame(self)
@@ -482,7 +506,7 @@ class ObxValidationPage(BasePage):
         currencies = sorted({l.currency for l in lines if l.currency}) or [currency]
         self._file_label.setText(f"{label}  •  {len(lines)} lines  •  {', '.join(c or '?' for c in currencies)}")
         self._launch_btn.setEnabled(bool(lines))
-        self._duplicate_export_btn.setEnabled(bool(lines))
+        self._duplicate_export_action.setEnabled(bool(lines))
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
@@ -564,8 +588,8 @@ class ObxValidationPage(BasePage):
         self._pause_btn.setEnabled(True)
         self._cancel_btn.setEnabled(True)
         self._launch_btn.setEnabled(False)
-        self._export_btn.setEnabled(bool(self._results))
-        self._failed_export_btn.setEnabled(bool(self._results))
+        self._individual_export_action.setEnabled(bool(self._results))
+        self._set_failed_export_actions_enabled(bool(self._results))
         self._progress_state.setText("VALIDATING")
         # Only globally unique articles reach the 8 + 8 workers; every unique
         # result is fanned back to its duplicate source rows in _on_unique_result.
@@ -757,8 +781,8 @@ class ObxValidationPage(BasePage):
         self._set_metric("completed", f"{len(self._results)}/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._export_btn.setEnabled(bool(self._results))
-        self._failed_export_btn.setEnabled(bool(self._results))
+        self._individual_export_action.setEnabled(bool(self._results))
+        self._set_failed_export_actions_enabled(bool(self._results))
         self._set_site_metrics(sites)
 
     def _begin_live(self) -> None:
@@ -779,7 +803,7 @@ class ObxValidationPage(BasePage):
         self._set_metric("unique", str(max(0, len(self._lines) - self._duplicate_count)))
         self._set_metric("recovery", "0")
         self._set_table_filter("all")
-        self._export_btn.setEnabled(False)
+        self._individual_export_action.setEnabled(False)
 
     def _completed_text(self) -> str:
         """Unique PDM validations while running; source-row count otherwise."""
@@ -796,8 +820,8 @@ class ObxValidationPage(BasePage):
 
     def _on_line_done(self, r) -> None:
         self._results.append(r)
-        self._export_btn.setEnabled(True)
-        self._failed_export_btn.setEnabled(True)
+        self._individual_export_action.setEnabled(True)
+        self._set_failed_export_actions_enabled(True)
         self._live["lines"] += 1
         key = "ok" if r.status == "ok" else ("mismatch" if r.status == "price_mismatch" else "unresolved")
         self._live[key] += 1
@@ -1171,8 +1195,8 @@ class ObxValidationPage(BasePage):
         self._set_metric("elapsed", self._format_duration(int(self._validation_elapsed_seconds)))
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._export_btn.setEnabled(True)
-        self._failed_export_btn.setEnabled(True)
+        self._individual_export_action.setEnabled(True)
+        self._set_failed_export_actions_enabled(True)
         if self._pending_lines:
             self._start_validation(self._pending_lines, fresh=False)
         else:
@@ -1232,9 +1256,9 @@ class ObxValidationPage(BasePage):
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
         self._set_table_filter("all")
-        self._export_btn.setEnabled(False)
-        self._duplicate_export_btn.setEnabled(bool(self._lines))
-        self._failed_export_btn.setEnabled(False)
+        self._individual_export_action.setEnabled(False)
+        self._duplicate_export_action.setEnabled(bool(self._lines))
+        self._set_failed_export_actions_enabled(False)
         self._pause_btn.setEnabled(False)
         self._pause_btn.setText("Pause Validation")
         self._cancel_btn.setEnabled(False)
