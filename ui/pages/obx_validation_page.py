@@ -391,11 +391,9 @@ class ObxValidationPage(BasePage):
             ("mismatch", "Price mismatch"), ("unresolved", "Unresolved"), ("skipped", "Skipped"),
             ("duplicate", "Duplicate"), ("elapsed", "Elapsed"), ("eta", "ETA"),
             ("speed", "Speed"), ("site", "PDM site"), ("recovery", "Recovery"),
-            ("unique", "Unique"),
         ]
         filter_keys = {"completed": "all", "matched": "matched", "mismatch": "price_mismatch",
-                       "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate",
-                       "unique": "unique"}
+                       "unresolved": "unresolved", "skipped": "skipped", "duplicate": "duplicate"}
         # Counters are rendered as equal-width cards. This avoids text-based
         # alignment drift and makes the clickable filters visually discoverable.
         grid = QGridLayout()
@@ -409,7 +407,6 @@ class ObxValidationPage(BasePage):
             "unresolved": ("#FFF7ED", "#FED7AA", "#C2410C"),
             "skipped": ("#F8FAFC", "#CBD5E1", "#475569"),
             "duplicate": ("#F5F3FF", "#DDD6FE", "#6D28D9"),
-            "unique": ("#ECFEFF", "#A5F3FC", "#0E7490"),
         }
         neutral_card_style = (
             "QPushButton { text-align: left; padding: 6px 9px; "
@@ -964,12 +961,11 @@ class ObxValidationPage(BasePage):
         self._progress_bar.setValue(0)
         self._progress_percent.setText("0%")
         self._recovery_attempt = 0
-        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site", "unique"):
+        for key in ("completed", "matched", "mismatch", "unresolved", "elapsed", "eta", "speed", "site"):
             self._set_metric(key, "0" if key in {"completed", "matched", "mismatch", "unresolved"} else "-")
         self._set_metric("completed", f"0/{len(self._lines)}")
         self._set_metric("skipped", str(self._skipped_count))
         self._set_metric("duplicate", str(self._duplicate_count))
-        self._set_metric("unique", str(max(0, len(self._lines) - self._duplicate_count)))
         self._set_metric("recovery", "0")
         self._set_table_filter("all")
         self._individual_export_action.setEnabled(False)
