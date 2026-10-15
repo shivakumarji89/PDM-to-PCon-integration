@@ -32,7 +32,7 @@ class MetatypeCreationPage(BasePage):
         super().__init__(
             title="Create Metatype",
             description="Polymorphic Metatype first: select a series from the HMX repository, load its data, "
-                        "then name the property and answer the article questions. Nothing is written to the repository.",
+                        "then name the property and answer the article questions. Loading is read-only; only the explicit Start Metatype from Scratch action copies bundled templates.",
             parent=parent,
             show_placeholder=False,
             content_stretch=True,
@@ -75,7 +75,7 @@ class MetatypeCreationPage(BasePage):
         self.status_output.setObjectName("metatypeStageStatus")
         self.status_output.setReadOnly(True)
         self.status_output.setMaximumHeight(170)
-        self.status_output.setPlaceholderText("Select a series and choose Load Series.")
+        self.status_output.setPlaceholderText("Select a series and choose Load Series, or explicitly start a new series from scratch.")
         layout.addWidget(self.status_output)
 
         self.workspace_stack = QStackedWidget(panel)
