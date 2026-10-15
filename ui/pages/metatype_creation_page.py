@@ -8,7 +8,7 @@ rules and are not exposed as controls here. All logic lives in ``MetatypeCreatio
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
+    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
@@ -338,6 +338,20 @@ class MetatypeCreationPage(BasePage):
         series = self.series_combo.currentData()
         if not series:
             return None
+        switching = bool(self._service.series and self._service.series != series
+                         and self._service.inspection is not None)
+        if switching:
+            answer = QMessageBox.question(
+                self, "Switch Metatype series",
+                f"Discard the current answers for '{self._service.series}' and load '{series}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                index = self.series_combo.findData(self._service.series)
+                if index >= 0:
+                    self.series_combo.setCurrentIndex(index)
+                return self._service.stage_status()
         self.findings_output.clear()
         for edit in (self.articles_edit, self.conditions_edit):
             edit.clear()
@@ -347,7 +361,8 @@ class MetatypeCreationPage(BasePage):
         self.validity_table.setRowCount(0)
         self.translation_table.setRowCount(0)
         self.spec_output.clear()
-        status = self._service.start(series)
+        status = (self._service.discard_and_start(series) if switching
+                  else self._service.start(series))
         self._show_status()
         return status
 
