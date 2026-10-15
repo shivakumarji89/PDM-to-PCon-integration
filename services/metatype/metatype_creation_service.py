@@ -58,7 +58,7 @@ from models.metatype_creation import (
     ValueValidityDraft,
     ValueValidityRow,
 )
-from models.metatype_pattern import MetatypePattern
+from models.metatype_pattern import MetatypePattern, PatternSelection, SelectionStatus
 from models.metatype_context import MetatypeCreationContext
 from models.metatype_series import SeriesInspection, SeriesStatus
 from models.metatype_tables import TableLoadState
@@ -283,7 +283,7 @@ class MetatypeCreationService(BaseService):
                 Severity.ERROR, "STEP3_REQUIRED",
                 "Confirm the property name and label (template Step 3) before answering Step 4.",
                 basis="template Step 3")])
-        pattern = self.context.metatype_pattern_service.selection_for(self.series)
+        pattern = self._pattern_selection()
         if pattern is None or pattern.pattern is not MetatypePattern.POLYMORPHISM:
             return BranchResult(False, [Finding(
                 Severity.ERROR, "PATTERN_NOT_POLYMORPHISM",
