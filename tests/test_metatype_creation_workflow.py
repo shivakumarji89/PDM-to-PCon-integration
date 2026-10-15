@@ -60,9 +60,24 @@ def context(root):
 
 
 # runtime workflow registration: independent of PDM ----------------------------------------------------------
-def test_metatype_module_is_the_creation_workflow_without_a_product_step():
-    assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.METATYPE_CREATION,)
-    assert WorkflowStep.METATYPE_CREATION in {item.step for item in WORKFLOW_ITEMS}
+def test_metatype_module_exposes_all_seven_stages_without_a_product_step():
+    steps = module_workflows(WorkbenchModule.METATYPE)
+    assert steps == (
+        WorkflowStep.METATYPE_CREATION,
+        WorkflowStep.METATYPE_ARTICLES,
+        WorkflowStep.METATYPE_PROPERTIES,
+        WorkflowStep.METATYPE_VALUES,
+        WorkflowStep.METATYPE_TEXTS,
+        WorkflowStep.METATYPE_SETUP,
+        WorkflowStep.METATYPE_RELATIONS,
+        WorkflowStep.METATYPE_REVIEW,
+    )
+    items = {item.step: item for item in WORKFLOW_ITEMS}
+    assert all(step in items for step in steps)
+    assert [items[step].title for step in steps[1:]] == [
+        "Articles", "Properties", "Property Values", "Texts",
+        "Setup", "Relations / Ordering", "Final Review",
+    ]
 
 
 def test_no_pdm_product_or_scan_is_needed(root, context):
