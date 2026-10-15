@@ -125,7 +125,6 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     # repository-analysis page remains registered as a development diagnostic but is not part of the
     # runtime creation workflow.
     WorkbenchModule.METATYPE: (
-        WorkflowStep.METATYPE_CREATION,
         WorkflowStep.METATYPE_ARTICLES,
         WorkflowStep.METATYPE_PROPERTIES,
         WorkflowStep.METATYPE_VALUES,
