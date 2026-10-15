@@ -168,7 +168,7 @@ def test_changed_step3_label_makes_translations_stale(ready):
 
 def test_dropping_4a_by_changing_step4_blocks_step5(ready):
     ready.submit_translations(full_rows())
-    ready.submit_polymorphism_branch(ARTS, "unconditional", [], False)
+    ready.submit_polymorphism_branch(["UPXSGA"], "unconditional", [], False)
     assert ready.stage_status().steps[5].detail == "Answer Step 4a first."
 
 
