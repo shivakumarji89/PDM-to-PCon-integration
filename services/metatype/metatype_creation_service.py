@@ -426,20 +426,21 @@ class MetatypeCreationService(BaseService):
         if self.inspection is None:
             return None, [Finding(Severity.ERROR, "SPEC_STEP_INCOMPLETE", "No series has been loaded.",
                                   basis=SPEC_BASIS)]
-        open_steps = [s for s in self._core_steps() if s.state is not StepState.DONE]
+        identity, branch, validity, translations = self.identity, self.branch, self.validity, self.translations
+        if identity is not None:
+            for answer, label in ((branch, "Step 4"), (validity, "Step 4a")):
+                if answer is not None and answer.property_name != identity.name:
+                    problems.append(Finding(Severity.ERROR, "SPEC_PROPERTY_CHANGED",
+                                            f"Step 3 now names {identity.name}, but {label} was answered for "
+                                            f"{answer.property_name}; review {label}.", basis=SPEC_BASIS))
+        if problems:
+            return None, problems
+        open_steps = [step for step in self._core_steps() if step.state is not StepState.DONE]
         for step in open_steps:
             problems.append(Finding(Severity.ERROR, "SPEC_STEP_INCOMPLETE",
-                                    f"Step {step.key} ({step.title}) is not complete: {step.detail or step.state.value}",
-                                    basis=SPEC_BASIS))
+                                    f"Step {step.key} ({step.title}) is not complete: "
+                                    f"{step.detail or step.state.value}", basis=SPEC_BASIS))
         if open_steps:
-            return None, problems
-        identity, branch, validity, translations = self.identity, self.branch, self.validity, self.translations
-        for name, label in ((branch.property_name, "Step 4"), (validity.property_name, "Step 4a")):
-            if name != identity.name:
-                problems.append(Finding(Severity.ERROR, "SPEC_PROPERTY_CHANGED",
-                                        f"Step 3 now names {identity.name}, but {label} was answered for {name}; "
-                                        f"review {label}.", basis=SPEC_BASIS))
-        if problems:
             return None, problems
         return build_summary(identity, branch, validity, translations), []
 
