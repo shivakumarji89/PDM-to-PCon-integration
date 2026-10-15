@@ -50,6 +50,15 @@ def test_module_workflow_mapping_uses_existing_workflows():
     )
     assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.METATYPE_CREATION,)
     assert module_workflows(WorkbenchModule.OAP) == (WorkflowStep.PRODUCT,)
+    assert module_workflows(WorkbenchModule.METATYPE) == (
+        WorkflowStep.METATYPE_ARTICLES,
+        WorkflowStep.METATYPE_PROPERTIES,
+        WorkflowStep.METATYPE_VALUES,
+        WorkflowStep.METATYPE_TEXTS,
+        WorkflowStep.METATYPE_SETUP,
+        WorkflowStep.METATYPE_RELATIONS,
+        WorkflowStep.METATYPE_REVIEW,
+    )
 
 
 # Bulk Update intentionally exposes the existing Maintenance workflow.
