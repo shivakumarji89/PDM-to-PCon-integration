@@ -140,8 +140,8 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("Ready - Article OBX Generator workspace")
         elif step == WorkflowStep.METATYPE_REPOSITORY_ANALYSIS:
             self.statusBar().showMessage("Ready - Repository Analysis workspace")
-        elif step == WorkflowStep.METATYPE_CREATION:
-            self.statusBar().showMessage("Ready - Create Metatype workspace")
+        elif step in metatype_steps:
+            self.statusBar().showMessage(f"Ready - {title} workspace (HMX repository)")
         elif step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
             self.statusBar().showMessage(
                 f"{title} - load a product on the Product page first"
