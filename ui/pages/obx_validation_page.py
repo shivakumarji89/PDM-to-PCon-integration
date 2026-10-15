@@ -801,7 +801,13 @@ class ObxValidationPage(BasePage):
     def _on_worker_finished(self, payload) -> None:
         sites, _results = payload
         self._dispatch_sites.update(sites or {})
-        self._dispatch_workers = max(0, self._dispatch_workers - 1)
+        # Test doubles and older worker hosts may not initialise the counter.
+        # Treat an unknown counter as one terminal worker rather than comparing
+        # a MagicMock (or another non-integer) with an integer.
+        workers = self._dispatch_workers
+        if not isinstance(workers, int):
+            workers = 1
+        self._dispatch_workers = max(0, workers - 1)
         if self._active_control is None:
             return
         if self._pause_finalization_pending:
@@ -1017,7 +1023,12 @@ class ObxValidationPage(BasePage):
         self._individual_export_action.setEnabled(False)
 
     def _completed_text(self) -> str:
-        """Show completed source rows against all loaded source rows."""
+        """Show unique work while dispatch is active, then all source rows at completion."""
+        if self._active_control is not None:
+            total = getattr(self, "_unique_total", None)
+            done = getattr(self, "_unique_done", None)
+            if isinstance(total, int) and isinstance(done, int):
+                return f"{done}/{total} unique"
         return f"{len(self._results)}/{len(self._lines)}"
 
     def _on_unique_result(self, result) -> None:
