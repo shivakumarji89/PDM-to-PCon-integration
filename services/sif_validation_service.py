@@ -1332,11 +1332,27 @@ class SifValidationService(BaseService):
 
         with open(path, "w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow([
-                "SKU", "Category (PLC)", f"PDM List Price ({currency})",
-                f"{source_label} List Price ({currency})", f"{source_label} Qty", "Result"])
-            for r in results:
+            if source_label.upper() == "OBX":
+                # A consolidated OBX report can contain several currencies.
+                # Keep Currency beside SKU and avoid misleading single-currency
+                # price headers based on whichever file happened to load first.
                 writer.writerow([
-                    r.sku, r.plc,
-                    "" if r.pdm_price is None else f"{r.pdm_price:.2f}",
-                    f"{r.sif_price:.2f}", r.qty, r.result])
+                    "SKU", "Currency", "Category (PLC)", "PDM List Price",
+                    "OBX List Price", "OBX Qty", "Result",
+                ])
+                for r in results:
+                    writer.writerow([
+                        r.sku, getattr(r, "currency", "") or "", r.plc,
+                        "" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+                        f"{r.sif_price:.2f}", r.qty, r.result,
+                    ])
+            else:
+                # Preserve the existing SIF report format.
+                writer.writerow([
+                    "SKU", "Category (PLC)", f"PDM List Price ({currency})",
+                    f"{source_label} List Price ({currency})", f"{source_label} Qty", "Result"])
+                for r in results:
+                    writer.writerow([
+                        r.sku, r.plc,
+                        "" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+                        f"{r.sif_price:.2f}", r.qty, r.result])
