@@ -272,6 +272,24 @@ class MetatypeCreationPage(BasePage):
         self.add_content(panel)
         self.refresh()
 
+    # -- workflow-panel integration ---------------------------------------------------------------------------
+    def select_workflow_stage(self, step) -> None:
+        """Select the tab associated with a left-panel Metatype workflow stage."""
+        from core.enums import WorkflowStep
+
+        indexes = {
+            WorkflowStep.METATYPE_CREATION: 1,
+            WorkflowStep.METATYPE_ARTICLES: 0,
+            WorkflowStep.METATYPE_PROPERTIES: 1,
+            WorkflowStep.METATYPE_VALUES: 2,
+            WorkflowStep.METATYPE_TEXTS: 3,
+            WorkflowStep.METATYPE_SETUP: 4,
+            WorkflowStep.METATYPE_RELATIONS: 5,
+            WorkflowStep.METATYPE_REVIEW: 6,
+        }
+        if step in indexes:
+            self.workspace_tabs.setCurrentIndex(indexes[step])
+
     # -- workspace lifecycle ------------------------------------------------------------------------------------
     def refresh(self) -> None:
         """Reload the series list and show the workflow state kept in the session (no repository scan)."""
