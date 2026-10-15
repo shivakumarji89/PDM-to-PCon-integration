@@ -59,6 +59,7 @@ from models.metatype_creation import (
     ValueValidityRow,
 )
 from models.metatype_pattern import MetatypePattern
+from models.metatype_context import MetatypeCreationContext
 from models.metatype_series import SeriesInspection, SeriesStatus
 from models.metatype_tables import TableLoadState
 from services.base_service import BaseService
@@ -99,8 +100,20 @@ class MetatypeCreationService(BaseService):
     """Drive and gate the polymorphic Metatype stage."""
 
     # -- state ---------------------------------------------------------------------------------------------
-    def _state(self) -> dict[str, object]:
-        return self.context.workflow_session(_SESSION_KEY)
+    def _state(self) -> MetatypeCreationContext:
+        session = self.context.workflow_session(_SESSION_KEY)
+        value = session.get("context")
+        if value is None:
+            context = MetatypeCreationContext()
+            for key in MetatypeCreationContext._FIELDS:
+                if key in session:
+                    context[key] = session[key]
+            session.clear()
+            session["context"] = context
+            return context
+        if not isinstance(value, MetatypeCreationContext):
+            raise TypeError("metatype.creation context has an unexpected type")
+        return value
 
     @property
     def series(self) -> str:
