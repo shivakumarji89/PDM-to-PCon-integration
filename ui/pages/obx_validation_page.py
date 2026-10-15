@@ -806,7 +806,13 @@ class ObxValidationPage(BasePage):
         # a MagicMock (or another non-integer) with an integer.
         workers = self._dispatch_workers
         if not isinstance(workers, int):
-            workers = 1
+            # Compatibility path for older worker hosts/test doubles without
+            # a dispatch counter: expand this worker's remainder immediately.
+            completed_seqs = {getattr(result, "seq", None) for result in self._results}
+            self._pending_lines = self._context.obx_validation_service.expand_pending(
+                list(remaining_lines or []), self._lines, completed_seqs)
+            self._is_paused = True
+            return
         self._dispatch_workers = max(0, workers - 1)
         if self._active_control is None:
             return
