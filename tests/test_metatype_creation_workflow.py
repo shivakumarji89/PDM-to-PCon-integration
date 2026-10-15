@@ -180,7 +180,7 @@ def test_identity_without_a_loaded_series_or_pattern_is_rejected(root, context):
     assert not result.accepted and result.errors[0].code == "SERIES_NOT_LOADED"
     build(root)
     service.start("atlas")
-    context.metatype_pattern_service.context.workflow_session("metatype.pattern_selection").clear()
+    service._state().pattern_selection = None
     result = service.submit_property_identity("GATLAS_X", "X")
     assert not result.accepted and result.errors[0].code == "PATTERN_NOT_SELECTED"
 
