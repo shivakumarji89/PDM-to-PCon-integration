@@ -291,6 +291,11 @@ def test_creation_page_flow(root, context):
     page = MetatypeCreationPage(context)
     assert [page.series_combo.itemText(i) for i in range(page.series_combo.count())] == [
         "atlas", "comma (no Metatype data)"]
+    assert page.workspace_tabs.count() == 7
+    assert [page.workspace_tabs.tabText(i) for i in range(page.workspace_tabs.count())] == [
+        "Articles", "Properties", "Property Values", "Texts", "Setup", "Relations / Ordering", "Final Review"]
+    assert page.findChild(object, "metatypeSetupPlaceholder") is not None
+    assert page.findChild(object, "metatypeRelationsPlaceholder") is not None
     assert not page.findChild(object, "metatypeScanButton")                  # no investigation controls
     assert not page._identity_group.isEnabled() and not page.children_button.isEnabled()
 
