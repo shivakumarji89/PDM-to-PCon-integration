@@ -146,8 +146,8 @@ def test_step4_needs_a_loaded_series_and_confirmed_step3(root, context):
 
 
 def test_step4_is_only_the_polymorphism_branch(ready, context):
-    context.workflow_session("metatype.pattern_selection")["selection"] = (
-        context.metatype_pattern_service.select_pattern("atlas", MetatypePattern.WITH_CHILDS).selection)
+    ready._state().pattern_selection = context.metatype_pattern_service.select_pattern(
+        "atlas", MetatypePattern.WITH_CHILDS).selection
     result = ready.submit_polymorphism_branch(["UPXSGA", "UPXSAA"], "unconditional", [], True)
     assert not result.accepted and result.errors[0].code == "PATTERN_NOT_POLYMORPHISM"
 
@@ -206,7 +206,7 @@ def test_step4_state_lives_in_the_workflow_session_and_survives_new_lookups(read
     ready.submit_polymorphism_branch(["UPXSGA", "UPXSAA"], "scoped", ["GRegion == @EU"], True)
     again = ApplicationContext.get_service(context, type(ready))
     assert again.branch.scope_conditions == ["GRegion == @EU"]
-    assert context.workflow_session("metatype.creation")["branch"] is ready.branch
+    assert context.workflow_session("metatype.creation")["context"].branch is ready.branch
 
 
 def test_loading_another_series_resets_step4_and_changing_step3_flags_it(root, context, ready):
@@ -216,6 +216,8 @@ def test_loading_another_series_resets_step4_and_changing_step3_flags_it(root, c
     assert ready.branch.property_name == "GATLAS_Surface"                        # answer kept, not silently rewritten
     build(root, "pullman")
     ready.start("pullman")
+    assert ready.branch is not None and ready._state().pending_series == "pullman"
+    ready.discard_and_start("pullman")
     assert ready.branch is None and ready.identity is None
 
 
