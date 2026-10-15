@@ -5,7 +5,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from core.application_context import ApplicationContext
 from core.config import AppConfig
 from models.metatype_context import MetatypeCreationContext
-from models.metatype_creation import TranslationKind, TranslationRow
 from tests.test_metatype_creation_workflow import build
 
 
@@ -13,7 +12,7 @@ def make_context(root):
     return ApplicationContext(AppConfig(metatype_repository_root=str(root)))
 
 
-def test_creation_session_contains_one_typed_context(root=None):
+def test_creation_session_contains_one_typed_context():
     from pathlib import Path
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
