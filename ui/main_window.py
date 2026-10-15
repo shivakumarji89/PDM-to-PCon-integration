@@ -117,6 +117,20 @@ class MainWindow(QMainWindow):
 
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
+        metatype_steps = {
+            WorkflowStep.METATYPE_CREATION,
+            WorkflowStep.METATYPE_ARTICLES,
+            WorkflowStep.METATYPE_PROPERTIES,
+            WorkflowStep.METATYPE_VALUES,
+            WorkflowStep.METATYPE_TEXTS,
+            WorkflowStep.METATYPE_SETUP,
+            WorkflowStep.METATYPE_RELATIONS,
+            WorkflowStep.METATYPE_REVIEW,
+        }
+        if step in metatype_steps:
+            page = self._pages.get(WorkflowStep.METATYPE_CREATION)
+            if page is not None:
+                page.select_workflow_stage(step)
         if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
             if self._context.ensure_qa_snapshot() is None:
                 self.statusBar().showMessage(
@@ -308,8 +322,26 @@ class MainWindow(QMainWindow):
         }
 
         self._refreshable_pages: list[BasePage] = []
+        metatype_steps = {
+            WorkflowStep.METATYPE_CREATION,
+            WorkflowStep.METATYPE_ARTICLES,
+            WorkflowStep.METATYPE_PROPERTIES,
+            WorkflowStep.METATYPE_VALUES,
+            WorkflowStep.METATYPE_TEXTS,
+            WorkflowStep.METATYPE_SETUP,
+            WorkflowStep.METATYPE_RELATIONS,
+            WorkflowStep.METATYPE_REVIEW,
+        }
+        metatype_page = None
         for item in WORKFLOW_ITEMS:
-            page = constructors[item.step](self._context, self)
+            if item.step in metatype_steps:
+                if metatype_page is None:
+                    metatype_page = MetatypeCreationPage(self._context, self)
+                    self._stack.addWidget(metatype_page)
+                    self._refreshable_pages.append(metatype_page)
+                page = metatype_page
+            else:
+                page = constructors[item.step](self._context, self)
             if item.step == WorkflowStep.PRODUCT:
                 self._product_page = page
                 page.product_loaded.connect(self._on_product_loaded)
@@ -317,9 +349,10 @@ class MainWindow(QMainWindow):
                 page.snapshot_published.connect(self._on_snapshot_published)
                 page.engineering_ready.connect(self._on_engineering_ready)
                 page.load_complete.connect(self._on_load_complete)
-            elif hasattr(page, "refresh"):
+            elif hasattr(page, "refresh") and page not in self._refreshable_pages:
                 self._refreshable_pages.append(page)
-            self._stack.addWidget(page)
+            if item.step not in metatype_steps:
+                self._stack.addWidget(page)
             self._pages[item.step] = page
 
     def _build_central_layout(self) -> None:
