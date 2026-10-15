@@ -35,6 +35,13 @@ class WorkflowStep(Enum):
     METATYPE_REPOSITORY_ANALYSIS = "metatype_repository_analysis"
     #: Metatype module runtime workflow: guided creation, polymorphic stage first.
     METATYPE_CREATION = "metatype_creation"
+    METATYPE_ARTICLES = "metatype_articles"
+    METATYPE_PROPERTIES = "metatype_properties"
+    METATYPE_VALUES = "metatype_values"
+    METATYPE_TEXTS = "metatype_texts"
+    METATYPE_SETUP = "metatype_setup"
+    METATYPE_RELATIONS = "metatype_relations"
+    METATYPE_REVIEW = "metatype_review"
 
 
 class SnapshotStatus(Enum):
