@@ -175,9 +175,11 @@ def test_dropping_4a_by_changing_step4_blocks_step5(ready):
 def test_state_lives_in_the_session_and_resets_with_a_new_series(root, context, ready):
     ready.submit_translations(full_rows())
     assert ApplicationContext.get_service(context, type(ready)).translations.rows[1].de == "de"
-    assert context.workflow_session("metatype.creation")["translations"] is ready.translations
+    assert context.workflow_session("metatype.creation")["context"].translations is ready.translations
     build(root, "pullman")
     ready.start("pullman")
+    assert ready.translations is not None and ready._state().pending_series == "pullman"
+    ready.discard_and_start("pullman")
     assert ready.translations is None and ready.translation_draft is None
 
 
