@@ -395,6 +395,7 @@ class MetatypeCreationPage(BasePage):
         try:
             result = self._template_service.initialize(str(series))
         except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            self.status_output.setPlainText("Metatype initialization failed: " + str(exc) + "\nNo template files were copied.")
             QMessageBox.critical(self, "Metatype initialization failed", str(exc))
             return None
         if result.status == "existing":
@@ -403,6 +404,7 @@ class MetatypeCreationPage(BasePage):
             self.start_scratch_button.setEnabled(False)
             return self.load_series()
         if result.status != "initialized":
+            self.status_output.setPlainText(result.message)
             QMessageBox.warning(self, "Metatype initialization blocked", result.message)
             return result
         QMessageBox.information(
