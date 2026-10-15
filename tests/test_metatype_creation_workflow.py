@@ -340,10 +340,12 @@ def test_sidebar_progress_uses_stage_specific_readiness(root, context):
     app.processEvents()
 
 
-def test_creation_page_flow(root, context):
+def test_creation_page_flow(root, context, monkeypatch):
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QMessageBox
     from ui.pages.metatype_creation_page import MetatypeCreationPage
 
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
     app = QApplication.instance() or QApplication([])
     build(root, "atlas")
     build(root, "comma", with_schema=False)
