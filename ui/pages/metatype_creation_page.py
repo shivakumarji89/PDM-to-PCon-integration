@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -67,6 +67,29 @@ class MetatypeCreationPage(BasePage):
         self.status_output.setPlaceholderText("Select a series and choose Load Series.")
         layout.addWidget(self.status_output)
 
+        self.workspace_tabs = QTabWidget(panel)
+        self.workspace_tabs.setObjectName("metatypeWorkspaceTabs")
+        self.workspace_tabs.setDocumentMode(True)
+        self._workspace_pages = {}
+        self._workspace_layouts = {}
+        for title, key in (
+            ("Articles", "articles"),
+            ("Properties", "properties"),
+            ("Property Values", "values"),
+            ("Texts", "texts"),
+            ("Setup", "setup"),
+            ("Relations / Ordering", "relations"),
+            ("Final Review", "review"),
+        ):
+            page = QWidget(self.workspace_tabs)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(8, 8, 8, 8)
+            page_layout.setSpacing(8)
+            self.workspace_tabs.addTab(page, title)
+            self._workspace_pages[key] = page
+            self._workspace_layouts[key] = page_layout
+        layout.addWidget(self.workspace_tabs, 1)
+
         group = QGroupBox("Step 3 - Property name", panel)
         form = QFormLayout(group)
         self.name_edit = QLineEdit(group)
@@ -84,7 +107,7 @@ class MetatypeCreationPage(BasePage):
         form.addRow(self.confirm_button)
         group.setEnabled(False)
         self._identity_group = group
-        layout.addWidget(group)
+        self._workspace_layouts["properties"].addWidget(group)
 
         group4 = QGroupBox("Step 4 - Articles the property switches between", panel)
         form4 = QFormLayout(group4)
@@ -123,7 +146,7 @@ class MetatypeCreationPage(BasePage):
         form4.addRow(self.confirm_branch_button)
         group4.setEnabled(False)
         self._branch_group = group4
-        layout.addWidget(group4)
+        self._workspace_layouts["articles"].addWidget(group4)
 
         group4a = QGroupBox("Step 4a - Value validity per article", panel)
         form4a = QFormLayout(group4a)
@@ -168,7 +191,7 @@ class MetatypeCreationPage(BasePage):
         form4a.addRow(self.confirm_validity_button)
         group4a.setEnabled(False)
         self._validity_group = group4a
-        layout.addWidget(group4a)
+        self._workspace_layouts["values"].addWidget(group4a)
 
         group5 = QGroupBox("Step 5 - Translations (German, French, Dutch)", panel)
         form5 = QFormLayout(group5)
@@ -192,7 +215,7 @@ class MetatypeCreationPage(BasePage):
         form5.addRow(self.confirm_translations_button)
         group5.setEnabled(False)
         self._translation_group = group5
-        layout.addWidget(group5)
+        self._workspace_layouts["texts"].addWidget(group5)
 
         group6 = QGroupBox("Step 6 - Confirm the specification", panel)
         form6 = QFormLayout(group6)
@@ -215,7 +238,21 @@ class MetatypeCreationPage(BasePage):
         form6.addRow(self.confirm_spec_button)
         group6.setEnabled(False)
         self._spec_group = group6
-        layout.addWidget(group6)
+        self._workspace_layouts["review"].addWidget(group6)
+
+        setup_note = QLabel(
+            "Setup options are not yet implemented. No setup table is edited by this workflow.", panel)
+        setup_note.setWordWrap(True)
+        setup_note.setObjectName("metatypeSetupPlaceholder")
+        self._workspace_layouts["setup"].addWidget(setup_note)
+        relations_note = QLabel(
+            "Relations and ordering are not yet implemented. Relationship analysis is read-only; no ordering "
+            "numbers or relation rows are generated.", panel)
+        relations_note.setWordWrap(True)
+        relations_note.setObjectName("metatypeRelationsPlaceholder")
+        self._workspace_layouts["relations"].addWidget(relations_note)
+        for key in self._workspace_layouts:
+            self._workspace_layouts[key].addStretch(1)
 
         self.findings_output = QPlainTextEdit(panel)
         self.findings_output.setObjectName("metatypeFindings")
