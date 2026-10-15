@@ -390,7 +390,12 @@ def test_metatype_module_invokes_scanner_through_context(root):
     # The scanner is development-time backend logic: the runtime Metatype module offers the creation
     # workflow only, and repository analysis stays registered as a diagnostic page outside any module.
     assert WorkflowStep.METATYPE_REPOSITORY_ANALYSIS not in module_workflows(WorkbenchModule.METATYPE)
-    assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.METATYPE_CREATION,)
+    assert module_workflows(WorkbenchModule.METATYPE) == (
+        WorkflowStep.METATYPE_ARTICLES, WorkflowStep.METATYPE_PROPERTIES,
+        WorkflowStep.METATYPE_VALUES, WorkflowStep.METATYPE_TEXTS,
+        WorkflowStep.METATYPE_SETUP, WorkflowStep.METATYPE_RELATIONS,
+        WorkflowStep.METATYPE_REVIEW,
+    )
     assert WorkflowStep.METATYPE_REPOSITORY_ANALYSIS not in module_workflows(WorkbenchModule.DEVELOPMENT)
     service = context.metatype_repository_service
     assert service is context.get_service(MetatypeRepositoryService)
