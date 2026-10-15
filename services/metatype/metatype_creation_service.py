@@ -214,7 +214,6 @@ class MetatypeCreationService(BaseService):
         inspection = self.context.metatype_series_service.inspect_series(series, root=root, directory=directory)
         state.inspection = inspection
         if self._series_loaded():
-            from models.metatype_pattern import PatternSelectionResult
             warnings: list[str] = []
             if inspection.status.value == "insufficient":
                 warnings.append("Step 1 found no usable Metatype examples in the series or the reference series.")
@@ -230,6 +229,7 @@ class MetatypeCreationService(BaseService):
             state.pattern_status = SelectionStatus.SELECTED
             state.pattern_warnings = warnings
             state.known_articles = self._load_known_articles(inspection)
+            self.context.metatype_pattern_service.select_pattern(series, MetatypePattern.POLYMORPHISM)
         state.touch()
         return self.stage_status()
 
