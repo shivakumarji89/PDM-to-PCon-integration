@@ -265,6 +265,13 @@ class MetatypeCreationService(BaseService):
             inspection_inspected_at=inspection.inspected_at,
         )
         state.identity = identity
+        # Step 3 is an upstream dependency. Any prior branch, validity,
+        # translations, or final confirmation must be revalidated against it.
+        if existing is None or existing.name != identity.name or existing.label != identity.label:
+            state.branch = None
+            state.validity = None
+            state.translations = None
+            state.confirmation = None
         state.touch()
         return IdentityResult(True, findings, identity)
 
@@ -308,7 +315,10 @@ class MetatypeCreationService(BaseService):
                 and existing.every_article_accepts_every_value == branch.every_article_accepts_every_value):
             return BranchResult(True, findings, existing)
         state.branch = branch
+        # Step 4 changes invalidate every downstream answer, including Step 6.
         state.validity = None
+        state.translations = None
+        state.confirmation = None
         state.touch()
         return BranchResult(True, findings, branch)
 
@@ -344,6 +354,8 @@ class MetatypeCreationService(BaseService):
             branch_confirmed_at=branch.confirmed_at,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
         state.validity = validity
+        state.translations = None
+        state.confirmation = None
         state.touch()
         return ValidityResult(status, findings, validity)
 
