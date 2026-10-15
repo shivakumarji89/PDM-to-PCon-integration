@@ -156,7 +156,7 @@ def test_loading_another_series_resets_the_confirmation(root, context, ready):
     ready.confirm_specification()
     build(root, "pullman")
     status = ready.start("pullman")
-    assert ready.confirmation is not None and status.series == "atlas"
+    assert ready.confirmation is not None and status.series == "atlas" and ready._state().pending_series == "pullman"
     ready.discard_and_start("pullman")
     assert ready.confirmation is None and ready.specification_text() is None
 
