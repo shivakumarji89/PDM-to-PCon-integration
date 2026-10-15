@@ -502,7 +502,7 @@ class MetatypeCreationService(BaseService):
         else:
             notes = target.notes if target is not None else inspection.messages
             step1_detail = "; ".join(notes[:2]) or "The series could not be loaded."
-        pattern = self.context.metatype_pattern_service.selection_for(self.series)
+        pattern = self._pattern_selection()
         identity = self.identity
         branch = self.branch
         validity = self.validity
