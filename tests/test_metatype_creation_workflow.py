@@ -63,7 +63,6 @@ def context(root):
 def test_metatype_module_exposes_all_seven_stages_without_a_product_step():
     steps = module_workflows(WorkbenchModule.METATYPE)
     assert steps == (
-        WorkflowStep.METATYPE_CREATION,
         WorkflowStep.METATYPE_ARTICLES,
         WorkflowStep.METATYPE_PROPERTIES,
         WorkflowStep.METATYPE_VALUES,
@@ -74,7 +73,7 @@ def test_metatype_module_exposes_all_seven_stages_without_a_product_step():
     )
     items = {item.step: item for item in WORKFLOW_ITEMS}
     assert all(step in items for step in steps)
-    assert [items[step].title for step in steps[1:]] == [
+    assert [items[step].title for step in steps] == [
         "Articles", "Properties", "Property Values", "Texts",
         "Setup", "Relations / Ordering", "Final Review",
     ]
