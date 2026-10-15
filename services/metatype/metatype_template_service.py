@@ -57,9 +57,20 @@ class MetatypeTemplateService:
                 existing=tuple(str(p) for p in schemas),
                 message="Existing Metatype data found. Use the existing files; no templates copied.",
             )
+        target = numbered[0] if numbered else self.repository_root / series / "1"
+        # A non-empty data directory without its schema is a partial/inconsistent state.
+        # Do not merge a clean template set into it automatically.
+        if target.is_dir():
+            present = tuple(sorted(p.name for p in target.iterdir() if p.is_file() or p.is_symlink()))
+            if present:
+                return TemplateInitializationResult(
+                    "partial", series, str(target), existing=present,
+                    message="Partial Metatype directory detected. No files were changed. Existing entries: "
+                            + ", ".join(present),
+                )
         return TemplateInitializationResult(
-            "empty", series, str(numbered[0] if numbered else self.repository_root / series / "1"),
-            message="No Metatype schema found. Templates can be copied only after explicit confirmation.",
+            "empty", series, str(target),
+            message="No Metatype data found. Templates can be copied only after explicit confirmation.",
         )
 
     def initialize(self, series: str) -> TemplateInitializationResult:
