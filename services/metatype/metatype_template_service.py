@@ -49,35 +49,67 @@ class MetatypeTemplateService:
             key=lambda p: (int(p.name), p.name),
         )
 
+    def _template_names(self) -> tuple[str, ...]:
+        """Return safe, flat template filenames from the bundled archive."""
+        if not self.archive_path.is_file():
+            return ()
+        try:
+            with zipfile.ZipFile(self.archive_path, "r") as archive:
+                names: list[str] = []
+                for info in archive.infolist():
+                    if info.is_dir():
+                        continue
+                    parts = PurePosixPath(info.filename).parts
+                    if parts and parts[0] == "_emptyMT":
+                        parts = parts[1:]
+                    if not parts or any(part in {"", ".", ".."} for part in parts) or len(parts) != 1:
+                        return ()
+                    name = parts[0]
+                    if name.lower() in {"desktop.ini", "thumbs.db"}:
+                        continue
+                    names.append(name)
+                if SCHEMA_NAME not in names:
+                    return ()
+                return tuple(names)
+        except (zipfile.BadZipFile, OSError, EOFError, RuntimeError, NotImplementedError):
+            # Initialization will report archive errors after user confirmation.
+            return ()
+
     def inspect(self, series: str) -> TemplateInitializationResult:
         numbered = self.series_directories(series)
-        schemas = [d / SCHEMA_NAME for d in numbered if (d / SCHEMA_NAME).is_file()]
-        if schemas:
-            return TemplateInitializationResult(
-                "existing", series, str(schemas[0].parent),
-                existing=tuple(str(p) for p in schemas),
-                message="Existing Metatype data found. Use the existing files; no templates copied.",
-            )
+        template_names = self._template_names()
+        required = set(template_names)
+
+        # A directory is initialized only when every bundled template file exists.
+        if required:
+            for directory in numbered:
+                present = {p.name for p in directory.iterdir() if p.is_file() and not p.is_symlink()}
+                if required.issubset(present):
+                    return TemplateInitializationResult(
+                        "existing", series, str(directory),
+                        existing=tuple(sorted(required)),
+                        message="All bundled template files already exist. No files were changed.",
+                    )
+
         target = numbered[0] if numbered else self.repository_root / series / "1"
-        # A non-empty data directory without its schema is a partial/inconsistent state.
-        # Do not merge a clean template set into it automatically.
-        if target.is_dir():
-            present = tuple(sorted(p.name for p in target.iterdir() if p.is_file() or p.is_symlink()))
-            if present:
+        if required and target.is_dir():
+            present_names = {p.name for p in target.iterdir() if p.is_file() or p.is_symlink()}
+            conflicts = tuple(sorted(present_names.intersection(required)))
+            if conflicts:
                 return TemplateInitializationResult(
-                    "partial", series, str(target), existing=present,
-                    message="Partial Metatype directory detected. No files were changed. Existing entries: "
-                            + ", ".join(present),
+                    "conflict", series, str(target), existing=conflicts,
+                    message="Template files already exist. No files were changed. Conflicting template entries: "
+                            + ", ".join(conflicts),
                 )
         return TemplateInitializationResult(
             "empty", series, str(target),
-            message="No Metatype data found. Templates can be copied only after explicit confirmation.",
+            message="No conflicting template files found. Templates can be copied after explicit confirmation.",
         )
 
     def initialize(self, series: str) -> TemplateInitializationResult:
         """Copy every archive member into the selected series' data directory, refusing conflicts."""
         state = self.inspect(series)
-        if state.status in {"existing", "partial"}:
+        if state.status in {"existing", "conflict"}:
             return state
         if not self.archive_path.is_file():
             raise FileNotFoundError(f"Bundled Metatype templates are missing: {self.archive_path}")
