@@ -953,6 +953,10 @@ class ObxValidationPage(BasePage):
     def _on_paused(self, payload) -> None:
         sites, remaining_lines, reason = payload
         self._pause_finalization_pending = True
+        if not isinstance(self._paused_worker_sites, dict):
+            self._paused_worker_sites = {}
+        if not isinstance(self._paused_worker_remaining, list):
+            self._paused_worker_remaining = []
         self._paused_worker_sites.update(sites or {})
         self._paused_worker_remaining.extend(remaining_lines or [])
         workers = self._dispatch_workers
