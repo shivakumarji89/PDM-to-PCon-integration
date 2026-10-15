@@ -91,6 +91,13 @@ class WorkflowManager(QObject):
             # Scans the HMX filesystem repository; independent of any PDM product.
             WorkflowStep.METATYPE_REPOSITORY_ANALYSIS,
             WorkflowStep.METATYPE_CREATION,
+            WorkflowStep.METATYPE_ARTICLES,
+            WorkflowStep.METATYPE_PROPERTIES,
+            WorkflowStep.METATYPE_VALUES,
+            WorkflowStep.METATYPE_TEXTS,
+            WorkflowStep.METATYPE_SETUP,
+            WorkflowStep.METATYPE_RELATIONS,
+            WorkflowStep.METATYPE_REVIEW,
         }
 
         # Article OBX Generator works from the published repository snapshot,
