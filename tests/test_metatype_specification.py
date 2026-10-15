@@ -147,7 +147,7 @@ def test_rename_carried_only_into_step5_is_refused_as_property_changed(ready):
 
 def test_step4_change_drops_4a_and_step6_goes_back_to_pending(ready):
     ready.confirm_specification()
-    ready.submit_polymorphism_branch(ARTS, "unconditional", [], False)
+    ready.submit_polymorphism_branch(["UPXSGA"], "unconditional", [], False)
     assert not ready.confirmation_is_current()
     assert ready.stage_status().steps[6].detail == "Complete Steps 1-5 first."
 
