@@ -185,7 +185,7 @@ def test_export_rejects_direct_and_dotdot_paths_into_repository(scanned):
         root / "fam" / ".." / "fam" / "1" / "report.json",
         tmp / "elsewhere" / ".." / "hmx" / "report.json",
         root,
-        Path(str(root).upper()) / "report.json",     # case-insensitive filesystems
+        *([Path(str(root).upper()) / "report.json"] if os.name == "nt" else []),  # case-insensitive filesystems
     ):
         with pytest.raises(ValueError):
             MetatypeRepositoryService.export_json(result, bad)
