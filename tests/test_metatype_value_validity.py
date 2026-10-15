@@ -156,7 +156,7 @@ def test_state_lives_in_the_session(ready, context):
     ready.submit_value_validity(False, [row("1", "UPXSGA")])
     again = ApplicationContext.get_service(context, type(ready))
     assert again.validity.rows[0].value == "1"
-    assert context.workflow_session("metatype.creation")["validity"] is ready.validity
+    assert context.workflow_session("metatype.creation")["context"].validity is ready.validity
 
 
 def test_changing_step4_drops_the_confirmed_4a_but_keeps_the_draft(ready):
@@ -176,6 +176,8 @@ def test_loading_another_series_resets_4a(root, context, ready):
     ready.submit_value_validity(False, [row("1", "UPXSGA")])
     build(root, "pullman")
     ready.start("pullman")
+    assert ready.validity is not None and ready._state().pending_series == "pullman"
+    ready.discard_and_start("pullman")
     assert ready.validity is None and ready.validity_draft is None
 
 
