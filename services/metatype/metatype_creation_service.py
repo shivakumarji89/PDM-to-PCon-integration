@@ -268,11 +268,9 @@ class MetatypeCreationService(BaseService):
         # Step 3 is an upstream dependency. Any prior branch, validity,
         # translations, or final confirmation must be revalidated against it.
         if existing is None or existing.name != identity.name or existing.label != identity.label:
-            # Preserve the prior branch as an auditable draft. It is no longer
-            # current if its property name differs; downstream confirmations
-            # must be re-entered against the updated identity.
-            state.validity = None
-            state.translations = None
+            # Preserve downstream answers for audit/review. Their dependency
+            # checks will block the final specification if names or labels no
+            # longer agree; a changed Step 4 explicitly clears dependent steps.
             state.confirmation = None
         state.touch()
         return IdentityResult(True, findings, identity)
