@@ -327,15 +327,24 @@ class MetatypeCreationService(BaseService):
         status, findings, cleaned = validate_value_validity(
             accepts_full_value_set, rows, branch.articles, branch.every_article_accepts_every_value)
         state = self._state()
-        state["validity_draft"] = ValueValidityDraft(accepts_full_value_set, rows)
+        draft = ValueValidityDraft(accepts_full_value_set, rows)
+        if state.validity_draft != draft:
+            state.validity_draft = draft
+            state.touch()
         if status is not ValidityStatus.COMPLETE:
             return ValidityResult(status, findings)
+        existing = state.validity
+        if (existing is not None and existing.series == self.series and existing.property_name == branch.property_name
+                and existing.accepts_full_value_set == bool(accepts_full_value_set) and existing.rows == cleaned
+                and existing.articles == list(branch.articles) and existing.branch_confirmed_at == branch.confirmed_at):
+            return ValidityResult(status, findings, existing)
         validity = ValueValidity(
             series=self.series, property_name=branch.property_name,
             accepts_full_value_set=bool(accepts_full_value_set), rows=cleaned, articles=list(branch.articles),
             branch_confirmed_at=branch.confirmed_at,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        state["validity"] = validity
+        state.validity = validity
+        state.touch()
         return ValidityResult(status, findings, validity)
 
     # -- 5. translations ---------------------------------------------------------------------------------------
@@ -370,14 +379,22 @@ class MetatypeCreationService(BaseService):
         rows = list(rows)
         status, findings, cleaned = validate_translations(rows, expected)
         state = self._state()
-        state["translation_draft"] = TranslationDraft(rows)
+        draft = TranslationDraft(rows)
+        if state.translation_draft != draft:
+            state.translation_draft = draft
+            state.touch()
         if status is not ValidityStatus.COMPLETE:
             return TranslationResult(status, findings)
+        existing = state.translations
+        if (existing is not None and existing.series == self.series and existing.property_name == self.identity.name
+                and existing.rows == cleaned and existing.validity_confirmed_at == validity.confirmed_at):
+            return TranslationResult(status, findings, existing)
         translations = Translations(
             series=self.series, property_name=self.identity.name, rows=cleaned,
             validity_confirmed_at=validity.confirmed_at,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        state["translations"] = translations
+        state.translations = translations
+        state.touch()
         return TranslationResult(status, findings, translations)
 
     def _translations_current(self) -> bool:
@@ -420,10 +437,16 @@ class MetatypeCreationService(BaseService):
         if text is None:
             invalid = any(f.code == "SPEC_PROPERTY_CHANGED" for f in problems)
             return SpecificationResult(ValidityStatus.INVALID if invalid else ValidityStatus.INCOMPLETE, problems)
+        state = self._state()
+        existing = state.confirmation
+        if (existing is not None and existing.series == self.series and existing.property_name == self.identity.name
+                and existing.summary_text == text):
+            return SpecificationResult(ValidityStatus.COMPLETE, [], text, existing)
         confirmation = ConfirmedSpecification(
             series=self.series, property_name=self.identity.name, summary_text=text,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        self._state()["confirmation"] = confirmation
+        state.confirmation = confirmation
+        state.touch()
         return SpecificationResult(ValidityStatus.COMPLETE, [], text, confirmation)
 
     def confirmation_is_current(self) -> bool:
