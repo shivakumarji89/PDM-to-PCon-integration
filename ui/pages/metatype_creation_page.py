@@ -329,6 +329,8 @@ class MetatypeCreationPage(BasePage):
             self.series_combo.setCurrentIndex(index)
         self.series_combo.blockSignals(False)
         self.load_button.setEnabled(self.series_combo.count() > 0)
+        self.load_button.setText(
+            "Reload Series (reset answers)" if self._service.inspection is not None else "Load Series")
         self._show_status()
         self._restore_validity_widgets()
         self._sync_translation_table()
@@ -340,6 +342,7 @@ class MetatypeCreationPage(BasePage):
             return None
         switching = bool(self._service.series and self._service.series != series
                          and self._service.inspection is not None)
+        reloading = bool(self._service.series == series and self._service.inspection is not None)
         if switching:
             answer = QMessageBox.question(
                 self, "Switch Metatype series",
@@ -361,8 +364,9 @@ class MetatypeCreationPage(BasePage):
         self.validity_table.setRowCount(0)
         self.translation_table.setRowCount(0)
         self.spec_output.clear()
-        status = (self._service.discard_and_start(series) if switching
+        status = (self._service.discard_and_start(series) if switching or reloading
                   else self._service.start(series))
+        self.load_button.setText("Reload Series (reset answers)")
         self._show_status()
         return status
 
