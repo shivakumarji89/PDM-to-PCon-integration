@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
-    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -67,9 +67,9 @@ class MetatypeCreationPage(BasePage):
         self.status_output.setPlaceholderText("Select a series and choose Load Series.")
         layout.addWidget(self.status_output)
 
-        self.workspace_tabs = QTabWidget(panel)
-        self.workspace_tabs.setObjectName("metatypeWorkspaceTabs")
-        self.workspace_tabs.setDocumentMode(True)
+        self.workspace_stack = QStackedWidget(panel)
+        self.workspace_stack.setObjectName("metatypeWorkspaceStack")
+        self.workspace_stack
         self._workspace_pages = {}
         self._workspace_layouts = {}
         for title, key in (
@@ -81,14 +81,14 @@ class MetatypeCreationPage(BasePage):
             ("Relations / Ordering", "relations"),
             ("Final Review", "review"),
         ):
-            page = QWidget(self.workspace_tabs)
+            page = QWidget(self.workspace_stack)
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(8, 8, 8, 8)
             page_layout.setSpacing(8)
-            self.workspace_tabs.addTab(page, title)
+            self.workspace_stack.addWidget(page)
             self._workspace_pages[key] = page
             self._workspace_layouts[key] = page_layout
-        layout.addWidget(self.workspace_tabs, 1)
+        layout.addWidget(self.workspace_stack, 1)
 
         group = QGroupBox("Step 3 - Property name", panel)
         form = QFormLayout(group)
@@ -274,7 +274,7 @@ class MetatypeCreationPage(BasePage):
 
     # -- workflow-panel integration ---------------------------------------------------------------------------
     def select_workflow_stage(self, step) -> None:
-        """Select the tab associated with a left-panel Metatype workflow stage."""
+        """Select the content page associated with a left-panel Metatype workflow stage."""
         from core.enums import WorkflowStep
 
         indexes = {
@@ -288,7 +288,7 @@ class MetatypeCreationPage(BasePage):
             WorkflowStep.METATYPE_REVIEW: 6,
         }
         if step in indexes:
-            self.workspace_tabs.setCurrentIndex(indexes[step])
+            self.workspace_stack.setCurrentIndex(indexes[step])
 
     # -- workspace lifecycle ------------------------------------------------------------------------------------
     def refresh(self) -> None:
