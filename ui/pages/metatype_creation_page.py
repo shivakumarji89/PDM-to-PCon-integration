@@ -7,8 +7,6 @@ rules and are not exposed as controls here. All logic lives in ``MetatypeCreatio
 """
 from __future__ import annotations
 
-import zipfile
-
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -394,7 +392,7 @@ class MetatypeCreationPage(BasePage):
             return None
         try:
             result = self._template_service.initialize(str(series))
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        except (OSError, ValueError) as exc:
             self.status_output.setPlainText("Metatype initialization failed: " + str(exc) + "\nNo template files were copied.")
             QMessageBox.critical(self, "Metatype initialization failed", str(exc))
             return None

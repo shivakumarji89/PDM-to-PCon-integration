@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import tempfile
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -76,7 +77,7 @@ class MetatypeTemplateService:
     def initialize(self, series: str) -> TemplateInitializationResult:
         """Copy every archive member into the selected series' data directory, refusing conflicts."""
         state = self.inspect(series)
-        if state.status == "existing":
+        if state.status in {"existing", "partial"}:
             return state
         if not self.archive_path.is_file():
             raise FileNotFoundError(f"Bundled Metatype templates are missing: {self.archive_path}")
@@ -90,6 +91,12 @@ class MetatypeTemplateService:
         if target.exists() and (target.is_symlink() or not target.is_dir()):
             raise ValueError("The Metatype target path is not a regular directory.")
 
+        try:
+            return self._extract(series, target)
+        except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as exc:
+            raise ValueError(f"Bundled Metatype template archive is corrupt or unreadable: {exc}") from exc
+
+    def _extract(self, series: str, target: Path) -> TemplateInitializationResult:
         with zipfile.ZipFile(self.archive_path, "r") as archive:
             members: list[tuple[zipfile.ZipInfo, str]] = []
             for info in archive.infolist():
