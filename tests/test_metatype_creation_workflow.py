@@ -305,9 +305,20 @@ def test_creation_page_flow(root, context):
     page = MetatypeCreationPage(context)
     assert [page.series_combo.itemText(i) for i in range(page.series_combo.count())] == [
         "atlas", "comma (no Metatype data)"]
-    assert page.workspace_tabs.count() == 7
-    assert [page.workspace_tabs.tabText(i) for i in range(page.workspace_tabs.count())] == [
-        "Articles", "Properties", "Property Values", "Texts", "Setup", "Relations / Ordering", "Final Review"]
+    assert page.workspace_stack.count() == 7
+    assert page.findChild(object, "metatypeWorkspaceTabs") is None
+    from core.enums import WorkflowStep
+    for step, index in (
+        (WorkflowStep.METATYPE_ARTICLES, 0),
+        (WorkflowStep.METATYPE_PROPERTIES, 1),
+        (WorkflowStep.METATYPE_VALUES, 2),
+        (WorkflowStep.METATYPE_TEXTS, 3),
+        (WorkflowStep.METATYPE_SETUP, 4),
+        (WorkflowStep.METATYPE_RELATIONS, 5),
+        (WorkflowStep.METATYPE_REVIEW, 6),
+    ):
+        page.select_workflow_stage(step)
+        assert page.workspace_stack.currentIndex() == index
     assert page.findChild(object, "metatypeSetupPlaceholder") is not None
     assert page.findChild(object, "metatypeRelationsPlaceholder") is not None
     assert not page.findChild(object, "metatypeScanButton")                  # no investigation controls
