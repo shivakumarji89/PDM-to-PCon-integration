@@ -49,7 +49,14 @@ class WorkspaceHost:
         self._current = step
 
     def is_ready(self, step: WorkflowStep) -> bool:
-        return bool(self._pages[step].is_ready())
+        page = self._pages[step]
+        # A single page can host multiple workflow stages (Metatype). Let it
+        # calculate readiness for the requested stage instead of applying the
+        # page-wide readiness to every navigator entry.
+        stage_readiness = getattr(page, "is_ready_for_step", None)
+        if callable(stage_readiness):
+            return bool(stage_readiness(step))
+        return bool(page.is_ready())
 
     def refresh(self, step: WorkflowStep) -> None:
         self._pages[step].refresh()
