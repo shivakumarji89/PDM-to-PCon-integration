@@ -7,6 +7,8 @@ rules and are not exposed as controls here. All logic lives in ``MetatypeCreatio
 """
 from __future__ import annotations
 
+import zipfile
+
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -20,6 +22,7 @@ from models.metatype_creation import (
 from services.metatype.value_validity import ALL_MARKER, parse_validity_cell
 from ui.components._styles import primary_button_qss, secondary_button_qss
 from ui.pages.base_page import BasePage
+from services.metatype.metatype_template_service import MetatypeTemplateService
 
 
 class MetatypeCreationPage(BasePage):
@@ -36,6 +39,7 @@ class MetatypeCreationPage(BasePage):
         )
         self._context = context
         self._service = context.metatype_creation_service
+        self._template_service = MetatypeTemplateService(self._service.root)
 
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
@@ -55,9 +59,16 @@ class MetatypeCreationPage(BasePage):
         self.load_button.setStyleSheet(primary_button_qss("metatypeLoadSeriesButton"))
         self.load_button.setToolTip("Read the selected series' existing Metatype data (read-only).")
         self.load_button.clicked.connect(self.load_series)
+        self.start_scratch_button = QPushButton("Start Metatype from Scratch", panel)
+        self.start_scratch_button.setObjectName("metatypeStartFromScratchButton")
+        self.start_scratch_button.setStyleSheet(secondary_button_qss("metatypeStartFromScratchButton"))
+        self.start_scratch_button.setToolTip("Copy the complete bundled template set into this series only when explicitly confirmed.")
+        self.start_scratch_button.clicked.connect(self.start_metatype_from_scratch)
+        self.series_combo.currentIndexChanged.connect(self._sync_template_action)
         row.addWidget(QLabel("Series:", panel))
         row.addWidget(self.series_combo, 1)
         row.addWidget(self.load_button)
+        row.addWidget(self.start_scratch_button)
         layout.addLayout(row)
 
         self.status_output = QPlainTextEdit(panel)
@@ -331,9 +342,72 @@ class MetatypeCreationPage(BasePage):
         self.load_button.setEnabled(self.series_combo.count() > 0)
         self.load_button.setText(
             "Reload Series (reset answers)" if self._service.inspection is not None else "Load Series")
+        self._sync_template_action()
         self._show_status()
         self._restore_validity_widgets()
         self._sync_translation_table()
+
+    def _sync_template_action(self, *_args) -> None:
+        """Offer template initialization only for a series without existing Metatype schema."""
+        series = self.series_combo.currentData()
+        enabled = False
+        if series:
+            try:
+                enabled = self._template_service.inspect(str(series)).status == "empty"
+            except (OSError, ValueError):
+                enabled = False
+        self.start_scratch_button.setEnabled(enabled)
+        self.load_button.setEnabled(bool(series) and not enabled)
+
+    def start_metatype_from_scratch(self):
+        """Explicitly initialize a selected series; existing series are always reused."""
+        series = self.series_combo.currentData()
+        if not series:
+            return None
+        try:
+            inspection = self._template_service.inspect(str(series))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Metatype templates", str(exc))
+            return None
+        if inspection.status == "existing":
+            QMessageBox.information(
+                self, "Existing Metatype found",
+                "This series already contains Metatype data. The existing files will be used; no templates were copied.",
+            )
+            self.start_scratch_button.setEnabled(False)
+            self.load_button.setEnabled(True)
+            return self.load_series()
+        answer = QMessageBox.question(
+            self, "Start Metatype from Scratch",
+            f"Copy the complete empty template set into this series?\n\nSeries: {series}\nTarget: {inspection.target}\n\n"
+            "No existing file will be overwritten. This only copies templates; it does not build the database.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return None
+        try:
+            result = self._template_service.initialize(str(series))
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            QMessageBox.critical(self, "Metatype initialization failed", str(exc))
+            return None
+        if result.status == "existing":
+            QMessageBox.information(self, "Existing Metatype found", result.message)
+            self.load_button.setEnabled(True)
+            self.start_scratch_button.setEnabled(False)
+            return self.load_series()
+        if result.status != "initialized":
+            QMessageBox.warning(self, "Metatype initialization blocked", result.message)
+            return result
+        QMessageBox.information(
+            self, "Metatype templates copied",
+            f"{result.message}\n\nTarget: {result.target}\n\nDatabase build was not started.",
+        )
+        self.refresh()
+        index = self.series_combo.findData(series)
+        if index >= 0:
+            self.series_combo.setCurrentIndex(index)
+        return self.load_series()
 
     # -- actions -----------------------------------------------------------------------------------------------------
     def load_series(self) -> PolymorphicStageStatus | None:
