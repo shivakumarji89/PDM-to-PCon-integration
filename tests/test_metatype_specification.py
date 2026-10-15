@@ -155,7 +155,9 @@ def test_step4_change_drops_4a_and_step6_goes_back_to_pending(ready):
 def test_loading_another_series_resets_the_confirmation(root, context, ready):
     ready.confirm_specification()
     build(root, "pullman")
-    ready.start("pullman")
+    status = ready.start("pullman")
+    assert ready.confirmation is not None and status.series == "atlas"
+    ready.discard_and_start("pullman")
     assert ready.confirmation is None and ready.specification_text() is None
 
 
@@ -181,7 +183,7 @@ def test_confirmation_writes_nothing_to_the_repository(root, ready):
 def test_state_lives_in_the_session(ready, context):
     ready.confirm_specification()
     assert ApplicationContext.get_service(context, type(ready)).confirmation_is_current()
-    assert context.workflow_session("metatype.creation")["confirmation"] is ready.confirmation
+    assert context.workflow_session("metatype.creation")["context"].confirmation is ready.confirmation
 
 
 # page -------------------------------------------------------------------------------------------------------------------------------------------
