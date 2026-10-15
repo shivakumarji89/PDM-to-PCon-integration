@@ -191,7 +191,10 @@ def test_choosing_another_series_resets_the_workflow(root, context):
     service = context.metatype_creation_service
     service.start("atlas")
     service.submit_property_identity("GATLAS_Surface", "Surface")
-    service.start("pullman")
+    status = service.start("pullman")
+    assert service.series == "atlas" and status.series == "atlas"
+    assert service._state().pending_series == "pullman"
+    service.discard_and_start("pullman")
     assert service.series == "pullman" and service.identity is None
 
 
