@@ -357,7 +357,7 @@ class MetatypeCreationPage(BasePage):
             except (OSError, ValueError):
                 enabled = False
         self.start_scratch_button.setEnabled(enabled)
-        self.load_button.setEnabled(bool(series) and not enabled)
+        self.load_button.setEnabled(bool(series))
 
     def start_metatype_from_scratch(self):
         """Explicitly initialize a selected series; existing series are always reused."""
@@ -377,6 +377,12 @@ class MetatypeCreationPage(BasePage):
             self.start_scratch_button.setEnabled(False)
             self.load_button.setEnabled(True)
             return self.load_series()
+        if inspection.status == "partial":
+            QMessageBox.warning(
+                self, "Partial Metatype data detected",
+                inspection.message + "\n\nInitialization is blocked to prevent mixing template files with existing data. Resolve the partial directory manually, then retry.",
+            )
+            return inspection
         answer = QMessageBox.question(
             self, "Start Metatype from Scratch",
             f"Copy the complete empty template set into this series?\n\nSeries: {series}\nTarget: {inspection.target}\n\n"
