@@ -38,6 +38,12 @@ from services.mdb_reverse_engineering_service import MdbReverseEngineeringServic
 from services.pdm_mdb_parity_service import PdmMdbParityService
 from services.maintenance_repository_link_service import MaintenanceRepositoryLinkService
 from services.distribution_region_service import DistributionRegionService
+from services.metatype.metatype_repository_service import MetatypeRepositoryService
+from services.metatype.metatype_relationship_service import MetatypeRelationshipService
+from services.metatype.metatype_table_loader_service import MetatypeTableLoaderService
+from services.metatype.metatype_series_service import MetatypeSeriesService
+from services.metatype.metatype_pattern_service import MetatypePatternService
+from services.metatype.metatype_creation_service import MetatypeCreationService
 from services.option_service import OptionService
 from services.option_value_service import OptionValueService
 from services.pdm_service import PDMService
@@ -107,6 +113,12 @@ class ApplicationContext:
             MdbReverseEngineeringService: MdbReverseEngineeringService,
             PdmMdbParityService: PdmMdbParityService,
             MaintenanceRepositoryLinkService: MaintenanceRepositoryLinkService,
+            MetatypeRepositoryService: MetatypeRepositoryService,
+            MetatypeTableLoaderService: MetatypeTableLoaderService,
+            MetatypeRelationshipService: MetatypeRelationshipService,
+            MetatypeSeriesService: MetatypeSeriesService,
+            MetatypePatternService: MetatypePatternService,
+            MetatypeCreationService: MetatypeCreationService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
             PropertyValueService: PropertyValueService,
@@ -338,6 +350,30 @@ class ApplicationContext:
     @property
     def maintenance_repository_link_service(self) -> MaintenanceRepositoryLinkService:
         return self.get_service(MaintenanceRepositoryLinkService)
+
+    @property
+    def metatype_repository_service(self) -> MetatypeRepositoryService:
+        return self.get_service(MetatypeRepositoryService)
+
+    @property
+    def metatype_table_loader_service(self) -> MetatypeTableLoaderService:
+        return self.get_service(MetatypeTableLoaderService)
+
+    @property
+    def metatype_relationship_service(self) -> MetatypeRelationshipService:
+        return self.get_service(MetatypeRelationshipService)
+
+    @property
+    def metatype_creation_service(self) -> MetatypeCreationService:
+        return self.get_service(MetatypeCreationService)
+
+    @property
+    def metatype_pattern_service(self) -> MetatypePatternService:
+        return self.get_service(MetatypePatternService)
+
+    @property
+    def metatype_series_service(self) -> MetatypeSeriesService:
+        return self.get_service(MetatypeSeriesService)
 
     @property
     def article_service(self) -> ArticleService:

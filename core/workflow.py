@@ -39,6 +39,11 @@ WORKFLOW_ITEMS: tuple[WorkflowItem, ...] = (
     WorkflowItem(WorkflowStep.ENGINEERING, "Engineering", "Read-only view of the engineering hierarchy."),
     WorkflowItem(WorkflowStep.MAINTENANCE, "Bulk Update",
                  "Run bulk maintenance operations on published product packages."),
+    # Metatype module: independent of the CET SIF feature flag below.
+    WorkflowItem(WorkflowStep.METATYPE_CREATION, "Create Metatype",
+                 "Create a polymorphic Metatype for a series in the HMX repository."),
+    WorkflowItem(WorkflowStep.METATYPE_REPOSITORY_ANALYSIS, "Repository Analysis",
+                 "Scan the HMX repository for Metatype data and build status (read-only)."),
 )
 
 # --- CET SIF Validation (self-contained, easily disconnectable) -------------

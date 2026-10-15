@@ -46,6 +46,8 @@ from ui.pages.maintenance_comparison_page import MaintenanceComparisonPage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
 from ui.pages.obx_validation_page import ObxValidationPage
 from ui.pages.article_obx_generator_page import ArticleObxGeneratorPage
+from ui.pages.metatype_repository_page import MetatypeRepositoryPage
+from ui.pages.metatype_creation_page import MetatypeCreationPage
 from ui.pages.module_home_page import ModuleHomePage
 from ui.pages.module_placeholder_page import ModulePlaceholderPage
 from workflow.host import WorkspaceHost
@@ -122,6 +124,10 @@ class MainWindow(QMainWindow):
                 )
             else:
                 self.statusBar().showMessage("Ready - Article OBX Generator workspace")
+        elif step == WorkflowStep.METATYPE_REPOSITORY_ANALYSIS:
+            self.statusBar().showMessage("Ready - Repository Analysis workspace")
+        elif step == WorkflowStep.METATYPE_CREATION:
+            self.statusBar().showMessage("Ready - Create Metatype workspace")
         elif step != WorkflowStep.PRODUCT and not self._product_page.is_snapshot_ready():
             self.statusBar().showMessage(
                 f"{title} - load a product on the Product page first"
@@ -297,6 +303,8 @@ class MainWindow(QMainWindow):
             WorkflowStep.CET_SIF_VALIDATION: CetSifValidationPage,
             WorkflowStep.OBX_VALIDATION: ObxValidationPage,
             WorkflowStep.ARTICLE_OBX_GENERATOR: ArticleObxGeneratorPage,
+            WorkflowStep.METATYPE_REPOSITORY_ANALYSIS: MetatypeRepositoryPage,
+            WorkflowStep.METATYPE_CREATION: MetatypeCreationPage,
         }
 
         self._refreshable_pages: list[BasePage] = []

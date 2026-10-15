@@ -121,8 +121,11 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.OBX_VALIDATION,
         WorkflowStep.CET_SIF_VALIDATION,
     ),
+    # Metatype works on the HMX repository, not on a PDM product, so it has no Product step. The
+    # repository-analysis page remains registered as a development diagnostic but is not part of the
+    # runtime creation workflow.
     WorkbenchModule.METATYPE: (
-        WorkflowStep.PRODUCT,
+        WorkflowStep.METATYPE_CREATION,
     ),
     WorkbenchModule.OAP: (
         WorkflowStep.PRODUCT,

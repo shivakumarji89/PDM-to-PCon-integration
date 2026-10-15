@@ -48,7 +48,7 @@ def test_module_workflow_mapping_uses_existing_workflows():
         WorkflowStep.OBX_VALIDATION,
         WorkflowStep.CET_SIF_VALIDATION,
     )
-    assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.PRODUCT,)
+    assert module_workflows(WorkbenchModule.METATYPE) == (WorkflowStep.METATYPE_CREATION,)
     assert module_workflows(WorkbenchModule.OAP) == (WorkflowStep.PRODUCT,)
 
 

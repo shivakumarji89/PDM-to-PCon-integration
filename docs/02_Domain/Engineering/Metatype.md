@@ -1,7 +1,10 @@
 # Metatype
 
 **Status:** Forensic investigation findings, consolidated from 8 prior investigation-session
-documents; workflow/design sections are PROPOSED and unimplemented unless stated otherwise.
+documents, **updated 2026-10-14** to reflect (a) the authoritative creation template, now located and
+read in full, (b) the corrected `Metatype_Requirements_Investigation.md`, and (c) the implemented
+read-only Steps 1-4 (Polymorphism branch) and the runtime creation page (§8.7). Findings in §2-§6 are as originally investigated unless marked
+"Update 2026-10-14". Anything not listed as implemented in §8.7 is design only.
 
 This document is a companion to, and does not duplicate, the OCD/XOCD/MDB/EBASE-focused
 `Article_Encoding` and repository docs elsewhere in `docs/02_Domain/` — it never mentions
@@ -17,6 +20,31 @@ this document so the strength of each claim stays visible):
 - **CODE FACT** — observed directly in this repo's `.py` files, file:line cited.
 - **INFERENCE** — logically derived, reasoning given.
 - **UNKNOWN** — gap explicitly flagged, not silently resolved.
+
+Status labels added 2026-10-14, used in §7-§10:
+- **IMPLEMENTED** — code exists in the working tree (uncommitted) and has automated tests that the
+  implementing sessions ran. These results were not independently re-verified by a second party.
+- **NOT IMPLEMENTED** — design or requirement only.
+- **OPEN DECISION** — the sources do not settle it; the project owner must decide. The code leaves the
+  behaviour unchanged rather than guessing.
+- **UNVERIFIED** — an observation that has not been checked against an authority.
+
+### Status at a glance (2026-10-14)
+
+| Area | Status |
+|---|---|
+| Template Step 1 (series conventions summary) | **IMPLEMENTED** — `SeriesInspector.inspect_series` |
+| Template Step 2 (choose pattern) | **IMPLEMENTED** — `MetatypePatternService.select_pattern` |
+| Template Step 3 (property name and English label) | **IMPLEMENTED** — `validate_property_identity`, `MetatypeCreationService.submit_property_identity` |
+| Template Step 4, Polymorphism branch (articles switched, unconditional/scoped, do all articles accept all values) | **IMPLEMENTED** — `validate_polymorphism_branch`, `MetatypeCreationService.submit_polymorphism_branch` (the Childs branch is not) |
+| Template Step 4a (value validity per article, value by value) | **IMPLEMENTED** — `validate_value_validity`, `MetatypeCreationService.submit_value_validity` |
+| Template Step 5 (translations DE, FR, NL) | **IMPLEMENTED** — `validate_translations`, `MetatypeCreationService.submit_translations` |
+| Template Step 6, first half (summary block and explicit confirmation) | **IMPLEMENTED** — `build_summary`, `MetatypeCreationService.specification_text` / `confirm_specification` |
+| Template Step 6, second half (implement after confirmation: edit the `go_*` files) | **NOT IMPLEMENTED** (stage step `6w`); child Metatypes stay locked |
+| Runtime Metatype module ("Create Metatype": pick a series, load, Step 3, completion gate) | **IMPLEMENTED** for the polymorphic stage up to the Step 6 confirmation; the gate stays closed (the writing half of Step 6), so **child Metatypes are not available** |
+| Build step (`ebmkdb.exe`; from the Verus prompt, not the template) | **NOT IMPLEMENTED**; whether it may run is an **OPEN DECISION** |
+| Read-only infrastructure: repository scanner, table loader, relationship resolver | **IMPLEMENTED** (resolver rules are **UNVERIFIED** against practice, §8.7) |
+| Open decisions | "few" examples threshold; meaning of `hmx/layout`; unprefixed `fn` property grouping; polymorphism encoding (mode bit 4); `go_texts` encoding; build-tool approval (§10) |
 
 **Sources originally read in full**, three parallel investigation legs:
 1. **Manual + process docs** — `MT_1.18.0_en.md` (OFML Metatype spec, v1.18.0, 3977 md lines /
@@ -34,6 +62,17 @@ this document so the strength of each claim stays visible):
    reprint `docs/04_Reference/pCon/Specifications/MT_1.18.0_en.md`). That handbook was treated as prior documentation
    to cross-check, not as ground truth — every claim below was independently re-derived from the
    manual/repository/code and labeled per the convention above.
+
+**Update 2026-10-14 — where the process sources live.** The original investigation read the process
+documents but they are not stored in this repository. They were located again and re-read in full:
+- `POLYMORPHIC_METATYPE_CREATION_TEMPLATE_04092026.md` — authoritative copy in the project's AI-prompts
+  folder, `C:\HermanMillerOFMLSVN\Staging\HermanMiller\AI\Prompts\Claude Code\`. Byte-identical copies
+  (MD5 `85378a9f…`) are in `C:\Users\siaoca\Downloads\` and `Downloads\Meta\`.
+- `Verus_Metatype_Prompt_TEST.md` — `C:\Users\siaoca\Downloads\` only; named TEST and not treated as canonical.
+- `Metatype-Inspector_3.0_History_EN.pdf` — `C:\Users\siaoca\Downloads\`; one page, "first official release".
+- `oap_metatype2type.csv` — live copies under `_repository\hmx\{layout_studio,oe1,symbol}\<region>\1\oap\`.
+- The original initiating prompts exist only as chat transcripts under
+  `C:\Users\siaoca\.claude\projects\c--01-Projects-MK-Product-Workbench\`.
 
 ---
 
@@ -78,14 +117,17 @@ AND a conditionally-attached `CH_Headrest` child) — see §6.
 
 This investigation covers the `go_*` table family (the OFML "Metatype" mechanism) exclusively: its
 physical file format, confirmed data relationships, the manual↔repository↔code concept mapping, a
-reconstructed creation workflow, a proposed (unimplemented) Python workflow, and a validation plan
-for that proposed workflow. It is a companion to — and does not duplicate — the existing
+reconstructed creation workflow, a Python workflow design (Steps 1-2 since implemented, §8.7), and a
+validation plan for that workflow. It is a companion to — and does not duplicate — the existing
 OCD/XOCD/MDB/EBASE-focused documentation elsewhere in `docs/02_Domain/` (Article Encoding,
 Property Model, Relation Model, Dependency Model, Repository/OBX docs), which never reference
 Metatype or any `go_*` table.
 
 **No production code was changed, no branch created, nothing committed** during the original
 investigation. It was read-only and evidence-only throughout.
+
+**Update 2026-10-14:** the read-only Metatype components described in §8.7 were implemented afterwards.
+They remain uncommitted. Nothing writes to the HMX repository or runs a build tool.
 
 ---
 
@@ -126,6 +168,14 @@ files, a family-specific `<family>.ebase`, and a `make_ebase.bat`. The other ~48
 files, `funcs.csv`, and an **empty** `attpt.csv` — zero `go_*.csv` files, no family `.ebase`, no
 build script. This means: geometry/CAD authoring exists for these ~48 families but the
 product-logic (Metatype) layer has not yet been authored for them in this snapshot.
+
+**Update 2026-10-14 — counts differ between methods (UNRESOLVED).** The implemented
+`MetatypeRepositoryScanner`, run read-only on the same root on 2026-10-14, reported 97 product-family
+entries: **49 built, 47 unbuilt, 1 uncertain**, plus 5 unclassified entries. Its rule is stricter and
+different from the count above (it requires `mt.inp_descr`, a non-empty compiled `.ebase`, populated
+`go_types`/`go_articles` and every declared table, and ignores timestamps). The original "53 built" counted
+folders with `go_*` files, a family `.ebase` and `make_ebase.bat`. The two figures have not been reconciled
+and the repository may also have changed since. Neither number is a statement that a `.ebase` is valid.
 
 Full per-family table (`go_count` = number of `go_*`-prefixed files present in `<family>/1/`,
 including `.bak`/variant files; `family_ebase` = 1 if `<family>/1/<family>.ebase` exists):
@@ -414,7 +464,8 @@ similarity alone. Source family unless noted: `cyclade_Tables/1` and `atlas/1`.
 ### 5.1 What exactly is a Metatype, and what is "Polymorphic Metatype"? (recap with mapping)
 
 See §1.1–1.2 for the concept definitions. The mapping below records status against the actual
-codebase.
+codebase **at the time of the original investigation**; the "Update 2026-10-14" table after it records what
+changed.
 
 ### 5.2 Manual concept → repository → code status table
 
@@ -434,6 +485,18 @@ codebase.
 | Build/compile step (mt.inp_descr → ebmkdb.exe → .ebase) | [MT §5, abstractly: "or file mt.ebase if compiled"] | mt.inp_descr, ebmkdb.exe, make_ebase.bat | — | Verus: `ebmkdb.exe mt.inp_descr verus.ebase` | none | **NOT FOUND** (not even documented precisely by the manual — recovered only from the repository + Verus prompt) |
 | MDB access (unrelated but adjacent) | n/a | n/a (go_* is pure CSV, never MDB) | — | — | `services/mdb_service.py` | **N/A to Metatype** — confirmed go_* has no MDB involvement anywhere sampled |
 | Canonical in-memory model | n/a | n/a | — | — | `models/snapshot.py` (extension target per prior canonical-model investigation) | **PARTIALLY FOUND** (right container, zero Metatype fields yet — §7.3b) |
+
+**Update 2026-10-14 — code representation now.** No `Snapshot` field or Metatype domain model for
+creation exists yet. Read-only code exists as follows; "raw" means values exactly as read from the CSV.
+
+| Concept | Current code | Status |
+|---|---|---|
+| Any declared `go_*` table | `MetatypeTableLoader.load_family` → `MetatypeFamilyTables` / `LoadedTable` (raw rows, per-table load state) | **IMPLEMENTED** (raw only) |
+| `go_types`, `go_propvalues`, `go_proporder`, `go_children` summaries | `SeriesInspector` → `SeriesInspection` / `SeriesConventions` (prefixes, formats, mode usage, evidence rows) | **IMPLEMENTED** |
+| FK chains and duplicate keys across tables | `MetatypeRelationshipResolver`, `relationship_specs.py` | **IMPLEMENTED**; rules **UNVERIFIED** against practice (§8.7) |
+| Pattern choice (polymorphism / with childs) | `MetatypePattern`, `MetatypePatternService` | **IMPLEMENTED** |
+| i18n `go_texts` | not read by any Metatype component except the loader's all-tables default; the inspector excludes it | **OPEN DECISION** (encoding, §10) |
+| Article polymorphism, attachment points, class mapping, setup flags, actions, build step | no code | **NOT IMPLEMENTED** |
 
 ### 5.3 Property formats (all DOCUMENTED FACT, [MT §go_types Format])
 
@@ -532,6 +595,20 @@ invocation.
    (`go_types`, `go_propvalues`, `go_proporder`, `go_children`, `go_actions`, `go_propclasses`,
    `go_properties`, `go_texts`, `go_setup`, `go_childprops`) is a currently-valid, non-obsolete
    table per the manual — no invented or incorrect table name was found in either process doc.
+9. **Update 2026-10-14 — polymorphism encoding vs real data (OPEN DECISION).** §1.2 and §5.4 describe
+   article polymorphism as a mode-4 property. The implemented Step 1 summary, run read-only over the 49
+   built families, found **no property with mode bit 4 set** in any of them (e.g. atlas `GATLAS_Type` is
+   131 = 1+2+128, the Verus prompt's `GVERUS_Type` is also 131). How polymorphic metatypes are actually
+   encoded is therefore not established. The code reports bits 4 and 8 separately and does not interpret
+   them.
+   **Trace of the evidence (2026-10-14):** MT_1.18.0 defines mode 4 only as "The property controls the
+   variant code" (line 857); it never calls bit 4 "article polymorphism" (the parenthetical in §5.4 is
+   this document's own gloss). The manual uses "polymorphic property" for ordinary properties of format
+   `ch` (lines 851, 962). In atlas, the property `GATLAS_Type` (mode 131) is the one that selects
+   the article: each `go_articles` row names a parameter set (`MT_ATLAS_Table__UPXSGA`, ...) and
+   `go_properties.csv` assigns `GATLAS_Type` a different value per set (41 rows). Whether bit 4 must
+   be set on a newly created polymorphic property is therefore **not settled by the sources**; the
+   implemented Step 3 does not generate or require a mode.
 
 ---
 
@@ -541,8 +618,16 @@ Built from three sources, each explicitly attributed: the manual's initializatio
 build-step facts (**DOCUMENTED FACT**), the interactive process
 (`POLYMORPHIC_METATYPE_CREATION_TEMPLATE_04092026.md`, **PROJECT PROCESS FACT**), and the fully
 worked Verus example (`Verus_Metatype_Prompt_TEST.md`, **PROJECT PROCESS FACT**, cited as
-"Verus"). This is a reconstruction of an existing manual process, not a proposal — no code has
-been written from it.
+"Verus"). This is a reconstruction of an existing manual process, not a proposal.
+
+**Update 2026-10-14 — checked against the template itself.** The template (authoritative copy: see the header update) is a prompt for an AI assistant working inside the series repository: one question per
+step, no file edits before Step 6 is confirmed. It has **six steps (1, 2, 3, 4 with 4a, 5, 6)**. The
+numbered list below keeps the earlier 7-step form, but note where each part really comes from:
+- Steps 1-6 and 4a: the template. Differences from the earlier wording are marked in each step.
+- STEP 7 (build): the **Verus prompt only**; the template has no build step.
+- The `go_texts.csv` file name, the ten-file list in STEP 6 and the "no underscores" rule come from the
+  Verus prompt, not the template.
+- Steps 1-2 are **IMPLEMENTED** (read-only); Steps 3 onward are **NOT IMPLEMENTED** (§8.7).
 
 ### STEP 1 — Read repo/series data first
 **Input:** target series name (e.g. `atlas`, `pullman`, `verus`).
@@ -550,14 +635,27 @@ been written from it.
 pattern/prefixes/mode conventions), `go_propvalues.csv` + `go_proporder.csv` (existing
 properties/value structure), `go_children.csv` (existing parent/child patterns), any prior
 in-series notes.
-**Repository data:** if the target series is sparse/unbuilt (48 of ~99 families are, per §2.2),
-fall back to a reference built series (`atlas`, `pullman`, `layout_studio` are named in
-POLY-TEMPLATE) for structural patterns — but adapt to the target series' own prefix, don't copy
-verbatim.
+**Repository data:** the template says that if the target series has "few or no existing Metatype
+examples" it should *also* check `hmx/atlas`, `hmx/pullman` and `hmx/layout` as structural references
+(naming conventions, `go_children.csv` conditional patterns, property/value setup), adapting to the
+target series' own prefix rather than copying. (The earlier wording named `layout_studio`; the template
+says `hmx/layout`, a family that does not exist in the current repository — **OPEN DECISION**.) What
+counts as "few" is not defined — **OPEN DECISION**. The template also asks to read in-series
+`docs/*.md` notes; none exist in the current HMX data.
 **Output:** a summary of the target series' existing conventions, presented to the user before
 proceeding.
 **Validation:** none automated; human confirmation that the summary is accurate.
 **Evidence:** [POLY-TEMPLATE Step 1].
+**Implementation status:** **IMPLEMENTED** — `services/metatype/series_inspector.py`
+(`SeriesInspector.inspect_series`), `services/metatype/metatype_series_service.py`
+(`MetatypeSeriesService`), `models/metatype_series.py`. Reads only `go_types`, `go_propvalues`,
+`go_proporder`, `go_children` through the table loader (it does not open `go_texts`), keeps the source
+row as evidence for each finding, records file size/mtime so a later check can tell whether the sources
+changed, and returns the result (session only; nothing is persisted). Reference series are consulted
+automatically only when the target defines no Metatype at all, or when named explicitly; `layout_studio`
+is not substituted for `hmx/layout`. Property names of format `na` (documented native wrappers, name =
+`G` + native name) are counted separately from series-prefixed names. Unprefixed non-`na` names
+(e.g. `fn`) stay in an "(no underscore)" group — grouping is an **OPEN DECISION**.
 
 ### STEP 2 — Choose pattern
 **Input:** user decision.
@@ -566,6 +664,15 @@ property, no parent/child structure — maps to manual's article polymorphism, m
 **Metatype with Childs** (parent metatype attaches/controls child articles — mode 8).
 **Output:** chosen pattern, drives STEP 4 branching.
 **Evidence:** [POLY-TEMPLATE Step 2]; manual basis in §5.1.
+**Note:** the template's own wording is only "article substitution driven by a property value" vs
+"a parent Metatype that attaches/controls child articles"; the mode 4 / mode 8 mapping above comes from
+the manual and project documentation, and the mode-4 part conflicts with real data (§6 item 9, **OPEN
+DECISION**).
+**Implementation status:** **IMPLEMENTED** — `services/metatype/metatype_pattern_service.py`
+(`MetatypePatternService.select_pattern`), `models/metatype_pattern.py`. Offers exactly the two
+template options with the template's wording, requires a Step 1 inspection of the same series in the
+session, warns (does not block) when Step 1 had no examples, used reference series only, or its source
+files changed, and keeps the choice in the session for Step 4. It is not mapped to modes or tables.
 
 ### STEP 3 — Property identity
 **Input:** user decision.
@@ -573,8 +680,11 @@ property, no parent/child structure — maps to manual's article polymorphism, m
 convention (e.g. `GATLAS_...`, `GPULLMAN_...`, `GVERUS_...`), (2) English display label.
 **Output:** property name + label, feeding go_types.name and go_texts rows.
 **Validation:** name must follow [MT §go_types Property Name] rules — `G`-prefix, each word
-capitalized, no umlauts/special chars/spaces (project convention additionally forbids
-underscores in the property name itself, §6 item 6).
+capitalized, no umlauts/special chars/spaces. (The Verus prompt additionally says "no underscores" for
+its `GHeightAdjustment` property, §6 item 6, while the template's own examples `GATLAS_…` /
+`GPULLMAN_…` contain an underscore after the series prefix; the scope of that rule is not established by
+the sources.)
+**Implementation status:** **IMPLEMENTED** — `services/metatype/property_identity.py` (`validate_property_identity`), `services/metatype/metatype_creation_service.py` (`MetatypeCreationService.submit_property_identity`), `models/metatype_creation.py`. Hard errors come only from the manual: the name starts with `G` + capital letter, ASCII letters/digits/underscore only (no umlauts, spaces or special characters), `GType` is reserved, and the label has no control characters; an empty name or label is also an error (template). Warnings, not errors: a prefix the series does not already use (template: "matching the series' existing prefix convention"), and a name the series already defines. Not enforced because no source makes them rules: "each word capitalised", the Verus "no underscores" rule, name length. Which metatype receives the property is not asked in Step 3, so the manual's one-entry-per-(metatype, property) rule is not applied (**OPEN**).
 **Evidence:** [POLY-TEMPLATE Step 3]; [MT §go_types Property Name].
 
 ### STEP 4 — Branch by pattern
@@ -589,6 +699,7 @@ positioning/offset behavior per child (only if user raises it, else reuse the se
 `go_children.csv` conditional pattern).
 **Output:** full value/article mapping table.
 **Evidence:** [POLY-TEMPLATE Step 4].
+**Implementation status (Polymorphism branch only):** **IMPLEMENTED** — `services/metatype/polymorphism_branch.py` (`validate_polymorphism_branch`), `MetatypeCreationService.submit_polymorphism_branch`, `models/metatype_creation.py` (`PolymorphismBranch`, `SwitchScope`, `ArticleRef`). It asks exactly the template's three questions: which articles the property switches between; unconditional or scoped (conditions kept as the user's text, not parsed); whether every listed article accepts every property value. The polymorphism branch does not ask for a value list (only the Childs branch does), so none is collected. Errors: no article, an article listed twice, no scope choice, scoped without conditions, unconditional with conditions, third question unanswered. Warnings: a single article, an article missing from the series' `go_articles` (read once through the table loader; the reserved `_native_` id is skipped). The "No exceptions" and "exceptions exist" answers are both stored; the value-by-value table of Step 4a is not collected. No mode bit, table row or file is derived; the mode encoding (§6 item 9) is carried as an explicit stage limitation. The Childs branch is **NOT IMPLEMENTED**. The state is kept in the workflow session; reloading a series resets it, and re-answering Step 3 afterwards only raises a warning.
 
 ### STEP 4a — Value-validity-per-article exceptions
 **Input:** STEP 4 output.
@@ -603,13 +714,19 @@ called out in the process doc itself, confirmed only by cross-referencing the ma
 an enable/default gate in `go_actions.csv`, which would make the default value unreachable in
 some article context. This is a known real bug class per the project doc, not a hypothetical.
 **Evidence:** [POLY-TEMPLATE Step 4a]; [MT §go_propvalues] (mode 8192 gate).
+**Implementation status (Polymorphism branch only):** **IMPLEMENTED** — `services/metatype/value_validity.py` (`validate_value_validity`, `parse_validity_cell`), `MetatypeCreationService.submit_value_validity`, `models/metatype_creation.py` (`ValueValidityRow`, `ValueValidityDraft`, `ValueValidity`, `ValidityResult`, `ValidityStatus`). Asks the template's question ("Do all articles accept the full value set, or does any article only allow a subset?") and, if exceptions exist, a `Value | Valid for article(s)` table where a row is `all` or a list of articles. The user types the values (the Polymorphism branch collects none and the template names no source). Answers are classified **complete / incomplete / invalid**. *Incomplete* (user can still supply it): question unanswered; exceptions but no value; value without a name; value with neither articles nor `all` (never defaulted to all). *Invalid* (contradiction): answer differs from Step 4's third question; values listed although everyone accepts everything; duplicate value; `all` plus articles; article not in the Step 4 list or repeated in a row. *Warnings:* exceptions claimed but every row is `all`; a Step 4 article valid for no listed value. Only a complete answer is stored as confirmed; every input is kept as a draft (survives navigation, shown again by the page). Re-confirming Step 4 drops the confirmed 4a (and the draft is re-validated against the new article list); loading another series resets it. The child workflow stays locked (Steps 5, 6 missing).
+**Gaps (not guessed):** (1) the template gives no source for the property's value list, so completeness ("until every value is covered") cannot be checked; (2) Step 4a repeats Step 4's third question, so 4a is always asked and a different answer is an error — whether 4a may be skipped when no exceptions exist remains an **OPEN DECISION**; (3) the `go_propvalues` vs `go_actions` default-reachability check is not performed (needs the default value and mechanism); (4) no mode bit, `go_propvalues` row or mechanism is derived; (5) article numbers containing a comma cannot be entered in the page's table.
 
 ### STEP 5 — Translations (always last)
 **Input:** every technical value/property/label introduced in STEPs 3-4a.
 **Processing:** produce EN → DE → FR → NL for each, presented as a table for confirmation, in
 that fixed order.
 **Output:** rows for `go_texts.csv` (single multi-language file with a `language` column per
-Verus's actual practice, not one file per language).
+Verus's actual practice, not one file per language). The template itself asks for German, French and
+Dutch (English was given in Step 3) and does not name `go_texts`. **Output as a `go_texts` row is NOT
+IMPLEMENTED; blocked by the `go_texts` encoding OPEN DECISION (§10).**
+**Implementation status (Polymorphism branch only):** **IMPLEMENTED** — `services/metatype/translations.py` (`expected_rows`, `validate_translations`), `MetatypeCreationService.submit_translations`, `models/metatype_creation.py` (`TranslationRow`, `TranslationDraft`, `Translations`, `TranslationResult`). Requires a confirmed Step 4a. The table has one row for the Step 3 property (English label taken from Step 3, not editable) and one for each Step 4a value, with DE, FR, NL in the template's fixed order; the user confirms or corrects it by submitting. *Incomplete:* a DE/FR/NL text is empty (a row left out counts as empty); a value's English text is empty. *Invalid:* a submitted row is not a property/value of the earlier steps, or appears twice. Only a complete answer is stored as confirmed; the input is always kept as a draft (survives navigation, shown again by the page). If the property, its label or the Step 4a values change, the confirmed translations no longer count (Step 5 is shown as incomplete/pending) but typed texts are carried over by technical value; loading another series resets everything. No `go_texts` row or other output is derived.
+**Gaps (not guessed):** (1) the template collects no English text for a value although its table has an EN column, so the table asks for it; (2) no text rules (length, characters, whether a translation may equal the English text) — the template names none; (3) the `go_texts` format/encoding is open (§10); (4) the template says "every label and value collected so far" — only the property label and Step 4a values exist in the Polymorphism branch, so nothing else is translated; (5) the template does not say whether Step 5 is skipped when no values exist: the property label is always translated.
 **Evidence:** [POLY-TEMPLATE Step 5]; [Verus go_texts.csv description].
 
 ### STEP 6 — Confirmation, then implementation
@@ -620,10 +737,14 @@ after confirmation** may files be edited.
 **Repository data written:** `go_types.csv`, `go_propvalues.csv`, `go_proporder.csv`,
 `go_children.csv`, `go_actions.csv`, `go_childprops.csv`, `go_propclasses.csv`,
 `go_properties.csv`, `go_setup.csv`, `go_texts.csv` — following the series' existing conventions
-identified in STEP 1.
+identified in STEP 1. (The template names `go_types.csv`, `go_propvalues.csv`, `go_proporder.csv`,
+`go_children.csv`, `go_actions.csv` "etc."; the full ten-file list is the Verus prompt's file list.)
+**NOT IMPLEMENTED** — no component writes any `go_*` file.
 **Evidence:** [POLY-TEMPLATE Step 6].
+**Implementation status — confirmation half:** **IMPLEMENTED** — `services/metatype/specification.py` (`build_summary`), `MetatypeCreationService.specification_text` / `confirm_specification` / `confirmation_is_current`, `models/metatype_creation.py` (`ConfirmedSpecification`, `SpecificationResult`). Renders the template's six items as one block: Metatype type (always Polymorphism; the Childs branch does not exist), property name + EN/DE/FR/NL labels, values + labels, article mapping (the Step 4 article list plus, per value, its Step 4a articles or "all articles"), the Step 4a exceptions table, and the Step 4 conditions/scoping. Available only when Steps 1-5 are done, current and consistent (a Step 3 rename not carried into Steps 4/4a/5 blocks it). Confirmation is an explicit act (the page's "Confirm Specification" button); viewing the summary confirms nothing. The confirmation stores the exact text shown and counts only while the specification built from Steps 3-5 still renders identically, so re-confirming a step with identical content does not invalidate it and any real change does. Loading another series resets it.
+**Implementation status — writing half:** **NOT IMPLEMENTED**, stage step `6w`, so the completion gate stays closed. The requirements and dependency table for it, and the safeguards a writer would need, are in `Metatype_Step6_Writing_Requirements.md` (preparation only). **Gaps (not guessed):** (1) the template says only "edit `go_types.csv`, `go_propvalues.csv`, `go_proporder.csv`, `go_children.csv`, `go_actions.csv` etc. as needed, following the series' existing conventions" — it gives no mapping from the answers to rows, so none was invented; (2) it depends on the unresolved mode encoding (§6 item 9), the `go_texts` encoding and the build-tool approval; (3) which Metatype receives the property is unresolved; (4) the template does not say whether confirmation alone should unlock anything, so it does not: child creation also needs the Childs branch and the writing half.
 
-### STEP 7 — Build / compile (recovered from repository + Verus, not documented by the manual as a concrete command)
+### STEP 7 — Build / compile (recovered from repository + Verus; not documented by the manual as a concrete command and **not a step of the template**)
 **Input:** the edited `go_*.csv` set.
 **Processing:** `cd hmx/<series>/1`; run `ebmkdb.exe mt.inp_descr <series>.ebase` directly
 (**not** `make_ebase.bat`, which contains a blocking `pause` unsuitable for non-interactive
@@ -633,6 +754,8 @@ execution).
 No content-level validation step is described anywhere in the supplied materials — this is a
 genuine gap (see §9).
 **Evidence:** [Verus "Build step"]; §2.3.
+**Implementation status:** **NOT IMPLEMENTED.** No Metatype build tool has been executed by any
+component. Whether and under what approval `ebmkdb.exe` may run is an **OPEN DECISION**.
 
 ### Worked example cross-check (Verus, both patterns combined)
 
@@ -662,13 +785,13 @@ raw findings; not re-duplicated here.
 
 ---
 
-## 8. Proposed Python Workflow Design (PROPOSED / UNIMPLEMENTED)
+## 8. Python Workflow Design and Implementation Status
 
-> Everything in this section is a proposal only. **Nothing described here has been implemented.**
-> This section answers "what already exists / what can be reused / what's missing" and then, only
-> after that, sketches the proposed workflow shape.
+> §8.1-§8.6 are the design written during the original investigation, **when no Metatype code existed**;
+> they are kept as the design record. **Update 2026-10-14:** the read-only parts have since been
+> implemented — see §8.7 for the current status. File:line references in §8.1-§8.3 were not re-verified.
 
-### 8.1 What already exists (CODE FACT, file:line cited)
+### 8.1 What existed at the original investigation (CODE FACT, file:line cited; not re-verified)
 
 - **`services/mdb_service.py:76-139`** — the sole Access-`.mdb` I/O gateway (32-bit PowerShell
   bridge, `resources/mdb_bridge.ps1`, because the app runs 64-bit and has no in-process ACE
@@ -724,7 +847,7 @@ stack, the `"hmx"` constant, and the persisted repository-link registry pattern
 (`MaintenanceRepositoryLinkService`, JSON-backed via `core/config.py:44
 repository_connection_registry`).
 
-### 8.3 What is partially implemented
+### 8.3 What was partially implemented at the original investigation
 
 The repository browser (two-level tree, but MDB-file-only and wrong root — needs extending to
 recurse into a series' `1/` subfolder and glob `go_*.csv`, and to target
@@ -733,9 +856,10 @@ The `mdb_reverse_engineering_service.py` shape (allow-list → import_snapshot) 
 to mirror for a parallel CSV-based reader — but would be new code, not an extension of that file,
 since it's a structurally different I/O path (plain CSV, not MDB).
 
-### 8.4 What is missing entirely
+### 8.4 What was missing entirely at the original investigation
 
-Any Python code reading or writing a `go_*.csv` table (grep-confirmed zero hits repo-wide outside
+*(Superseded for reading: see §8.7. A CSV reader now exists; writing and the Snapshot fields are still
+missing.)* Any Python code reading or writing a `go_*.csv` table (grep-confirmed zero hits repo-wide outside
 `docs/`). Any `Snapshot` fields for Metatype concepts (children/attachment-points/OFML-class
 mapping/setup-flags/actions). Any workflow/UI page analogous to Class Creation/Articles/Relation
 for Metatype. Any validation tool integration (Metatype-Inspector 3.0's actual checks are
@@ -754,7 +878,7 @@ undocumented in the supplied materials — §9 item 4).
 - Do not build a new PDM access layer or a new folder-tree browser from scratch — extend the
   existing ones (§8.1/§8.3 above).
 
-### 8.6 Proposed Python workflow shape (conceptual only — not implemented, not to be built in one step)
+### 8.6 Python workflow shape (design; implementation status in §8.7)
 
 Following the reconstructed process in §7, and mirroring the reuse/extend shape established by
 `mdb_reverse_engineering_service.py` for the OCD/MDB side:
@@ -789,12 +913,45 @@ a follow-up planning step, one connected piece at a time, starting with
 `discover_repository`/`load_go_tables` (read-only, lowest risk, and independently testable per §9)
 before any write path is attempted.
 
+### 8.7 Implementation status (2026-10-14; code uncommitted)
+
+All of the following are in the working tree, read-only, and have automated tests that the implementing
+sessions ran (last full-suite run: 2671 passed, 9 skipped, 2 failed; the two failures are in
+`tests/test_obx_global_deduplication.py`, unrelated to Metatype, and also failed in an earlier run of that
+file on a clean `HEAD` export). The five skips in the Metatype tests need Windows symlink privilege.
+
+| §8.6 method / template step | Implementation | Status |
+|---|---|---|
+| `discover_repository` | `services/metatype/repository_scanner.py` (`MetatypeRepositoryScanner`), `metatype_repository_service.py`, `models/metatype_scan.py`, `scripts/scan_metatype_repository.py`, page `ui/pages/metatype_repository_page.py` | **IMPLEMENTED**. Build status (BUILT/UNBUILT/UNCERTAIN) is a heuristic and never opens the `.ebase` |
+| `load_go_tables` | `services/metatype/schema_parser.py` (`parse_mt_schema`), `metatype_table_loader.py` (`MetatypeTableLoader.load_family(root, family_id, directory, tables)`), `metatype_table_loader_service.py`, `models/metatype_tables.py` | **IMPLEMENTED**. Raw rows, strict UTF-8 by default (opt-in fallback), does not read `go_info.utf8`; the `comment … end comment` syntax of `mt.inp_descr` is inferred from the real files |
+| `resolve_relationships` | `metatype_relationship_resolver.py`, `relationship_specs.py` (21 reference rules, 7 duplicate checks), `metatype_relationship_service.py`, `models/metatype_relationships.py` | **IMPLEMENTED** (requested by the owner 2026-10-14). Rules are cited to manual lines but are **UNVERIFIED** against practice: a read-only run over the 49 built families reported 34 with issues, and the high-count rules (e.g. `propclasses.prop_name→types.name`, `actions.own_key→types.name`) may be over-strict. `go_texts` links are deliberately not checked, which differs from §9 Test 5 |
+| `inspect_series` (template Step 1) | §7 STEP 1 above | **IMPLEMENTED** |
+| template Step 2 | §7 STEP 2 above | **IMPLEMENTED** (not in the §8.6 method list) |
+| template Step 3 | §7 STEP 3 above | **IMPLEMENTED** |
+| template Step 4 (Polymorphism branch) | §7 STEP 4 above | **IMPLEMENTED** |
+| template Step 4a | §7 STEP 4a above | **IMPLEMENTED** |
+| template Step 5 | §7 STEP 5 above | **IMPLEMENTED** |
+| template Step 6 | §7 STEP 6 above | confirmation **IMPLEMENTED**; writing **NOT IMPLEMENTED** |
+| polymorphic-stage workflow and completion gate | `services/metatype/metatype_creation_service.py` (`MetatypeCreationService`: `list_series`, `start`, `submit_property_identity`, `stage_status`), `models/metatype_creation.py`, page `ui/pages/metatype_creation_page.py` | **IMPLEMENTED**. The stage is complete only when every template step 1-6 is done; Steps 4a, 5 and 6 are not implemented, so the gate stays closed and child Metatype creation is locked |
+| `construct_metatype_model`, `validate_metatype`, `generate_output`, `verify_output`; the writing half of template Step 6 and the Childs branch of Step 4 (and 4a for the Childs branch) | none | **NOT IMPLEMENTED** |
+
+UI wiring: the Metatype module (`core/modules.py`) now offers only "Create Metatype" (`WorkflowStep.METATYPE_CREATION`), which needs no PDM product or connection: it lists the series folders of the configured repository, loads the selected series, takes the Step 3 answer and shows the completion gate. Scanning, table loading and relationship resolution are backend logic used by that flow, not controls on it. The "Repository Analysis" page (`ui/pages/metatype_repository_page.py`) and its tests are kept as a development diagnostic but are not part of any module's workflow. Services are registered in `core/application_context.py`. This is the first stage of the guided flow, not the complete flow.
+
 ---
 
 ## 9. Validation Plan for the Proposed Workflow
 
 Each proposed step from §8.6 must be connected and tested one at a time — no big-bang
 implementation. Tests below are boundaries, not implementations.
+
+**Update 2026-10-14 — status of this plan.** Metatype tests now exist as `tests/test_metatype_*.py`
+(scanner, scanner hardening, links/zero-byte files, table loader, relationship resolver, series
+inspector, pattern selection). They use synthetic temporary-directory fixtures. They do not reproduce the
+real-repository counts in Test 1 (see the §2.2 update), and the resolver's §4 chains are covered without
+the `go_texts` links named in Test 5. Test 3's anomaly files are reported (unlisted `go_*` files) rather
+than excluded by a pattern list. Test 8 is only partly covered (Step 1 compares mode-8192 flags with
+`go_propvalues` rows; the `go_proporder` token check is not implemented). **Tests 6, 7, 9, 10 and 11 are
+NOT IMPLEMENTED.** Tests were run by the implementing sessions, not independently verified.
 
 **Test 1 — Repository discovery**
 Given the real `hmx\` root (or a fixture copy), `discover_repository()` returns exactly the
@@ -903,3 +1060,31 @@ Collected from across all source material, not resolved by this investigation:
     (`.dwg`/`.egms`/`.geo`/`.vnm`/`.obj`/`.alb`), `odb2d_infix.csv`/`odb3d_infix.csv` content,
     `sbmetatype.cls`/`sbplanning.cls`, `go_context.ofml`'s exact origin, and the contents of
     `basics.7z`/`REP_symbol.7z` (§2.4).
+
+**Update 2026-10-14 — status of the items above.** Item 4: the Inspector history PDF was re-read; it is
+a one-page changelog ("Metatype-Inspector 3.0.0 (2025-11-14) — first official release") with no rules, so
+the item stays unknown. Item 6: unchanged, still not read. The `go_texts` encoding findings behind
+decision 5 below are in the requirements investigation (§7 there).
+
+**Open owner decisions (collected 2026-10-14; none is decided by the code):**
+1. **"Few" examples.** The template triggers the reference series on "few or no" examples without
+   defining "few". The code uses the reference series automatically only when the target defines no
+   Metatype, or when they are named explicitly.
+2. **`hmx/layout`.** The template names it; no such family exists (nearest: `layout_studio`). Not
+   substituted.
+3. **Unprefixed `fn` properties.** `na` wrappers are counted separately (documented); other names
+   without an underscore (OBSERVED: 19 `fn`, 18 `ch` across the 49 built families) remain a separate
+   "(no underscore)" group.
+4. **Polymorphism encoding** (mode bit 4 vs real data; §6 item 9).
+5. **`go_texts` encoding.** OBSERVED: 40 of 49 `go_texts.csv` are not valid UTF-8 and all 49 `go_info.csv`
+   are empty, so no `utf8` key is set; MT lines 613 and 3097 say texts are then in the system code page.
+   The actual code page is unconfirmed (cp1252 is a guess), and whether new text keeps it is undecided.
+6. **Build tool.** Whether and under what approval `ebmkdb.exe` (never `make_ebase.bat`) may run.
+
+**Other unverified or unresolved findings (2026-10-14):**
+7. `oe1/go_actions.csv` contains lines with a single token (e.g. 12-21) instead of 9 fields; whether
+   `ebmkdb` tolerates this is unknown.
+8. The relationship resolver's rule set has not been reviewed against OFML practice (§8.7).
+9. Scanner (49 built) and the original count (53 built) are not reconciled (§2.2 update).
+10. No in-series `docs/*.md` notes exist in the HMX data, so that part of template Step 1 has nothing to
+    read.

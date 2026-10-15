@@ -50,6 +50,10 @@ class AppConfig:
         "Tables": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables",
     })
 
+    # Root of the OFML ``hmx`` engineering repository scanned (read-only) by the
+    # Metatype module. Override per machine; scans also accept an explicit root.
+    metatype_repository_root: str = r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\_repository\hmx"
+
     def pdm_connection_string(self) -> str:
         """Assemble the pyodbc connection string for the PDM database."""
         parts = [

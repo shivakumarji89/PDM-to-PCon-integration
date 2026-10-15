@@ -88,6 +88,9 @@ class WorkflowManager(QObject):
             WorkflowStep.MAINTENANCE,
             WorkflowStep.CET_SIF_VALIDATION,
             WorkflowStep.OBX_VALIDATION,
+            # Scans the HMX filesystem repository; independent of any PDM product.
+            WorkflowStep.METATYPE_REPOSITORY_ANALYSIS,
+            WorkflowStep.METATYPE_CREATION,
         }
 
         # Article OBX Generator works from the published repository snapshot,
