@@ -356,7 +356,7 @@ class MetatypeCreationPage(BasePage):
                 enabled = self._template_service.inspect(str(series)).status == "empty"
             except (OSError, ValueError):
                 enabled = False
-        self.start_scratch_button.setEnabled(enabled)
+        self.start_scratch_button.setEnabled(bool(series))
         self.load_button.setEnabled(bool(series))
 
     def start_metatype_from_scratch(self):
