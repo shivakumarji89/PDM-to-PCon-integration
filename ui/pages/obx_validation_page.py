@@ -955,7 +955,10 @@ class ObxValidationPage(BasePage):
         self._pause_finalization_pending = True
         self._paused_worker_sites.update(sites or {})
         self._paused_worker_remaining.extend(remaining_lines or [])
-        self._dispatch_workers = max(0, self._dispatch_workers - 1)
+        workers = self._dispatch_workers
+        if not isinstance(workers, int):
+            workers = 1
+        self._dispatch_workers = max(0, workers - 1)
         # Each of the two workers reports its own remainder. Wait until both
         # workers have reached a terminal state before building the resume list.
         if self._dispatch_workers > 0:
