@@ -295,6 +295,48 @@ def test_unloaded_stage_reports_why_it_is_blocked(context):
 
 
 # page ----------------------------------------------------------------------------------------------------------------------------
+def test_sidebar_progress_uses_stage_specific_readiness(root, context):
+    from PySide6.QtWidgets import QApplication, QStackedWidget
+    from ui.pages.metatype_creation_page import MetatypeCreationPage
+    from workflow.host import WorkspaceHost
+    from workflow.manager import WorkflowManager
+
+    app = QApplication.instance() or QApplication([])
+    build(root, "atlas")
+    page = MetatypeCreationPage(context)
+    stack = QStackedWidget()
+    stack.addWidget(page)
+    steps = (
+        WorkflowStep.METATYPE_ARTICLES,
+        WorkflowStep.METATYPE_PROPERTIES,
+        WorkflowStep.METATYPE_VALUES,
+        WorkflowStep.METATYPE_TEXTS,
+        WorkflowStep.METATYPE_SETUP,
+        WorkflowStep.METATYPE_RELATIONS,
+        WorkflowStep.METATYPE_REVIEW,
+    )
+    manager = WorkflowManager(context, WorkspaceHost(stack, {step: page for step in steps}), list(steps))
+    assert manager.progress() == (0, 7)
+
+    context.metatype_creation_service.start("atlas")
+    manager.refresh()
+    assert manager.progress() == (0, 7), "loading a series must not mark all shared-page stages complete"
+
+    context.metatype_creation_service.submit_property_identity("GATLAS_Surface", "Surface")
+    manager.refresh()
+    assert manager.progress() == (1, 7)
+    assert manager.is_ready(WorkflowStep.METATYPE_PROPERTIES)
+    assert not manager.is_ready(WorkflowStep.METATYPE_ARTICLES)
+    assert not manager.is_ready(WorkflowStep.METATYPE_VALUES)
+    assert not manager.is_ready(WorkflowStep.METATYPE_TEXTS)
+    assert not manager.is_ready(WorkflowStep.METATYPE_SETUP)
+    assert not manager.is_ready(WorkflowStep.METATYPE_RELATIONS)
+    assert not manager.is_ready(WorkflowStep.METATYPE_REVIEW)
+    assert manager.session.state.value == "in_progress"
+    assert "HMX series" in manager.recommended_action()
+    app.processEvents()
+
+
 def test_creation_page_flow(root, context):
     from PySide6.QtWidgets import QApplication
     from ui.pages.metatype_creation_page import MetatypeCreationPage
