@@ -48,7 +48,7 @@ def test_existing_metatype_is_reused_without_modification(tmp_path):
     assert not (target / "go_articles.csv").exists()
 
 
-def test_partial_series_is_reported_and_never_merged(tmp_path):
+def test_existing_template_file_is_reported_as_template_conflict(tmp_path):
     root = tmp_path / "repo"
     target = root / "atlas" / "1"
     target.mkdir(parents=True)
@@ -59,9 +59,9 @@ def test_partial_series_is_reported_and_never_merged(tmp_path):
     result = service.inspect("atlas")
     initialized = service.initialize("atlas")
 
-    assert result.status == "partial"
-    assert "go_types.csv" in result.existing
-    assert initialized.status == "partial"
+    assert result.status == "conflict"
+    assert result.existing == ("go_types.csv",)
+    assert initialized.status == "conflict"
     assert (target / "go_types.csv").read_text() == "partial"
     assert not (target / "mt.inp_descr").exists()
 
@@ -136,7 +136,7 @@ def test_uses_existing_first_numbered_directory_when_empty(tmp_path):
     assert not (root / "atlas" / "1").exists()
 
 
-def test_partial_directory_with_unrelated_file_is_not_merged(tmp_path):
+def test_unrelated_existing_files_do_not_block_template_initialization(tmp_path):
     root = tmp_path / "repo"
     target = root / "atlas" / "1"
     target.mkdir(parents=True)
@@ -144,8 +144,11 @@ def test_partial_directory_with_unrelated_file_is_not_merged(tmp_path):
 
     result = MetatypeTemplateService(root, make_archive(tmp_path / "t.zip")).initialize("atlas")
 
-    assert result.status == "partial"
-    assert snapshot(target) == {"notes.txt": b"mine"}
+    assert result.status == "initialized"
+    assert (target / "notes.txt").read_bytes() == b"mine"
+    assert (target / "mt.inp_descr").read_text() == "schema"
+    assert (target / "go_types.csv").read_text() == "types"
+    assert (target / "go_articles.csv").exists()
 
 
 def test_missing_archive_raises_and_changes_nothing(tmp_path):
