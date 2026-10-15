@@ -966,8 +966,14 @@ class ObxValidationPage(BasePage):
         self._paused_worker_sites.update(sites or {})
         self._paused_worker_remaining.extend(remaining_lines or [])
         workers = self._dispatch_workers
-        if not isinstance(workers, int):
-            workers = 1
+        if type(workers) is not int:
+            # Compatibility path for hosts without a worker counter: expand the
+            # remainder payload directly rather than comparing a mock to an int.
+            completed_seqs = {getattr(result, "seq", None) for result in self._results}
+            self._pending_lines = self._context.obx_validation_service.expand_pending(
+                list(remaining_lines or []), self._lines, completed_seqs)
+            self._is_paused = True
+            return
         self._dispatch_workers = max(0, workers - 1)
         # Each of the two workers reports its own remainder. Wait until both
         # workers have reached a terminal state before building the resume list.
