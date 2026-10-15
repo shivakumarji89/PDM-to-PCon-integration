@@ -115,6 +115,10 @@ class MetatypeCreationService(BaseService):
             raise TypeError("metatype.creation context has an unexpected type")
         return value
 
+    def _pattern_selection(self) -> PatternSelection | None:
+        selection = self._state().pattern_selection
+        return selection if selection is not None and selection.series == self.series else None
+
     @property
     def series(self) -> str:
         return str(self._state().get("series", ""))
@@ -196,19 +200,43 @@ class MetatypeCreationService(BaseService):
 
     # -- 2. load the series' data ---------------------------------------------------------------------------------
     def start(self, series: str, root: str | Path | None = None, directory: str | None = None) -> PolymorphicStageStatus:
-        """Load ``series`` (Step 1) and record the polymorphism pattern (Step 2). Resets earlier state."""
+        """Load or refresh a series without silently discarding creation answers."""
         state = self._state()
-        state.clear()
-        state["series"] = series
+        if state.series and state.series != series and state.inspection is not None:
+            state.pending_series = series
+            status = self.stage_status()
+            status.warnings.append(f"Series {state.series!r} is active. Explicitly discard its drafts before loading {series!r}.")
+            return status
+        if state.series != series:
+            state.reset_for_series(series)
+        else:
+            state.pending_series = None
         inspection = self.context.metatype_series_service.inspect_series(series, root=root, directory=directory)
-        state["inspection"] = inspection
+        state.inspection = inspection
         if self._series_loaded():
-            result = self.context.metatype_pattern_service.select_pattern(series, MetatypePattern.POLYMORPHISM)
-            state["pattern_status"] = result.status
-            state["pattern_warnings"] = list(result.warnings)
-            state["known_articles"] = self._load_known_articles(inspection)
+            from models.metatype_pattern import PatternSelectionResult
+            warnings: list[str] = []
+            if inspection.status.value == "insufficient":
+                warnings.append("Step 1 found no usable Metatype examples in the series or the reference series.")
+            elif inspection.status.value == "reference_only":
+                warnings.append("Step 1 conventions come from reference series; the target has no examples.")
+            if self.context.metatype_series_service.stale_sources(inspection):
+                warnings.append("Source tables changed since Step 1 ran; consider re-inspecting.")
+            selection = PatternSelection(
+                series=inspection.target_series, pattern=MetatypePattern.POLYMORPHISM,
+                selected_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                inspection_inspected_at=inspection.inspected_at, inspection_status=inspection.status.value)
+            state.pattern_selection = selection
+            state.pattern_status = SelectionStatus.SELECTED
+            state.pattern_warnings = warnings
+            state.known_articles = self._load_known_articles(inspection)
+        state.touch()
         return self.stage_status()
 
+    def discard_and_start(self, series: str, root: str | Path | None = None, directory: str | None = None) -> PolymorphicStageStatus:
+        """Explicitly discard the current series answers before loading a different series."""
+        self._state().reset_for_series(series)
+        return self.start(series, root=root, directory=directory)
     # -- 3. property identity --------------------------------------------------------------------------------------
     def submit_property_identity(self, name: str, label: str) -> IdentityResult:
         """Template Step 3. Accepted (and stored) only when there is no error finding."""
@@ -218,7 +246,7 @@ class MetatypeCreationService(BaseService):
                 "Select and load a series with Metatype data before naming the property.",
                 basis="template Step 1")])
         inspection = self.inspection
-        if self.context.metatype_pattern_service.selection_for(self.series) is None:
+        if self._pattern_selection() is None:
             return IdentityResult(False, [Finding(
                 Severity.ERROR, "PATTERN_NOT_SELECTED", "The pattern has not been recorded for this series.",
                 basis="template Step 2")])
