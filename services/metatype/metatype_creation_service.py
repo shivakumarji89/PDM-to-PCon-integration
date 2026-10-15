@@ -268,7 +268,9 @@ class MetatypeCreationService(BaseService):
         # Step 3 is an upstream dependency. Any prior branch, validity,
         # translations, or final confirmation must be revalidated against it.
         if existing is None or existing.name != identity.name or existing.label != identity.label:
-            state.branch = None
+            # Preserve the prior branch as an auditable draft. It is no longer
+            # current if its property name differs; downstream confirmations
+            # must be re-entered against the updated identity.
             state.validity = None
             state.translations = None
             state.confirmation = None
@@ -550,7 +552,9 @@ class MetatypeCreationService(BaseService):
                       StepState.DONE if identity is not None else StepState.PENDING,
                       f"{identity.name} - {identity.label}" if identity is not None else "Not yet confirmed."),
             StageStep("4", "Polymorphism branch: articles, scope, values",
-                      StepState.DONE if branch is not None else StepState.PENDING, self._branch_detail(branch)),
+                      StepState.DONE if branch is not None and identity is not None
+                      and branch.property_name == identity.name else StepState.PENDING,
+                      self._branch_detail(branch)),
             self._validity_step(branch, validity),
             self._translation_step(validity),
         ]
