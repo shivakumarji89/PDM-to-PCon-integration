@@ -272,6 +272,28 @@ class MetatypeCreationPage(BasePage):
         self.add_content(panel)
         self.refresh()
 
+    # -- stage readiness --------------------------------------------------------------------------------------
+    def is_ready_for_step(self, step) -> bool:
+        """Report readiness for the requested sidebar stage, not for the shared page as a whole."""
+        from core.enums import WorkflowStep
+
+        status = self._service.stage_status()
+        done = {item.key: item.state is StepState.DONE for item in status.steps}
+        if step == WorkflowStep.METATYPE_ARTICLES:
+            return done.get("1", False) and done.get("2", False) and done.get("4", False)
+        if step == WorkflowStep.METATYPE_PROPERTIES:
+            return done.get("3", False)
+        if step == WorkflowStep.METATYPE_VALUES:
+            return done.get("4a", False)
+        if step == WorkflowStep.METATYPE_TEXTS:
+            return done.get("5", False)
+        # These stages are not implemented yet; never report them as complete.
+        if step in (WorkflowStep.METATYPE_SETUP, WorkflowStep.METATYPE_RELATIONS):
+            return False
+        if step == WorkflowStep.METATYPE_REVIEW:
+            return self._service.confirmation_is_current() and status.complete
+        return False
+
     # -- workflow-panel integration ---------------------------------------------------------------------------
     def select_workflow_stage(self, step) -> None:
         """Select the content page associated with a left-panel Metatype workflow stage."""
