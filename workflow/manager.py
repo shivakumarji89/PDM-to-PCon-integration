@@ -16,6 +16,15 @@ from workflow.session import WorkflowSession
 from workflow.state import WorkflowState
 
 _TITLES = {item.step: item.title for item in WORKFLOW_ITEMS}
+_METATYPE_STEPS = {
+    WorkflowStep.METATYPE_ARTICLES,
+    WorkflowStep.METATYPE_PROPERTIES,
+    WorkflowStep.METATYPE_VALUES,
+    WorkflowStep.METATYPE_TEXTS,
+    WorkflowStep.METATYPE_SETUP,
+    WorkflowStep.METATYPE_RELATIONS,
+    WorkflowStep.METATYPE_REVIEW,
+}
 
 
 class WorkflowManager(QObject):
@@ -170,9 +179,16 @@ class WorkflowManager(QObject):
         return completed, len(self._steps)
 
     def recommended_action(self) -> str:
-        if not self._product_loaded():
-            return "Load a product on the Product page to begin."
         current = self.current_step()
+        if not self._product_loaded():
+            if set(self._steps).issubset(_METATYPE_STEPS):
+                if not self.is_ready(current):
+                    return f"Complete the {self.title(current)} stage using the selected HMX series."
+                index = self._index(current)
+                if index < len(self._steps) - 1:
+                    return f"Continue to {self.title(self._steps[index + 1])}."
+                return "All implemented Metatype stages are ready; unresolved stages still block completion."
+            return "Load a product on the Product page to begin."
         if not self.is_ready(current):
             return f"Complete the {self.title(current)} step before continuing."
         index = self._index(current)
@@ -206,7 +222,9 @@ class WorkflowManager(QObject):
         self.state_changed.emit()
 
     def _compute_session_state(self) -> WorkflowState:
-        if not self._product_loaded():
+        # Metatype is intentionally HMX-repository-driven and has no PDM product.
+        # Its session state must therefore be derived from stage readiness.
+        if not self._product_loaded() and not set(self._steps).issubset(_METATYPE_STEPS):
             return WorkflowState.NOT_STARTED
         if all(self.is_ready(step) for step in self._steps):
             return WorkflowState.COMPLETED
