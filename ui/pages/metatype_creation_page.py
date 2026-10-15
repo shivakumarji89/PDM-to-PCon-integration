@@ -279,6 +279,9 @@ class MetatypeCreationPage(BasePage):
 
         status = self._service.stage_status()
         done = {item.key: item.state is StepState.DONE for item in status.steps}
+        sources_current = not any("changed since" in warning.lower() for warning in status.warnings)
+        if not sources_current:
+            return False
         if step == WorkflowStep.METATYPE_ARTICLES:
             return done.get("1", False) and done.get("2", False) and done.get("4", False)
         if step == WorkflowStep.METATYPE_PROPERTIES:
