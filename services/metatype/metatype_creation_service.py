@@ -254,12 +254,18 @@ class MetatypeCreationService(BaseService):
         findings = validate_property_identity(name, label, inspection.target)
         if any(f.severity is Severity.ERROR for f in findings):
             return IdentityResult(False, findings)
+        state = self._state()
+        existing = state.identity
+        if (existing is not None and existing.series == self.series and existing.name == name.strip()
+                and existing.label == label.strip() and existing.inspection_inspected_at == inspection.inspected_at):
+            return IdentityResult(True, findings, existing)
         identity = PropertyIdentity(
             series=self.series, name=name.strip(), label=label.strip(),
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             inspection_inspected_at=inspection.inspected_at,
         )
-        self._state()["identity"] = identity
+        state.identity = identity
+        state.touch()
         return IdentityResult(True, findings, identity)
 
     # -- 4. polymorphism branch --------------------------------------------------------------------------------
@@ -295,8 +301,15 @@ class MetatypeCreationService(BaseService):
             inspection_inspected_at=self.inspection.inspected_at,
         )
         state = self._state()
-        state["branch"] = branch
-        state.pop("validity", None)     # Step 4a belongs to the Step 4 answer it was validated against
+        existing = state.branch
+        if (existing is not None and existing.series == branch.series and existing.property_name == branch.property_name
+                and existing.articles == branch.articles and existing.scope == branch.scope
+                and existing.scope_conditions == branch.scope_conditions
+                and existing.every_article_accepts_every_value == branch.every_article_accepts_every_value):
+            return BranchResult(True, findings, existing)
+        state.branch = branch
+        state.validity = None
+        state.touch()
         return BranchResult(True, findings, branch)
 
     # -- 4a. value validity per article --------------------------------------------------------------------------
