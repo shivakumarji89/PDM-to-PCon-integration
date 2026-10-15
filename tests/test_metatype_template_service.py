@@ -61,7 +61,7 @@ def test_partial_series_is_reported_and_never_merged(tmp_path):
 
     assert result.status == "partial"
     assert "go_types.csv" in result.existing
-    assert initialized.status == "partial"
+    assert initialized.status == "conflict"
     assert (target / "go_types.csv").read_text() == "partial"
     assert not (target / "mt.inp_descr").exists()
 
@@ -75,7 +75,7 @@ def test_initialization_refuses_name_conflicts_without_overwriting(tmp_path):
     service = MetatypeTemplateService(root, archive)
     (target / "go_types.csv").write_text("keep")
     result = service.initialize("atlas")
-    assert result.status == "partial"
+    assert result.status == "conflict"
     assert (target / "go_types.csv").read_text() == "keep"
 
 
