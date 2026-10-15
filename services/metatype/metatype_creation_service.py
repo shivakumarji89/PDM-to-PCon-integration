@@ -58,7 +58,8 @@ from models.metatype_creation import (
     ValueValidityDraft,
     ValueValidityRow,
 )
-from models.metatype_pattern import MetatypePattern
+from models.metatype_pattern import MetatypePattern, PatternSelection, SelectionStatus
+from models.metatype_context import MetatypeCreationContext
 from models.metatype_series import SeriesInspection, SeriesStatus
 from models.metatype_tables import TableLoadState
 from services.base_service import BaseService
@@ -99,8 +100,24 @@ class MetatypeCreationService(BaseService):
     """Drive and gate the polymorphic Metatype stage."""
 
     # -- state ---------------------------------------------------------------------------------------------
-    def _state(self) -> dict[str, object]:
-        return self.context.workflow_session(_SESSION_KEY)
+    def _state(self) -> MetatypeCreationContext:
+        session = self.context.workflow_session(_SESSION_KEY)
+        value = session.get("context")
+        if value is None:
+            context = MetatypeCreationContext()
+            for key in MetatypeCreationContext._FIELDS:
+                if key in session:
+                    context[key] = session[key]
+            session.clear()
+            session["context"] = context
+            return context
+        if not isinstance(value, MetatypeCreationContext):
+            raise TypeError("metatype.creation context has an unexpected type")
+        return value
+
+    def _pattern_selection(self) -> PatternSelection | None:
+        selection = self._state().pattern_selection
+        return selection if selection is not None and selection.series == self.series else None
 
     @property
     def series(self) -> str:
@@ -183,19 +200,43 @@ class MetatypeCreationService(BaseService):
 
     # -- 2. load the series' data ---------------------------------------------------------------------------------
     def start(self, series: str, root: str | Path | None = None, directory: str | None = None) -> PolymorphicStageStatus:
-        """Load ``series`` (Step 1) and record the polymorphism pattern (Step 2). Resets earlier state."""
+        """Load or refresh a series without silently discarding creation answers."""
         state = self._state()
-        state.clear()
-        state["series"] = series
+        if state.series and state.series != series and state.inspection is not None:
+            state.pending_series = series
+            status = self.stage_status()
+            status.warnings.append(f"Series {state.series!r} is active. Explicitly discard its drafts before loading {series!r}.")
+            return status
+        if state.series != series:
+            state.reset_for_series(series)
+        else:
+            state.pending_series = None
         inspection = self.context.metatype_series_service.inspect_series(series, root=root, directory=directory)
-        state["inspection"] = inspection
+        state.inspection = inspection
         if self._series_loaded():
-            result = self.context.metatype_pattern_service.select_pattern(series, MetatypePattern.POLYMORPHISM)
-            state["pattern_status"] = result.status
-            state["pattern_warnings"] = list(result.warnings)
-            state["known_articles"] = self._load_known_articles(inspection)
+            warnings: list[str] = []
+            if inspection.status.value == "insufficient":
+                warnings.append("Step 1 found no usable Metatype examples in the series or the reference series.")
+            elif inspection.status.value == "reference_only":
+                warnings.append("Step 1 conventions come from reference series; the target has no examples.")
+            if self.context.metatype_series_service.stale_sources(inspection):
+                warnings.append("Source tables changed since Step 1 ran; consider re-inspecting.")
+            selection = PatternSelection(
+                series=inspection.target_series, pattern=MetatypePattern.POLYMORPHISM,
+                selected_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                inspection_inspected_at=inspection.inspected_at, inspection_status=inspection.status.value)
+            state.pattern_selection = selection
+            state.pattern_status = SelectionStatus.SELECTED
+            state.pattern_warnings = warnings
+            state.known_articles = self._load_known_articles(inspection)
+            self.context.metatype_pattern_service.select_pattern(series, MetatypePattern.POLYMORPHISM)
+        state.touch()
         return self.stage_status()
 
+    def discard_and_start(self, series: str, root: str | Path | None = None, directory: str | None = None) -> PolymorphicStageStatus:
+        """Explicitly discard the current series answers before loading a different series."""
+        self._state().reset_for_series(series)
+        return self.start(series, root=root, directory=directory)
     # -- 3. property identity --------------------------------------------------------------------------------------
     def submit_property_identity(self, name: str, label: str) -> IdentityResult:
         """Template Step 3. Accepted (and stored) only when there is no error finding."""
@@ -205,7 +246,7 @@ class MetatypeCreationService(BaseService):
                 "Select and load a series with Metatype data before naming the property.",
                 basis="template Step 1")])
         inspection = self.inspection
-        if self.context.metatype_pattern_service.selection_for(self.series) is None:
+        if self._pattern_selection() is None:
             return IdentityResult(False, [Finding(
                 Severity.ERROR, "PATTERN_NOT_SELECTED", "The pattern has not been recorded for this series.",
                 basis="template Step 2")])
@@ -213,12 +254,18 @@ class MetatypeCreationService(BaseService):
         findings = validate_property_identity(name, label, inspection.target)
         if any(f.severity is Severity.ERROR for f in findings):
             return IdentityResult(False, findings)
+        state = self._state()
+        existing = state.identity
+        if (existing is not None and existing.series == self.series and existing.name == name.strip()
+                and existing.label == label.strip() and existing.inspection_inspected_at == inspection.inspected_at):
+            return IdentityResult(True, findings, existing)
         identity = PropertyIdentity(
             series=self.series, name=name.strip(), label=label.strip(),
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             inspection_inspected_at=inspection.inspected_at,
         )
-        self._state()["identity"] = identity
+        state.identity = identity
+        state.touch()
         return IdentityResult(True, findings, identity)
 
     # -- 4. polymorphism branch --------------------------------------------------------------------------------
@@ -236,7 +283,7 @@ class MetatypeCreationService(BaseService):
                 Severity.ERROR, "STEP3_REQUIRED",
                 "Confirm the property name and label (template Step 3) before answering Step 4.",
                 basis="template Step 3")])
-        pattern = self.context.metatype_pattern_service.selection_for(self.series)
+        pattern = self._pattern_selection()
         if pattern is None or pattern.pattern is not MetatypePattern.POLYMORPHISM:
             return BranchResult(False, [Finding(
                 Severity.ERROR, "PATTERN_NOT_POLYMORPHISM",
@@ -254,8 +301,15 @@ class MetatypeCreationService(BaseService):
             inspection_inspected_at=self.inspection.inspected_at,
         )
         state = self._state()
-        state["branch"] = branch
-        state.pop("validity", None)     # Step 4a belongs to the Step 4 answer it was validated against
+        existing = state.branch
+        if (existing is not None and existing.series == branch.series and existing.property_name == branch.property_name
+                and existing.articles == branch.articles and existing.scope == branch.scope
+                and existing.scope_conditions == branch.scope_conditions
+                and existing.every_article_accepts_every_value == branch.every_article_accepts_every_value):
+            return BranchResult(True, findings, existing)
+        state.branch = branch
+        state.validity = None
+        state.touch()
         return BranchResult(True, findings, branch)
 
     # -- 4a. value validity per article --------------------------------------------------------------------------
@@ -273,15 +327,24 @@ class MetatypeCreationService(BaseService):
         status, findings, cleaned = validate_value_validity(
             accepts_full_value_set, rows, branch.articles, branch.every_article_accepts_every_value)
         state = self._state()
-        state["validity_draft"] = ValueValidityDraft(accepts_full_value_set, rows)
+        draft = ValueValidityDraft(accepts_full_value_set, rows)
+        if state.validity_draft != draft:
+            state.validity_draft = draft
+            state.touch()
         if status is not ValidityStatus.COMPLETE:
             return ValidityResult(status, findings)
+        existing = state.validity
+        if (existing is not None and existing.series == self.series and existing.property_name == branch.property_name
+                and existing.accepts_full_value_set == bool(accepts_full_value_set) and existing.rows == cleaned
+                and existing.articles == list(branch.articles) and existing.branch_confirmed_at == branch.confirmed_at):
+            return ValidityResult(status, findings, existing)
         validity = ValueValidity(
             series=self.series, property_name=branch.property_name,
             accepts_full_value_set=bool(accepts_full_value_set), rows=cleaned, articles=list(branch.articles),
             branch_confirmed_at=branch.confirmed_at,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        state["validity"] = validity
+        state.validity = validity
+        state.touch()
         return ValidityResult(status, findings, validity)
 
     # -- 5. translations ---------------------------------------------------------------------------------------
@@ -316,14 +379,22 @@ class MetatypeCreationService(BaseService):
         rows = list(rows)
         status, findings, cleaned = validate_translations(rows, expected)
         state = self._state()
-        state["translation_draft"] = TranslationDraft(rows)
+        draft = TranslationDraft(rows)
+        if state.translation_draft != draft:
+            state.translation_draft = draft
+            state.touch()
         if status is not ValidityStatus.COMPLETE:
             return TranslationResult(status, findings)
+        existing = state.translations
+        if (existing is not None and existing.series == self.series and existing.property_name == self.identity.name
+                and existing.rows == cleaned and existing.validity_confirmed_at == validity.confirmed_at):
+            return TranslationResult(status, findings, existing)
         translations = Translations(
             series=self.series, property_name=self.identity.name, rows=cleaned,
             validity_confirmed_at=validity.confirmed_at,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        state["translations"] = translations
+        state.translations = translations
+        state.touch()
         return TranslationResult(status, findings, translations)
 
     def _translations_current(self) -> bool:
@@ -366,10 +437,16 @@ class MetatypeCreationService(BaseService):
         if text is None:
             invalid = any(f.code == "SPEC_PROPERTY_CHANGED" for f in problems)
             return SpecificationResult(ValidityStatus.INVALID if invalid else ValidityStatus.INCOMPLETE, problems)
+        state = self._state()
+        existing = state.confirmation
+        if (existing is not None and existing.series == self.series and existing.property_name == self.identity.name
+                and existing.summary_text == text):
+            return SpecificationResult(ValidityStatus.COMPLETE, [], text, existing)
         confirmation = ConfirmedSpecification(
             series=self.series, property_name=self.identity.name, summary_text=text,
             confirmed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        self._state()["confirmation"] = confirmation
+        state.confirmation = confirmation
+        state.touch()
         return SpecificationResult(ValidityStatus.COMPLETE, [], text, confirmation)
 
     def confirmation_is_current(self) -> bool:
@@ -448,7 +525,7 @@ class MetatypeCreationService(BaseService):
         else:
             notes = target.notes if target is not None else inspection.messages
             step1_detail = "; ".join(notes[:2]) or "The series could not be loaded."
-        pattern = self.context.metatype_pattern_service.selection_for(self.series)
+        pattern = self._pattern_selection()
         identity = self.identity
         branch = self.branch
         validity = self.validity
