@@ -805,7 +805,7 @@ class ObxValidationPage(BasePage):
         # Treat an unknown counter as one terminal worker rather than comparing
         # a MagicMock (or another non-integer) with an integer.
         workers = self._dispatch_workers
-        if not isinstance(workers, int):
+        if type(workers) is not int:
             # Compatibility path for older worker hosts/test doubles without
             # a dispatch counter: expand this worker's remainder immediately.
             completed_seqs = {getattr(result, "seq", None) for result in self._results}
