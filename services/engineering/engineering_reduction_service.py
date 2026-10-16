@@ -684,9 +684,15 @@ class EngineeringReductionService(BaseService):
                     item[0],
                 ),
             )
+            # PDM properties are retained as-is; this lookup is used only to
+            # identify Class Creation values that explicitly carry ModelSuffix.
+            property_by_id = {str(p.id): p for p in snapshot.properties}
+
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
-                pre_dot = extract_pdm_exact_article_code(original).match_key
+                exact_code = extract_pdm_exact_article_code(original)
+                pre_dot = exact_code.match_key
+                suffix = exact_code.suffix
                 override_key = str(original or "")
                 has_manual_boundary = override_key in override_map
 
@@ -728,6 +734,51 @@ class EngineeringReductionService(BaseService):
                     matched_by_prop.setdefault(pid, {}).setdefault(
                         slice_code, set()
                     ).add(article_id)
+
+                # Decode the part after the first dot separately from the base
+                # article. Only properties with explicit PDM ModelSuffix values
+                # participate; their OrderCodeValue codes are consumed in the
+                # same Class Creation placement/width order as the normal tail.
+                suffix_remaining = suffix
+                for pid, assignment in ordered:
+                    width = max(0, int(getattr(assignment, "width", 0) or 0))
+                    if width <= 0 or len(suffix_remaining) < width:
+                        continue
+                    prop = property_by_id.get(pid)
+                    if prop is None:
+                        continue
+                    suffix_value_ids = {
+                        str(getattr(value, "id", "") or "")
+                        for value in (getattr(prop, "values", []) or [])
+                        if (getattr(value, "model_suffix", "") or "").strip()
+                    }
+                    if not suffix_value_ids:
+                        continue
+                    suffix_codes = {
+                        (getattr(class_value, "code", "") or "").strip()
+                        for class_value in (getattr(assignment, "values", []) or [])
+                        if str(getattr(class_value, "value_id", "") or "") in suffix_value_ids
+                        and (getattr(class_value, "code", "") or "").strip()
+                    }
+                    # A missing class code may still be resolved from the
+                    # existing PDM OrderCodeValue/config-code mapping.
+                    for value in getattr(prop, "values", []) or []:
+                        if str(getattr(value, "id", "") or "") not in suffix_value_ids:
+                            continue
+                        code = (getattr(value, "code", "") or "").strip()
+                        if not code:
+                            code = (decoded.get(pid, {}) or {}).get(str(value.id), "") or ""
+                        if code:
+                            suffix_codes.add(code.strip())
+                    slice_code = suffix_remaining[:width]
+                    if slice_code not in suffix_codes:
+                        continue
+                    matched_by_prop.setdefault(pid, {}).setdefault(
+                        slice_code, set()
+                    ).add(article_id)
+                    suffix_remaining = suffix_remaining[width:]
+                    if not suffix_remaining:
+                        break
 
                 reduced_by_article[article_id] = base
                 member = member_by_article.get(article_id)
