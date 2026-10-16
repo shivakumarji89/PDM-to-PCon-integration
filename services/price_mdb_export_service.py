@@ -186,10 +186,10 @@ class PriceMdbExportService(BaseService):
                 and article_ids.get((record.article_code or "").strip()) is not None
             })
             relevant_list_ids = sorted({
-                str(item["id"])
-                for values in list_by_currency.values()
-                for item in values
-                if item.get("id") is not None
+                str(mapped["id"])
+                for record in snapshot.price_records
+                for mapped in [record_list(record)]
+                if mapped is not None and mapped.get("id") is not None
             })
             def sql_in(values):
                 return ", ".join(v if v.lstrip("-").isdigit() else "'" + v.replace("'", "''") + "'" for v in values)
