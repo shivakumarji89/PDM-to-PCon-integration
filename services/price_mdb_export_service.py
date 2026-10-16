@@ -42,10 +42,24 @@ class PriceMdbExportService(BaseService):
             return {"ok": False, "error": "32-bit PowerShell / ACE bridge unavailable."}
 
         optimized_reads = callable(getattr(mdb_service, "read_tables", None))
+        # Only fetch article IDs that are referenced by the computed snapshot.
+        # Large OCD files can contain far more articles than this export needs.
+        relevant_article_codes = sorted({
+            (record.article_code or "").strip()
+            for record in snapshot.price_records
+            if not record.is_global and (record.article_code or "").strip()
+        })
+        article_code_filter = ", ".join(
+            "'" + code.replace("'", "''") + "'" for code in relevant_article_codes
+        ) or "NULL"
+        article_query = (
+            "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article "
+            "WHERE com_ArticleCode IN (" + article_code_filter + ")"
+        )
         try:
             if optimized_reads:
                 initial = mdb_service.read_tables(mdb, {
-                    "articles": "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article",
+                    "articles": article_query,
                     "packages": "SELECT TOP 1 com_PackageID FROM tCOMd_Package",
                     "lists": "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
                              "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2",
