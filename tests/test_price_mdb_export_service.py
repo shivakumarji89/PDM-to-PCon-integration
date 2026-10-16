@@ -101,8 +101,10 @@ class PriceMdbExportServiceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["inserted_prices"], 0)
-        self.assertEqual(result["skipped_existing"], 1)
-        self.assertEqual(fake_mdb.ops, [])
+        self.assertEqual(result["updated_prices"], 1)
+        self.assertEqual(fake_mdb.ops[0]["op"], "update")
+        self.assertEqual(fake_mdb.ops[0]["set"], {"com_PriceValue": 130.0})
+        self.assertEqual(fake_mdb.ops[0]["where"], {"com_PriceID": 3})
 
     def test_export_fails_clearly_when_existing_price_is_zero(self):
         fake_mdb = _FakeMDB()
@@ -129,10 +131,11 @@ class PriceMdbExportServiceTests(unittest.TestCase):
             mdb_path.touch()
             result = PriceMdbExportService(context).export(snapshot, mdb_path)
 
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["value_conflicts"], 1)
-        self.assertIn("existing=0.0", result["error"])
-        self.assertEqual(fake_mdb.ops, [])
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["updated_prices"], 1)
+        self.assertEqual(fake_mdb.ops[0]["op"], "update")
+        self.assertEqual(fake_mdb.ops[0]["set"], {"com_PriceValue": 125.0})
+        self.assertEqual(fake_mdb.ops[0]["where"], {"com_PriceID": 3})
 
     def test_export_does_not_touch_mdb_when_no_prices_exist(self):
         fake_mdb = _FakeMDB()
