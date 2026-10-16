@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialog,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -36,6 +37,7 @@ from core.activity.models import ActivityType, LogLevel
 from core.progress import ProgressReporter
 from models.price_record import PriceRecord
 from services.pricing_service import PriceParams, PricingService
+from services.price_mdb_export_service import PriceMdbExportService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
@@ -75,7 +77,7 @@ _ADDED_BG = QColor(223, 245, 223)
 
 @read_only_in_mdb(
     "_on_compute", "_on_pricing_finished", "_on_pricing_failed",
-    "_open_price_list_manager", "_on_manage_price_lists",
+    "_open_price_list_manager", "_on_manage_price_lists", "_on_export_prices",
 )
 class PricingPage(MaintenanceSourceMixin, BasePage):
     """Compute and review OCD price records for the active snapshot."""
@@ -143,8 +145,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._compute_btn)
 
         self._export_btn = QPushButton("Export to MDB...", box)
-        self._export_btn.setToolTip("Write changed price records to the OCD MDB.")
-        self._export_btn.setEnabled(False)  # enabled once export is implemented
+        self._export_btn.setToolTip(
+            "Append new price records to an existing OCD MDB. Existing prices are never overwritten or removed."
+        )
+        self._export_btn.setEnabled(False)
+        self._export_btn.clicked.connect(self._on_export_prices)
         layout.addWidget(self._export_btn)
 
         self._pricelists_btn = QPushButton("Price Lists\u2026", box)
@@ -286,6 +291,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._changed = {}
         self._populate()
         self._update_summary(unresolved=0)
+        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
         if self.is_mdb_view() and snapshot is not None:
             self._summary.setText(
                 f"Imported MDB: {len(self._records):,} price record(s), "
@@ -351,6 +357,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._table.clearContents()
         self._table.setRowCount(0)
         self._compute_btn.setEnabled(False)
+        self._export_btn.setEnabled(False)
 
         self._price_params = params
         reporter = ProgressReporter(self)
@@ -420,6 +427,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             unresolved=len(result.unresolved), diff=diff, params=self._price_params
         )
         self._compute_btn.setEnabled(True)
+        self._export_btn.setEnabled(bool(result.records) and not self.is_mdb_view())
         if result.warnings:
             QMessageBox.information(
                 self, "Compute Prices", "\n".join(result.warnings)
@@ -430,8 +438,57 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._pricing_currencies = set()
         self._pricing_baseline = []
         self._compute_btn.setEnabled(True)
+        self._export_btn.setEnabled(bool(self._context.active_snapshot and self._context.active_snapshot.price_records) and not self.is_mdb_view())
         QMessageBox.critical(
             self, "Compute Prices", f"Price computation failed:\n\n{message}"
+        )
+
+
+    def _on_export_prices(self) -> None:
+        """Append new computed price rows to an existing MDB; never replace data."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None or not snapshot.price_records:
+            QMessageBox.information(self, "Export Prices", "Compute prices before exporting.")
+            self._export_btn.setEnabled(False)
+            return
+
+        mdb_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select existing OCD MDB to append prices",
+            "",
+            "Access database (*.mdb)",
+        )
+        if not mdb_path:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Append Prices to MDB",
+            "Only new price-list and price rows will be added. Existing rows will not be "
+            "overwritten or removed. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        result = PriceMdbExportService(self._context).export(snapshot, mdb_path)
+        if not result.get("ok"):
+            QMessageBox.critical(
+                self, "Export Prices", result.get("error") or "Price export failed."
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Export Prices",
+            "Append-only price export completed.\n\n"
+            f"Price rows added: {result.get('inserted_prices', 0):,}\n"
+            f"Global price rows added: {result.get('inserted_global_prices', 0):,}\n"
+            f"Price lists added: {result.get('inserted_price_lists', 0):,}\n"
+            f"Existing rows skipped: {result.get('skipped_existing', 0):,}\n"
+            f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n\n"
+            f"File: {result.get('mdb_path', mdb_path)}",
         )
 
     def _append_batch(self, records: list[PriceRecord]) -> None:
