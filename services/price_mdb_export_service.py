@@ -18,6 +18,18 @@ from services.price_update_service import _mdb_date_literal
 class PriceMdbExportService(BaseService):
     """Append computed price rows to an existing MDB without destructive writes."""
 
+    @staticmethod
+    def _clean_prototype(rows: list[dict[str, Any]], table: str) -> dict[str, Any]:
+        """Remove generated primary keys and temporary columns from a prototype row."""
+        if not rows:
+            return {}
+        from services.ocd_export_service import _PK
+        proto = dict(rows[0])
+        proto.pop(_PK.get(table, ""), None)
+        for col in [name for name in proto if name.startswith("sys_tmp")]:
+            proto.pop(col, None)
+        return proto
+
     def export(self, snapshot: Snapshot, mdb_path: str | Path) -> dict[str, Any]:
         mdb = Path(mdb_path)
         if not mdb.is_file():
@@ -29,30 +41,54 @@ class PriceMdbExportService(BaseService):
         if not mdb_service.is_available():
             return {"ok": False, "error": "32-bit PowerShell / ACE bridge unavailable."}
 
+        optimized_reads = callable(getattr(mdb_service, "read_tables", None))
         try:
-            articles = mdb_service.read_table(
-                mdb, "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article"
-            )
-            packages = mdb_service.read_table(
-                mdb, "SELECT TOP 1 com_PackageID FROM tCOMd_Package"
-            )
-            existing_lists = mdb_service.read_table(
-                mdb, "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
-                     "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2"
-            )
-            existing_prices = mdb_service.read_table(
-                mdb, "SELECT com_PriceID, com_ArticleID, com_PriceListID, "
-                     "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
-                     "FROM tCOMd_Price"
-            )
-            existing_globals = mdb_service.read_table(
-                mdb, "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
-                     "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
-                     "FROM tCOMd_GlobalPrice"
-            )
-            price_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_Price")
-            global_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_GlobalPrice")
-            list_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_PriceList2")
+            if optimized_reads:
+                initial = mdb_service.read_tables(mdb, {
+                    "articles": "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article",
+                    "packages": "SELECT TOP 1 com_PackageID FROM tCOMd_Package",
+                    "lists": "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
+                             "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2",
+                    "price_proto": "SELECT TOP 1 * FROM [tCOMd_Price]",
+                    "global_proto": "SELECT TOP 1 * FROM [tCOMd_GlobalPrice]",
+                    "list_proto": "SELECT TOP 1 * FROM [tCOMd_PriceList2]",
+                })
+                articles = initial["articles"]
+                packages = initial["packages"]
+                existing_lists = initial["lists"]
+                price_proto = self._clean_prototype(initial["price_proto"], "tCOMd_Price")
+                global_proto = self._clean_prototype(initial["global_proto"], "tCOMd_GlobalPrice")
+                list_proto = self._clean_prototype(initial["list_proto"], "tCOMd_PriceList2")
+                # Avoid serializing every existing price row from a potentially
+                # large MDB. The relevant identity rows and ID maxima are fetched
+                # in a second bridge session after list/article mapping is known.
+                existing_prices = []
+                existing_globals = []
+            else:
+                # Compatibility path for lightweight adapters/test doubles.
+                articles = mdb_service.read_table(
+                    mdb, "SELECT com_ArticleID, com_ArticleCode FROM tCOMd_Article"
+                )
+                packages = mdb_service.read_table(
+                    mdb, "SELECT TOP 1 com_PackageID FROM tCOMd_Package"
+                )
+                existing_lists = mdb_service.read_table(
+                    mdb, "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
+                         "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2"
+                )
+                existing_prices = mdb_service.read_table(
+                    mdb, "SELECT com_PriceID, com_ArticleID, com_PriceListID, "
+                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                         "FROM tCOMd_Price"
+                )
+                existing_globals = mdb_service.read_table(
+                    mdb, "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
+                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                         "FROM tCOMd_GlobalPrice"
+                )
+                price_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_Price")
+                global_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_GlobalPrice")
+                list_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_PriceList2")
         except Exception as exc:
             return {"ok": False, "error": f"Could not read destination MDB schema/data: {exc}"}
 
@@ -139,6 +175,53 @@ class PriceMdbExportService(BaseService):
             # metadata differs in formatting between PDM and Access.
             return candidates[0] if len(candidates) == 1 else None
 
+        if optimized_reads:
+            # Read only existing identities that can collide with this export,
+            # plus aggregate next-ID values; this avoids moving the entire MDB
+            # price tables through PowerShell JSON serialization.
+            relevant_article_ids = sorted({
+                str(article_ids.get((record.article_code or "").strip()))
+                for record in snapshot.price_records
+                if not record.is_global
+                and article_ids.get((record.article_code or "").strip()) is not None
+            })
+            relevant_list_ids = sorted({
+                str(item["id"])
+                for values in list_by_currency.values()
+                for item in values
+                if item.get("id") is not None
+            })
+            def sql_in(values):
+                return ", ".join(v if v.lstrip("-").isdigit() else "'" + v.replace("'", "''") + "'" for v in values)
+            list_filter = sql_in(relevant_list_ids) if relevant_list_ids else "NULL"
+            article_filter = sql_in(relevant_article_ids) if relevant_article_ids else "NULL"
+            try:
+                targeted = mdb_service.read_tables(mdb, {
+                    "price_keys": (
+                        "SELECT com_PriceID, com_ArticleID, com_PriceListID, "
+                        "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                        "FROM tCOMd_Price WHERE com_ArticleID IN (" + article_filter + ") "
+                        "AND com_PriceListID IN (" + list_filter + ")"
+                    ),
+                    "global_keys": (
+                        "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
+                        "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                        "FROM tCOMd_GlobalPrice WHERE com_PackageID = " + str(package_id) + " "
+                        "AND com_PriceListID IN (" + list_filter + ")"
+                    ),
+                    "price_max": "SELECT MAX(com_PriceID) AS max_id FROM tCOMd_Price",
+                    "global_max": "SELECT MAX(com_GlobalPriceID) AS max_id FROM tCOMd_GlobalPrice",
+                })
+                existing_prices = targeted["price_keys"]
+                existing_globals = targeted["global_keys"]
+                price_max_rows = targeted["price_max"]
+                global_max_rows = targeted["global_max"]
+            except Exception as exc:
+                return {"ok": False, "error": f"Could not read existing price identities: {exc}"}
+        else:
+            price_max_rows = [{"max_id": max((int(r.get("com_PriceID") or 0) for r in existing_prices), default=0)}]
+            global_max_rows = [{"max_id": max((int(r.get("com_GlobalPriceID") or 0) for r in existing_globals), default=0)}]
+
         def key(row, global_price=False):
             return (
                 str(row.get("com_PackageID" if global_price else "com_ArticleID") or ""),
@@ -150,8 +233,8 @@ class PriceMdbExportService(BaseService):
 
         existing_price_keys = {key(r) for r in existing_prices}
         existing_global_keys = {key(r, True) for r in existing_globals}
-        next_price_id = max((int(r.get("com_PriceID") or 0) for r in existing_prices), default=0) + 1
-        next_global_id = max((int(r.get("com_GlobalPriceID") or 0) for r in existing_globals), default=0) + 1
+        next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
+        next_global_id = int((global_max_rows[0].get("max_id") if global_max_rows else 0) or 0) + 1
         price_rows: list[dict[str, Any]] = []
         global_rows: list[dict[str, Any]] = []
         skipped_existing = skipped_unmapped = 0
