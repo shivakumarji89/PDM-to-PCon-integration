@@ -771,12 +771,11 @@ class EngineeringReductionService(BaseService):
                         if code:
                             suffix_codes.add(code.strip())
                     slice_code = suffix_remaining[:width]
-                    if slice_code not in suffix_codes:
-                        continue
-                    matched_by_prop.setdefault(pid, {}).setdefault(
-                        slice_code, set()
-                    ).add(article_id)
                     suffix_remaining = suffix_remaining[width:]
+                    if slice_code in suffix_codes:
+                        matched_by_prop.setdefault(pid, {}).setdefault(
+                            slice_code, set()
+                        ).add(article_id)
                     if not suffix_remaining:
                         break
 
@@ -795,6 +794,21 @@ class EngineeringReductionService(BaseService):
                 if assignment is None:
                     continue
                 attr = attr_by_id.get(pid)
+                prop = property_by_id.get(pid)
+                has_model_suffix_values = bool(
+                    prop is not None
+                    and any(
+                        (getattr(value, "model_suffix", "") or "").strip()
+                        for value in (getattr(prop, "values", []) or [])
+                    )
+                )
+                if attr is None and has_model_suffix_values:
+                    # The suffix itself is the evidence for this derived
+                    # feature connection. Keep it in the ArticleSet overlay;
+                    # never rewrite article_property_value_ids or PDM models.
+                    attr = SetAttribute(id=pid, name=str(getattr(prop, "name", "") or ""))
+                    attributes.append(attr)
+                    attr_by_id[pid] = attr
                 if attr is None:
                     continue
                 class_values = {
@@ -821,6 +835,19 @@ class EngineeringReductionService(BaseService):
                             for aid in carriers:
                                 if aid not in target.article_ids:
                                     target.article_ids.append(aid)
+                    elif class_value is not None and value_id and has_model_suffix_values:
+                        # A suffix-derived connection may refer to a known PDM
+                        # value that was not in the article's direct value-link
+                        # set. Preserve its real PDM value ID in this derived
+                        # ArticleSet only; do not mutate source relationships.
+                        attr.values.append(
+                            SetValue(
+                                id=value_id,
+                                value=getattr(class_value, "value", "") or "",
+                                code=code,
+                                article_ids=sorted(carriers),
+                            )
+                        )
                     elif class_value is not None and not value_id:
                         attr.values.append(
                             SetValue(
