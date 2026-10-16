@@ -648,6 +648,15 @@ class EngineeringReductionService(BaseService):
                     result.append(code)
             return sorted(result, key=lambda x: (-len(x), x))
 
+        model_suffix_prop_ids = {
+            str(prop.id)
+            for prop in snapshot.properties
+            if any(
+                (getattr(value, "model_suffix", "") or "").strip()
+                for value in (getattr(prop, "values", []) or [])
+            )
+        }
+
         sets: list[ArticleSet] = []
         for pc in classes:
             article_ids = [str(a) for a in pc.article_ids]
@@ -676,7 +685,7 @@ class EngineeringReductionService(BaseService):
                 (
                     (pid, assignment)
                     for pid, assignment in assignments_by_prop.items()
-                    if pid in carried
+                    if pid in carried or pid in model_suffix_prop_ids
                 ),
                 key=lambda item: (
                     int(getattr(item[1], "placement", 0) or 0),
