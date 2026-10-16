@@ -512,6 +512,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             f"Existing rows unchanged: {result.get('skipped_existing', 0):,}\n"
             f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n"
             f"Ambiguous rows skipped: {result.get('skipped_ambiguous', 0):,}\n"
+            f"Zero-price rows skipped: {result.get('skipped_zero_price', 0):,}\n"
+            f"Read-back verified: {'yes' if result.get('verified') else 'not run'}\n"
             f"Writes that changed nothing: {result.get('failed', 0):,}\n\n"
             f"File: {result.get('mdb_path', mdb_path)}"
             + (f"\n\n{warnings}" if warnings else ""),

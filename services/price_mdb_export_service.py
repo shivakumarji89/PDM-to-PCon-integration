@@ -21,8 +21,8 @@ from services.ocd_export_service import OcdExportService, _DATE_MAX, _DATE_MIN
 from services.price_update_service import _mdb_date_literal
 
 
-#: Level for a new global price row. ``PriceRecord.level`` is blank for globals;
-#: every vendor/rolled-over ``tCOMd_GlobalPrice`` row in the OCD MDBs is ``X``.
+#: Level of every new global price row: PDM's AddMissingGlobalPricingRecords
+#: hardcodes 'X', and every vendor/rolled-over ``tCOMd_GlobalPrice`` row is 'X'.
 _GLOBAL_LEVEL = "X"
 
 
@@ -81,7 +81,23 @@ class PriceMdbExportService(BaseService):
                 return fallback
         return fallback
 
-    def export(self, snapshot: Snapshot, mdb_path: str | Path) -> dict[str, Any]:
+    @staticmethod
+    def _price_text_name(variant_condition: str) -> str:
+        """``tCOMd_Text.com_TextName`` of a global price's 'price' text, as PDM's
+        ``AddMissingGlobalPricingRecords`` derives it: a surcharge row
+        (``ITEM 8=1FD``) shares the option-id text ``8``; any other variant
+        condition is its own text name."""
+        vc = variant_condition or ""
+        if " " in vc and "=" in vc and vc.index(" ") < vc.index("="):
+            return vc[vc.index(" ") + 1:].split("=", 1)[0]
+        return vc
+
+    def export(self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False) -> dict[str, Any]:
+        """Write ``snapshot.price_records`` into ``mdb_path`` (see module docstring).
+
+        ``dry_run`` reads the MDB and reports exactly what would be updated,
+        inserted or skipped, without executing any write.
+        """
         mdb = Path(mdb_path)
         if not mdb.is_file():
             return {"ok": False, "error": "Select an existing OCD MDB file."}
@@ -289,7 +305,8 @@ class PriceMdbExportService(BaseService):
                 targeted = mdb_service.read_tables(mdb, {
                     "price_keys": (
                         "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, "
-                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
+                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue, "
+                        "com_PriceValidFrom, com_PriceValidTo "
                         "FROM tCOMd_Price WHERE com_ArticleID IN (" + article_filter + ") "
                         "AND com_PriceListID IN (" + list_filter + ")"
                     ),
@@ -299,29 +316,38 @@ class PriceMdbExportService(BaseService):
                         "FROM tCOMd_GlobalPrice WHERE com_PackageID = " + str(package_id) + " "
                         "AND com_PriceListID IN (" + list_filter + ")"
                     ),
+                    "texts": (
+                        "SELECT com_TextID, com_TextName FROM tCOMd_Text WHERE "
+                        "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id)
+                    ),
                     "price_max": "SELECT MAX(com_PriceID) AS max_id FROM tCOMd_Price",
                     "global_max": "SELECT MAX(com_GlobalPriceID) AS max_id FROM tCOMd_GlobalPrice",
                 })
                 existing_prices = targeted["price_keys"]
                 existing_globals = targeted["global_keys"]
+                price_texts = targeted["texts"]
                 price_max_rows = targeted["price_max"]
                 global_max_rows = targeted["global_max"]
             except Exception as exc:
                 return {"ok": False, "error": f"Could not read existing price identities: {exc}"}
         else:
+            price_texts = mdb_service.read_table(
+                mdb, "SELECT com_TextID, com_TextName FROM tCOMd_Text WHERE "
+                     "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id))
             price_max_rows = [{"max_id": max((int(r.get("com_PriceID") or 0) for r in existing_prices), default=0)}]
             global_max_rows = [{"max_id": max((int(r.get("com_GlobalPriceID") or 0) for r in existing_globals), default=0)}]
 
         def key(row, global_price=False):
-            # A global price is identified by package + list + variant condition
-            # (+ currency); its level code is not part of the identity - the
-            # vendor rows are all 'X' while the computed record carries none.
+            # Identity as in PDM's UpdatePConItemPrice: owner (article/package) +
+            # price list + variant condition, plus level B/X for article prices.
+            # A global price's level is not part of it (vendor rows are all 'X'
+            # while the computed record carries none) and row currency is not
+            # compared (the list fixes the currency).
             return (
                 str(row.get("com_PackageID" if global_price else "com_ArticleID") or ""),
                 str(row.get("com_PriceListID") or ""),
                 str(row.get("com_VariantCondition") or ""),
                 "" if global_price else str(row.get("com_PriceLevelCode") or "B"),
-                str(row.get("sys_ISOCurrencyCode") or "").strip().upper(),
             )
 
         # Preserve every matching row, not just the last row for an identity.
@@ -336,11 +362,21 @@ class PriceMdbExportService(BaseService):
         existing_price_keys = set(existing_price_by_key)
         existing_global_keys = set(existing_global_by_key)
         handled_keys: set[tuple] = set()  # identities already planned this run
+        text_ids = {str(t.get("com_TextName")): t.get("com_TextID") for t in price_texts}
+        # Validity of a new article price: PDM copies the article's existing price
+        # dates (addNewArticlePriceRecord); a new global price takes the list's.
+        article_validity = {
+            (str(r.get("com_ArticleID")), str(r.get("com_PriceListID"))): (
+                norm_date(r.get("com_PriceValidFrom"), ""), norm_date(r.get("com_PriceValidTo"), ""))
+            for r in existing_prices if r.get("com_PriceValidFrom") and r.get("com_PriceValidTo")
+        }
+        missing_text_names: set[str] = set()
+        planned_update_detail: list[dict[str, Any]] = []
         next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
         next_global_id = int((global_max_rows[0].get("max_id") if global_max_rows else 0) or 0) + 1
         price_rows: list[dict[str, Any]] = []
         global_rows: list[dict[str, Any]] = []
-        skipped_existing = skipped_unmapped = skipped_ambiguous = 0
+        skipped_existing = skipped_unmapped = skipped_ambiguous = skipped_zero = 0
         value_updates: list[dict[str, Any]] = []
 
         for record in snapshot.price_records:
@@ -360,7 +396,6 @@ class PriceMdbExportService(BaseService):
                 str(price_list["id"]),
                 record.variant_condition or "",
                 "" if is_global else (record.level or "B").strip() or "B",
-                (record.currency or "").strip().upper(),
             )
             target_keys = existing_global_keys if is_global else existing_price_keys
             existing_map = existing_global_by_key if is_global else existing_price_by_key
@@ -371,6 +406,11 @@ class PriceMdbExportService(BaseService):
                 continue
             if not __import__("math").isfinite(price_value):
                 skipped_unmapped += 1
+                continue
+            if price_value == 0.0:
+                # PDM never writes a zero price (``if (num7 != 0.0 ...)``): an
+                # unresolved/zero PDM price must not overwrite or create a row.
+                skipped_zero += 1
                 continue
             if (is_global, row_key) in handled_keys:
                 skipped_existing += 1  # same identity computed twice: first one wins
@@ -404,6 +444,10 @@ class PriceMdbExportService(BaseService):
                             ),
                         }
                     stale += 1
+                    planned_update_detail.append({
+                        "table": table_name, "id": existing_id,
+                        "variant_condition": record.variant_condition or "",
+                        "list": price_list["label"], "from": existing_value, "to": price_value})
                     value_updates.append({
                         "op": "update",
                         "table": table_name,
@@ -413,25 +457,33 @@ class PriceMdbExportService(BaseService):
                 if not stale:
                     skipped_existing += 1
                 continue
+            valid_from, valid_to = (
+                article_validity.get((str(article_id), str(price_list["id"])))
+                if not is_global else None
+            ) or (price_list["date_from"], price_list["date_to"])
             common = {
                 "com_PriceListID": price_list["id"],
                 "com_VariantCondition": record.variant_condition or "",
                 "com_PriceTypeCode": "S",
+                # PDM hardcodes 'X' for every global row it creates.
                 "com_PriceLevelCode": (
-                    (record.level or "").strip() or _GLOBAL_LEVEL if is_global
-                    else (record.level or "B").strip() or "B"
+                    _GLOBAL_LEVEL if is_global else (record.level or "B").strip() or "B"
                 ),
                 "com_PriceRuleCode": None,
                 "com_TextID": None,
                 "com_PriceValue": price_value,
                 "sys_ISOCurrencyCode": (record.currency or "").strip().upper(),
                 "com_PriceIndex": "",
-                "com_PriceValidFrom": _mdb_date_literal(record.valid_from or price_list["date_from"]),
-                "com_PriceValidTo": _mdb_date_literal(record.valid_to or price_list["date_to"]),
+                "com_PriceValidFrom": _mdb_date_literal(valid_from),
+                "com_PriceValidTo": _mdb_date_literal(valid_to),
                 "com_RoundingID": None,
                 "com_StatusInfoID": None,
             }
             if is_global:
+                text_name = self._price_text_name(record.variant_condition)
+                if text_ids.get(text_name) is None:
+                    missing_text_names.add(text_name)
+                common["com_TextID"] = text_ids.get(text_name)
                 global_rows.append(OcdExportService._row(global_proto, {
                     "com_GlobalPriceID": next_global_id,
                     "com_PackageID": package_id,
@@ -459,8 +511,25 @@ class PriceMdbExportService(BaseService):
             "mdb_path": str(mdb), "inserted_prices": 0, "inserted_global_prices": 0,
             "inserted_price_lists": 0, "updated_prices": 0, "updated_global_prices": 0,
             "skipped_existing": skipped_existing, "skipped_unmapped": skipped_unmapped,
-            "skipped_ambiguous": skipped_ambiguous, "failed": 0, "warnings": [],
+            "skipped_ambiguous": skipped_ambiguous, "skipped_zero_price": skipped_zero,
+            "failed": 0, "verified": None, "verification_failures": [], "warnings": [],
         }
+        if missing_text_names:
+            report["warnings"].append(
+                f"{len(missing_text_names)} new global price(s) have no matching 'price' text in "
+                "tCOMd_Text and were inserted without a text link (PDM would create the text).")
+        if dry_run:
+            # Report the plan only: nothing is executed.
+            report.update({
+                "dry_run": True,
+                "updated_prices": sum(1 for o in value_updates if o["table"] == "tCOMd_Price"),
+                "updated_global_prices": sum(1 for o in value_updates if o["table"] == "tCOMd_GlobalPrice"),
+                "inserted_prices": len(price_rows), "inserted_global_prices": len(global_rows),
+                "inserted_price_lists": len(list_rows),
+                "plan_updates": planned_update_detail,
+                "ambiguous_currencies": sorted(ambiguous_lists),
+            })
+            return {"ok": True, "error": None, **report}
         if not ops:
             return {"ok": True, "error": None, **report}
         batch = mdb_service.execute_batch(mdb, ops, transaction=True)
@@ -495,4 +564,61 @@ class PriceMdbExportService(BaseService):
                 f"Price list '{row.get('com_PriceListLabel')}' was created but is not linked to a "
                 "distribution region (tCOMd_DistributionRegionPriceList); pCon will not read it "
                 "until it is linked.")
+
+        if optimized_reads:
+            failures = self._verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows)
+            report["verified"] = not failures
+            report["verification_failures"] = failures[:10]
+            if failures:
+                return {
+                    "ok": False, **report,
+                    "error": f"Post-write verification failed for {len(failures)} row(s); "
+                             "the MDB does not hold the intended values.",
+                }
         return {"ok": True, "error": None, **report}
+
+    @staticmethod
+    def _verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows) -> list[str]:
+        """Read the written rows back and compare them with what was intended."""
+        expected: dict[str, dict[Any, tuple[float, Any, Any]]] = {"tCOMd_Price": {}, "tCOMd_GlobalPrice": {}}
+        pk = {"tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID"}
+        for op in value_updates:
+            table = op["table"]
+            expected[table][op["where"][pk[table]]] = (op["set"]["com_PriceValue"], None, None)
+        for table, rows in (("tCOMd_Price", price_rows), ("tCOMd_GlobalPrice", global_rows)):
+            for row in rows:
+                expected[table][row[pk[table]]] = (
+                    row["com_PriceValue"], row["com_PriceListID"], row["com_VariantCondition"])
+        queries: dict[str, str] = {}
+        for table, wanted in expected.items():
+            ids = sorted(wanted)
+            for n in range(0, len(ids), 400):
+                chunk = ", ".join(str(i) for i in ids[n:n + 400])
+                queries[f"{table}:{n}"] = (
+                    f"SELECT {pk[table]} AS id, com_PriceValue, com_PriceListID, com_VariantCondition "
+                    f"FROM {table} WHERE {pk[table]} IN ({chunk})")
+        if not queries:
+            return []
+        try:
+            read = mdb_service.read_tables(mdb, queries)
+        except Exception as exc:  # unreadable after a write is itself a failure
+            return [f"read-back failed: {exc}"]
+        failures: list[str] = []
+        for table, wanted in expected.items():
+            found = {r["id"]: r for chunk, rows in read.items() if chunk.startswith(table + ":") for r in rows}
+            for row_id, (value, list_id, varcond) in wanted.items():
+                row = found.get(row_id)
+                if row is None:
+                    failures.append(f"{table} {row_id}: row missing after write")
+                    continue
+                try:
+                    same = abs(float(row["com_PriceValue"]) - float(value)) < 1e-9
+                except (TypeError, ValueError):
+                    same = False
+                if not same:
+                    failures.append(f"{table} {row_id}: value {row['com_PriceValue']} != {value}")
+                elif list_id is not None and (
+                        str(row["com_PriceListID"]) != str(list_id)
+                        or str(row["com_VariantCondition"] or "") != str(varcond or "")):
+                    failures.append(f"{table} {row_id}: list/variant differs from intended")
+        return failures

@@ -326,5 +326,138 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
         self.assertTrue(any("not linked" in w for w in result["warnings"]))
 
 
+class _OptimizedFake(_RecordingMDB):
+    """Fake with the bridge's batched ``read_tables`` so the production read
+    path (targeted reads + post-write verification) is exercised."""
+
+    def __init__(self, *args, texts=(), corrupt_readback=False, **kw):
+        super().__init__(*args, **kw)
+        self.texts = list(texts)
+        self.corrupt = corrupt_readback
+
+    def read_tables(self, _mdb, sql_by_name):
+        out = {}
+        for name, sql in sql_by_name.items():
+            if name == "articles":
+                out[name] = [{"com_ArticleID": 4, "com_ArticleCode": "A1"}]
+            elif name == "packages":
+                out[name] = [{"com_PackageID": 1}]
+            elif name == "lists":
+                out[name] = self.rows[_LISTS_SQL]
+            elif name == "linked":
+                out[name] = self.rows[_LINKED_SQL]
+            elif name in ("price_proto", "global_proto", "list_proto"):
+                out[name] = []
+            elif name == "price_keys":
+                out[name] = self.rows[_PRICE_SQL]
+            elif name == "global_keys":
+                out[name] = self.rows[_GLOBAL_SQL]
+            elif name == "texts":
+                out[name] = self.texts
+            elif name in ("price_max", "global_max"):
+                out[name] = [{"max_id": 100}]
+            else:  # post-write read-back chunk: echo what the batch wrote
+                out[name] = self._readback(name)
+        return out
+
+    def _readback(self, name):
+        table = name.split(":")[0]
+        pk = "com_PriceID" if table == "tCOMd_Price" else "com_GlobalPriceID"
+        rows = []
+        for op in self.ops:
+            if op["table"] != table:
+                continue
+            if op["op"] == "update":
+                rows.append({"id": op["where"][pk], "com_PriceValue": op["set"]["com_PriceValue"],
+                             "com_PriceListID": None, "com_VariantCondition": None})
+            elif op["op"] == "insert":
+                rows += [{"id": r[pk], "com_PriceValue": r["com_PriceValue"],
+                          "com_PriceListID": r["com_PriceListID"],
+                          "com_VariantCondition": r["com_VariantCondition"]} for r in op["rows"]]
+        if self.corrupt:
+            rows = [{**r, "com_PriceValue": -1} for r in rows]
+        return rows
+
+
+def _export_dry(mdb, records, lists=()):
+    snapshot = Snapshot()
+    snapshot.price_lists = list(lists)
+    snapshot.price_records = list(records)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "existing.mdb"
+        path.touch()
+        return PriceMdbExportService(SimpleNamespace(mdb_service=mdb)).export(snapshot, path, dry_run=True)
+
+
+def _eur_row(pid=1, value=1.0, **kw):
+    return {"com_PriceID": pid, "com_ArticleID": 4, "com_PriceListID": 21, "com_VariantCondition": "",
+            "com_PriceLevelCode": "B", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": value, **kw}
+
+
+class PriceMdbExportPdmParityTests(unittest.TestCase):
+    """Behaviours taken from PDM's PriceMaintenance.UpdatePConItemPrice /
+    AddMissingGlobalPricingRecords (see docs/03_Workflows/pricing_pdm_parity.md)."""
+
+    def test_zero_price_never_written(self):
+        # PDM: `if (num7 != 0.0 || resetToZero)` - a zero PDM price is "unresolved".
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=[_eur_row(value=50.0)], linked=[21, 22])
+        result = _export(mdb, [_rec(0.0, "EUR"), _rec(0.0, "GBP")])
+        self.assertEqual(mdb.ops, [])
+        self.assertEqual(result["skipped_zero_price"], 2)
+
+    def test_global_insert_links_price_text_and_uses_list_validity(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 77, "com_TextName": "8"},
+                                    {"com_TextID": 88, "com_TextName": "GE2HBS."}])
+        records = [
+            PriceRecord(is_global=True, variant_condition="GESNNU.1 8=1FD", value=58.0, currency="EUR",
+                        valid_from="2026-10-16"),
+            PriceRecord(is_global=True, variant_condition="GE2HBS.", value=69.0, currency="EUR",
+                        valid_from="2026-10-16"),
+            PriceRecord(is_global=True, variant_condition="NOTEXT.1", value=5.0, currency="EUR",
+                        valid_from="2026-10-16"),
+        ]
+        result = _export(mdb, records)
+        rows = next(op for op in mdb.ops if op["op"] == "insert")["rows"]
+        self.assertEqual([r["com_TextID"] for r in rows], [77, 88, None])  # surcharge -> option-id text
+        self.assertEqual({r["com_PriceLevelCode"] for r in rows}, {"X"})
+        # PDM stamps new global rows with the price list's validity, not the record's date.
+        self.assertEqual({r["com_PriceValidFrom"] for r in rows}, {"#2026-01-01 00:00:00#"})
+        self.assertTrue(any("without a text link" in w for w in result["warnings"]))
+        self.assertTrue(result["verified"])
+
+    def test_existing_row_currency_is_not_part_of_identity(self):
+        # PDM matches by list + article + variant + level; the list fixes the currency.
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=[_eur_row(sys_ISOCurrencyCode="")], linked=[21, 22])
+        result = _export(mdb, [_rec(9.0, "EUR")])
+        self.assertEqual((result["updated_prices"], result["inserted_prices"]), (1, 0))
+
+    def test_new_article_price_copies_the_articles_existing_validity(self):
+        existing = _eur_row(com_VariantCondition=".L", com_PriceValidFrom="2026-03-01",
+                            com_PriceValidTo="2026-12-31")
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=[existing], linked=[21, 22])
+        _export(mdb, [_rec(9.0, "EUR", variant_condition=".S")])
+        row = next(op for op in mdb.ops if op["op"] == "insert")["rows"][0]
+        self.assertEqual((row["com_PriceValidFrom"], row["com_PriceValidTo"]),
+                         ("#2026-03-01 00:00:00#", "#2026-12-31 00:00:00#"))
+
+    def test_dry_run_reports_the_plan_and_executes_nothing(self):
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=[_eur_row()], linked=[21, 22])
+        mdb.ops = None
+        result = _export_dry(mdb, [_rec(9.0, "EUR"), _rec(4.0, "GBP")])
+        self.assertIsNone(mdb.ops)  # execute_batch never called
+        self.assertTrue(result["dry_run"])
+        self.assertEqual((result["updated_prices"], result["inserted_prices"]), (1, 1))
+        self.assertEqual((result["plan_updates"][0]["from"], result["plan_updates"][0]["to"]), (1.0, 9.0))
+
+    def test_readback_mismatch_is_reported_as_failure(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), prices=[_eur_row()], linked=[21, 22], corrupt_readback=True)
+        result = _export(mdb, [_rec(9.0, "EUR")])
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["verified"])
+        self.assertIn("verification failed", result["error"])
+        self.assertTrue(result["verification_failures"])
+
+
 if __name__ == "__main__":
     unittest.main()
