@@ -6,7 +6,6 @@ whose identity is not already present.
 """
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from typing import Any
 
