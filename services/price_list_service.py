@@ -76,9 +76,10 @@ class PriceListService(BaseService):
             # A second list in the same calendar year is named with the sole
             # supported suffix "_2". Never auto-generate _3 or higher.
             if any(p.id.upper() == base_id.upper() for p in existing):
-                second_id = f"{base_id}_2"
-                if not any(p.id.upper() == second_id.upper() for p in existing):
-                    list_id = second_id
+                # Once the base-year list exists, maintenance uses the sole
+                # supported suffix even when that suffix is already occupied;
+                # the conflict below then blocks duplicate creation.
+                list_id = f"{base_id}_2"
             label = list_id.replace("_", " ")
             conflict = ""
             previous_id = ""
