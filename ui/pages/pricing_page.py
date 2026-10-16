@@ -445,7 +445,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
 
     def _on_export_prices(self) -> None:
-        """Append new computed price rows to an existing MDB; never replace data."""
+        """Write computed prices into an existing MDB: correct matching rows' values,
+        insert missing rows; never delete or replace other data."""
         snapshot = self._context.active_snapshot
         if snapshot is None or not snapshot.price_records:
             QMessageBox.information(self, "Export Prices", "Compute prices before exporting.")
@@ -454,7 +455,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
         mdb_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select existing OCD MDB to append prices",
+            "Select existing OCD MDB to export prices into",
             "",
             "Access database (*.mdb)",
         )
@@ -463,10 +464,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
         answer = QMessageBox.question(
             self,
-            "Append Prices to MDB",
-            "EUR prices will map to EUR price lists and GBP prices to GBP price lists. "
-            "Only matching price-value fields will be updated; the price lists and "
-            "unrelated rows will not be replaced or removed. Continue?",
+            "Export Prices to MDB",
+            "EUR prices map to EUR price lists and GBP prices to GBP price lists. "
+            "Missing price rows are added and the price value of rows that already "
+            "match is corrected; no rows are deleted and no other fields change. "
+            "Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -494,9 +496,10 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             )
             return
         self._summary.setText(
-            f"Export complete: {result.get('inserted_prices', 0):,} price rows, "
-            f"{result.get('inserted_global_prices', 0):,} global rows added."
+            f"Export complete: {result.get('inserted_prices', 0) + result.get('inserted_global_prices', 0):,} "
+            f"rows added, {result.get('updated_prices', 0) + result.get('updated_global_prices', 0):,} corrected."
         )
+        warnings = "\n".join(result.get("warnings") or [])
         QMessageBox.information(
             self,
             "Export Prices",
@@ -506,8 +509,12 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             f"Article price rows updated: {result.get('updated_prices', 0):,}\n"
             f"Global price rows updated: {result.get('updated_global_prices', 0):,}\n"
             f"Price lists added: {result.get('inserted_price_lists', 0):,}\n"
-            f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n\n"
-            f"File: {result.get('mdb_path', mdb_path)}",
+            f"Existing rows unchanged: {result.get('skipped_existing', 0):,}\n"
+            f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n"
+            f"Ambiguous rows skipped: {result.get('skipped_ambiguous', 0):,}\n"
+            f"Writes that changed nothing: {result.get('failed', 0):,}\n\n"
+            f"File: {result.get('mdb_path', mdb_path)}"
+            + (f"\n\n{warnings}" if warnings else ""),
         )
 
     def _on_price_export_failed(self, error: str) -> None:

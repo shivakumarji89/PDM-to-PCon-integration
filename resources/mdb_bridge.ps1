@@ -99,8 +99,10 @@ try {
                         if ($conds.Count -gt 0) { $whereSql = " WHERE " + ($conds -join " AND ") }
                     }
                     $sql = "UPDATE [$($op.table)] SET " + ($sets -join ", ") + $whereSql
-                    $conn.Execute($sql) | Out-Null
-                    $r.updated = 1
+                    # Report the rows the engine actually changed (0 = no row matched).
+                    $affected = 0
+                    $conn.Execute($sql, [ref]$affected) | Out-Null
+                    $r.updated = [int]$affected
                 }
                 "query" {
                     $rs = $conn.Execute($op.sql)
