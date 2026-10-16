@@ -499,11 +499,13 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         QMessageBox.information(
             self,
             "Export Prices",
-            "Append-only price export completed.\n\n"
+            "Price export completed. Existing matching rows were updated only in the price-value field when needed.\n\n"
             f"Price rows added: {result.get('inserted_prices', 0):,}\n"
             f"Global price rows added: {result.get('inserted_global_prices', 0):,}\n"
+            f"Existing article prices corrected: {result.get('updated_prices', 0):,}\n"
+            f"Existing global prices corrected: {result.get('updated_global_prices', 0):,}\n"
             f"Price lists added: {result.get('inserted_price_lists', 0):,}\n"
-            f"Existing rows skipped: {result.get('skipped_existing', 0):,}\n"
+            f"Existing rows unchanged: {result.get('skipped_existing', 0):,}\n"
             f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n\n"
             f"File: {result.get('mdb_path', mdb_path)}",
         )
