@@ -128,12 +128,12 @@ class PriceMdbExportService(BaseService):
                 )
                 existing_prices = mdb_service.read_table(
                     mdb, "SELECT com_PriceID, com_ArticleID, com_PriceListID, "
-                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
                          "FROM tCOMd_Price"
                 )
                 existing_globals = mdb_service.read_table(
                     mdb, "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
-                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
                          "FROM tCOMd_GlobalPrice"
                 )
                 price_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_Price")
