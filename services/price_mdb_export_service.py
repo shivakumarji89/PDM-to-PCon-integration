@@ -7,6 +7,8 @@ whose identity is not already present.
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+import re
 from typing import Any
 
 from models.snapshot import Snapshot
@@ -115,11 +117,42 @@ class PriceMdbExportService(BaseService):
         package_id = packages[0].get("com_PackageID")
 
         def norm_date(value: Any, fallback: str) -> str:
-            text = str(value or "").strip()
+            """Normalize Access bridge dates without corrupting /Date(ms)/ values."""
+            if value is None:
+                return fallback
+            if isinstance(value, datetime):
+                return value.strftime("%Y%m%d")
+            if hasattr(value, "strftime") and not isinstance(value, str):
+                try:
+                    return value.strftime("%Y%m%d")
+                except (TypeError, ValueError):
+                    pass
+            text = str(value).strip()
             if not text:
                 return fallback
-            digits = "".join(ch for ch in text if ch.isdigit())
-            return digits[:8] if len(digits) >= 8 else fallback
+            # ADODB bridge JSON-serializes DateTime as /Date(milliseconds)/.
+            match = re.fullmatch(r"/Date\((-?\d+)(?:[+-]\d{4})?\)/", text)
+            if match:
+                try:
+                    instant = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
+                        milliseconds=int(match.group(1))
+                    )
+                    # Price-list dates are stored at local midnight. Convert to
+                    # local wall time before taking the calendar date, matching
+                    # PriceUpdateService._bridge_ymd.
+                    local = instant.astimezone()
+                    return local.strftime("%Y%m%d")
+                except (ValueError, OverflowError, OSError):
+                    return fallback
+            digits = re.sub(r"\D", "", text)
+            if len(digits) >= 8:
+                candidate = digits[:8]
+                try:
+                    datetime.strptime(candidate, "%Y%m%d")
+                    return candidate
+                except ValueError:
+                    return fallback
+            return fallback
 
         numeric_ids = []
         for row in existing_lists:
@@ -275,6 +308,14 @@ class PriceMdbExportService(BaseService):
                 # Append-only contract: never UPDATE an existing price row.
                 skipped_existing += 1
                 continue
+            try:
+                price_value = float(record.value)
+            except (TypeError, ValueError):
+                skipped_unmapped += 1
+                continue
+            if not __import__("math").isfinite(price_value):
+                skipped_unmapped += 1
+                continue
             common = {
                 "com_PriceListID": price_list["id"],
                 "com_VariantCondition": record.variant_condition or "",
@@ -282,7 +323,7 @@ class PriceMdbExportService(BaseService):
                 "com_PriceLevelCode": (record.level or "B").strip() or "B",
                 "com_PriceRuleCode": None,
                 "com_TextID": None,
-                "com_PriceValue": record.value,
+                "com_PriceValue": price_value,
                 "sys_ISOCurrencyCode": (record.currency or "").strip().upper(),
                 "com_PriceIndex": "",
                 "com_PriceValidFrom": _mdb_date_literal(record.valid_from or price_list["date_from"]),
