@@ -244,14 +244,14 @@ class PriceMdbExportService(BaseService):
             try:
                 targeted = mdb_service.read_tables(mdb, {
                     "price_keys": (
-                        "SELECT com_PriceID, com_ArticleID, com_PriceListID, "
-                        "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                        "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, "
+                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
                         "FROM tCOMd_Price WHERE com_ArticleID IN (" + article_filter + ") "
                         "AND com_PriceListID IN (" + list_filter + ")"
                     ),
                     "global_keys": (
-                        "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
-                        "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode "
+                        "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, com_VariantCondition, "
+                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
                         "FROM tCOMd_GlobalPrice WHERE com_PackageID = " + str(package_id) + " "
                         "AND com_PriceListID IN (" + list_filter + ")"
                     ),
