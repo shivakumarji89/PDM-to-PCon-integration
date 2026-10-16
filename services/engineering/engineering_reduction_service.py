@@ -26,6 +26,7 @@ from services.base_service import BaseService
 from services.engineering.engineering_repository import EngineeringRepository
 from services.engineering.candidate_strategy_service import PRIMARY_STRATEGY, STRATEGY_ORDER
 from services.engineering.pdm_family_reduction_service import FamilyCandidate
+from services.engineering.pdm_exact_article_method import extract_pdm_exact_article_code
 
 #: Separator used between property values when building a signature. It is a
 #: control character (unit separator) that does not occur in engineering values.
@@ -519,7 +520,7 @@ class EngineeringReductionService(BaseService):
         if snapshot is None: return VariantConditionResult()
         article = next((a for a in snapshot.articles if str(a.id) == str(article_id)), None)
         if article is None: return VariantConditionResult()
-        pre_dot = (getattr(article, "code", "") or "").split(".", 1)[0]
+        pre_dot = extract_pdm_exact_article_code(getattr(article, "code", "")).match_key
         boundary = max(0, min(int(base_length or 0), len(pre_dot)))
         remaining = pre_dot[boundary:]
         article_value_ids = getattr(snapshot, 'article_property_value_ids', {}) or {}
@@ -685,7 +686,7 @@ class EngineeringReductionService(BaseService):
             )
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
-                pre_dot = (original or "").split(".", 1)[0]
+                pre_dot = extract_pdm_exact_article_code(original).match_key
                 override_key = str(original or "")
                 has_manual_boundary = override_key in override_map
 
@@ -699,7 +700,7 @@ class EngineeringReductionService(BaseService):
                 else:
                     base_length_for_article = self._common_prefix_len(
                         [
-                            (code_of.get(a, "") or "").split(".", 1)[0]
+                            extract_pdm_exact_article_code(code_of.get(a, "")).match_key
                             for a in article_ids
                         ]
                     )
@@ -784,7 +785,7 @@ class EngineeringReductionService(BaseService):
             base_code = (bases[0][:base_length] if bases else "")
             split_base_length = min(
                 (
-                    len((code_of.get(a, "") or "").split(".", 1)[0])
+                    len(extract_pdm_exact_article_code(code_of.get(a, "")).match_key)
                     for a in article_ids
                     if code_of.get(a, "")
                 ),
@@ -967,7 +968,7 @@ class EngineeringReductionService(BaseService):
                         # singleton structure classes from retaining the
                         # after-dot suffix in Base Article.
                         pre_dot_lengths = [
-                            len(code.split(".", 1)[0])
+                            len(extract_pdm_exact_article_code(code).match_key)
                             for code in (code_of.get(a, "") for a in article_ids)
                             if code
                         ]
@@ -1005,7 +1006,7 @@ class EngineeringReductionService(BaseService):
             base_n = min(base_length, self._common_prefix_len(codes))
             base_code = next((c for c in codes if c), "")[:base_n]
             pre_dot_lengths = [
-                len((code_of.get(a, "") or "").split(".", 1)[0])
+                len(extract_pdm_exact_article_code(code_of.get(a, "")).match_key)
                 for a in article_ids
                 if code_of.get(a, "")
             ]
@@ -1171,7 +1172,7 @@ class EngineeringReductionService(BaseService):
                         article = article_by_id.get(article_id)
                         if article is None:
                             continue
-                        pre_dot = (article.code or "").split(".", 1)[0]
+                        pre_dot = extract_pdm_exact_article_code(article.code).match_key
                         letters = pre_dot[base_length:][offset:offset + width]
                         match = next((v for v in manual if v.code == letters), None)
                         if match is None:
