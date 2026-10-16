@@ -45,3 +45,19 @@ never consults `tCOMd_DistributionRegionPriceList` - the list is whatever the us
 * All 132,964 vendor global rows are level `X`; no duplicate (package, list, variant) exists.
 * Every vendor global row has a `com_TextID`; all 760 variants of the earlier export resolve through the
   PDM text-name rule to an existing `price` text.
+
+## Decisions on the two intentional differences
+
+**Duplicate rows - keep "update every duplicate".** PDM's base-price path updates the last row it reads;
+its surcharge path updates all rows. pCon can read either duplicate, so correcting only one can leave a stale
+value on screen (the reason for commit 5a5655e). Every row is written only if its own value differs, so the
+result is a superset of PDM's and never worse. The real MDB has **no** duplicate identity in the planned
+scope (`duplicate_matches: 0` in the dry run), so on current data both behaviours are identical. The export
+reports `duplicate_matches`, so a duplicate-bearing file is visible before writing.
+
+**Price-list selection - honour the named list, prefer linked, warn if unlinked.** PDM writes to the list the
+user selected. The Pricing page has no list picker: the target is the list named by the snapshot's price lists
+(Price List Manager) and the record date. The exporter therefore (1) honours that named list even if it is not
+region-linked (as PDM would), (2) chooses a region-linked list only among lists that are the *same list under a
+spelling variant* (`EURO 2026_2` vs `EURO_2026_2`), and (3) lists every target list with its link status in
+`target_lists` and warns when a written list is not region-linked, since pCon will not read it.

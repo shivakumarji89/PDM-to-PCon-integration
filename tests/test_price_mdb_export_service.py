@@ -459,5 +459,32 @@ class PriceMdbExportPdmParityTests(unittest.TestCase):
         self.assertTrue(result["verification_failures"])
 
 
+class PriceMdbExportTargetReportTests(unittest.TestCase):
+    def test_target_lists_report_link_status_and_warn_when_unlinked(self):
+        lists = _eur_gbp_lists()
+        mdb = _RecordingMDB(lists, prices=[_eur_row(value=1.0)], linked=[21])  # GBP list 22 unlinked
+        result = _export(mdb, [_rec(9.0, "EUR"), _rec(4.0, "GBP")])
+        targets = {t["id"]: t for t in result["target_lists"]}
+        self.assertEqual((targets[21]["linked"], targets[21]["updates"]), (True, 1))
+        self.assertEqual((targets[22]["linked"], targets[22]["inserts"]), (False, 1))
+        self.assertTrue(any("GBP_2026_2" in w and "not linked" in w for w in result["warnings"]))
+
+    def test_user_named_list_is_honoured_even_when_unlinked(self):
+        # PDM writes to the list the user selected; only a warning is raised.
+        lists = [_plist(21, "EURO_2026_2", "EUR"), _plist(30, "EURO_SPECIAL", "EUR")]
+        mdb = _RecordingMDB(lists, linked=[21])
+        result = _export(mdb, [_rec(9.0, "EUR")],
+                         [PriceList(id="EURO_SPECIAL", label="EURO_SPECIAL", currency="EUR",
+                                    date_from="20260101", date_to="99991231")])
+        self.assertEqual(mdb.ops[0]["rows"][0]["com_PriceListID"], 30)
+        self.assertTrue(any("EURO_SPECIAL" in w for w in result["warnings"]))
+
+    def test_records_matching_duplicate_rows_are_counted(self):
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=[_eur_row(1, 0.0), _eur_row(2, 0.0)], linked=[21, 22])
+        result = _export(mdb, [_rec(9.0, "EUR")])
+        self.assertEqual(result["duplicate_matches"], 1)
+        self.assertEqual(result["updated_prices"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

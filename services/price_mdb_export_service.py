@@ -372,6 +372,17 @@ class PriceMdbExportService(BaseService):
         }
         missing_text_names: set[str] = set()
         planned_update_detail: list[dict[str, Any]] = []
+        # Lists that receive a write / records that hit several existing rows:
+        # reported so the target can be checked before anything is written.
+        target_lists: dict[str, dict[str, Any]] = {}
+        duplicate_matches = 0
+
+        def note_target(price_list, kind):
+            entry = target_lists.setdefault(str(price_list["id"]), {
+                "id": price_list["id"], "label": price_list["label"],
+                "linked": str(price_list["id"]) in linked_list_ids,
+                "updates": 0, "inserts": 0})
+            entry[kind] += 1
         next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
         next_global_id = int((global_max_rows[0].get("max_id") if global_max_rows else 0) or 0) + 1
         price_rows: list[dict[str, Any]] = []
@@ -444,6 +455,7 @@ class PriceMdbExportService(BaseService):
                             ),
                         }
                     stale += 1
+                    note_target(price_list, "updates")
                     planned_update_detail.append({
                         "table": table_name, "id": existing_id,
                         "variant_condition": record.variant_condition or "",
@@ -454,6 +466,8 @@ class PriceMdbExportService(BaseService):
                         "set": {"com_PriceValue": price_value},
                         "where": {primary_key: existing_id},
                     })
+                if len(existing_map[row_key]) > 1:
+                    duplicate_matches += 1
                 if not stale:
                     skipped_existing += 1
                 continue
@@ -484,6 +498,7 @@ class PriceMdbExportService(BaseService):
                 if text_ids.get(text_name) is None:
                     missing_text_names.add(text_name)
                 common["com_TextID"] = text_ids.get(text_name)
+                note_target(price_list, "inserts")
                 global_rows.append(OcdExportService._row(global_proto, {
                     "com_GlobalPriceID": next_global_id,
                     "com_PackageID": package_id,
@@ -492,6 +507,7 @@ class PriceMdbExportService(BaseService):
                 next_global_id += 1
                 existing_global_keys.add(row_key)
             else:
+                note_target(price_list, "inserts")
                 price_rows.append(OcdExportService._row(price_proto, {
                     "com_PriceID": next_price_id,
                     "com_ArticleID": article_id,
@@ -514,6 +530,13 @@ class PriceMdbExportService(BaseService):
             "skipped_ambiguous": skipped_ambiguous, "skipped_zero_price": skipped_zero,
             "failed": 0, "verified": None, "verification_failures": [], "warnings": [],
         }
+        report["target_lists"] = sorted(target_lists.values(), key=lambda e: str(e["id"]))
+        report["duplicate_matches"] = duplicate_matches
+        for entry in report["target_lists"]:
+            if not entry["linked"] and entry["id"] not in {r.get("com_PriceListID") for r in list_rows}:
+                report["warnings"].append(
+                    f"Target price list '{entry['label']}' (id {entry['id']}) is not linked to a "
+                    "distribution region; pCon will not read prices written to it.")
         if missing_text_names:
             report["warnings"].append(
                 f"{len(missing_text_names)} new global price(s) have no matching 'price' text in "
