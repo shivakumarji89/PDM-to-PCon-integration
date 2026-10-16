@@ -286,7 +286,7 @@ class PriceMdbExportService(BaseService):
         price_rows: list[dict[str, Any]] = []
         global_rows: list[dict[str, Any]] = []
         skipped_existing = skipped_unmapped = 0
-        value_conflicts: list[str] = []
+        value_updates: list[dict[str, Any]] = []
 
         for record in snapshot.price_records:
             price_list = record_list(record)
@@ -316,9 +316,8 @@ class PriceMdbExportService(BaseService):
                 skipped_unmapped += 1
                 continue
             if row_key in target_keys:
-                # Never silently report success when pCon's existing row has a
-                # different value (especially 0.00 versus a computed non-zero).
-                # Append-only policy forbids updating it; fail clearly instead.
+                # Update only the value in the exact matched row. Identity,
+                # validity, currency and all unrelated rows remain untouched.
                 existing_row = existing_map[row_key]
                 existing_value = existing_row.get("com_PriceValue")
                 try:
@@ -330,13 +329,22 @@ class PriceMdbExportService(BaseService):
                 if same_value:
                     skipped_existing += 1
                 else:
-                    kind = "global" if is_global else "article"
-                    value_conflicts.append(
-                        f"{kind}={row_key[0]}, list={row_key[1]}, "
-                        f"variant={row_key[2] or '<base>'}, level={row_key[3]}, "
-                        f"currency={row_key[4]}, existing={existing_value!r}, "
-                        f"computed={price_value:g}"
-                    )
+                    primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
+                    existing_id = existing_row.get(primary_key)
+                    if existing_id is None:
+                        return {
+                            "ok": False,
+                            "error": (
+                                f"Cannot safely update mismatched price {row_key}: "
+                                f"existing {primary_key} is missing."
+                            ),
+                        }
+                    value_updates.append({
+                        "op": "update",
+                        "table": "tCOMd_GlobalPrice" if is_global else "tCOMd_Price",
+                        "set": {"com_PriceValue": price_value},
+                        "where": {primary_key: existing_id},
+                    })
                 continue
             common = {
                 "com_PriceListID": price_list["id"],
@@ -370,28 +378,7 @@ class PriceMdbExportService(BaseService):
                 next_price_id += 1
                 existing_price_keys.add(row_key)
 
-        if value_conflicts:
-            preview = "\\n".join(value_conflicts[:10])
-            more = (
-                f"\\n…and {len(value_conflicts) - 10} more."
-                if len(value_conflicts) > 10 else ""
-            )
-            return {
-                "ok": False,
-                "error": (
-                    f"{len(value_conflicts)} existing MDB price row(s) have values "
-                    "different from the computed prices. No rows were changed or "
-                    "inserted because export is append-only. These conflicts may "
-                    "include existing zero-price rows. Review the existing MDB "
-                    "price identities before exporting again:\\n" + preview + more
-                ),
-                "mdb_path": str(mdb), "inserted_prices": 0,
-                "inserted_global_prices": 0, "inserted_price_lists": 0,
-                "skipped_existing": skipped_existing, "skipped_unmapped": skipped_unmapped,
-                "value_conflicts": len(value_conflicts),
-            }
-
-        ops = []
+        ops = list(value_updates)
         if list_rows:
             ops.append({"op": "insert", "table": "tCOMd_PriceList2", "rows": list_rows})
         if price_rows:
@@ -408,6 +395,9 @@ class PriceMdbExportService(BaseService):
         return {
             "ok": batch.ok, "error": batch.first_error(), "mdb_path": str(mdb),
             "inserted_prices": len(price_rows), "inserted_global_prices": len(global_rows),
-            "inserted_price_lists": len(list_rows), "skipped_existing": skipped_existing,
+            "inserted_price_lists": len(list_rows),
+            "updated_prices": sum(1 for op in value_updates if op["table"] == "tCOMd_Price"),
+            "updated_global_prices": sum(1 for op in value_updates if op["table"] == "tCOMd_GlobalPrice"),
+            "skipped_existing": skipped_existing,
             "skipped_unmapped": skipped_unmapped,
         }
