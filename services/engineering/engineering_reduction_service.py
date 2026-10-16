@@ -770,6 +770,15 @@ class EngineeringReductionService(BaseService):
                             code = (decoded.get(pid, {}) or {}).get(str(value.id), "") or ""
                         if code:
                             suffix_codes.add(code.strip())
+                        # Some PDM feature values carry the suffix marker
+                        # separately from OrderCodeValue. Treat that explicit
+                        # marker as a valid segment only at this placement and
+                        # configured width; prefer OrderCodeValue when present.
+                        model_suffix = (
+                            getattr(value, "model_suffix", "") or ""
+                        ).strip()
+                        if model_suffix:
+                            suffix_codes.add(model_suffix)
                     slice_code = suffix_remaining[:width]
                     suffix_remaining = suffix_remaining[width:]
                     if slice_code in suffix_codes:
