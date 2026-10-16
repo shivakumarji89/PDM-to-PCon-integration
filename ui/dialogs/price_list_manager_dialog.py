@@ -6,7 +6,7 @@ then are the snapshot lists mutated.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -54,7 +54,36 @@ class PriceListManagerDialog(QDialog):
             if mode == "new_creation"
             else "Maintenance: prepare the next price list and close the previous open list."
         )
-        layout.addWidget(QLabel(description, self))
+        layout.addWidget(QLabel(
+            description + "\n\nExisting price lists: double-click cells to edit. "
+            "Saving changes does not delete price records.",
+            self,
+        ))
+        self._existing_table = QTableWidget(0, 5, self)
+        self._existing_table.setHorizontalHeaderLabels([
+            "Price List ID", "Label", "Currency", "Valid From", "Valid To",
+        ])
+        self._existing_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self._existing_table.horizontalHeader().setStretchLastSection(True)
+        for price_list in snapshot.price_lists:
+            row = self._existing_table.rowCount()
+            self._existing_table.insertRow(row)
+            values = [
+                price_list.id, price_list.label, price_list.currency,
+                price_list.date_from, price_list.date_to or "99991231",
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, price_list.id)
+                self._existing_table.setItem(row, column, item)
+        layout.addWidget(self._existing_table)
+        self._save_existing_button = QPushButton("Save Existing List Edits", self)
+        self._save_existing_button.clicked.connect(self._save_existing_edits)
+        layout.addWidget(self._save_existing_button)
 
         date_row = QHBoxLayout()
         date_row.addWidget(QLabel("Effective date:", self))
@@ -94,6 +123,35 @@ class PriceListManagerDialog(QDialog):
     @property
     def applied(self) -> bool:
         return self._applied
+
+    def _save_existing_edits(self) -> None:
+        """Save user-edited price-list metadata without removing list rows."""
+        rows: list[dict[str, str]] = []
+        for row in range(self._existing_table.rowCount()):
+            cells = [self._existing_table.item(row, column) for column in range(5)]
+            if any(cell is None for cell in cells):
+                QMessageBox.warning(self, "Price Lists", "Complete every price-list field.")
+                return
+            rows.append({
+                "original_id": str(cells[0].data(Qt.ItemDataRole.UserRole) or cells[0].text()).strip(),
+                "id": cells[0].text().strip(),
+                "label": cells[1].text().strip(),
+                "currency": cells[2].text().strip(),
+                "date_from": cells[3].text().strip(),
+                "date_to": cells[4].text().strip(),
+            })
+        if not rows:
+            QMessageBox.information(self, "Price Lists", "There are no existing price lists to edit.")
+            return
+        if not self._service.update_existing_lists(self._snapshot, rows):
+            QMessageBox.warning(self, "Price Lists", "Could not save edits. Check unique IDs, EUR/GBP currency, and YYYYMMDD date ranges.")
+            return
+        for row in range(self._existing_table.rowCount()):
+            item = self._existing_table.item(row, 0)
+            item.setData(Qt.ItemDataRole.UserRole, item.text().strip().upper())
+        self._context.snapshot_manager.mark_modified()
+        self._refresh_proposals(self._currencies)
+        QMessageBox.information(self, "Price Lists", "Price-list metadata saved. No price records were deleted.")
 
     def _refresh_proposals(self, currencies: list[str]) -> None:
         start = self._date.date().toString("yyyyMMdd")
