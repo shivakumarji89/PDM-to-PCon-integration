@@ -66,16 +66,23 @@ class PriceListService(BaseService):
         existing = list(snapshot.price_lists)
         proposals: list[PriceListProposal] = []
         for currency in normalized:
-            list_id = self.generated_name(currency, year)
-            label = list_id.replace("_", " ")
-            conflict = ""
-            previous_id = ""
-            previous_date_to = ""
+            base_id = self.generated_name(currency, year)
+            list_id = base_id
             same_start = next(
                 (p for p in existing
                  if p.currency.upper() == currency and p.date_from == start),
                 None,
             )
+            # A second list in the same calendar year is named with the sole
+            # supported suffix "_2". Never auto-generate _3 or higher.
+            if any(p.id.upper() == base_id.upper() for p in existing):
+                second_id = f"{base_id}_2"
+                if not any(p.id.upper() == second_id.upper() for p in existing):
+                    list_id = second_id
+            label = list_id.replace("_", " ")
+            conflict = ""
+            previous_id = ""
+            previous_date_to = ""
             if same_start is not None:
                 conflict = f"A {currency} price list already starts on {start}."
             elif any(p.id.upper() == list_id.upper() for p in existing):
@@ -174,6 +181,50 @@ class PriceListService(BaseService):
         if date_from is not None:
             price_list.date_from = self._norm_date(date_from)
         self.roll_over(snapshot)
+        return True
+
+    def update_existing_lists(
+        self, snapshot: Snapshot | None, rows: list[dict[str, str]]
+    ) -> bool:
+        """Apply explicitly edited list metadata without deleting any list.
+
+        Validity windows are edited as supplied; they are not auto-rechained.
+        The caller should validate and present the complete list before applying.
+        """
+        if snapshot is None or not rows:
+            return False
+        existing = {p.id.upper(): p for p in snapshot.price_lists}
+        seen: set[str] = set()
+        normalized: list[tuple[PriceList, str, str, str, str, str]] = []
+        for row in rows:
+            old_id = (row.get("original_id") or "").strip().upper()
+            price_list = existing.get(old_id)
+            new_id = (row.get("id") or "").strip().upper()
+            label = (row.get("label") or "").strip().upper()
+            currency = (row.get("currency") or "").strip().upper()
+            date_from = self._norm_date(row.get("date_from") or "")
+            date_to = self._norm_date(row.get("date_to") or "")
+            if (
+                price_list is None or not new_id or not label
+                or currency not in {"EUR", "GBP"}
+                or len(date_from) != 8 or len(date_to) != 8
+                or date_from > date_to or new_id in seen
+            ):
+                return False
+            seen.add(new_id)
+            normalized.append((price_list, new_id, label, currency, date_from, date_to))
+        untouched_ids = {
+            p.id.upper() for p in snapshot.price_lists
+            if p.id.upper() not in {row[0].id.upper() for row in normalized}
+        }
+        if seen.intersection(untouched_ids):
+            return False
+        for price_list, new_id, label, currency, date_from, date_to in normalized:
+            price_list.id = new_id
+            price_list.label = label
+            price_list.currency = currency
+            price_list.date_from = date_from
+            price_list.date_to = date_to
         return True
 
     def roll_over(self, snapshot: Snapshot | None) -> None:
