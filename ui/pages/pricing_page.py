@@ -472,13 +472,30 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         if answer != QMessageBox.StandardButton.Yes:
             return
 
-        result = PriceMdbExportService(self._context).export(snapshot, mdb_path)
+        self._export_btn.setEnabled(False)
+        self._summary.setText("Exporting prices to MDB… the application remains available.")
+        self._export_task = BackgroundTask(
+            lambda _progress: PriceMdbExportService(self._context).export(snapshot, mdb_path)
+        )
+        self._export_task.signals.finished.connect(
+            lambda result: self._on_price_export_finished(result, mdb_path)
+        )
+        self._export_task.signals.failed.connect(self._on_price_export_failed)
+        QThreadPool.globalInstance().start(self._export_task)
+
+    def _on_price_export_finished(self, result: dict, mdb_path: str) -> None:
+        """Handle background export completion on the GUI thread."""
+        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
         if not result.get("ok"):
+            self._summary.setText("Price export failed.")
             QMessageBox.critical(
                 self, "Export Prices", result.get("error") or "Price export failed."
             )
             return
-
+        self._summary.setText(
+            f"Export complete: {result.get('inserted_prices', 0):,} price rows, "
+            f"{result.get('inserted_global_prices', 0):,} global rows added."
+        )
         QMessageBox.information(
             self,
             "Export Prices",
@@ -490,6 +507,12 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n\n"
             f"File: {result.get('mdb_path', mdb_path)}",
         )
+
+    def _on_price_export_failed(self, error: str) -> None:
+        """Handle an unexpected background export exception."""
+        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._summary.setText("Price export failed.")
+        QMessageBox.critical(self, "Export Prices", error or "Price export failed.")
 
     def _append_batch(self, records: list[PriceRecord]) -> None:
         """Append a freshly computed batch to the table live. No diff colour yet -
