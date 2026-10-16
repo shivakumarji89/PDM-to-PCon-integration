@@ -329,25 +329,19 @@ class PriceMdbExportService(BaseService):
                 primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
                 table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
                 for existing_row in matching_rows:
-                    existing_value = existing_row.get("com_PriceValue")
-                    try:
-                        same_value = existing_value is not None and abs(
-                            float(existing_value) - price_value
-                        ) < 1e-9
-                    except (TypeError, ValueError):
-                        same_value = False
-                    if same_value:
-                        skipped_existing += 1
-                        continue
                     existing_id = existing_row.get(primary_key)
                     if existing_id is None:
                         return {
                             "ok": False,
                             "error": (
-                                f"Cannot safely update mismatched price {row_key}: "
+                                f"Cannot safely update matched price {row_key}: "
                                 f"existing {primary_key} is missing."
                             ),
                         }
+                    # Always write the computed value to the exact matching row.
+                    # Do not trust the read-back value to decide whether to write:
+                    # stale/duplicate OCD rows can otherwise be reported unchanged
+                    # while pCon continues displaying zero.
                     value_updates.append({
                         "op": "update",
                         "table": table_name,
