@@ -26,8 +26,8 @@ class _FakeMDB:
                  "sys_ISOCurrencyCode": "GBP", "com_PriceValidFrom": "2026-01-01",
                  "com_PriceValidTo": "9999-12-31"},
             ],
-            "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode FROM tCOMd_Price": [],
-            "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode FROM tCOMd_GlobalPrice": [],
+            "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue FROM tCOMd_Price": [],
+            "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue FROM tCOMd_GlobalPrice": [],
         }
 
     @staticmethod
@@ -77,11 +77,11 @@ class PriceMdbExportServiceTests(unittest.TestCase):
     def test_existing_price_identity_is_skipped_without_update_or_delete(self):
         fake_mdb = _FakeMDB()
         fake_mdb.rows[
-            "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode FROM tCOMd_Price"
+            "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue FROM tCOMd_Price"
         ] = [
             {"com_PriceID": 3, "com_ArticleID": 4, "com_PriceListID": 7,
              "com_VariantCondition": "", "com_PriceLevelCode": "B",
-             "sys_ISOCurrencyCode": "GBP"},
+             "sys_ISOCurrencyCode": "GBP", "com_PriceValue": 125.0},
         ]
         context = SimpleNamespace(mdb_service=fake_mdb)
         snapshot = Snapshot()
@@ -102,6 +102,36 @@ class PriceMdbExportServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["inserted_prices"], 0)
         self.assertEqual(result["skipped_existing"], 1)
+        self.assertEqual(fake_mdb.ops, [])
+
+    def test_export_fails_clearly_when_existing_price_is_zero(self):
+        fake_mdb = _FakeMDB()
+        fake_mdb.rows[
+            "SELECT com_PriceID, com_ArticleID, com_PriceListID, com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue FROM tCOMd_Price"
+        ] = [
+            {"com_PriceID": 3, "com_ArticleID": 4, "com_PriceListID": 7,
+             "com_VariantCondition": "", "com_PriceLevelCode": "B",
+             "sys_ISOCurrencyCode": "GBP", "com_PriceValue": 0.0},
+        ]
+        context = SimpleNamespace(mdb_service=fake_mdb)
+        snapshot = Snapshot()
+        snapshot.price_lists = [
+            PriceList(id="gbp_2026", label="GBP_2026", currency="GBP",
+                      date_from="20260101", date_to="99991231")
+        ]
+        snapshot.price_records = [
+            PriceRecord(article_code="A1", value=125.0, currency="GBP",
+                        valid_from="2026-01-01", valid_to=""),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mdb_path = Path(tmp) / "existing.mdb"
+            mdb_path.touch()
+            result = PriceMdbExportService(context).export(snapshot, mdb_path)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["value_conflicts"], 1)
+        self.assertIn("existing=0.0", result["error"])
         self.assertEqual(fake_mdb.ops, [])
 
     def test_export_does_not_touch_mdb_when_no_prices_exist(self):
