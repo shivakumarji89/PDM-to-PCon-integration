@@ -131,7 +131,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._auto_reduced_signature: object = object()  # last auto-reduced set lengths
         self._blocked_article_ids: frozenset[str] = frozenset()
         self._blocked_reason: str = ""
-        self._group_by_base = True  # group by base by default
+        self._group_by_base = False  # preserve every PDM article row on initial load
         self._syncing = False  # guard while programmatically syncing widgets
         self._last_module = None
         # Maintenance PDM view: derived MDB base lengths (None = not applicable).
