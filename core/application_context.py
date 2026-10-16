@@ -44,6 +44,7 @@ from services.metatype.metatype_table_loader_service import MetatypeTableLoaderS
 from services.metatype.metatype_series_service import MetatypeSeriesService
 from services.metatype.metatype_pattern_service import MetatypePatternService
 from services.metatype.metatype_creation_service import MetatypeCreationService
+from services.metatype.metatype_article_service import MetatypeArticleService
 from services.option_service import OptionService
 from services.option_value_service import OptionValueService
 from services.pdm_service import PDMService
@@ -119,6 +120,7 @@ class ApplicationContext:
             MetatypeSeriesService: MetatypeSeriesService,
             MetatypePatternService: MetatypePatternService,
             MetatypeCreationService: MetatypeCreationService,
+            MetatypeArticleService: MetatypeArticleService,
             ArticleService: ArticleService,
             PropertyService: PropertyService,
             PropertyValueService: PropertyValueService,
@@ -366,6 +368,10 @@ class ApplicationContext:
     @property
     def metatype_creation_service(self) -> MetatypeCreationService:
         return self.get_service(MetatypeCreationService)
+
+    @property
+    def metatype_article_service(self) -> MetatypeArticleService:
+        return self.get_service(MetatypeArticleService)
 
     @property
     def metatype_pattern_service(self) -> MetatypePatternService:

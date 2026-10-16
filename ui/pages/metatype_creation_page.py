@@ -8,7 +8,7 @@ rules and are not exposed as controls here. All logic lives in ``MetatypeCreatio
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QAbstractItemView, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
@@ -117,6 +117,8 @@ class MetatypeCreationPage(BasePage):
         group.setEnabled(False)
         self._identity_group = group
         self._workspace_layouts["properties"].addWidget(group)
+
+        self._build_articles_table(panel)
 
         group4 = QGroupBox("Step 4 - Articles the property switches between", panel)
         form4 = QFormLayout(group4)
@@ -281,6 +283,84 @@ class MetatypeCreationPage(BasePage):
         self.add_content(panel)
         self.refresh()
 
+    # -- articles reconciliation (read-only) -------------------------------------------------------------------
+    def _build_articles_table(self, panel: QWidget) -> None:
+        group = QGroupBox("Articles in the series (read-only)", panel)
+        box = QVBoxLayout(group)
+        self.articles_load_status = QLabel("", group)
+        self.articles_load_status.setObjectName("metatypeArticlesLoadStatus")
+        self.articles_load_status.setWordWrap(True)
+        self.articles_table = QTableWidget(0, 0, group)
+        self.articles_table.setObjectName("metatypeArticlesTable")
+        self.articles_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.articles_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.articles_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.articles_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.articles_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.articles_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.articles_table.setMinimumHeight(200)
+        self.articles_diagnostics = QPlainTextEdit(group)
+        self.articles_diagnostics.setObjectName("metatypeArticlesDiagnostics")
+        self.articles_diagnostics.setReadOnly(True)
+        self.articles_diagnostics.setMaximumHeight(120)
+        box.addWidget(self.articles_load_status)
+        box.addWidget(self.articles_table, 1)
+        box.addWidget(self.articles_diagnostics)
+        self._workspace_layouts["articles"].addWidget(group, 1)
+        self._show_articles()
+
+    def _load_articles(self, series: str) -> None:
+        """Reconcile the loaded series' articles (read-only, in memory) and show the result."""
+        inspection = self._service.inspection
+        target = inspection.target if inspection is not None else None
+        self._context.metatype_article_service.reconcile(
+            series, root=inspection.repository_root if inspection is not None else None,
+            directory=(target.directory or None) if target is not None else None)
+        self._show_articles()
+
+    def _show_articles(self) -> None:
+        result = self._context.metatype_article_service.last_result
+        table = self.articles_table
+        if result is None or result.series != self._service.series:
+            table.setRowCount(0)
+            table.setColumnCount(0)
+            self.articles_load_status.setText(
+                "No articles loaded. Select a series and choose Load Series to read its article list.")
+            self.articles_diagnostics.clear()
+            return
+        headers = result.headers
+        table.clear()
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setRowCount(len(result.rows))
+        for r, row in enumerate(result.rows):
+            tip = f"{row.source_file}, line {row.source_line}" + "".join(
+                f"\nmapping: {s.table} line {s.line} {s.values}" for s in row.mapping_sources)
+            for c, name in enumerate(result.columns):
+                item = QTableWidgetItem(row.values.get(name, ""))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item.setToolTip(tip)
+                table.setItem(r, c, item)
+            item = QTableWidgetItem(row.status)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setToolTip(tip)
+            table.setItem(r, len(result.columns), item)
+        table.resizeColumnsToContents()
+        verdict = {
+            "complete": "Load complete",
+            "partial": "PARTIAL load - this is not a complete reconciliation",
+            "failed": "Load FAILED - no reconciliation is available",
+        }[result.status.value]
+        unmapped = sum(1 for row in result.rows if row.status == "Needs assignment")
+        text = f"{verdict}: {len(result.rows)} article(s), {unmapped} needing assignment."
+        if result.unavailable_fields:
+            text += " Fields not declared by this schema: " + ", ".join(result.unavailable_fields) + "."
+        self.articles_load_status.setText(text)
+        lines = [f"{d.severity.upper()} [{d.code}] {d.message}"
+                 + (f" ({d.file}" + (f":{d.line}" if d.line else "") + ")" if d.file else "")
+                 for d in result.diagnostics]
+        self.articles_diagnostics.setPlainText("\n".join(lines) if lines else "No source problems found.")
+
     # -- stage readiness --------------------------------------------------------------------------------------
     def is_ready_for_step(self, step) -> bool:
         """Report readiness for the requested sidebar stage, not for the shared page as a whole."""
@@ -344,6 +424,7 @@ class MetatypeCreationPage(BasePage):
         self._show_status()
         self._restore_validity_widgets()
         self._sync_translation_table()
+        self._show_articles()
 
     def _sync_template_action(self, *_args) -> None:
         """Offer template initialization only for a series without existing Metatype schema."""
@@ -448,6 +529,8 @@ class MetatypeCreationPage(BasePage):
                   else self._service.start(series))
         self.load_button.setText("Reload Series (reset answers)")
         self._show_status()
+        if self._service.series == series and self._service.inspection is not None:
+            self._load_articles(str(series))
         return status
 
     def confirm_identity(self) -> IdentityResult:
