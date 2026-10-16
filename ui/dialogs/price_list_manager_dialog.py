@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QPushButton,
 )
 
 from services.price_list_service import PriceListProposal
