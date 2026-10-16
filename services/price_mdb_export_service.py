@@ -277,13 +277,16 @@ class PriceMdbExportService(BaseService):
                 str(row.get("sys_ISOCurrencyCode") or "").strip().upper(),
             )
 
-        existing_price_keys = {key(r) for r in existing_prices}
-        existing_global_keys = {key(r, True) for r in existing_globals}
+        existing_price_by_key = {key(r): r for r in existing_prices}
+        existing_global_by_key = {key(r, True): r for r in existing_globals}
+        existing_price_keys = set(existing_price_by_key)
+        existing_global_keys = set(existing_global_by_key)
         next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
         next_global_id = int((global_max_rows[0].get("max_id") if global_max_rows else 0) or 0) + 1
         price_rows: list[dict[str, Any]] = []
         global_rows: list[dict[str, Any]] = []
         skipped_existing = skipped_unmapped = 0
+        value_conflicts: list[str] = []
 
         for record in snapshot.price_records:
             price_list = record_list(record)
@@ -303,10 +306,7 @@ class PriceMdbExportService(BaseService):
                 (record.currency or "").strip().upper(),
             )
             target_keys = existing_global_keys if is_global else existing_price_keys
-            if row_key in target_keys:
-                # Append-only contract: never UPDATE an existing price row.
-                skipped_existing += 1
-                continue
+            existing_map = existing_global_by_key if is_global else existing_price_by_key
             try:
                 price_value = float(record.value)
             except (TypeError, ValueError):
@@ -314,6 +314,29 @@ class PriceMdbExportService(BaseService):
                 continue
             if not __import__("math").isfinite(price_value):
                 skipped_unmapped += 1
+                continue
+            if row_key in target_keys:
+                # Never silently report success when pCon's existing row has a
+                # different value (especially 0.00 versus a computed non-zero).
+                # Append-only policy forbids updating it; fail clearly instead.
+                existing_row = existing_map[row_key]
+                existing_value = existing_row.get("com_PriceValue")
+                try:
+                    same_value = existing_value is not None and abs(
+                        float(existing_value) - price_value
+                    ) < 1e-9
+                except (TypeError, ValueError):
+                    same_value = False
+                if same_value:
+                    skipped_existing += 1
+                else:
+                    kind = "global" if is_global else "article"
+                    value_conflicts.append(
+                        f"{kind}={row_key[0]}, list={row_key[1]}, "
+                        f"variant={row_key[2] or '<base>'}, level={row_key[3]}, "
+                        f"currency={row_key[4]}, existing={existing_value!r}, "
+                        f"computed={price_value:g}"
+                    )
                 continue
             common = {
                 "com_PriceListID": price_list["id"],
@@ -346,6 +369,27 @@ class PriceMdbExportService(BaseService):
                 }))
                 next_price_id += 1
                 existing_price_keys.add(row_key)
+
+        if value_conflicts:
+            preview = "\\n".join(value_conflicts[:10])
+            more = (
+                f"\\n…and {len(value_conflicts) - 10} more."
+                if len(value_conflicts) > 10 else ""
+            )
+            return {
+                "ok": False,
+                "error": (
+                    f"{len(value_conflicts)} existing MDB price row(s) have values "
+                    "different from the computed prices. No rows were changed or "
+                    "inserted because export is append-only. These conflicts may "
+                    "include existing zero-price rows. Review the existing MDB "
+                    "price identities before exporting again:\\n" + preview + more
+                ),
+                "mdb_path": str(mdb), "inserted_prices": 0,
+                "inserted_global_prices": 0, "inserted_price_lists": 0,
+                "skipped_existing": skipped_existing, "skipped_unmapped": skipped_unmapped,
+                "value_conflicts": len(value_conflicts),
+            }
 
         ops = []
         if list_rows:
