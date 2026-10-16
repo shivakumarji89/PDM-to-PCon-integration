@@ -387,3 +387,52 @@ def test_class_creation_split_metadata_round_trips():
     assert split.property_id == "p1"
     assert split.width == 1
     assert split.start == restored.article_sets[0].base_length
+
+
+def test_model_suffix_creates_class_creation_feature_connection_by_placement():
+    snapshot = _snapshot()
+    snapshot.properties.append(
+        Property(
+            id="p2",
+            name="Feature",
+            values=[
+                PropertyValue(
+                    id="fs1", property_id="p2", value="Feature S1",
+                    code="S1", model_suffix="S1",
+                ),
+                PropertyValue(
+                    id="fs2", property_id="p2", value="Feature S2",
+                    code="S2", model_suffix="S2",
+                ),
+            ],
+            has_dependent_options=True,
+        )
+    )
+    snapshot.engineering.classes[0].properties.append(
+        ClassPropertyAssignment(
+            property_id="p2",
+            property_name="Feature",
+            width=2,
+            placement=1,
+            values=[
+                ClassValue(value_id="fs1", code="S1", value="Feature S1"),
+                ClassValue(value_id="fs2", code="S2", value="Feature S2"),
+            ],
+        )
+    )
+    original_links = {
+        article_id: list(value_ids)
+        for article_id, value_ids in snapshot.article_property_value_ids.items()
+    }
+
+    article_set = _service(snapshot).materialize_class_creation_article_sets(snapshot)[0]
+
+    feature = next(attribute for attribute in article_set.properties if attribute.id == "p2")
+    feature_values = {value.id: value for value in feature.values}
+    assert feature_values["fs1"].article_ids == ["a1"]
+    assert feature_values["fs2"].article_ids == ["a2"]
+    # Derived suffix connections do not rewrite authoritative PDM source links.
+    assert snapshot.article_property_value_ids == original_links
+    assert [article.code for article in snapshot.articles] == [
+        "A1X100.S1", "A1Y100.S2"
+    ]
