@@ -277,8 +277,15 @@ class PriceMdbExportService(BaseService):
                 str(row.get("sys_ISOCurrencyCode") or "").strip().upper(),
             )
 
-        existing_price_by_key = {key(r): r for r in existing_prices}
-        existing_global_by_key = {key(r, True): r for r in existing_globals}
+        # Preserve every matching row, not just the last row for an identity.
+        # Some OCD files contain duplicate identities; pCon may display a zero
+        # row even when another duplicate already has the computed value.
+        existing_price_by_key: dict[tuple, list[dict[str, Any]]] = {}
+        existing_global_by_key: dict[tuple, list[dict[str, Any]]] = {}
+        for row in existing_prices:
+            existing_price_by_key.setdefault(key(row), []).append(row)
+        for row in existing_globals:
+            existing_global_by_key.setdefault(key(row, True), []).append(row)
         existing_price_keys = set(existing_price_by_key)
         existing_global_keys = set(existing_global_by_key)
         next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
@@ -318,18 +325,20 @@ class PriceMdbExportService(BaseService):
             if row_key in target_keys:
                 # Update only the value in the exact matched row. Identity,
                 # validity, currency and all unrelated rows remain untouched.
-                existing_row = existing_map[row_key]
-                existing_value = existing_row.get("com_PriceValue")
-                try:
-                    same_value = existing_value is not None and abs(
-                        float(existing_value) - price_value
-                    ) < 1e-9
-                except (TypeError, ValueError):
-                    same_value = False
-                if same_value:
-                    skipped_existing += 1
-                else:
-                    primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
+                matching_rows = existing_map[row_key]
+                primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
+                table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
+                for existing_row in matching_rows:
+                    existing_value = existing_row.get("com_PriceValue")
+                    try:
+                        same_value = existing_value is not None and abs(
+                            float(existing_value) - price_value
+                        ) < 1e-9
+                    except (TypeError, ValueError):
+                        same_value = False
+                    if same_value:
+                        skipped_existing += 1
+                        continue
                     existing_id = existing_row.get(primary_key)
                     if existing_id is None:
                         return {
@@ -341,7 +350,7 @@ class PriceMdbExportService(BaseService):
                         }
                     value_updates.append({
                         "op": "update",
-                        "table": "tCOMd_GlobalPrice" if is_global else "tCOMd_Price",
+                        "table": table_name,
                         "set": {"com_PriceValue": price_value},
                         "where": {primary_key: existing_id},
                     })
