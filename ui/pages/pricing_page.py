@@ -464,8 +464,9 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         answer = QMessageBox.question(
             self,
             "Append Prices to MDB",
-            "Only new price-list and price rows will be added. Existing rows will not be "
-            "overwritten or removed. Continue?",
+            "EUR prices will map to EUR price lists and GBP prices to GBP price lists. "
+            "Only matching price-value fields will be updated; the price lists and "
+            "unrelated rows will not be replaced or removed. Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -499,13 +500,12 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         QMessageBox.information(
             self,
             "Export Prices",
-            "Price export completed. Existing matching rows were updated only in the price-value field when needed.\n\n"
+            "Price export completed. Only matching price rows were updated; price lists and unrelated rows were not replaced.\n\n"
             f"Price rows added: {result.get('inserted_prices', 0):,}\n"
             f"Global price rows added: {result.get('inserted_global_prices', 0):,}\n"
-            f"Existing article prices corrected: {result.get('updated_prices', 0):,}\n"
-            f"Existing global prices corrected: {result.get('updated_global_prices', 0):,}\n"
+            f"Article price rows updated: {result.get('updated_prices', 0):,}\n"
+            f"Global price rows updated: {result.get('updated_global_prices', 0):,}\n"
             f"Price lists added: {result.get('inserted_price_lists', 0):,}\n"
-            f"Existing rows unchanged: {result.get('skipped_existing', 0):,}\n"
             f"Unmapped rows skipped: {result.get('skipped_unmapped', 0):,}\n\n"
             f"File: {result.get('mdb_path', mdb_path)}",
         )
