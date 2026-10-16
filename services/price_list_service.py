@@ -204,6 +204,11 @@ class PriceListService(BaseService):
             currency = (row.get("currency") or "").strip().upper()
             date_from = self._norm_date(row.get("date_from") or "")
             date_to = self._norm_date(row.get("date_to") or "")
+            try:
+                datetime.strptime(date_from, "%Y%m%d")
+                datetime.strptime(date_to, "%Y%m%d")
+            except ValueError:
+                return False
             if (
                 price_list is None or not new_id or not label
                 or currency not in {"EUR", "GBP"}
