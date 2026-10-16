@@ -32,6 +32,40 @@ class PriceMdbExportService(BaseService):
             proto.pop(col, None)
         return proto
 
+    @staticmethod
+    def _normalize_mdb_date(value: Any, fallback: str) -> str:
+        """Normalize Access bridge dates, including JavaScript /Date(ms)/ values."""
+        if value is None:
+            return fallback
+        if isinstance(value, datetime):
+            return value.strftime("%Y%m%d")
+        if hasattr(value, "strftime") and not isinstance(value, str):
+            try:
+                return value.strftime("%Y%m%d")
+            except (TypeError, ValueError):
+                pass
+        text = str(value).strip()
+        if not text:
+            return fallback
+        match = re.fullmatch(r"/Date\((-?\d+)(?:[+-]\d{4})?\)/", text)
+        if match:
+            try:
+                instant = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
+                    milliseconds=int(match.group(1))
+                )
+                return instant.astimezone().strftime("%Y%m%d")
+            except (ValueError, OverflowError, OSError):
+                return fallback
+        digits = re.sub(r"\D", "", text)
+        if len(digits) >= 8:
+            candidate = digits[:8]
+            try:
+                datetime.strptime(candidate, "%Y%m%d")
+                return candidate
+            except ValueError:
+                return fallback
+        return fallback
+
     def export(self, snapshot: Snapshot, mdb_path: str | Path) -> dict[str, Any]:
         mdb = Path(mdb_path)
         if not mdb.is_file():
@@ -117,42 +151,7 @@ class PriceMdbExportService(BaseService):
         package_id = packages[0].get("com_PackageID")
 
         def norm_date(value: Any, fallback: str) -> str:
-            """Normalize Access bridge dates without corrupting /Date(ms)/ values."""
-            if value is None:
-                return fallback
-            if isinstance(value, datetime):
-                return value.strftime("%Y%m%d")
-            if hasattr(value, "strftime") and not isinstance(value, str):
-                try:
-                    return value.strftime("%Y%m%d")
-                except (TypeError, ValueError):
-                    pass
-            text = str(value).strip()
-            if not text:
-                return fallback
-            # ADODB bridge JSON-serializes DateTime as /Date(milliseconds)/.
-            match = re.fullmatch(r"/Date\((-?\d+)(?:[+-]\d{4})?\)/", text)
-            if match:
-                try:
-                    instant = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
-                        milliseconds=int(match.group(1))
-                    )
-                    # Price-list dates are stored at local midnight. Convert to
-                    # local wall time before taking the calendar date, matching
-                    # PriceUpdateService._bridge_ymd.
-                    local = instant.astimezone()
-                    return local.strftime("%Y%m%d")
-                except (ValueError, OverflowError, OSError):
-                    return fallback
-            digits = re.sub(r"\D", "", text)
-            if len(digits) >= 8:
-                candidate = digits[:8]
-                try:
-                    datetime.strptime(candidate, "%Y%m%d")
-                    return candidate
-                except ValueError:
-                    return fallback
-            return fallback
+            return self._normalize_mdb_date(value, fallback)
 
         numeric_ids = []
         for row in existing_lists:
