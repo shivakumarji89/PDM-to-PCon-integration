@@ -132,7 +132,9 @@ class MainWindow(QMainWindow):
             page = self._pages.get(WorkflowStep.METATYPE_CREATION)
             if page is not None:
                 page.select_workflow_stage(step)
-        if step == WorkflowStep.ARTICLE_OBX_GENERATOR:
+        if step == WorkflowStep.SYTELINE_EXPORT:
+            self.statusBar().showMessage("Ready - SyteLine Export workspace (standalone module)")
+        elif step == WorkflowStep.ARTICLE_OBX_GENERATOR:
             if self._context.ensure_qa_snapshot() is None:
                 self.statusBar().showMessage(
                     "Article OBX Generator - load a repository snapshot first"
@@ -427,7 +429,8 @@ class MainWindow(QMainWindow):
     def _on_module_selected(self, module: WorkbenchModule) -> None:
         """Enter Level 2 and expose only the workflows for the selected module."""
         self._active_module = module
-        self._product_page.set_module(module)
+        if module != WorkbenchModule.SYTELINE_EXPORT:
+            self._product_page.set_module(module)
         # PDM change review is a Development control; Maintenance has its own
         # alignment/parity workflow and must not expose this review action.
         self._pdm_monitor_btn.setVisible(module != WorkbenchModule.MAINTENANCE)
