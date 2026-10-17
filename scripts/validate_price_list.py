@@ -151,12 +151,12 @@ def main() -> int:
         PriceList(id="GBP_2025", label="GBP 2025", currency="GBP"),
     ]
     assert svc_p.target_currencies(snap, PriceParams(currency="USD")) == ["EUR", "GBP"]
-    # No lists -> fall back to the selected combo currency only.
+    # Export list selection is separate, so compute both primary currencies even
+    # when the snapshot has no price-list metadata or the UI has one currency selected.
     snap.price_lists = []
-    assert svc_p.target_currencies(snap, PriceParams(currency="usd")) == ["USD"]
-    # No lists + "All" (empty currency) -> GBP default.
-    assert svc_p.target_currencies(snap, PriceParams(currency="")) == ["GBP"]
-    print("OK: compute targets price-list currencies (else selected currency)")
+    assert svc_p.target_currencies(snap, PriceParams(currency="usd")) == ["EUR", "GBP"]
+    assert svc_p.target_currencies(snap, PriceParams(currency="")) == ["EUR", "GBP"]
+    print("OK: compute targets always retain EUR + GBP together")
 
     # Multi-currency accumulate replaces ALL computed currencies, keeps others.
     existing = [
