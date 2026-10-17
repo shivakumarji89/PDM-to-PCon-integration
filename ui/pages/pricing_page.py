@@ -542,8 +542,14 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             return
         snapshot, mdb_path = self._wf["snapshot"], self._wf["path"]
         comp = computation_date(snapshot.price_records)
-        currencies = sorted({(r.currency or "").strip().upper()
-                             for r in snapshot.price_records if (r.currency or "").strip()})
+        record_currencies = {
+            (r.currency or "").strip().upper()
+            for r in snapshot.price_records if (r.currency or "").strip()
+        }
+        # Always offer the two primary destinations, even if one currency has
+        # no resolved rows in this run; retain selectors for any extra currencies
+        # already present in a legacy snapshot so strict export can route them too.
+        currencies = ["EUR", "GBP"] + sorted(record_currencies - {"EUR", "GBP"})
         names = default_names(currencies, comp, info["lists"], snapshot.price_lists)
         dialog = PriceListTargetDialog(currencies, names, info["lists"], info["linked"], comp, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
