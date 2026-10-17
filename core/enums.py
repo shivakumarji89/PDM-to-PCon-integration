@@ -25,6 +25,8 @@ class WorkflowStep(Enum):
     MAINTENANCE_COMPARISON = "maintenance_comparison"
     ENGINEERING = "engineering"
     MAINTENANCE = "maintenance"
+    #: Standalone legacy-compatible SyteLine export module.
+    SYTELINE_EXPORT = "syteline_export"
     #: Standalone CET SIF validation tool (self-contained, disconnectable).
     CET_SIF_VALIDATION = "cet_sif_validation"
     #: Standalone OBX validation tool.
