@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QPlainTextEdit, QVBoxLayout, QWidget,
 )
 from core.application_context import ApplicationContext
@@ -86,7 +86,7 @@ class SyteLineExportPage(BasePage):
         root.addWidget(scope)
 
         options = QGroupBox("Export options")
-        options_layout = QVBoxLayout(options)
+        options_layout = QGridLayout(options)
         definitions = (
             ("products", "Products"), ("ranges", "Ranges"), ("lists", "Lists"),
             ("base_prices", "Base prices"), ("ofda", "OFDA data"),
@@ -101,10 +101,10 @@ class SyteLineExportPage(BasePage):
             ("validate_output", "Validate output"),
         )
         self.option_checks: dict[str, QCheckBox] = {}
-        for key, caption in definitions:
+        for index, (key, caption) in enumerate(definitions):
             check = QCheckBox(caption)
             self.option_checks[key] = check
-            options_layout.addWidget(check)
+            options_layout.addWidget(check, index // 3, index % 3)
         for key in ("products", "base_prices", "validate_output"):
             self.option_checks[key].setChecked(True)
         root.addWidget(options)
