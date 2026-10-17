@@ -50,6 +50,7 @@ from ui.pages.metatype_repository_page import MetatypeRepositoryPage
 from ui.pages.metatype_creation_page import MetatypeCreationPage
 from ui.pages.module_home_page import ModuleHomePage
 from ui.pages.module_placeholder_page import ModulePlaceholderPage
+from ui.pages.syteline_export_page import SyteLineExportPage
 from workflow.host import WorkspaceHost
 from workflow.manager import WorkflowManager
 from ui.widgets.activity_panel import ActivityPanel
@@ -313,6 +314,7 @@ class MainWindow(QMainWindow):
             WorkflowStep.MAINTENANCE_COMPARISON: MaintenanceComparisonPage,
             WorkflowStep.ENGINEERING: EngineeringPage,
             WorkflowStep.MAINTENANCE: MaintenancePage,
+            WorkflowStep.SYTELINE_EXPORT: SyteLineExportPage,
             # CET SIF Validation - unused when the step is disconnected in core.workflow.
             WorkflowStep.CET_SIF_VALIDATION: CetSifValidationPage,
             WorkflowStep.OBX_VALIDATION: ObxValidationPage,
