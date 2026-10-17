@@ -147,18 +147,19 @@ class PricingService(BaseService):
     def target_currencies(
         self, snapshot: Snapshot, params: PriceParams
     ) -> list[str]:
-        """Currencies to compute: the distinct currencies of the snapshot's
-        defined price lists (so both EUR and GBP are pulled from PDM and aligned
-        to their lists), or the single selected currency when no lists exist."""
-        curs: list[str] = []
+        """Compute EUR and GBP together, preserving any additional snapshot currencies.
+
+        Price-list selection happens during MDB export, so computation must not
+        depend on which price lists happen to be stored in the snapshot. Always
+        retain both primary currencies in one snapshot; include other currencies
+        already represented by snapshot lists for backward compatibility.
+        """
+        curs = ["EUR", "GBP"]
         for pl in (getattr(snapshot, "price_lists", None) or []):
-            c = (pl.currency or "").upper()
+            c = (pl.currency or "").strip().upper()
             if c and c not in curs:
                 curs.append(c)
-        if curs:
-            return curs
-        sel = (params.currency or "").upper()
-        return [sel] if sel else ["GBP"]
+        return curs
 
     def compute(
         self, params: PriceParams, snapshot: Snapshot | None = None
@@ -177,7 +178,6 @@ class PricingService(BaseService):
         if snapshot is None:
             result.warnings.append("No active snapshot.")
             return result
-
         items, super_codes = self._price_plan(snapshot)
         if not items:
             result.warnings.append("No articles to price.")
@@ -357,8 +357,7 @@ class PricingService(BaseService):
                                  overall_processed, f" / {n * ncur}"),
                                 ("records", "Price Records",
                                  len(all_records), ""),
-                                ("products", "Products",
-                                 len(products_seen), f" / {total_products}"),
+                                ("products", "Products",                                 len(products_seen), f" / {total_products}"),
                                 ("unresolved", "Unresolved",
                                  len(unresolved), ""),
                             ])
@@ -538,7 +537,6 @@ class PricingService(BaseService):
             if key not in cur_by_key:
                 out.removed.append(rec)
         return out
-
     # -- classification helpers --------------------------------------------
 
     @staticmethod
