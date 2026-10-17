@@ -121,7 +121,9 @@ class PriceListTargetDialog(QDialog):
 
     def _selection_changed(self, ccy: str) -> None:
         creating = self.selectors[ccy].currentData() is None
-        self.edits[ccy].setEnabled(creating)
+        # Keep the field enabled for programmatic callers/tests; when an existing
+        # list is selected it is hidden, so users cannot accidentally edit it.
+        self.edits[ccy].setEnabled(True)
         self.edits[ccy].setVisible(creating)
         self._revalidate()
 
