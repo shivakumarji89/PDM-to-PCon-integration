@@ -39,6 +39,8 @@ WORKFLOW_ITEMS: tuple[WorkflowItem, ...] = (
     WorkflowItem(WorkflowStep.ENGINEERING, "Engineering", "Read-only view of the engineering hierarchy."),
     WorkflowItem(WorkflowStep.MAINTENANCE, "Bulk Update",
                  "Run bulk maintenance operations on published product packages."),
+    WorkflowItem(WorkflowStep.SYTELINE_EXPORT, "SyteLine Export",
+                 "Configure the standalone legacy SyteLine export module."),
     # Metatype module: independent of the CET SIF feature flag below.
     WorkflowItem(WorkflowStep.METATYPE_CREATION, "Create Metatype",
                  "Create a polymorphic Metatype for a series in the HMX repository."),
