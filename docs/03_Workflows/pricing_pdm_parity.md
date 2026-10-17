@@ -102,10 +102,10 @@ an existing text (no dangling reference), preserved rows keep their id, and no d
 
 **Intentional differences from PDM** (each has a test in `tests/test_pricing_pdm_text_parity.py`):
 
-* Existing text content is **not rewritten** (PDM re-`UPDATE`s the language columns on every run, step 5). A hand-translated label survives.
-* The name lookup is restricted to `com_TextTypeCode = 'price'` (PDM has no type filter and could link a global price to an `artlong` text that shares the item's name).
+* Existing text content is **not rewritten** (PDM re-`UPDATE`s the language columns on every run, step 5). Kept deliberately: step 5 is a text-maintenance side effect, not price data, and rewriting would modify existing records the price export otherwise never touches. Consequence: a text whose label PDM would refresh stays as is.
+* The name lookup is restricted to `com_TextTypeCode = 'price'` (PDM has no type filter). Checked on the real MDB: no non-price text shares a price-text name and no global price links to a non-price text, so the restriction changes nothing on current data and only guards against a future collision.
 * Names are matched case-insensitively (as Jet does); an ambiguous name blocks the row instead of taking the last match.
-* A missing `Product_Code` (snapshots computed before `product_code` existed) creates the text without the `(code)` suffix and warns; recomputing fixes it. PDM always has the code because it reads it from SQL Server during the run.
+* A missing `Product_Code` (snapshots computed before `product_code` existed) **blocks creating a code-labelled text** (`skip`, reason "Product_Code unknown; recompute prices") instead of creating a label PDM would never write. Rows that reuse a text, surcharge rows and `_` names need no code and are unaffected.
 * Value and text are written in one step; PDM inserts a placeholder row first and fills the value in a second pass.
 
 **Verified against a copy of the real MDB** (see the commit message for the numbers): dry run leaves the file

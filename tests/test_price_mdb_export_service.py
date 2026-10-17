@@ -267,7 +267,7 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
             PriceRecord(is_global=True, variant_condition="GESNNS.1", level="", value=284.0,
                         currency="EUR", valid_from="2026-10-16"),
             PriceRecord(is_global=True, variant_condition="GESNNS.2", level="", value=296.0,
-                        currency="EUR", valid_from="2026-10-16"),
+                        currency="EUR", valid_from="2026-10-16", product_code="FR-X"),
         ]
         result = _export(mdb, records)
         self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (1, 1))
@@ -539,6 +539,7 @@ if __name__ == "__main__":
 
 
 def _global(vc, value=10.0, ccy="EUR", **kw):
+    kw.setdefault("product_code", "P-1")  # as computed by PricingService from PDM
     return PriceRecord(is_global=True, variant_condition=vc, value=value, currency=ccy,
                        valid_from="2026-10-16", **kw)
 
@@ -731,11 +732,18 @@ class PriceMdbExportTextBlockTests(unittest.TestCase):
         self.assertFalse(result["verified"])
         self.assertTrue(any("duplicate texts" in f for f in result["verification_failures"]))
 
-    def test_unknown_product_code_is_reported_not_invented(self):
-        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
-        result = _export(mdb, [_global("NEW.1")])
-        self.assertEqual(_texts_op(mdb)["rows"][0]["com_Text_1_en"], "NEW.1")
-        self.assertTrue(any("Product_Code" in w for w in result["warnings"]))
+    def test_unknown_product_code_blocks_creation_instead_of_a_degraded_label(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "OLD."}])
+        result = _export(mdb, [_global("NEW.1", product_code=""), _global("OLD.", product_code=""),
+                               _global("NEW_2.1", product_code=""), _global("X.1 8=AA", product_code="")])
+        self.assertEqual(result["skipped_text_blocked"], 1)           # only the code-dependent label
+        self.assertIn("Product_Code unknown", result["text_rows"][0]["reason"])
+        self.assertEqual(result["inserted_global_prices"], 3)         # reuse / underscore / surcharge need no code
+        names = [r["com_TextName"] for r in _texts_op(mdb)["rows"]]
+        self.assertEqual(sorted(names), ["8", "NEW_2.1"])
+        self.assertTrue(any("not inserted" in w for w in result["warnings"]))
+
 
 
 class PriceMdbExportFarFutureValidityTests(unittest.TestCase):

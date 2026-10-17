@@ -389,7 +389,6 @@ class PriceMdbExportService(BaseService):
             for r in existing_prices if r.get("com_PriceValidFrom") and r.get("com_PriceValidTo")
             if norm_date(r.get("com_PriceValidFrom"), "") and norm_date(r.get("com_PriceValidTo"), "")
         }
-        missing_product_codes: set[str] = set()
         planned_update_detail: list[dict[str, Any]] = []
         # Lists that receive a write / records that hit several existing rows:
         # reported so the target can be checked before anything is written.
@@ -560,6 +559,11 @@ class PriceMdbExportService(BaseService):
                 elif not text_lang_cols:
                     entry.update(action=ACTION_SKIP, text_status="missing",
                                  reason="tCOMd_Text has no language columns to create the text in")
+                elif display == (record.variant_condition or "") and "_" not in display and not record.product_code:
+                    # PDM always labels such a text "<item>  (<Product_Code>)"; a label
+                    # without it never occurs in the real MDB, so do not create one.
+                    entry.update(action=ACTION_SKIP, text_status="missing",
+                                 reason=f"Product_Code unknown for '{text_name}'; recompute prices")
                 else:
                     entry.update(action=ACTION_CREATE, text_status="new", text_content=display)
                     new_text_ids[tkey] = next_text_id
@@ -569,9 +573,6 @@ class PriceMdbExportService(BaseService):
                         **{col: display for col in text_lang_cols},
                     })
                     next_text_id += 1
-                    if (not record.product_code and "_" not in (record.variant_condition or "")
-                            and not display.startswith("Surcharge ")):
-                        missing_product_codes.add(text_name)
                 text_plan.append(entry)
                 if entry["action"] == ACTION_SKIP:
                     blocked_rows += 1
@@ -645,11 +646,6 @@ class PriceMdbExportService(BaseService):
             report["warnings"].append(
                 f"{blocked_rows} new global price row(s) were not inserted because their text "
                 "block is missing or ambiguous: " + "; ".join(reasons[:3]))
-        if missing_product_codes:
-            report["warnings"].append(
-                f"{len(missing_product_codes)} new price text(s) were created without PDM's "
-                "'(Product_Code)' label suffix because the computed prices carry no product "
-                "code; recompute prices to include it.")
         if dry_run:
             # Report the plan only: nothing is executed.
             report.update({
