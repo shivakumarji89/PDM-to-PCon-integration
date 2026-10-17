@@ -100,7 +100,7 @@ class PriceListTargetDialog(QDialog):
             )
             selector.setCurrentIndex(match_index)
             selector.currentIndexChanged.connect(lambda _index, currency=ccy: self._selection_changed(currency))
-            edit.textEdited.connect(lambda _text, currency=ccy: self._name_edited(currency))
+            edit.textChanged.connect(lambda _text, currency=ccy: self._name_edited(currency))
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.buttons.accepted.connect(self.accept)
