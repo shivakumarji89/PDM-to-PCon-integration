@@ -164,3 +164,27 @@ def test_target_dialog_validates_live_and_describes_the_plan():
     dialog.edits["GBP"].setText("GBP_2027")
     assert ok.isEnabled() and "Create new GBP list" in describe_plan(dialog.plans["GBP"])
     assert dialog.names() == {"EUR": "EURO_2026_2", "GBP": "GBP_2027"}
+
+
+
+def test_target_selectors_offer_currency_scoped_lists_and_create_new():
+    lists = _strict_lists()
+    dialog = PriceListTargetDialog(
+        ["EUR", "GBP"],
+        {"EUR": "EURO_2026_2", "GBP": "GBP_2026_2"},
+        lists,
+        {"21", "22"},
+        "20261016",
+    )
+    assert dialog.selectors["EUR"].count() == 2
+    assert dialog.selectors["GBP"].count() == 2
+    assert "EURO_2026_2" in dialog.selectors["EUR"].itemText(1)
+    assert "GBP_2026_2" in dialog.selectors["GBP"].itemText(1)
+
+    # Choosing Create must propose a distinct list name, not silently reuse
+    # the list that was selected before changing the dropdown.
+    dialog.selectors["EUR"].setCurrentIndex(0)
+    assert dialog.edits["EUR"].isVisible()
+    assert dialog.names()["EUR"] != "EURO_2026_2"
+    assert dialog.plans["EUR"].action == "create"
+    assert dialog.plans["EUR"].ok
