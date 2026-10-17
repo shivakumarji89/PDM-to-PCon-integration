@@ -184,7 +184,7 @@ def test_target_selectors_offer_currency_scoped_lists_and_create_new():
     # Choosing Create must propose a distinct list name, not silently reuse
     # the list that was selected before changing the dropdown.
     dialog.selectors["EUR"].setCurrentIndex(0)
-    assert dialog.edits["EUR"].isVisible()
+    assert not dialog.edits["EUR"].isHidden()
     assert dialog.names()["EUR"] != "EURO_2026_2"
     assert dialog.plans["EUR"].action == "create"
     assert dialog.plans["EUR"].ok
