@@ -21,6 +21,7 @@ class WorkbenchModule(Enum):
     METATYPE = "metatype"
     OAP = "oap"
     BULK_UPDATE = "bulk_update"
+    SYTELINE_EXPORT = "syteline_export"
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,11 @@ MODULE_ITEMS: tuple[ModuleItem, ...] = (
         WorkbenchModule.BULK_UPDATE,
         "Bulk Update",
         "Run bulk maintenance operations on published product packages.",
+    ),
+    ModuleItem(
+        WorkbenchModule.SYTELINE_EXPORT,
+        "SyteLine Export",
+        "Configure and run the legacy-compatible SyteLine data export.",
     ),
 )
 
@@ -135,6 +141,9 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     ),
     WorkbenchModule.OAP: (
         WorkflowStep.PRODUCT,
+    ),
+    WorkbenchModule.SYTELINE_EXPORT: (
+        WorkflowStep.SYTELINE_EXPORT,
     ),
 }
 
