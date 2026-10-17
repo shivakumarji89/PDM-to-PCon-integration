@@ -162,3 +162,63 @@ written. The MDB is not assumed unwritable.
 | unrelated rows, lists 23 / 24 | unchanged | unchanged |
 | stale digest | refused, file unchanged | refused, file unchanged |
 | second export | wrote nothing | wrote nothing |
+
+
+## Actual PDM differential (real PDM, not a transcription)
+
+**What was run.** The installed, compiled `PDMMaintenance.exe` (assembly version 1.0.9686.24988; its method signatures
+match the source in `Desktop\PDM`) was loaded as a library from a copy and `UpdatePriceThread.execThread` - the method
+PDM's *Update pCon prices* / *Create global price placeholders* buttons start - was executed with the arguments those
+buttons pass, against an isolated copy of a backup MDB (`CADMaintenance.pConPath` redirected; the live MDB, PDM.bat and
+PDM's UI were never touched). The same inputs (items, currency, price date 16-Oct-2026, site 1, price list, catalogue)
+went through the Pricing compute core and `PriceMdbExportService` on a second identical copy, and the two result
+states were compared with independent reads (only autonumber ids and row order ignored). SQL Server was only read:
+every INSERT/UPDATE in the exercised PDM methods targets `tCOMd_*` Jet tables. Harness, driver and instructions:
+`scripts/pdm_differential/`; machine-readable result: `docs/03_Workflows/pdm_differential_report.json`
+(13 scenarios, all executed in real PDM, 0 unexplained; guarded by `tests/test_pdm_differential_report.py`).
+
+| Scenario | PDM executed | Result |
+|---|---|---|
+| S1 article GBP: 3 changed values, unchanged rows, 1 deleted row (insert), 1 unpriced item | yes | **MATCH** (after the fix below) |
+| S2 same, EUR list 21 | yes | **MATCH** |
+| S3 first prices for articles that exist but have no price row | yes | **MATCH** (rows, validity) |
+| S4 duplicate article identity, one stale | yes | **MATCH** |
+| S4b duplicate identity, both stale | yes | difference, intentional (below) |
+| S5 / S8 global base + surcharge update, GBP / EUR, one missing global row | yes | identical except the missing row: PDM's value update never inserts (needs its placeholders step) |
+| S6 PDM two-step (placeholders -> values) vs Pricing one step, text reused | yes | **MATCH** |
+| S7 same, price text missing: created | yes | **MATCH** (text name, type, `<item>  (<Product_Code>)` in 4 languages, link) |
+| S9 global item with surcharges, option texts `9168`/`3831` missing: 3 texts + 18 rows | yes | **MATCH** (names `Surcharge <optionId>`, labels, links, all 18 rows incl. values) |
+| S10 existing text with a hand-edited label | yes | difference, intentional (below) |
+| S11 non-price text sharing the item's name | yes | difference, intentional / protective (below) |
+| S13 look-alike orphan list 23 | yes | difference, intentional / protective (below) |
+| second execution of S1 / S5 / S6 | yes | PDM and Pricing both wrote nothing |
+
+Also executed: unresolved item (S1 `GEPBPANNF.0608S4M`, S5 `GEBA.08`): neither side writes a base price; EUR vs GBP
+routing (S1/S2/S5/S8); validity of inserted rows (PDM copies the article's existing dates, else the list's - Pricing
+identical); in S5/S8 the stale base and surcharge rows were corrected identically (PDM 2 updates, 19 already current).
+
+**Defect found by the differential and fixed.** For an item whose base price is unresolved, PDM wrote nothing
+(it raises a `FormatException` dialog from `addNewArticlePriceRecord` - `double.Parse("")` - which the harness
+dismisses like an operator clicking OK) while Pricing inserted that item's 7 upcharge rows without any base row. In the
+real MDB every article upcharge has a base row (0 of 24 dangle) and every global surcharge has a base global row
+(0 of 16,594). The exporter now inserts an upcharge only when its base row exists or is written by the same export
+(`skipped_no_base_price`, reason in `blocked_reasons`); updating existing upcharge rows is unchanged.
+
+**Remaining differences, each verified against real PDM:**
+
+| Difference | Real-PDM evidence | Disposition |
+|---|---|---|
+| Duplicate identities: Pricing updates every stale duplicate | S4b: PDM updated only the last-read row, left the other at the stale value | Intentional - pCon may read either row. Real-MDB scope has no duplicates (`duplicate_matches` 0). |
+| Existing text content is not rewritten | S10: PDM reset a hand-edited label to `GE2HBS.  (FR-AA-US)` | Intentional - the price export is not a text-maintenance tool; label is cosmetic. Consequence: a text PDM would refresh stays as it is. |
+| Text lookup restricted to `com_TextTypeCode = 'price'` | S11: PDM linked the new global row to an `artlong` text and **overwrote that article text's labels** | Intentional and protective. 0 such collisions in the real MDB today. |
+| Ambiguous price-text name blocks the row | `tCOMd_Text` rejects a second text with the same package + type + name (case-insensitive; verified: "duplicate values in the index"), so this cannot occur within type `price` | Defensive only; kept and unit-tested. |
+| Only the validated target list is written | S13: PDM's `LIKE 'GBP%2026%2'` also matched orphan list 23: it updated only one of the two stale base rows and treated list 23's surcharge rows as "up to date", so list 22 never got them | Intentional - required by the "do not touch lists 23/24" rule. |
+| Missing global row inserted with its value in one step | S5/S8: PDM's value update reports "not found"; S6/S7/S9 show the two-step PDM workflow equals Pricing's single step | Intentional, equivalent end state. |
+| Code-labelled text is blocked when `Product_Code` is unknown | PDM always has the code (read from SQL Server in the same run); cannot occur in PDM | Pricing-only safeguard for snapshots computed before `product_code` existed. |
+
+**Not comparable with PDM (no equivalent in PDM, so not "verified against PDM"):** price-list name editing and the
+computation-date / list-validity checks (PDM never checks that a list covers the date), strict currency routing
+guards, plan-digest / stale-preview protection, transactions and rollback (PDM has none), read-back verification.
+These are covered by Pricing unit tests and the real-MDB copy runs above, not by a PDM differential.
+
+**Not verified at all:** how pCon renders any of this (physical pCon testing is out of scope).

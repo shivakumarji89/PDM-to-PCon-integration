@@ -472,6 +472,47 @@ class PriceMdbExportService(BaseService):
                 "reason": "",
             }
 
+        def base_key(article_id, list_id, variant):
+            # variant compared case-insensitively, as Jet compares it
+            return (str(article_id), str(list_id), (variant or "").split(" ")[0].casefold(), "B")
+
+        existing_base_keys = {(a, l, v.casefold(), lv) for a, l, v, lv in existing_price_keys}
+        existing_global_base_keys = {(a, l, v.casefold(), lv) for a, l, v, lv in existing_global_keys}
+
+        # An article upcharge (level X, "<suffix> <option>=<value>") is only meaningful on top of
+        # its base price row (same article, list and suffix). Every real upcharge row has one and
+        # PDM never writes one for an item it could not price, so a new upcharge is inserted only
+        # when its base row exists or is written by this same export.
+        planned_bases: set[tuple] = set()
+        planned_global_bases: set[tuple] = set()
+
+        def is_surcharge(vc):
+            vc = vc or ""
+            return " " in vc and "=" in vc and vc.index(" ") < vc.index("=")
+
+        for record in snapshot.price_records:
+            if record.is_global:
+                mapped = record_list(record)
+                try:
+                    priced = float(record.value) != 0.0 and __import__("math").isfinite(float(record.value))
+                except (TypeError, ValueError):
+                    priced = False
+                if mapped is not None and priced and not is_surcharge(record.variant_condition):
+                    planned_global_bases.add(
+                        (str(package_id), str(mapped["id"]), (record.variant_condition or "").casefold(), ""))
+                continue
+            if (record.level or "B").strip() != "B":
+                continue
+            mapped = record_list(record)
+            article = article_ids.get((record.article_code or "").strip())
+            try:
+                finite = float(record.value) != 0.0 and __import__("math").isfinite(float(record.value))
+            except (TypeError, ValueError):
+                finite = False
+            if mapped is not None and article is not None and finite and not (record.variant_condition or "").count(" "):
+                planned_bases.add(base_key(article, mapped["id"], record.variant_condition))
+        skipped_no_base = 0
+
         for record in snapshot.price_records:
             price_list = record_list(record)
             if price_list is None:
@@ -575,6 +616,22 @@ class PriceMdbExportService(BaseService):
                         text_status="existing" if linked_id is not None else "missing")
                 text_plan.append(entry)
                 continue
+            no_base = False
+            if not is_global and (record.level or "B").strip() == "X":
+                bk = base_key(article_id, price_list["id"], record.variant_condition)
+                no_base = bk not in planned_bases and bk not in existing_base_keys
+            elif is_global and is_surcharge(record.variant_condition):
+                gk = (str(package_id), str(price_list["id"]), record.variant_condition.split(" ")[0].casefold(), "")
+                no_base = gk not in planned_global_bases and gk not in existing_global_base_keys
+            if no_base:
+                skipped_no_base += 1
+                reason = "upcharge has no base price row (item unpriced)"
+                block_reasons[reason] = block_reasons.get(reason, 0) + 1
+                if len(blocked_detail) < 200:
+                    blocked_detail.append({
+                        "article_code": record.article_code or "", "variant_condition": record.variant_condition or "",
+                        "currency": (record.currency or "").strip().upper(), "reason": reason})
+                continue
             valid_from, valid_to = (
                 article_validity.get((str(article_id), str(price_list["id"])))
                 if not is_global else None
@@ -669,7 +726,7 @@ class PriceMdbExportService(BaseService):
             "inserted_price_lists": 0, "updated_prices": 0, "updated_global_prices": 0,
             "skipped_existing": skipped_existing, "skipped_unmapped": skipped_unmapped,
             "skipped_ambiguous": skipped_ambiguous, "skipped_zero_price": skipped_zero,
-            "skipped_text_blocked": blocked_rows,
+            "skipped_text_blocked": blocked_rows, "skipped_no_base_price": skipped_no_base,
             "failed": 0, "verified": None, "verification_failures": [], "warnings": [],
         }
         report["target_lists"] = sorted(target_lists.values(), key=lambda e: str(e["id"]))

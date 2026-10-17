@@ -1,0 +1,1890 @@
+{
+ "scenarios": [
+  {
+   "scenario": "S1_article_gbp",
+   "title": "Article base + upcharge prices, GBP list 22: changed value, unchanged value, missing row, unresolved item",
+   "covers_checklist_items": [
+    1,
+    4,
+    5,
+    6,
+    8
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "article",
+      "items": [
+       "GESG.",
+       "GEWC.10",
+       "GEWDP.L",
+       "GEWDP.S",
+       "GEWQ.",
+       "GEPBPANNF.0608S4M"
+      ]
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "article",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (6) ...",
+      "Updating: GESG. (1 of 6)",
+      "Updating: GEWC.10 (2 of 6)",
+      "Updating: GEWDP.L (3 of 6)",
+      "Updating: GEWDP.S (4 of 6)",
+      "Updating: GEWQ. (5 of 6)",
+      "Updating: GEPBPANNF.0608S4M (6 of 6)",
+      "Update complete (3 price(s) updated, 1 price(s) inserted, 2 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [
+      "System.FormatException: Input string was not in a correct format.\r\n   at System.Number.ParseDouble(String value, NumberStyles options, NumberFormatInfo numfmt)\r\n   at System.Double.Parse(String s)\r\n   at PDMMaintenance.PriceMaintenance.addNewArticlePriceRecord(String myitem, String article, String mydate, String currency, String mywidth, ArrayList productsWithVariants, Int32& articleId, String& validFrom, String& validTo, String variantCondition, ArrayList productArticleIds, ArrayList productValidFromDates, ArrayList productValidToDates, Int64 pricelistId, String oleconfig)"
+     ],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 1,
+    "inserted_global_prices": 0,
+    "inserted_price_lists": 0,
+    "updated_prices": 3,
+    "updated_global_prices": 0,
+    "skipped_existing": 5,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 7,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {
+     "upcharge has no base price row (item unpriced)": 7
+    },
+    "export_allowed": true,
+    "plan_digest": "e0b6a040a3c41fca0fb6f2e9eac89dc254a92660dfad2b21b1e9473537d6195e",
+    "text_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 0,
+     "rows_linked": 0,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 9
+   },
+   "pricing_inputs": {
+    "records": 16,
+    "unresolved": [
+     "GEPBPANNF.0608S4M"
+    ]
+   },
+   "differences": {
+    "pdm_changed_rows": 7,
+    "pricing_changed_rows": 7,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state",
+   "second_run_idempotency": {
+    "pdm_status": [
+     [
+      "Update complete (5 price(s) already up to date)"
+     ]
+    ],
+    "pricing": {
+     "ok": true,
+     "inserted_prices": 0,
+     "inserted_global_prices": 0,
+     "updated_prices": 0,
+     "updated_global_prices": 0
+    },
+    "pdm_changed_rows": false,
+    "pdm_texts_changed": false,
+    "pricing_changed_rows": false,
+    "pricing_texts_changed": false
+   }
+  },
+  {
+   "scenario": "S2_article_eur",
+   "title": "Same article scenario routed to the EUR list 21 (currency separation, EUR values)",
+   "covers_checklist_items": [
+    1,
+    4,
+    5,
+    6
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "article",
+      "items": [
+       "GESG.",
+       "GEWC.10",
+       "GEWDP.L",
+       "GEWDP.S",
+       "GEWQ."
+      ]
+     }
+    ],
+    "currency": "EUR",
+    "date": "2026-10-16",
+    "list": "EURO_2026_2",
+    "list_id": 21
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "article",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (5) ...",
+      "Updating: GESG. (1 of 5)",
+      "Updating: GEWC.10 (2 of 5)",
+      "Updating: GEWDP.L (3 of 5)",
+      "Updating: GEWDP.S (4 of 5)",
+      "Updating: GEWQ. (5 of 5)",
+      "Update complete (3 price(s) updated, 1 price(s) inserted, 2 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 1,
+    "inserted_global_prices": 0,
+    "inserted_price_lists": 0,
+    "updated_prices": 3,
+    "updated_global_prices": 0,
+    "skipped_existing": 5,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "51bfd7fe66044935c089a560391964610cef8d7e5619eb94162036bc21a68b30",
+    "text_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 0,
+     "rows_linked": 0,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 9
+   },
+   "pricing_inputs": {
+    "records": 9,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 7,
+    "pricing_changed_rows": 7,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state"
+  },
+  {
+   "scenario": "S3_article_first_price_for_existing_article",
+   "title": "Items of articles that exist in tCOMd_Article but have no price row in the list",
+   "covers_checklist_items": [
+    5
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "article",
+      "items": [
+       "GEWK.08",
+       "GEWL.08",
+       "GE3WS.08Y"
+      ]
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "article",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (3) ...",
+      "Updating: GEWK.08 (1 of 3)",
+      "Updating: GEWL.08 (2 of 3)",
+      "Updating: GE3WS.08Y (3 of 3)",
+      "Update complete (3 price(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 3,
+    "inserted_global_prices": 0,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 0,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "4c64957989251516028bde87bdb5f7d035564f3882d9b1a1a229bbbb3e393048",
+    "text_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 3,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 0,
+     "rows_linked": 0,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 3,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 3
+   },
+   "pricing_inputs": {
+    "records": 3,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 3,
+    "pricing_changed_rows": 3,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state"
+  },
+  {
+   "scenario": "S4_duplicate_article_identity",
+   "title": "Duplicate article price identity (two GEWQ '.' rows)",
+   "covers_checklist_items": [
+    9
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "article",
+      "items": [
+       "GEWQ."
+      ]
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "article",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GEWQ. (1 of 1)",
+      "Update complete (1 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 0,
+    "inserted_price_lists": 0,
+    "updated_prices": 1,
+    "updated_global_prices": 0,
+    "skipped_existing": 4,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 1,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "b83923c844e95f804639b336f7b2e03c8a8fd6dbd016e4d47e1e947cbbe6eded",
+    "text_summary": {
+     "price_rows_to_update": 1,
+     "price_rows_to_insert": 0,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 0,
+     "rows_linked": 0,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 1,
+     "price_rows_to_insert": 0,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 5
+   },
+   "pricing_inputs": {
+    "records": 5,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 2,
+    "pricing_changed_rows": 2,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state"
+  },
+  {
+   "scenario": "S4b_duplicates_both_stale",
+   "title": "Duplicate article identity where BOTH rows are stale (which row does PDM update?)",
+   "covers_checklist_items": [
+    9
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "article",
+      "items": [
+       "GEWQ."
+      ]
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "article",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GEWQ. (1 of 1)",
+      "Update complete (2 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 0,
+    "inserted_price_lists": 0,
+    "updated_prices": 3,
+    "updated_global_prices": 0,
+    "skipped_existing": 3,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 1,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "f035c82342571f882a3e86cd537ddae6eb650ed970b5f0d6f917f2c3d5644947",
+    "text_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 0,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 0,
+     "rows_linked": 0,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 3,
+     "price_rows_to_insert": 0,
+     "text_reuse": 0,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 5
+   },
+   "pricing_inputs": {
+    "records": 5,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 4,
+    "pricing_changed_rows": 4,
+    "only_in_pdm_result": [
+     "[\"article\", \"GBP_2026_2\", \"GEWQ\", \".\", \"B\", \"S\", 9.0, \"GBP\", \"20260907\", \"99991231\", null]"
+    ],
+    "only_in_pricing_result": [
+     "[\"article\", \"GBP_2026_2\", \"GEWQ\", \".\", \"B\", \"S\", 171.0, \"GBP\", \"20260907\", \"99991231\", null]"
+    ],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional",
+   "resolution": "PDM updates only the LAST duplicate row it reads and leaves the other stale; Pricing corrects every duplicate row whose value differs (pCon may read either). Real-MDB scope has no duplicate identities (duplicate_matches 0), so current data is unaffected."
+  },
+  {
+   "scenario": "S5_global_update",
+   "title": "Global base + surcharge values, GBP list 22: changed values, unchanged, missing global row",
+   "covers_checklist_items": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "global",
+      "items": [
+       "GE2HBS.",
+       "GE2HDF.",
+       "GE2WE.",
+       "GEAH.",
+       "GEBA.08",
+       "GETH.1022FS4W"
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (6) ...",
+      "Updating: GE2HBS. (1 of 6)",
+      "Updating: GE2HBS. (1 of 6) ...",
+      "Updating: GE2HDF. (2 of 6)",
+      "Updating: GE2HDF. (2 of 6) ...",
+      "Updating: GE2WE. (3 of 6)",
+      "Updating: GE2WE. (3 of 6) ...",
+      "Updating: GEAH. (4 of 6)",
+      "Updating: GEAH. (4 of 6) ...",
+      "Updating: GEBA.08 (5 of 6)",
+      "Updating: GEBA.08 (5 of 6) ...",
+      "Updating: GETH.1022FS4W (6 of 6)",
+      "Updating: GETH.1022FS4W (6 of 6) ...",
+      "Update complete (2 price(s) updated, 19 price(s) already up to date, 1 item(s) unresolved, 1 item(s) not found)"
+     ],
+     "noPDMprice": [
+      "GEBA.08"
+     ],
+     "notfound": [
+      "GE2HDF."
+     ],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 2,
+    "skipped_existing": 19,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "1b32ad7a513c0bf021d5ca3b2a57dc0de05d3929709c223bf870d9340e83665a",
+    "text_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 1,
+     "rows_linked": 1,
+     "links_preserved": 21,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 22
+   },
+   "pricing_inputs": {
+    "records": 22,
+    "unresolved": [
+     "GEBA.08"
+    ]
+   },
+   "differences": {
+    "pdm_changed_rows": 4,
+    "pricing_changed_rows": 5,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HDF.\", \"X\", \"S\", 114.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"GE2HDF.\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional",
+   "resolution": "PDM's global value update never inserts a missing global row ('not found'); PDM needs its separate 'create placeholders' step first. Pricing inserts the row with its value in one step; the two-step PDM workflow is compared with it in S6/S7/S9/S11 and matches.",
+   "second_run_idempotency": {
+    "pdm_status": [
+     [
+      "Update complete (21 price(s) already up to date, 1 item(s) unresolved, 1 item(s) not found)"
+     ]
+    ],
+    "pricing": {
+     "ok": true,
+     "inserted_prices": 0,
+     "inserted_global_prices": 0,
+     "updated_prices": 0,
+     "updated_global_prices": 0
+    },
+    "pdm_changed_rows": false,
+    "pdm_texts_changed": false,
+    "pricing_changed_rows": false,
+    "pricing_texts_changed": false
+   }
+  },
+  {
+   "scenario": "S5b_global_update_variableincs_false",
+   "title": "As S5 but PDM forced to variableincs=false (item-prefixed surcharge matching) to compare surcharge VALUES",
+   "covers_checklist_items": [
+    3,
+    4
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "global",
+      "items": [
+       "GE2HBS.",
+       "GE2HDF.",
+       "GE2WE.",
+       "GEAH.",
+       "GEBA.08",
+       "GETH.1022FS4W"
+      ],
+      "variableincs": false,
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": false,
+     "status": [
+      "Processing Item data (6) ...",
+      "Updating: GE2HBS. (1 of 6)",
+      "Updating: GE2HBS. (1 of 6) ...",
+      "Updating: GE2HDF. (2 of 6)",
+      "Updating: GE2HDF. (2 of 6) ...",
+      "Updating: GE2WE. (3 of 6)",
+      "Updating: GE2WE. (3 of 6) ...",
+      "Updating: GEAH. (4 of 6)",
+      "Updating: GEAH. (4 of 6) ...",
+      "Updating: GEBA.08 (5 of 6)",
+      "Updating: GEBA.08 (5 of 6) ...",
+      "Updating: GETH.1022FS4W (6 of 6)",
+      "Updating: GETH.1022FS4W (6 of 6) ...",
+      "Update complete (1 price(s) updated, 3 price(s) already up to date, 18 item(s) unresolved, 1 item(s) not found)"
+     ],
+     "noPDMprice": [
+      "GEBA.08",
+      "GETH.1022FS4W 9168=ED  did not match (variable: False)\r\ncurrent pCon inc price: 69 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=SC  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=RR  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=SS  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=SL  did not match (variable: False)\r\ncurrent pCon inc price: 69 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=BA  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=BE  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=AA  did not match (variable: False)\r\ncurrent pCon inc price: 1 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=EB  did not match (variable: False)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 3831=NOK  did not match (variable: False)\r\ncurrent pCon inc price: 210 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=VS  did not match (variable: False)\r\ncurrent pCon inc price: 1144 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=VL  did not match (variable: False)\r\ncurrent pCon inc price: 1373 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 3831=OKG  did not match (variable: False)\r\ncurrent pCon inc price: 210 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 3831=OUG  did not match (variable: False)\r\ncurrent pCon inc price: 306 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 3831=EU  did not match (variable: False)\r\ncurrent pCon inc price: 637 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 3831=EV  did not match (variable: False)\r\ncurrent pCon inc price: 637 (expected prev: 0, new value: 0)",
+      "GETH.1022FS4W 9168=BC  did not match (variable: False)\r\ncurrent pCon inc price: 69 (expected prev: 0, new value: 0)"
+     ],
+     "notfound": [
+      "GE2HDF."
+     ],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 2,
+    "skipped_existing": 19,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "1b32ad7a513c0bf021d5ca3b2a57dc0de05d3929709c223bf870d9340e83665a",
+    "text_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 1,
+     "rows_linked": 1,
+     "links_preserved": 21,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 22
+   },
+   "pricing_inputs": {
+    "records": 22,
+    "unresolved": [
+     "GEBA.08"
+    ]
+   },
+   "differences": {
+    "pdm_changed_rows": 2,
+    "pricing_changed_rows": 5,
+    "only_in_pdm_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GETH.1022FS4W 9168=AA\", \"X\", \"S\", 1.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"9168\", \"Surcharge Access cutout\", \"Aufpreis f\\u00fcr Kabelauslass\", \"Surco\\u00fbt d\\u00e9coupe\", \"Meerprijs Toegangsuitsparing\"]]"
+    ],
+    "only_in_pricing_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HDF.\", \"X\", \"S\", 114.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"GE2HDF.\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GETH.1022FS4W 9168=AA\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"9168\", \"Surcharge Access cutout\", \"Aufpreis f\\u00fcr Kabelauslass\", \"Surco\\u00fbt d\\u00e9coupe\", \"Meerprijs Toegangsuitsparing\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "negative_control",
+   "resolution": "PDM forced to variableincs=false (not what the button computes for layout_studio): its surcharge matcher then cannot match the item-prefixed rows. Shows the input that S5 must use; no Pricing change implied."
+  },
+  {
+   "scenario": "S6_placeholders_then_global_reuse_text",
+   "title": "PDM's two-step new-global workflow (placeholders, then values) vs the single Pricing step; text reused",
+   "covers_checklist_items": [
+    2,
+    3,
+    5,
+    10,
+    11
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "placeholders",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     },
+     {
+      "mode": "global",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "placeholders",
+     "variableincs": false,
+     "status": [
+      "Preparing Item data (1) ...",
+      "Adding: GE2HDF. (1 of 1)",
+      "Update complete (1 record(s) already existed, 1 record(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    },
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GE2HDF. (1 of 1)",
+      "Updating: GE2HDF. (1 of 1) ...",
+      "Update complete (1 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 0,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "9dc274c9649b4aa260ca13f731169fe01891019506fbe1f036bb9a4b6aad0359",
+    "text_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 1,
+     "rows_linked": 1,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 1
+   },
+   "pricing_inputs": {
+    "records": 1,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 1,
+    "pricing_changed_rows": 1,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state",
+   "second_run_idempotency": {
+    "pdm_status": [
+     [
+      "Update complete (1 record(s) already existed)"
+     ],
+     [
+      "Update complete (1 price(s) already up to date)"
+     ]
+    ],
+    "pricing": {
+     "ok": true,
+     "inserted_prices": 0,
+     "inserted_global_prices": 0,
+     "updated_prices": 0,
+     "updated_global_prices": 0
+    },
+    "pdm_changed_rows": false,
+    "pdm_texts_changed": false,
+    "pricing_changed_rows": false,
+    "pricing_texts_changed": false
+   }
+  },
+  {
+   "scenario": "S8_global_eur",
+   "title": "Global values routed to EUR list 21: changed, unchanged, missing row",
+   "covers_checklist_items": [
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "global",
+      "items": [
+       "GE2HBS.",
+       "GE2HDF.",
+       "GE2WE.",
+       "GEAH.",
+       "GEBA.08",
+       "GETH.1022FS4W"
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "EUR",
+    "date": "2026-10-16",
+    "list": "EURO_2026_2",
+    "list_id": 21
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (6) ...",
+      "Updating: GE2HBS. (1 of 6)",
+      "Updating: GE2HBS. (1 of 6) ...",
+      "Updating: GE2HDF. (2 of 6)",
+      "Updating: GE2HDF. (2 of 6) ...",
+      "Updating: GE2WE. (3 of 6)",
+      "Updating: GE2WE. (3 of 6) ...",
+      "Updating: GEAH. (4 of 6)",
+      "Updating: GEAH. (4 of 6) ...",
+      "Updating: GEBA.08 (5 of 6)",
+      "Updating: GEBA.08 (5 of 6) ...",
+      "Updating: GETH.1022FS4W (6 of 6)",
+      "Updating: GETH.1022FS4W (6 of 6) ...",
+      "Update complete (2 price(s) updated, 19 price(s) already up to date, 1 item(s) unresolved, 1 item(s) not found)"
+     ],
+     "noPDMprice": [
+      "GEBA.08"
+     ],
+     "notfound": [
+      "GE2HDF."
+     ],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 2,
+    "skipped_existing": 19,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "c6ab97baeea5c3921353b50acaf7edbf7c242d50101035f4e2a4dcb9abe7cfb9",
+    "text_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 1,
+     "rows_linked": 1,
+     "links_preserved": 21,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 2,
+     "price_rows_to_insert": 1,
+     "text_reuse": 1,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 21,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 22
+   },
+   "pricing_inputs": {
+    "records": 22,
+    "unresolved": [
+     "GEBA.08"
+    ]
+   },
+   "differences": {
+    "pdm_changed_rows": 4,
+    "pricing_changed_rows": 5,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [
+     "[\"global\", \"EURO_2026_2\", \"\", \"GE2HDF.\", \"X\", \"S\", 128.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"GE2HDF.\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional",
+   "resolution": "As S5 on the EUR list 21: PDM's global value update never inserts the missing global row; Pricing inserts it with its value (the two-step PDM workflow is compared in S6/S7/S9/S11)."
+  },
+  {
+   "scenario": "S9_global_surcharge_text_creation",
+   "title": "Global item with surcharges whose option-id texts (9168, 3831) are missing: PDM's text names/labels",
+   "covers_checklist_items": [
+    3,
+    10,
+    11
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "placeholders",
+      "items": [
+       "GETH.1022FS4W"
+      ],
+      "catalogue": 660
+     },
+     {
+      "mode": "global",
+      "items": [
+       "GETH.1022FS4W"
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "placeholders",
+     "variableincs": false,
+     "status": [
+      "Preparing Item data (1) ...",
+      "Adding: GETH.1022FS4W (1 of 1)",
+      "Update complete (1 record(s) already existed, 18 record(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    },
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GETH.1022FS4W (1 of 1)",
+      "Updating: GETH.1022FS4W (1 of 1) ...",
+      "Update complete (18 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 18,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 0,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "92e8f15694c630a63626989a17f0832176ffa29d05c060c25ce79542e7747969",
+    "text_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 18,
+     "text_reuse": 0,
+     "text_create": 3,
+     "text_link_new": 15,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 3,
+     "texts_reused": 0,
+     "rows_linked": 18,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 18,
+     "text_reuse": 0,
+     "text_create": 3,
+     "text_link_new": 15,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 18
+   },
+   "pricing_inputs": {
+    "records": 18,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 18,
+    "pricing_changed_rows": 18,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     3,
+     3
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state"
+  },
+  {
+   "scenario": "S10_existing_text_label_refresh",
+   "title": "Existing price text with a hand-edited label: does PDM rewrite it on a placeholder run?",
+   "covers_checklist_items": [
+    10,
+    11
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "placeholders",
+      "items": [
+       "GE2HBS."
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "placeholders",
+     "variableincs": false,
+     "status": [
+      "Preparing Item data (1) ...",
+      "Adding: GE2HBS. (1 of 1)",
+      "Update complete (1 record(s) already existed)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": false
+   },
+   "pricing_inputs": {
+    "records": 0,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 4,
+    "pricing_changed_rows": 0,
+    "only_in_pdm_result": [
+     "[\"global\", \"EURO_2026_2\", \"\", \"GE2HBS.\", \"X\", \"S\", 83.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"GE2HBS.\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HBS.\", \"X\", \"S\", 73.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"GE2HBS.\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\", \"GE2HBS.  (FR-AA-US)\"]]"
+    ],
+    "only_in_pricing_result": [
+     "[\"global\", \"EURO_2026_2\", \"\", \"GE2HBS.\", \"X\", \"S\", 83.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"GE2HBS.\", \"CUSTOM LABEL\", \"CUSTOM LABEL\", \"CUSTOM LABEL\", \"CUSTOM LABEL\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HBS.\", \"X\", \"S\", 73.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"GE2HBS.\", \"CUSTOM LABEL\", \"CUSTOM LABEL\", \"CUSTOM LABEL\", \"CUSTOM LABEL\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": false,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional",
+   "resolution": "PDM rewrites the language columns of an existing price text on every placeholder run (a hand-edited label is reset to '<item>  (<Product_Code>)'); Pricing preserves existing text content."
+  },
+  {
+   "scenario": "S11_non_price_text_name_collision",
+   "title": "A non-price (artlong) text shares the item's name: does PDM link the new global row to it?",
+   "covers_checklist_items": [
+    10
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "placeholders",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     },
+     {
+      "mode": "global",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "placeholders",
+     "variableincs": false,
+     "status": [
+      "Preparing Item data (1) ...",
+      "Adding: GE2HDF. (1 of 1)",
+      "Update complete (1 record(s) already existed, 1 record(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    },
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GE2HDF. (1 of 1)",
+      "Updating: GE2HDF. (1 of 1) ...",
+      "Update complete (1 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 0,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "99f5400b1bb1620c36e3139baa71475b4e8c965ac8f6fcd927eeba4a99fca6b1",
+    "text_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 1,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 1,
+     "texts_reused": 0,
+     "rows_linked": 1,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 1,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 1
+   },
+   "pricing_inputs": {
+    "records": 1,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 1,
+    "pricing_changed_rows": 1,
+    "only_in_pdm_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HDF.\", \"X\", \"S\", 114.0, \"GBP\", \"20260907\", \"99991231\", [\"artlong\", \"GE2HDF.\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\"]]"
+    ],
+    "only_in_pricing_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GE2HDF.\", \"X\", \"S\", 114.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"GE2HDF.\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\", \"GE2HDF.  (FR-AA-US)\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": false,
+    "texts_added_pdm_pricing": [
+     0,
+     1
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional_protective",
+   "resolution": "PDM's text lookup has no com_TextTypeCode filter: it linked the new global row to the existing ARTLONG text that shared the item's name AND rewrote that text's language columns. Pricing links only 'price' texts and creates its own. On the real MDB no non-price text shares a price-text name (0 collisions)."
+  },
+  {
+   "scenario": "S7_placeholders_then_global_create_text",
+   "title": "As S6 but the price texts of the item are missing everywhere: text creation and Product_Code label",
+   "covers_checklist_items": [
+    10,
+    11
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "placeholders",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     },
+     {
+      "mode": "global",
+      "items": [
+       "GE2HDF."
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "placeholders",
+     "variableincs": false,
+     "status": [
+      "Preparing Item data (1) ...",
+      "Adding: GE2HDF. (1 of 1)",
+      "Update complete (1 record(s) already existed, 1 record(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    },
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GE2HDF. (1 of 1)",
+      "Updating: GE2HDF. (1 of 1) ...",
+      "Update complete (1 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 1,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 0,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "1c73177939b5888289a87aea180fcd08a25e83c1e77bef0a38d22550b2eeb911",
+    "text_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 1,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 1,
+     "texts_reused": 0,
+     "rows_linked": 1,
+     "links_preserved": 0,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 0,
+     "price_rows_to_insert": 1,
+     "text_reuse": 0,
+     "text_create": 1,
+     "text_link_new": 0,
+     "text_preserve": 0,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 1
+   },
+   "pricing_inputs": {
+    "records": 1,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 1,
+    "pricing_changed_rows": 1,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     1,
+     1
+    ]
+   },
+   "verification_status": "MATCH",
+   "resolution": "identical normalized result state"
+  },
+  {
+   "scenario": "S13_lookalike_orphan_list",
+   "title": "PDM matches the list by LIKE 'GBP%2026%2' (also the orphan list 23 'GBP 2026_2'): does it write both?",
+   "covers_checklist_items": [
+    6
+   ],
+   "source_inputs": {
+    "steps": [
+     {
+      "mode": "global",
+      "items": [
+       "GESNNU.105508F"
+      ],
+      "catalogue": 660
+     }
+    ],
+    "currency": "GBP",
+    "date": "2026-10-16",
+    "list": "GBP_2026_2",
+    "list_id": 22
+   },
+   "pdm_output": [
+    {
+     "executed": true,
+     "pdmVersion": "1.0.9686.24988",
+     "mode": "global",
+     "variableincs": true,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GESNNU.105508F (1 of 1)",
+      "Updating: GESNNU.105508F (1 of 1) ...",
+      "Update complete (1 price(s) updated, 13 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "error": null
+    }
+   ],
+   "pricing_output": {
+    "ok": true,
+    "error": null,
+    "inserted_prices": 0,
+    "inserted_global_prices": 13,
+    "inserted_price_lists": 0,
+    "updated_prices": 0,
+    "updated_global_prices": 1,
+    "skipped_existing": 0,
+    "skipped_unmapped": 0,
+    "skipped_ambiguous": 0,
+    "skipped_zero_price": 0,
+    "skipped_text_blocked": 0,
+    "skipped_no_base_price": 0,
+    "failed": 0,
+    "verified": true,
+    "warnings": [],
+    "duplicate_matches": 0,
+    "computation_date": "20261016",
+    "strict_lists": true,
+    "blocking_errors": [],
+    "blocked_reasons": {},
+    "export_allowed": true,
+    "plan_digest": "3210f6f1fcd13e47555754ab6a24e384de3690da26833f918c2f75d8f56b5ed9",
+    "text_summary": {
+     "price_rows_to_update": 1,
+     "price_rows_to_insert": 13,
+     "text_reuse": 13,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 1,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "verification_failure_count": 0,
+    "text_result": {
+     "texts_created": 0,
+     "texts_reused": 13,
+     "rows_linked": 13,
+     "links_preserved": 1,
+     "text_operations_skipped": 0,
+     "text_operations_failed": 0,
+     "readback_verified": true
+    },
+    "plan_summary": {
+     "price_rows_to_update": 1,
+     "price_rows_to_insert": 13,
+     "text_reuse": 13,
+     "text_create": 0,
+     "text_link_new": 0,
+     "text_preserve": 1,
+     "text_unlinked_existing": 0,
+     "text_missing_or_ambiguous": 0,
+     "rows_blocked": 0
+    },
+    "text_row_count": 14
+   },
+   "pricing_inputs": {
+    "records": 14,
+    "unresolved": []
+   },
+   "differences": {
+    "pdm_changed_rows": 2,
+    "pricing_changed_rows": 15,
+    "only_in_pdm_result": [],
+    "only_in_pricing_result": [
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=1FD\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=1HA\", \"X\", \"S\", 26.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=4MT\", \"X\", \"S\", 84.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=4SC\", \"X\", \"S\", 26.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=4TE\", \"X\", \"S\", 26.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=T2RE\", \"X\", \"S\", 26.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=TI\", \"X\", \"S\", 84.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=V26\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=Z1C\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=Z1G\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=ZC5\", \"X\", \"S\", 84.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=ZM2\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]",
+     "[\"global\", \"GBP_2026_2\", \"\", \"GESNNU.105508F 8=ZMA\", \"X\", \"S\", 26.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric\", \"Aufpreis f\\u00fcr Stoff\", \"Surcharge seat pad fabric\", \"Meerprijs stof\"]]"
+    ],
+    "lists_equal": true,
+    "texts_equal": true,
+    "texts_added_pdm_pricing": [
+     0,
+     0
+    ]
+   },
+   "verification_status": "DIFFERENCE_EXPLAINED",
+   "classification": "intentional_protective",
+   "resolution": "PDM matches the target list with LIKE 'GBP%2026%2', which also matches the unlinked orphan list 23 ('GBP 2026_2'): it updated only ONE of the two stale base rows and counted list 23's surcharge rows as 'up to date', so the linked list 22 never received them. Pricing writes only the validated target list 22 (inserting the 13 missing surcharge rows) and never touches list 23."
+  }
+ ],
+ "unexplained": [],
+ "pdm_application": {
+  "binary": "PDMMaintenance.exe (installed build, loaded as a library from a copy)",
+  "assembly_version": "1.0.9686.24988",
+  "entry_point": "PDMMaintenance.UpdatePriceThread.execThread (what PConPriceUpdate's buttons start)",
+  "isolation": "pConPath redirected to a per-scenario MDB copy; SQL Server is read-only in these code paths"
+ }
+}

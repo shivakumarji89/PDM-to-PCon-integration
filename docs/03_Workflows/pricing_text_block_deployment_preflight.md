@@ -51,3 +51,21 @@ independent ones used in the rehearsal.
 
 To proceed, please confirm explicitly: (1) preview totals accepted, (2) pCon/PDM closed, (3) fresh backup taken.
 Until then the live MDB is not written.
+
+## Live-write gate (all must be true; each is re-checked, never assumed)
+
+1. **Fresh preview of the intended run.** Recompute prices for the intended date, then *Export to MDB...* -> select the
+   **backup copy** -> review the EUR/GBP target lists (reuse / create, ids, validity) -> read the preview: price rows to
+   update / insert, already current, zero / unmapped / blocked rows (and the reason of each blocked row, including
+   "upcharge has no base price row"), text blocks to reuse / create, rows blocked for a missing `Product_Code`, duplicate
+   matches. Record the totals here. The write button is bound to that exact plan (`plan_digest`) and refuses if the MDB or
+   inputs changed.
+2. **Current verified backup** of the live MDB taken immediately before the write, SHA-256 recorded and re-verified
+   against the file about to be written; no `.ldb`/`.laccdb`; PDM and pCon Creator closed (a shared reader does not block
+   the write, an exclusive holder does - the export then fails with nothing written).
+3. **Reviewed counts and an unchanged scope**: orphan lists 23 / 24 and unrelated region links untouched, no deletes.
+4. **Explicit approval of the final, refreshed write scope** by the owner. Nothing in this repository writes the live MDB
+   on its own.
+
+Evidence for what the export does and where it differs from PDM: `pricing_pdm_parity.md` (*Actual PDM differential*) and
+`pdm_differential_report.json`. pCon rendering of the written prices and texts has **not** been verified.

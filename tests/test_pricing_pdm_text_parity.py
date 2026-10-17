@@ -80,6 +80,7 @@ _BASE_TEXTS = [
 ]
 _ITEMS = [
     ("GE2HBS.", "FR-AA-US"),            # base item whose text exists  -> reused
+    ("GESNNU.1", "FR-AA-US"),           # base item of the surcharge below -> text created
     ("GESNNU.1 8=1FD", "FR-AA-US"),     # surcharge: shared option-id text "8" -> reused
     ("NEWITEM.1", "NW-AA-US"),          # base item, text missing      -> created "NEWITEM.1  (NW-AA-US)"
     ("NEWITEM.1 3344=AB", "NW-AA-US"),  # surcharge, option text missing -> created "Surcharge 3344"
@@ -95,7 +96,7 @@ def test_new_global_rows_and_texts_match_the_pdm_algorithm():
     theirs = _normal(pdm_texts, pdm_globals)
     assert ours[0] == theirs[0]   # identical tCOMd_Text content: names, type, every language column
     assert ours[1] == theirs[1]   # identical new global rows: identity, level X, type S, text by name
-    assert result["text_summary"]["text_create"] == 3
+    assert result["text_summary"]["text_create"] == 4
     assert result["text_summary"]["text_reuse"] == 2
     assert result["text_summary"]["text_link_new"] == 1
 
@@ -112,7 +113,7 @@ def test_every_new_row_text_id_resolves_to_exactly_one_existing_text():
 def test_second_run_matches_pdm_second_run_and_adds_nothing():
     texts, globals_, _ = _apply_export(_BASE_TEXTS, _ITEMS)
     pdm_t, pdm_g = _pdm_add_missing_global(*_pdm_add_missing_global(_BASE_TEXTS, [], _ITEMS), _ITEMS)
-    assert len(pdm_g) == len(_ITEMS) and len(pdm_t) == len(_BASE_TEXTS) + 3   # PDM is idempotent too
+    assert len(pdm_g) == len(_ITEMS) and len(pdm_t) == len(_BASE_TEXTS) + 4   # PDM is idempotent too
     existing = [{**g, "com_GlobalPriceID": 1000 + i} for i, g in enumerate(globals_)]
     mdb = _OptimizedFake(_eur_gbp_lists(), globals_=existing, linked=[21, 22],
                          texts=[{"com_TextID": t["com_TextID"], "com_TextName": t["com_TextName"]} for t in texts])

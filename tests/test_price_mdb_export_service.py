@@ -460,7 +460,9 @@ class PriceMdbExportPdmParityTests(unittest.TestCase):
         self.assertEqual(result["skipped_zero_price"], 2)
 
     def test_global_insert_links_price_text_and_uses_list_validity(self):
-        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+        base_row = {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "GESNNU.1",
+                    "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": 77}
+        mdb = _OptimizedFake(_eur_gbp_lists(), globals_=[base_row], linked=[21, 22],
                              texts=[{"com_TextID": 77, "com_TextName": "8"},
                                     {"com_TextID": 88, "com_TextName": "GE2HBS."}])
         records = [
@@ -617,10 +619,10 @@ class PriceMdbExportTextBlockTests(unittest.TestCase):
     def test_ambiguous_text_name_blocks_the_row_instead_of_guessing(self):
         mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
                              texts=[{"com_TextID": 1, "com_TextName": "8"}, {"com_TextID": 2, "com_TextName": "8"}])
-        result = _export(mdb, [_global("X.1 8=AA"), _global("OK.1")])
+        result = _export(mdb, [_global("X.1"), _global("X.1 8=AA"), _global("OK.1")])
         self.assertEqual(result["text_summary"]["text_missing_or_ambiguous"], 1)
         self.assertEqual(result["skipped_text_blocked"], 1)
-        self.assertEqual(result["inserted_global_prices"], 1)
+        self.assertEqual(result["inserted_global_prices"], 2)
         self.assertTrue(any(e["text_status"] == "ambiguous" for e in result["text_rows"]))
 
     def test_missing_language_columns_block_creation_with_a_reason(self):
@@ -743,8 +745,12 @@ class PriceMdbExportTextBlockTests(unittest.TestCase):
     def test_unknown_product_code_blocks_creation_instead_of_a_degraded_label(self):
         mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
                              texts=[{"com_TextID": 88, "com_TextName": "OLD."}])
+        base = {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "X_1",
+                "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": 88}
+        mdb = _OptimizedFake(_eur_gbp_lists(), globals_=[base], linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "OLD."}])
         result = _export(mdb, [_global("NEW.1", product_code=""), _global("OLD.", product_code=""),
-                               _global("NEW_2.1", product_code=""), _global("X.1 8=AA", product_code="")])
+                               _global("NEW_2.1", product_code=""), _global("X_1 8=AA", product_code="")])
         self.assertEqual(result["skipped_text_blocked"], 1)           # only the code-dependent label
         self.assertIn("Product_Code unknown", result["text_rows"][0]["reason"])
         self.assertEqual(result["inserted_global_prices"], 3)         # reuse / underscore / surcharge need no code
@@ -954,3 +960,68 @@ class PriceMdbExportLockTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("locked or in use", result["error"])
         self.assertEqual(result["inserted_prices"], 0)
+
+
+class PriceMdbExportUpchargeBaseTests(unittest.TestCase):
+    """Found by the real-PDM differential (S1): PDM wrote nothing for an item it could not price, while
+    Pricing inserted 7 upcharge rows for it. Every upcharge row in the real MDB has a base row."""
+
+    def _upcharge(self, suffix=""):
+        return _rec(7.0, "EUR", variant_condition=f"{suffix} 8992=BFK", level="X")
+
+    def test_upcharge_without_a_base_row_is_not_inserted(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [self._upcharge("ANNF.0608")], _T)
+        self.assertEqual(result["inserted_prices"], 0)
+        self.assertEqual(result["skipped_no_base_price"], 1)
+        self.assertIn("no base price row", list(result["blocked_reasons"])[0])
+        self.assertEqual(mdb.ops, [])
+
+    def test_upcharge_is_inserted_when_the_base_row_already_exists(self):
+        base = _eur_row(pid=1, value=5.0, com_VariantCondition="ANNF.0608")
+        mdb = _OptimizedFake(_strict_lists(), prices=[base], linked=[21, 22])
+        result = _export_strict(mdb, [self._upcharge("ANNF.0608")], _T)
+        self.assertEqual((result["inserted_prices"], result["skipped_no_base_price"]), (1, 0))
+
+    def test_upcharge_is_inserted_when_its_base_is_written_by_the_same_export_in_any_order(self):
+        base = _rec(5.0, "EUR", variant_condition="ANNF.0608")
+        for records in ([base, self._upcharge("ANNF.0608")], [self._upcharge("ANNF.0608"), base]):
+            mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+            result = _export_strict(mdb, records, _T)
+            self.assertEqual((result["inserted_prices"], result["skipped_no_base_price"]), (2, 0))
+
+    def test_unpriced_base_does_not_count_as_a_base(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(0.0, "EUR", variant_condition="ANNF.0608"), self._upcharge("ANNF.0608")], _T)
+        self.assertEqual((result["inserted_prices"], result["skipped_no_base_price"], result["skipped_zero_price"]), (0, 1, 1))
+
+    def test_existing_upcharge_rows_are_still_updated(self):
+        row = _eur_row(pid=2, value=1.0, com_VariantCondition="ANNF.0608 8992=BFK", com_PriceLevelCode="X")
+        mdb = _OptimizedFake(_strict_lists(), prices=[row], linked=[21, 22])
+        result = _export_strict(mdb, [self._upcharge("ANNF.0608")], _T)
+        self.assertEqual((result["updated_prices"], result["skipped_no_base_price"]), (1, 0))
+
+
+class PriceMdbExportGlobalSurchargeBaseTests(unittest.TestCase):
+    """Every real global surcharge row ('ITEM opt=val') has a base global row ('ITEM'): 0 of 16,594
+    dangle in lists 21/22. A surcharge whose item has no base is not inserted."""
+
+    def test_surcharge_without_a_base_global_row_is_not_inserted(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_global("ITEM.1 8=AA")], _T)
+        self.assertEqual((result["inserted_global_prices"], result["skipped_no_base_price"]), (0, 1))
+        self.assertEqual(mdb.ops, [])
+
+    def test_surcharge_is_inserted_with_a_base_written_in_the_same_export_in_any_order_and_case(self):
+        for records in ([_global("ITEM.1"), _global("item.1 8=AA")], [_global("item.1 8=AA"), _global("ITEM.1")]):
+            mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+            result = _export_strict(mdb, records, _T)
+            self.assertEqual((result["inserted_global_prices"], result["skipped_no_base_price"]), (2, 0))
+
+    def test_surcharge_is_inserted_when_the_base_row_exists_in_the_mdb(self):
+        base = {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "ITEM.1",
+                "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": 88}
+        mdb = _OptimizedFake(_strict_lists(), globals_=[base], linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "8"}])
+        result = _export_strict(mdb, [_global("ITEM.1 8=AA")], _T)
+        self.assertEqual((result["inserted_global_prices"], result["skipped_no_base_price"]), (1, 0))
