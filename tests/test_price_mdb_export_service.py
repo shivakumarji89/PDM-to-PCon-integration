@@ -393,6 +393,13 @@ class _OptimizedFake(_RecordingMDB):
             for t in self._text_state().values():
                 counts[t["com_TextName"]] = counts.get(t["com_TextName"], 0) + 1
             return [{"com_TextName": n, "n": c} for n, c in counts.items() if f"'{n}'" in sql]
+        if kind == "lists":
+            wanted = {int(x) for x in sql.split("IN (")[1].rstrip(")").split(",")}
+            rows = [{**r, "id": r["com_PriceListID"]} for r in self.rows[_LISTS_SQL]]
+            for op in self.ops:
+                if op["op"] == "insert" and op["table"] == "tCOMd_PriceList2":
+                    rows += [{**r, "id": r["com_PriceListID"]} for r in op["rows"]]
+            return [r for r in rows if r["id"] in wanted]
         if kind == "links":
             wanted = {int(x) for x in sql.split("IN (")[1].rstrip(")").split(",")}
             return [{"id": g["com_GlobalPriceID"], "com_TextID": g.get("com_TextID")}
@@ -410,6 +417,7 @@ class _OptimizedFake(_RecordingMDB):
                 rows += [{"id": r[pk], "com_PriceValue": r["com_PriceValue"],
                           "com_PriceListID": r["com_PriceListID"],
                           "com_VariantCondition": r["com_VariantCondition"],
+                          "sys_ISOCurrencyCode": r["sys_ISOCurrencyCode"],
                           "com_TextID": r.get("com_TextID")} for r in op["rows"]]
         if table == "tCOMd_GlobalPrice":  # updated rows keep the link they had
             seen = {r["id"] for r in rows}
@@ -758,3 +766,191 @@ class PriceMdbExportFarFutureValidityTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertRegex(row["com_PriceValidFrom"], r"^#2026-09-0[67] 00:00:00#$")
         self.assertRegex(row["com_PriceValidTo"], r"^#9999-12-(30|31) 00:00:00#$")
+
+
+def _export_strict(mdb, records, targets, dry_run=False, expected_plan=None):
+    snapshot = Snapshot()
+    snapshot.price_records = list(records)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "existing.mdb"
+        path.touch()
+        return PriceMdbExportService(SimpleNamespace(mdb_service=mdb)).export(
+            snapshot, path, dry_run=dry_run, list_targets=targets, expected_plan=expected_plan)
+
+
+def _strict_lists():
+    return [_plist(21, "EURO_2026_2", "EUR", "2026-09-07"), _plist(22, "GBP_2026_2", "GBP", "2026-09-07")]
+
+
+_T = {"EUR": "EURO_2026_2", "GBP": "GBP_2026_2"}
+
+
+def _on(ccy, day, value=5.0, **kw):
+    kw.setdefault("article_code", "A1")
+    return PriceRecord(value=value, currency=ccy, valid_from=day, **kw)
+
+
+class PriceMdbExportListTargetTests(unittest.TestCase):
+    def test_currency_is_routed_only_to_its_own_target_list(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(10.0, "EUR"), _rec(9.0, "GBP"),
+                                      _global("G.1", 5.0, "EUR"), _global("G.1", 4.0, "GBP")], _T)
+        self.assertTrue(result["ok"] and result["verified"], result)
+        by_ccy = {r["sys_ISOCurrencyCode"]: r["com_PriceListID"]
+                  for op in mdb.ops if op["op"] == "insert" and op["table"] in ("tCOMd_Price", "tCOMd_GlobalPrice")
+                  for r in op["rows"]}
+        self.assertEqual(by_ccy, {"EUR": 21, "GBP": 22})
+        for entry in result["text_rows"]:
+            self.assertEqual(entry["list_id"], 21 if entry["currency"] == "EUR" else 22)
+
+    def test_renamed_lists_are_created_with_chosen_names_currency_ids_and_dates(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_on("EUR", "2027-01-05", 10.0), _on("GBP", "2027-01-05", 9.0)],
+                                {"EUR": "EURO_2027", "GBP": "gbp_2027"})
+        self.assertTrue(result["ok"] and result["verified"], result)
+        created = next(op for op in mdb.ops if op["table"] == "tCOMd_PriceList2")["rows"]
+        self.assertEqual({(r["com_PriceListLabel"], r["sys_ISOCurrencyCode"]) for r in created},
+                         {("EURO_2027", "EUR"), ("gbp_2027", "GBP")})        # chosen spelling preserved
+        self.assertEqual({r["com_PriceValidFrom"] for r in created}, {"#2027-01-05 00:00:00#"})
+        self.assertEqual({r["com_PriceValidTo"] for r in created}, {"#9999-12-31 00:00:00#"})
+        self.assertEqual(result["inserted_price_lists"], 2)
+        plan = {p["currency"]: p for p in result["list_plan"]}
+        self.assertEqual((plan["EUR"]["action"], plan["GBP"]["action"]), ("create", "create"))
+        ids = {r["com_PriceListID"] for r in created}
+        prices = next(op for op in mdb.ops if op["table"] == "tCOMd_Price")["rows"]
+        self.assertEqual({r["com_PriceListID"] for r in prices}, ids)       # rows use the new ids
+        self.assertEqual(sorted(ids), [23, 24])
+
+    def test_existing_lists_are_reused_not_duplicated_for_a_spelling_variant(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(10.0, "EUR")], {"EUR": "euro 2026_2", "GBP": "GBP_2026_2"})
+        self.assertEqual(result["inserted_price_lists"], 0)
+        self.assertEqual([p["action"] for p in result["list_plan"]], ["reuse"])
+
+    def test_list_whose_validity_does_not_cover_the_date_blocks_everything(self):
+        lists = [_plist(21, "EURO_2026_2", "EUR", "2026-09-07", "2026-12-31")]
+        mdb = _OptimizedFake(lists, linked=[21])
+        result = _export_strict(mdb, [_on("EUR", "2027-01-02")], {"EUR": "EURO_2026_2"})
+        self.assertFalse(result["ok"])
+        self.assertIn("does not cover", result["error"])
+        self.assertEqual(mdb.ops, [])
+
+    def test_dry_run_with_an_invalid_target_reports_it_and_forbids_export(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(10.0, "EUR")], {"EUR": "bad/name", "GBP": "GBP_2026_2"}, dry_run=True)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["export_allowed"])
+        self.assertTrue(any("letters" in e for e in result["blocking_errors"]))
+        self.assertEqual(mdb.ops, [])
+
+    def test_ambiguous_list_match_stops_the_export(self):
+        lists = [_plist(30, "EURO 2026_2", "EUR"), _plist(31, "Euro_2026_2", "EUR")]
+        mdb = _OptimizedFake(lists, linked=[])
+        result = _export_strict(mdb, [_rec(10.0, "EUR")], {"EUR": "EURO-2026-2"})
+        self.assertFalse(result["ok"])
+        self.assertIn("matches 2", result["error"])
+        self.assertEqual(mdb.ops, [])
+
+    def test_currency_without_a_target_is_blocked_with_a_reason(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(10.0, "EUR"), _rec(7.0, "USD")], {"EUR": "EURO_2026_2"}, dry_run=True)
+        self.assertFalse(result["export_allowed"])             # USD has no name -> blocking
+        self.assertTrue(any(e.startswith("USD:") for e in result["blocking_errors"]))
+        self.assertEqual(result["blocked_rows"][0]["currency"], "USD")
+
+    def test_record_outside_the_list_period_is_blocked_individually(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        result = _export_strict(mdb, [_rec(10.0, "EUR"), _on("EUR", "2026-01-01", 3.0, variant_condition=" 9=Z", level="X")],
+                                _T, dry_run=True)
+        self.assertEqual(result["skipped_unmapped"], 1)
+        self.assertIn("outside list", result["blocked_rows"][0]["reason"])
+        self.assertEqual(result["inserted_prices"], 1)
+
+    def test_preview_exposes_date_lists_ids_and_validity(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21])
+        result = _export_strict(mdb, [_rec(10.0, "EUR"), _rec(9.0, "GBP")], _T, dry_run=True)
+        self.assertEqual(result["computation_date"], "20261016")
+        plan = {p["currency"]: p for p in result["list_plan"]}
+        self.assertEqual((plan["EUR"]["list_id"], plan["GBP"]["list_id"]), (21, 22))
+        self.assertEqual(plan["EUR"]["date_from"], "20260907")
+        self.assertTrue(plan["EUR"]["linked"] and not plan["GBP"]["linked"])
+        self.assertTrue(any("not linked" in w for w in plan["GBP"]["warnings"]))
+        self.assertEqual(mdb.ops, [])
+
+    def test_plan_digest_binds_the_export_to_the_previewed_plan(self):
+        recs = [_rec(10.0, "EUR"), _global("G.1", 5.0, "EUR")]
+
+        def preview(records=recs, targets=_T):
+            return _export_strict(_OptimizedFake(_strict_lists(), linked=[21, 22]), records, targets, dry_run=True)
+
+        base = preview()
+        self.assertEqual(base["plan_digest"], preview()["plan_digest"])               # deterministic
+        self.assertNotEqual(base["plan_digest"],
+                            preview(targets={"EUR": "EURO_2026_3", "GBP": "GBP_2026_2"})["plan_digest"])
+        self.assertNotEqual(base["plan_digest"], preview([_rec(11.0, "EUR"), recs[1]])["plan_digest"])
+
+        stale = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        refused = _export_strict(stale, recs, _T, expected_plan="0" * 64)
+        self.assertFalse(refused["ok"])
+        self.assertIn("Preview Export again", refused["error"])
+        self.assertEqual(stale.ops, [])
+        fresh = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        done = _export_strict(fresh, recs, _T, expected_plan=base["plan_digest"])
+        self.assertTrue(done["ok"])
+        self.assertTrue(fresh.ops)
+
+    def test_readback_flags_rows_pointing_at_a_list_of_the_wrong_currency(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        base = mdb._readback
+
+        def swapped(name, sql=""):
+            rows = base(name, sql)
+            if name.startswith("lists:"):
+                return [{**r, "sys_ISOCurrencyCode": "GBP" if r["id"] == 21 else "EUR"} for r in rows]
+            return rows
+
+        mdb._readback = swapped
+        result = _export_strict(mdb, [_rec(10.0, "EUR")], _T)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("currency routing" in f for f in result["verification_failures"]))
+
+    def test_created_list_is_verified_by_readback(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        base = mdb._readback
+        mdb._readback = lambda name, sql="": ([{**r, "com_PriceListLabel": "OTHER"} for r in base(name, sql)]
+                                              if name.startswith("lists:") else base(name, sql))
+        result = _export_strict(mdb, [_on("EUR", "2027-01-05")], {"EUR": "EURO_2027"})
+        self.assertFalse(result["verified"])
+        self.assertTrue(any("label" in f for f in result["verification_failures"]))
+
+    def test_repeating_a_strict_export_creates_nothing_new(self):
+        recs = [_on("EUR", "2027-01-05")]
+        first = _OptimizedFake(_strict_lists(), linked=[21, 22])
+        _export_strict(first, recs, {"EUR": "EURO_2027"})
+        new_list = next(op for op in first.ops if op["table"] == "tCOMd_PriceList2")["rows"][0]
+        row = next(op for op in first.ops if op["table"] == "tCOMd_Price")["rows"][0]
+        second = _OptimizedFake(_strict_lists() + [{**new_list, "com_PriceValidFrom": "2027-01-05",
+                                                    "com_PriceValidTo": "9999-12-31"}],
+                                prices=[{**row, "com_PriceID": 5}], linked=[21, 22])
+        result = _export_strict(second, recs, {"EUR": "EURO_2027"})
+        self.assertEqual(second.ops, [])
+        self.assertEqual((result["inserted_price_lists"], result["inserted_prices"]), (0, 0))
+
+    def test_nothing_is_ever_deleted_and_only_values_are_updated(self):
+        mdb = _OptimizedFake(_strict_lists(), prices=[_eur_row(pid=1, value=1.0)], linked=[21, 22])
+        _export_strict(mdb, [_rec(5.0, "EUR"), _rec(2.0, "GBP", variant_condition=" 9=Z", level="X")], _T)
+        self.assertNotIn("delete", {op["op"] for op in mdb.ops})
+        for op in mdb.ops:
+            if op["op"] == "update":
+                self.assertEqual(set(op["set"]), {"com_PriceValue"})
+
+
+class PriceMdbExportLockTests(unittest.TestCase):
+    def test_a_genuine_sharing_error_is_reported_clearly_and_nothing_is_claimed_written(self):
+        mdb = _OptimizedFake(_strict_lists(), linked=[21, 22], batch_ok=False)
+        mdb.execute_batch = lambda *_a, **_k: SimpleNamespace(
+            ok=False, results=[], first_error=lambda: "insert(Could not lock table 'tCOMd_Price'; currently in use)")
+        result = _export_strict(mdb, [_rec(10.0, "EUR")], _T)
+        self.assertFalse(result["ok"])
+        self.assertIn("locked or in use", result["error"])
+        self.assertEqual(result["inserted_prices"], 0)

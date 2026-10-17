@@ -116,3 +116,49 @@ orphan lists 23/24 unchanged; a second export wrote nothing.
 
 **Not done:** a differential run of the real PDM application (needs the PDM UI and PDMLive write access - not used
 without explicit authorization), and an in-pCon check that the new texts render.
+
+
+## Target price lists, computation date and currency routing
+
+**Workflow (Pricing page).** *Export to MDB...* (or *Preview Export...*) -> pick the MDB -> **Target price lists**
+dialog (one editable name per currency, prefilled `EURO_<year>` / `GBP_<year>`, moving to the sole mid-year suffix
+`_2` when the base list exists but does not cover the computation date, or from the Price List Manager's named list)
+-> exact preview (dry run) -> *Export to MDB* inside the preview. The preview carries a `plan_digest` (hash of every
+planned write and the list plan); the write passes it back as `expected_plan` and **refuses** if the MDB or any input
+differs ("run Preview Export again"). Changing a name, recomputing prices or editing the MDB therefore always needs a
+new preview; the preview button without the export button never writes.
+
+**Target resolution** (`services/price_list_targets.py`): labels match ignoring case / space / underscore / hyphen but
+a created list keeps the operator's spelling. Several look-alikes (e.g. `EURO_2026_2` id 21 and `EURO 2026_2` id 24 in
+the real MDB): the exact label wins, else a single region-linked list, else the export stops as ambiguous; ignored
+look-alikes are reported. A reused list must have the same currency and its validity must cover the computation date
+(otherwise blocked - never an older list); a label owned by another currency is blocked; EUR and GBP names must
+differ; a missing list is created with the chosen name, the currency and `computation date .. 9999-12-31`, with a
+warning that it is not region-linked (the export never links or unlinks regions) and, when it overlaps an existing
+list, which one. Historical lists and rows are never changed or deleted.
+
+**Computation date** = the date carried by the computed records (`valid_from`, set from the Pricing date picker);
+today's date is never substituted - no date means "recompute". Each record is also checked against its target list's
+period; a record outside it is blocked with its reason (`blocked_rows`).
+
+**Routing.** Each record goes only to the target list of its own currency; the list's currency comes from the MDB row
+read in the same session. After the write, the read-back checks every written row's currency and list id, that each
+list the rows point at has that currency, and that a created list exists with the intended label, currency and dates.
+
+**Sharing.** Verified on a copy with a second ACE connection open: a *shared* connection (like pCon reading) does not
+block the write; an *exclusive* connection gives "file already in use", which is reported as a clear error with nothing
+written. The MDB is not assumed unwritable.
+
+**Verified on copies of the real MDB** (comp. date 2026-10-16, A) and a 2027-01-05 run that creates renamed lists (B):
+
+| | A: reuse lists 21 / 22 | B: create `EURO_2027` / `GBP_2027` |
+|---|---|---|
+| list plan | reuse 21 (EUR) / 22 (GBP); look-alikes 24 / 23 ignored | create ids 25 / 26, 2027-01-05..9999-12-31 |
+| global rows | 15 updated, 14 inserted | 29 inserted |
+| article rows | 6 updated, 2 inserted | 8 inserted |
+| texts | 3 created, 8 reused (+3 shared links), 14 preserved | 3 created, 23 reused |
+| read-back | verified | verified |
+| currency / list mismatches in whole MDB | 0 | 0 |
+| unrelated rows, lists 23 / 24 | unchanged | unchanged |
+| stale digest | refused, file unchanged | refused, file unchanged |
+| second export | wrote nothing | wrote nothing |

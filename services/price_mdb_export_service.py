@@ -11,7 +11,8 @@ only when none matches, and is reported because it is unreachable until linked.
 from __future__ import annotations
 
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -19,6 +20,9 @@ from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.ocd_export_service import OcdExportService, _DATE_MAX, _DATE_MIN
 from services.price_update_service import _mdb_date_literal
+from services.price_list_targets import (
+    computation_date, normalize_mdb_date, resolve_targets,
+)
 from services.price_text_blocks import (
     ACTION_CREATE, ACTION_LINK_NEW, ACTION_NONE, ACTION_PRESERVE, ACTION_REUSE,
     ACTION_SKIP, ACTION_UNLINKED, language_columns, name_key, price_text_labels,
@@ -54,48 +58,36 @@ class PriceMdbExportService(BaseService):
     @staticmethod
     def _normalize_mdb_date(value: Any, fallback: str) -> str:
         """Normalize Access bridge dates, including JavaScript /Date(ms)/ values."""
-        if value is None:
-            return fallback
-        if isinstance(value, datetime):
-            return value.strftime("%Y%m%d")
-        if hasattr(value, "strftime") and not isinstance(value, str):
-            try:
-                return value.strftime("%Y%m%d")
-            except (TypeError, ValueError):
-                pass
-        text = str(value).strip()
-        if not text:
-            return fallback
-        match = re.fullmatch(r"/Date\((-?\d+)(?:[+-]\d{4})?\)/", text)
-        if match:
-            try:
-                instant = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
-                    milliseconds=int(match.group(1))
-                )
-                try:
-                    return instant.astimezone().strftime("%Y%m%d")
-                except (OverflowError, OSError):
-                    # Windows cannot convert dates near year 9999 (Access's
-                    # 9999-12-31 "no end" validity): shift by the current offset.
-                    offset = datetime.now().astimezone().utcoffset() or timedelta(0)
-                    return (instant + offset).strftime("%Y%m%d")
-            except (ValueError, OverflowError, OSError):
-                return fallback
-        digits = re.sub(r"\D", "", text)
-        if len(digits) >= 8:
-            candidate = digits[:8]
-            try:
-                datetime.strptime(candidate, "%Y%m%d")
-                return candidate
-            except ValueError:
-                return fallback
-        return fallback
+        return normalize_mdb_date(value, fallback)
 
-    def export(self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False) -> dict[str, Any]:
+    def read_price_lists(self, mdb_path: str | Path) -> dict[str, Any]:
+        """Existing price lists and the region-linked list ids (read-only), for the
+        target-list dialog. ``{"lists": [...], "linked": {...}}`` or ``{"error": ...}``."""
+        mdb_service = self.context.mdb_service
+        try:
+            read = mdb_service.read_tables(Path(mdb_path), {
+                "lists": "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
+                         "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2",
+                "linked": "SELECT DISTINCT com_PriceListID FROM tCOMd_DistributionRegionPriceList",
+            })
+        except Exception as exc:
+            return {"error": f"Could not read price lists: {exc}"}
+        return {"lists": read["lists"], "linked": {str(r.get("com_PriceListID")) for r in read["linked"]}}
+
+    def export(self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False,
+               list_targets: dict[str, str] | None = None,
+               expected_plan: str | None = None) -> dict[str, Any]:
         """Write ``snapshot.price_records`` into ``mdb_path`` (see module docstring).
 
         ``dry_run`` reads the MDB and reports exactly what would be updated,
         inserted or skipped, without executing any write.
+
+        ``list_targets`` ({currency: chosen list name}) selects strict routing: each
+        currency goes only to its validated target list, which must cover the
+        computation date; any invalid target blocks the whole export. Without it the
+        legacy automatic list selection is used. ``expected_plan`` is the
+        ``plan_digest`` of an approved preview: if the MDB or inputs changed since,
+        nothing is written.
         """
         mdb = Path(mdb_path)
         if not mdb.is_file():
@@ -178,6 +170,9 @@ class PriceMdbExportService(BaseService):
                 text_rows = mdb_service.read_table(mdb, "SELECT TOP 1 * FROM [tCOMd_Text]")
                 text_columns = list(text_rows[0]) if text_rows else []
         except Exception as exc:
+            if re.search(r"already in use|could not lock|exclusive", str(exc), re.IGNORECASE):
+                return {"ok": False, "error": "The MDB is open exclusively by another process and cannot be "
+                                              "read; nothing was written. Close it and retry."}
             return {"ok": False, "error": f"Could not read destination MDB schema/data: {exc}"}
 
         if not packages:
@@ -217,55 +212,107 @@ class PriceMdbExportService(BaseService):
                 list_id,
             )
 
-        snapshot_list_ids: set[str] = set()
-        for price_list in (snapshot.price_lists or []):
-            currency = (price_list.currency or "").strip().upper()
-            label = (price_list.label or price_list.id or "").strip().upper()
-            if not currency or not label:
-                continue
-            matches = [r for r in (*existing_lists, *list_rows) if
-                _label_key(r.get("com_PriceListLabel")) == _label_key(label)
-                and str(r.get("sys_ISOCurrencyCode") or "").strip().upper() == currency]
-            found = min(matches, key=lambda r: list_rank(r, label)) if matches else None
-            if found is None and _label_key(label) not in used_labels:
-                found = OcdExportService._row(list_proto, {
-                    "com_PriceListID": next_list_id,
-                    "com_PriceListLabel": label,
-                    "sys_ISOCurrencyCode": currency,
-                    "com_PriceValidFrom": _mdb_date_literal(price_list.date_from or _DATE_MIN),
-                    "com_PriceValidTo": _mdb_date_literal(price_list.date_to or _DATE_MAX),
-                })
-                list_rows.append(found)
-                next_list_id += 1
-                used_labels.add(_label_key(label))
-            if found is not None and str(found.get("com_PriceListID")) not in snapshot_list_ids:
-                snapshot_list_ids.add(str(found.get("com_PriceListID")))
-                list_by_currency.setdefault(currency, []).append({
-                    "from_snapshot": True,
-                    "id": found.get("com_PriceListID"),
-                    "label": str(found.get("com_PriceListLabel") or label),
-                    "date_from": norm_date(found.get("com_PriceValidFrom") or price_list.date_from, _DATE_MIN),
-                    "date_to": norm_date(found.get("com_PriceValidTo") or price_list.date_to, _DATE_MAX),
-                })
+        comp_date = computation_date(snapshot.price_records)
+        strict = list_targets is not None
+        list_plans: dict[str, Any] = {}
+        blocking_errors: list[str] = []
+        block_reasons: dict[str, int] = {}
+        blocked_detail: list[dict[str, Any]] = []
+        why: dict[str, str] = {}
+        if strict:
+            wanted = {str(k).strip().upper(): v for k, v in (list_targets or {}).items()}
+            record_currencies = sorted({(r.currency or "").strip().upper()
+                                        for r in snapshot.price_records if (r.currency or "").strip()})
+            list_plans = resolve_targets(
+                {c: wanted.get(c, "") for c in record_currencies},
+                existing_lists, linked_list_ids, comp_date)
+            for ccy, plan in list_plans.items():
+                blocking_errors += [f"{ccy}: {e}" for e in plan.errors]
+                if not plan.ok:
+                    continue
+                if plan.action == "create":
+                    list_rows.append(OcdExportService._row(list_proto, {
+                        "com_PriceListID": next_list_id,
+                        "com_PriceListLabel": plan.name,
+                        "sys_ISOCurrencyCode": ccy,
+                        "com_PriceValidFrom": _mdb_date_literal(plan.date_from),
+                        "com_PriceValidTo": _mdb_date_literal(plan.date_to),
+                    }))
+                    plan.list_id = next_list_id
+                    next_list_id += 1
+                    plan.label = plan.name
+                else:
+                    plan.label = next((str(r.get("com_PriceListLabel") or plan.name) for r in existing_lists
+                                       if str(r.get("com_PriceListID")) == str(plan.list_id)), plan.name)
+                list_by_currency[ccy] = [{
+                    "from_snapshot": True, "id": plan.list_id, "label": plan.label, "currency": ccy,
+                    "date_from": plan.date_from, "date_to": plan.date_to,
+                }]
+        else:
+            snapshot_list_ids: set[str] = set()
+            for price_list in (snapshot.price_lists or []):
+                currency = (price_list.currency or "").strip().upper()
+                label = (price_list.label or price_list.id or "").strip().upper()
+                if not currency or not label:
+                    continue
+                matches = [r for r in (*existing_lists, *list_rows) if
+                    _label_key(r.get("com_PriceListLabel")) == _label_key(label)
+                    and str(r.get("sys_ISOCurrencyCode") or "").strip().upper() == currency]
+                found = min(matches, key=lambda r: list_rank(r, label)) if matches else None
+                if found is None and _label_key(label) not in used_labels:
+                    found = OcdExportService._row(list_proto, {
+                        "com_PriceListID": next_list_id,
+                        "com_PriceListLabel": label,
+                        "sys_ISOCurrencyCode": currency,
+                        "com_PriceValidFrom": _mdb_date_literal(price_list.date_from or _DATE_MIN),
+                        "com_PriceValidTo": _mdb_date_literal(price_list.date_to or _DATE_MAX),
+                    })
+                    list_rows.append(found)
+                    next_list_id += 1
+                    used_labels.add(_label_key(label))
+                if found is not None and str(found.get("com_PriceListID")) not in snapshot_list_ids:
+                    snapshot_list_ids.add(str(found.get("com_PriceListID")))
+                    list_by_currency.setdefault(currency, []).append({
+                        "from_snapshot": True,
+                        "id": found.get("com_PriceListID"),
+                        "label": str(found.get("com_PriceListLabel") or label),
+                        "date_from": norm_date(found.get("com_PriceValidFrom") or price_list.date_from, _DATE_MIN),
+                        "date_to": norm_date(found.get("com_PriceValidTo") or price_list.date_to, _DATE_MAX),
+                    })
 
-        # Include existing lists for currencies not explicitly represented in the
-        # snapshot, but never invent a price list if none exists.
-        for row in existing_lists:
-            currency = str(row.get("sys_ISOCurrencyCode") or "").strip().upper()
-            if currency and not any(str(x["id"]) == str(row.get("com_PriceListID"))
-                                    for x in list_by_currency.get(currency, [])):
-                list_by_currency.setdefault(currency, []).append({
-                    "id": row.get("com_PriceListID"),
-                    "label": str(row.get("com_PriceListLabel") or ""),
-                    "date_from": norm_date(row.get("com_PriceValidFrom"), _DATE_MIN),
-                    "date_to": norm_date(row.get("com_PriceValidTo"), _DATE_MAX),
-                })
+            # Include existing lists for currencies not explicitly represented in the
+            # snapshot, but never invent a price list if none exists.
+            for row in existing_lists:
+                currency = str(row.get("sys_ISOCurrencyCode") or "").strip().upper()
+                if currency and not any(str(x["id"]) == str(row.get("com_PriceListID"))
+                                        for x in list_by_currency.get(currency, [])):
+                    list_by_currency.setdefault(currency, []).append({
+                        "id": row.get("com_PriceListID"),
+                        "label": str(row.get("com_PriceListLabel") or ""),
+                        "date_from": norm_date(row.get("com_PriceValidFrom"), _DATE_MIN),
+                        "date_to": norm_date(row.get("com_PriceValidTo"), _DATE_MAX),
+                    })
 
         ambiguous_lists: set[str] = set()
 
         def record_list(record):
             currency = (record.currency or "").strip().upper()
             candidates = list_by_currency.get(currency, [])
+            why.clear()
+            if strict:
+                if not candidates:
+                    why["reason"] = "no valid target list for " + (currency or "blank currency")
+                    return None
+                chosen = candidates[0]
+                day = norm_date(record.valid_from, "")
+                if not day:
+                    why["reason"] = "record has no computation date"
+                    return None
+                if not chosen["date_from"] <= day <= chosen["date_to"]:
+                    why["reason"] = (f"computation date {day} outside list "
+                                     f"'{chosen['label']}' ({chosen['date_from']}-{chosen['date_to']})")
+                    return None
+                return chosen
             if not candidates:
                 return None
             record_from = norm_date(record.valid_from, _DATE_MIN)
@@ -419,7 +466,7 @@ class PriceMdbExportService(BaseService):
                 "variant_condition": record.variant_condition or "",
                 "level": record.level,
                 "currency": (record.currency or "").strip().upper(),
-                "list": price_list["label"], "operation": operation,
+                "list": price_list["label"], "list_id": price_list["id"], "operation": operation,
                 "action": ACTION_NONE, "text_name": "", "text_id": None,
                 "text_status": "n/a" if not record.is_global else "", "text_content": "",
                 "reason": "",
@@ -429,6 +476,14 @@ class PriceMdbExportService(BaseService):
             price_list = record_list(record)
             if price_list is None:
                 skipped_unmapped += 1
+                if strict:
+                    reason = why.get("reason", "no target list")
+                    block_reasons[reason] = block_reasons.get(reason, 0) + 1
+                    if len(blocked_detail) < 200:
+                        blocked_detail.append({
+                            "article_code": record.article_code or "",
+                            "variant_condition": record.variant_condition or "",
+                            "currency": (record.currency or "").strip().upper(), "reason": reason})
                 if (record.currency or "").strip().upper() in ambiguous_lists:
                     skipped_ambiguous += 1
                 continue
@@ -620,6 +675,16 @@ class PriceMdbExportService(BaseService):
         report["target_lists"] = sorted(target_lists.values(), key=lambda e: str(e["id"]))
         report["duplicate_matches"] = duplicate_matches
         report["text_rows"] = text_plan
+        report["computation_date"] = comp_date
+        report["strict_lists"] = strict
+        report["list_plan"] = [{**p.as_dict(), "label": getattr(p, "label", p.name)}
+                               for p in list_plans.values()]
+        report["blocking_errors"] = blocking_errors
+        report["blocked_reasons"] = block_reasons
+        report["blocked_rows"] = blocked_detail
+        report["export_allowed"] = not blocking_errors
+        report["plan_digest"] = hashlib.sha256(json.dumps(
+            {"ops": ops, "lists": report["list_plan"]}, sort_keys=True, default=str).encode()).hexdigest()
 
         def count_action(*actions):
             return sum(1 for e in text_plan if e["action"] in actions)
@@ -658,6 +723,12 @@ class PriceMdbExportService(BaseService):
                 "ambiguous_currencies": sorted(ambiguous_lists),
             })
             return {"ok": True, "error": None, **report}
+        if blocking_errors:
+            return {"ok": False, "error": "Target price list validation failed: " + "; ".join(blocking_errors),
+                    **report}
+        if expected_plan is not None and expected_plan != report["plan_digest"]:
+            return {"ok": False, "error": "The MDB or the export inputs changed since the preview; "
+                                          "run Preview Export again.", **report}
         if not ops:
             report["text_result"] = self._text_result(text_summary, 0, None)
             return {"ok": True, "error": None, **report}
@@ -666,7 +737,12 @@ class PriceMdbExportService(BaseService):
             # The batch runs in one transaction, so a failure leaves the MDB
             # untouched: nothing was written, whatever was planned.
             report["text_result"] = self._text_result(text_summary, 0, None, failed=len(text_rows_new))
-            return {"ok": False, "error": batch.first_error(), **report, "failed": len(ops)}
+            error = batch.first_error() or "unknown error"
+            if re.search(r"already in use|could not lock|locked|exclusive|sharing violation|cannot open",
+                         error, re.IGNORECASE):
+                error = ("The MDB is locked or in use by another process (e.g. pCon Creator or PDM) "
+                         f"and could not be written; nothing was written. Close it and retry. ({error})")
+            return {"ok": False, "error": error, **report, "failed": len(ops)}
 
         # Count what the bridge actually executed, not what was planned. Doubles
         # that return no per-op results fall back to the planned counts.
@@ -703,7 +779,7 @@ class PriceMdbExportService(BaseService):
         if optimized_reads:
             failures, stats = self._verify_writes(
                 mdb, mdb_service, value_updates, price_rows, global_rows,
-                text_rows_new, text_plan, text_lang_cols, package_id)
+                text_rows_new, text_plan, text_lang_cols, package_id, list_rows)
             report["verified"] = not failures
             report["verification_failures"] = failures[:10]
             report["verification_failure_count"] = len(failures)
@@ -741,22 +817,23 @@ class PriceMdbExportService(BaseService):
 
     @staticmethod
     def _verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows,
-                       text_rows_new=(), text_plan=(), text_lang_cols=(), package_id=None):
+                       text_rows_new=(), text_plan=(), text_lang_cols=(), package_id=None, list_rows=()):
         """Read the written rows back and compare them with what was intended.
 
         Returns ``(failures, stats)``: ``failures`` lists every mismatch (price
         values, list/variant identity, text links, text content, duplicate texts,
         dangling references); ``stats`` holds the verified text-block counts.
         """
-        expected: dict[str, dict[Any, tuple[float, Any, Any]]] = {"tCOMd_Price": {}, "tCOMd_GlobalPrice": {}}
+        expected: dict[str, dict[Any, tuple[float, Any, Any, Any]]] = {"tCOMd_Price": {}, "tCOMd_GlobalPrice": {}}
         pk = {"tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID"}
         for op in value_updates:
             table = op["table"]
-            expected[table][op["where"][pk[table]]] = (op["set"]["com_PriceValue"], None, None)
+            expected[table][op["where"][pk[table]]] = (op["set"]["com_PriceValue"], None, None, None)
         for table, rows in (("tCOMd_Price", price_rows), ("tCOMd_GlobalPrice", global_rows)):
             for row in rows:
                 expected[table][row[pk[table]]] = (
-                    row["com_PriceValue"], row["com_PriceListID"], row["com_VariantCondition"])
+                    row["com_PriceValue"], row["com_PriceListID"], row["com_VariantCondition"],
+                    row.get("sys_ISOCurrencyCode"))
         # Text links expected on global rows: inserted rows carry the planned id,
         # preserved/unlinked rows must still hold what they held before.
         expected_text_link: dict[Any, Any] = {r["com_GlobalPriceID"]: r.get("com_TextID") for r in global_rows}
@@ -774,8 +851,23 @@ class PriceMdbExportService(BaseService):
                 chunk = ", ".join(str(i) for i in ids[n:n + 400])
                 extra = ", com_TextID" if table == "tCOMd_GlobalPrice" else ""
                 queries[f"{table}:{n}"] = (
-                    f"SELECT {pk[table]} AS id, com_PriceValue, com_PriceListID, com_VariantCondition{extra} "
+                    f"SELECT {pk[table]} AS id, com_PriceValue, com_PriceListID, com_VariantCondition, "
+                    f"sys_ISOCurrencyCode{extra} "
                     f"FROM {table} WHERE {pk[table]} IN ({chunk})")
+        # Every list a written row points at, plus every list this export created:
+        # their currency and (for new lists) label / validity are read back too.
+        row_currency_by_list: dict[Any, set] = {}
+        for wanted in expected.values():
+            for _v, list_id, _vc, ccy in wanted.values():
+                if list_id is not None:
+                    row_currency_by_list.setdefault(list_id, set()).add(str(ccy or "").upper())
+        created_lists = {r["com_PriceListID"]: r for r in list_rows}
+        list_ids = sorted(set(row_currency_by_list) | set(created_lists), key=str)
+        if list_ids:
+            queries["lists:0"] = (
+                "SELECT com_PriceListID AS id, com_PriceListLabel, sys_ISOCurrencyCode, com_PriceValidFrom, "
+                "com_PriceValidTo FROM tCOMd_PriceList2 WHERE com_PriceListID IN ("
+                + ", ".join(str(i) for i in list_ids) + ")")
         unchanged_ids = sorted(i for i in expected_text_link if i not in expected["tCOMd_GlobalPrice"])
         for n in range(0, len(unchanged_ids), 400):
             chunk = ", ".join(str(i) for i in unchanged_ids[n:n + 400])
@@ -811,7 +903,7 @@ class PriceMdbExportService(BaseService):
         text_failures: list[str] = []
         for table, wanted in expected.items():
             found = {r["id"]: r for r in rows_of(table)}
-            for row_id, (value, list_id, varcond) in wanted.items():
+            for row_id, (value, list_id, varcond, want_ccy) in wanted.items():
                 row = found.get(row_id)
                 if row is None:
                     failures.append(f"{table} {row_id}: row missing after write")
@@ -822,10 +914,37 @@ class PriceMdbExportService(BaseService):
                     same = False
                 if not same:
                     failures.append(f"{table} {row_id}: value {row['com_PriceValue']} != {value}")
+                elif want_ccy and str(row.get("sys_ISOCurrencyCode") or "").upper() != str(want_ccy).upper():
+                    failures.append(f"{table} {row_id}: currency {row.get('sys_ISOCurrencyCode')} != {want_ccy}")
                 elif list_id is not None and (
                         str(row["com_PriceListID"]) != str(list_id)
                         or str(row["com_VariantCondition"] or "") != str(varcond or "")):
                     failures.append(f"{table} {row_id}: list/variant differs from intended")
+
+        lists_read = {r["id"]: r for r in rows_of("lists")}
+        for list_id, currencies in row_currency_by_list.items():
+            actual = lists_read.get(list_id)
+            if actual is None:
+                failures.append(f"tCOMd_PriceList2 {list_id}: list missing after write")
+                continue
+            list_ccy = str(actual.get("sys_ISOCurrencyCode") or "").upper()
+            if currencies - {list_ccy}:
+                failures.append(
+                    f"currency routing: rows for {sorted(currencies)} point at {list_ccy} list {list_id}")
+        for list_id, want in created_lists.items():
+            actual = lists_read.get(list_id)
+            if actual is None:
+                continue
+            bad = []
+            if str(actual.get("com_PriceListLabel") or "") != str(want["com_PriceListLabel"]):
+                bad.append("label")
+            if str(actual.get("sys_ISOCurrencyCode") or "") != str(want["sys_ISOCurrencyCode"]):
+                bad.append("currency")
+            for col in ("com_PriceValidFrom", "com_PriceValidTo"):
+                if normalize_mdb_date(actual.get(col), "") != re.sub(r"\D", "", str(want[col]))[:8]:
+                    bad.append(col)
+            if bad:
+                failures.append(f"tCOMd_PriceList2 {list_id}: {', '.join(bad)} differ from intended")
 
         link_rows = {r["id"]: r for r in rows_of("tCOMd_GlobalPrice")}
         link_rows.update({r["id"]: r for r in rows_of("links")})

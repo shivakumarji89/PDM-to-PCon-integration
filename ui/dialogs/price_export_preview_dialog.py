@@ -24,11 +24,34 @@ _HEADERS = ["Table", "Article", "Variant Condition", "Currency", "List", "Price"
             "Text action", "Text Block ID", "Text Block"]
 
 
+def list_lines(result: dict) -> list[str]:
+    """Computation date, target lists (name, currency, id, validity) and blocked rows."""
+    lines = []
+    if result.get("computation_date"):
+        d = result["computation_date"]
+        lines.append(f"Computation date: {d[:4]}-{d[4:6]}-{d[6:8]}")
+    for p in result.get("list_plan") or []:
+        what = ("reuse existing" if p["action"] == "reuse" else
+                "create new" if p["action"] == "create" else "BLOCKED")
+        lid = f"id {p['list_id']}" if p.get("list_id") is not None else "id assigned on write"
+        lines.append(
+            f"{p['currency']} -> {p.get('label') or p['name']} ({what}, {lid}, valid "
+            f"{p['date_from'] or '?'} to {p['date_to'] or '?'}"
+            + (", region-linked" if p.get("linked") else ", not region-linked") + ")")
+    for err in result.get("blocking_errors") or []:
+        lines.append("ERROR: " + err)
+    for reason, n in (result.get("blocked_reasons") or {}).items():
+        lines.append(f"Rows blocked ({n:,}): {reason}")
+    if result.get("duplicate_matches"):
+        lines.append(f"Records matching duplicate rows: {result['duplicate_matches']:,}")
+    return lines
+
+
 def summary_lines(result: dict) -> list[str]:
     """The totals shown above the table (planned for a dry run, actual after export)."""
     dry = bool(result.get("dry_run"))
     s = result.get("text_summary") or {}
-    lines = [
+    lines = list_lines(result) + [
         f"Price rows to update: {s.get('price_rows_to_update', 0):,}" if dry else
         f"Price rows updated: {result.get('updated_prices', 0) + result.get('updated_global_prices', 0):,}",
         f"Price rows to insert: {s.get('price_rows_to_insert', 0):,}" if dry else
@@ -65,7 +88,7 @@ def summary_lines(result: dict) -> list[str]:
 class PriceExportPreviewDialog(QDialog):
     """Read-only totals + row-level table for an export preview or result."""
 
-    def __init__(self, result: dict, parent: QWidget | None = None) -> None:
+    def __init__(self, result: dict, parent: QWidget | None = None, allow_export: bool = False) -> None:
         super().__init__(parent)
         dry = bool(result.get("dry_run"))
         self.setWindowTitle("Export preview (nothing written)" if dry else "Export result")
@@ -91,7 +114,9 @@ class PriceExportPreviewDialog(QDialog):
             cells = [
                 "Global price" if is_global else "Article price",
                 entry.get("article_code", ""), entry.get("variant_condition", ""),
-                entry.get("currency", ""), entry.get("list", ""), operation,
+                entry.get("currency", ""),
+                f"{entry.get('list', '')} (id {entry['list_id']})" if entry.get("list_id") is not None
+                else entry.get("list", ""), operation,
                 ACTION_LABELS.get(entry.get("action"), ""),
             ]
             record = _EntryRecord(entry)
@@ -101,9 +126,13 @@ class PriceExportPreviewDialog(QDialog):
                 self.table.setItem(r, c, QTableWidgetItem(str(text)))
         layout.addWidget(self.table, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(self.accept)
+        buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(self.reject)
+        self.export_button = None
+        if allow_export and dry:
+            self.export_button = buttons.addButton(
+                "Export to MDB", QDialogButtonBox.ButtonRole.AcceptRole)
+            self.export_button.setEnabled(bool(result.get("export_allowed")))
+            self.export_button.clicked.connect(self.accept)
         layout.addWidget(buttons)
 
 

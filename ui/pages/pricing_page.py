@@ -43,7 +43,9 @@ from services.price_text_blocks import (
     row_result_key, text_block_cells,
 )
 from services.price_text_blocks import name_key as _text_name_key
-from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog
+from services.price_list_targets import computation_date, default_names
+from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog, list_lines
+from ui.dialogs.price_list_target_dialog import PriceListTargetDialog
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
@@ -115,6 +117,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         #: Imported-MDB price texts (name -> English content) for the Text Block column.
         self._price_texts: dict[str, str] = {}
         self._last_mdb_path = ""
+        self._wf: dict = {}  # state of the running export workflow
 
         # Debounce search typing so the table repopulates once the user pauses.
         self._filter_timer = QTimer(self)
@@ -165,7 +168,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
         self._export_btn = QPushButton("Export to MDB...", box)
         self._export_btn.setToolTip(
-            "Append new price records to an existing OCD MDB. Existing prices are never overwritten or removed."
+            "Review the target price lists, preview the exact plan, then write prices and text blocks "
+            "into an existing OCD MDB. Nothing is deleted; only price values of existing rows change."
         )
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export_prices)
@@ -487,80 +491,105 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
 
     def _on_export_prices(self) -> None:
-        """Write computed prices into an existing MDB: correct matching rows' values,
-        insert missing rows; never delete or replace other data."""
+        """Export workflow: MDB -> review/rename target lists -> preview -> write."""
+        self._start_export_workflow(write=True)
+
+    def _on_preview_export(self) -> None:
+        """Same workflow, but the preview offers no export button; nothing is written."""
+        self._start_export_workflow(write=False)
+
+    def _restore_export_buttons(self) -> None:
+        enabled = bool(self._records) and not self.is_mdb_view()
+        self._export_btn.setEnabled(enabled)
+        self._preview_btn.setEnabled(enabled)
+
+    def _start_export_workflow(self, write: bool) -> None:
         snapshot = self._context.active_snapshot
         if snapshot is None or not snapshot.price_records:
             QMessageBox.information(self, "Export Prices", "Compute prices before exporting.")
-            self._export_btn.setEnabled(False)
+            self._restore_export_buttons()
             return
-
-        mdb_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select existing OCD MDB to export prices into",
-            self._last_mdb_path,
-            "Access database (*.mdb)",
-        )
-        if not mdb_path:
-            return
-
-        answer = QMessageBox.question(
-            self,
-            "Export Prices to MDB",
-            "EUR prices map to EUR price lists and GBP prices to GBP price lists. "
-            "Missing price rows are added and the price value of rows that already "
-            "match is corrected; no rows are deleted and no other fields change. "
-            "Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-
-        self._export_btn.setEnabled(False)
-        self._summary.setText("Exporting prices to MDB… the application remains available.")
-        self._last_mdb_path = mdb_path
-        self._export_task = BackgroundTask(
-            lambda _progress: PriceMdbExportService(self._context).export(snapshot, mdb_path)
-        )
-        self._export_task.signals.finished.connect(
-            lambda result: self._on_price_export_finished(result, mdb_path)
-        )
-        self._export_task.signals.failed.connect(self._on_price_export_failed)
-        QThreadPool.globalInstance().start(self._export_task)
-
-    def _on_preview_export(self) -> None:
-        """Dry run: report planned price and text-block operations, write nothing."""
-        snapshot = self._context.active_snapshot
-        if snapshot is None or not snapshot.price_records:
-            QMessageBox.information(self, "Preview Export", "Compute prices before previewing.")
+        if not computation_date(snapshot.price_records):
+            QMessageBox.warning(
+                self, "Export Prices",
+                "The computed prices carry no computation date. Recompute prices first; "
+                "today's date is never substituted.")
             return
         mdb_path, _ = QFileDialog.getOpenFileName(
-            self, "Select existing OCD MDB to preview the export against",
+            self, "Select existing OCD MDB" + (" to export prices into" if write else " to preview against"),
             self._last_mdb_path, "Access database (*.mdb)",
         )
         if not mdb_path:
             return
         self._last_mdb_path = mdb_path
+        self._wf = {"write": write, "path": mdb_path, "snapshot": snapshot, "targets": {}}
+        self._export_btn.setEnabled(False)
         self._preview_btn.setEnabled(False)
-        self._summary.setText("Previewing export (nothing is written)...")
+        self._summary.setText("Reading price lists from the MDB...")
+        self._lists_task = BackgroundTask(
+            lambda _progress: PriceMdbExportService(self._context).read_price_lists(mdb_path)
+        )
+        self._lists_task.signals.finished.connect(self._on_lists_read)
+        self._lists_task.signals.failed.connect(self._on_price_export_failed)
+        QThreadPool.globalInstance().start(self._lists_task)
+
+    def _on_lists_read(self, info: dict) -> None:
+        """Let the user review / rename the EUR and GBP target lists, then preview."""
+        if info.get("error"):
+            self._summary.setText("Price export failed.")
+            QMessageBox.critical(self, "Export Prices", info["error"])
+            self._restore_export_buttons()
+            return
+        snapshot, mdb_path = self._wf["snapshot"], self._wf["path"]
+        comp = computation_date(snapshot.price_records)
+        currencies = sorted({(r.currency or "").strip().upper()
+                             for r in snapshot.price_records if (r.currency or "").strip()})
+        names = default_names(currencies, comp, info["lists"], snapshot.price_lists)
+        dialog = PriceListTargetDialog(currencies, names, info["lists"], info["linked"], comp, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._summary.setText("Export cancelled; nothing was written.")
+            self._restore_export_buttons()
+            return
+        targets = dialog.names()
+        self._wf["targets"] = targets
+        self._summary.setText("Building export preview (nothing is written)...")
         self._preview_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).export(
-                snapshot, mdb_path, dry_run=True)
+                snapshot, mdb_path, dry_run=True, list_targets=targets)
         )
         self._preview_task.signals.finished.connect(self._on_preview_finished)
         self._preview_task.signals.failed.connect(self._on_price_export_failed)
         QThreadPool.globalInstance().start(self._preview_task)
 
     def _on_preview_finished(self, result: dict) -> None:
-        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._restore_export_buttons()
         if not result.get("ok"):
             self._summary.setText("Export preview failed.")
             QMessageBox.critical(self, "Preview Export", result.get("error") or "Preview failed.")
             return
         self._apply_text_results(result)
-        self._summary.setText("Export preview: no MDB record was modified.")
-        PriceExportPreviewDialog(result, self).exec()
+        write = bool(self._wf.get("write"))
+        dialog = PriceExportPreviewDialog(result, self, allow_export=write)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        if not (write and accepted):
+            self._summary.setText("Export preview: no MDB record was modified.")
+            return
+        # The write is bound to exactly this previewed plan: if the MDB or the
+        # inputs differ when it runs, the export refuses and asks for a new preview.
+        snapshot, mdb_path, targets = self._wf["snapshot"], self._wf["path"], self._wf["targets"]
+        digest = result["plan_digest"]
+        self._export_btn.setEnabled(False)
+        self._preview_btn.setEnabled(False)
+        self._summary.setText("Exporting prices to MDB... the application remains available.")
+        self._export_task = BackgroundTask(
+            lambda _progress: PriceMdbExportService(self._context).export(
+                snapshot, mdb_path, list_targets=targets, expected_plan=digest)
+        )
+        self._export_task.signals.finished.connect(
+            lambda res: self._on_price_export_finished(res, mdb_path)
+        )
+        self._export_task.signals.failed.connect(self._on_price_export_failed)
+        QThreadPool.globalInstance().start(self._export_task)
 
     def _apply_text_results(self, result: dict) -> None:
         """Show the row-level text-block results of a preview / export in the table."""
@@ -600,7 +629,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             f"Zero-price rows skipped: {result.get('skipped_zero_price', 0):,}\n"
             f"Read-back verified: {'yes' if result.get('verified') else 'not run'}\n"
             f"Writes that changed nothing: {result.get('failed', 0):,}\n\n"
-            + "\n".join(_text_result_lines(result)) + "\n\n"
+            + "\n".join(list_lines(result) + _text_result_lines(result)) + "\n\n"
             f"File: {result.get('mdb_path', mdb_path)}"
             + (f"\n\n{warnings}" if warnings else ""),
         )

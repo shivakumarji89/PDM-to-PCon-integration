@@ -14,15 +14,14 @@ Live file: `C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables\Layout_
 
 ## Counts - to be produced from your computed prices
 
-Row counts depend on the prices computed in the Pricing page (not stored in any cache here). Produce them with no
-write: **Pricing -> Preview Export...** and pick the *backup copy* (or the live file once it is unlocked and backed up).
-The dialog lists, per row, the text action, and these totals: price rows to update / insert, text blocks to reuse /
-create, existing text references to preserve, missing or ambiguous mappings, rows blocked. Paste the totals here
-before approving. Expected invariants for a correct run: *text blocks to create* is small (only items PDM would
-also have to create a text for), *missing or ambiguous* is 0, *existing rows without a reference* is 0 for lists 21 / 22.
+The row counts depend on the prices computed in the Pricing page (not cached anywhere). Produce them with no write:
+**Pricing -> Compute**, then **Preview Export...**, pick the *backup copy*, review/rename the target lists, and read the
+preview (computation date, EUR/GBP target list names, ids, validity, reuse/create, updates, inserts, text reuse/create,
+blocked rows). Paste the totals here before approving. The write button inside the preview is bound to that exact plan.
+Expected for the intended run (comp. date 2026-10-16): EUR -> `EURO_2026_2` id 21 reuse, GBP -> `GBP_2026_2` id 22 reuse
+(look-alikes 24 / 23 ignored and untouched); *missing or ambiguous* 0; *rows blocked* 0.
 
-Rehearsal on a copy of the real MDB (synthetic mix of 29 global + 8 article rows, EUR + GBP): 21 updates, 16 inserts,
-8 reuse, 3 create (+3 shared links), 14 preserve, 1 pre-nulled row reported unlinked, 0 blocked; all verified by read-back.
+Rehearsals on copies of the real MDB are in `pricing_pdm_parity.md` (scenarios A and B).
 
 ## Expected changes to existing data
 
