@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services.price_list_targets import ListTargetPlan, resolve_targets
+from services.price_list_targets import ListTargetPlan, label_key, resolve_targets
 
 
 def describe_plan(plan: ListTargetPlan) -> str:
@@ -121,6 +121,29 @@ class PriceListTargetDialog(QDialog):
 
     def _selection_changed(self, ccy: str) -> None:
         creating = self.selectors[ccy].currentData() is None
+        # If the operator explicitly switches from an existing list to "Create",
+        # do not leave the selected existing label as the proposed new name.
+        if creating:
+            current_key = label_key(self.edits[ccy].text())
+            collision = any(
+                str(item.get("sys_ISOCurrencyCode") or "").strip().upper() == ccy
+                and label_key(item.get("com_PriceListLabel")) == current_key
+                for item in self._lists
+            )
+            if collision:
+                year = self._comp[:4] if len(self._comp) == 8 else ""
+                base = f"{'EURO' if ccy == 'EUR' else ccy}_{year}" if year else (
+                    "EURO" if ccy == "EUR" else ccy)
+                occupied = {
+                    label_key(item.get("com_PriceListLabel")) for item in self._lists
+                }
+                candidate = base
+                if label_key(candidate) in occupied:
+                    suffix = 2
+                    while label_key(f"{base}_{suffix}") in occupied:
+                        suffix += 1
+                    candidate = f"{base}_{suffix}"
+                self.edits[ccy].setText(candidate)
         # Keep the field enabled for programmatic callers/tests; when an existing
         # list is selected it is hidden, so users cannot accidentally edit it.
         self.edits[ccy].setEnabled(True)
