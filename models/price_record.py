@@ -33,6 +33,12 @@ class PriceRecord:
     currency: str = ""
     valid_from: str = ""
     valid_to: str = ""
+    #: PDM ``Product_Code`` of the item (global rows only). PDM writes it into the
+    #: label of a new price text ("<item>  (<Product_Code>)"); empty when unknown.
+    product_code: str = ""
+    #: ``com_TextID`` read from an imported MDB row; empty for computed records
+    #: (a computed record has no text id until an export actually writes one).
+    text_id: str = ""
 
     def key(self) -> tuple[bool, str, str, str, str]:
         """Identity for year-over-year diffing (everything but the value)."""

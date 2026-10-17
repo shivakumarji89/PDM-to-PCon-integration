@@ -574,6 +574,7 @@ class MdbReverseEngineeringService(BaseService):
                 currency=str(row.get("sys_ISOCurrencyCode") or ""),
                 valid_from=self._mdb_date(row.get("com_PriceValidFrom")),
                 valid_to=self._mdb_date(row.get("com_PriceValidTo")),
+                text_id=str(row.get("com_TextID") or ""),
             ))
         return snapshot
 

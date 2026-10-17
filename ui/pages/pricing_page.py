@@ -38,6 +38,12 @@ from core.progress import ProgressReporter
 from models.price_record import PriceRecord
 from services.pricing_service import PriceParams, PricingService
 from services.price_mdb_export_service import PriceMdbExportService
+from services.price_text_blocks import (
+    ISSUE_STATUSES, STATUS_CREATED, STATUS_NEW, STATUS_NA, record_result_key,
+    row_result_key, text_block_cells,
+)
+from services.price_text_blocks import name_key as _text_name_key
+from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
@@ -63,21 +69,28 @@ _COL_ARTICLE = 0
 _COL_VARCOND = 1
 _COL_VALUE = 2
 _COL_CURRENCY = 3
-_COL_CHANGE = 4
+_COL_TEXT_ID = 4
+_COL_TEXT = 5
+_COL_CHANGE = 6
+_NUM_COLS = 7
 
 _FILTER_ALL = "All records"
 _FILTER_BASE = "Base (B)"
 _FILTER_UPCHARGE = "Upcharge (X)"
 _FILTER_GLOBAL = "Global / super"
 _FILTER_CHANGED = "Changed only"
+_FILTER_TEXT_ISSUES = "Text block issues"
 
 _CHANGED_BG = QColor(255, 244, 204)
 _ADDED_BG = QColor(223, 245, 223)
+_TEXT_NEW_BG = QColor(222, 235, 255)
+_TEXT_ISSUE_FG = QColor(176, 0, 32)
 
 
 @read_only_in_mdb(
     "_on_compute", "_on_pricing_finished", "_on_pricing_failed",
     "_open_price_list_manager", "_on_manage_price_lists", "_on_export_prices",
+    "_on_preview_export",
 )
 class PricingPage(MaintenanceSourceMixin, BasePage):
     """Compute and review OCD price records for the active snapshot."""
@@ -96,6 +109,12 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._added_keys: set = set()
         self._changed: dict = {}
         self._pricing_currencies: set[str] = set()
+        #: Row-level text-block results of the last export preview / export, keyed
+        #: like ``PriceRecord.key()``. Empty until an MDB has actually been compared.
+        self._text_results: dict[tuple, dict] = {}
+        #: Imported-MDB price texts (name -> English content) for the Text Block column.
+        self._price_texts: dict[str, str] = {}
+        self._last_mdb_path = ""
 
         # Debounce search typing so the table repopulates once the user pauses.
         self._filter_timer = QTimer(self)
@@ -151,6 +170,15 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export_prices)
         layout.addWidget(self._export_btn)
+
+        self._preview_btn = QPushButton("Preview Export...", box)
+        self._preview_btn.setToolTip(
+            "Dry run against an existing OCD MDB: shows which price rows would be updated "
+            "or inserted and which text blocks would be reused or created. Writes nothing."
+        )
+        self._preview_btn.setEnabled(False)
+        self._preview_btn.clicked.connect(self._on_preview_export)
+        layout.addWidget(self._preview_btn)
 
         self._pricelists_btn = QPushButton("Price Lists\u2026", box)
         self._pricelists_btn.setToolTip(
@@ -240,7 +268,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         frow = QHBoxLayout(filter_row)
         frow.setContentsMargins(0, 0, 0, 0)
         self._search = QLineEdit(filter_row)
-        self._search.setPlaceholderText("Search article or variant condition...")
+        self._search.setPlaceholderText("Search article, variant condition or text block...")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._schedule_filter)
         frow.addWidget(self._search, 1)
@@ -248,15 +276,16 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._filter = QComboBox(filter_row)
         self._filter.addItems([
             _FILTER_ALL, _FILTER_BASE, _FILTER_UPCHARGE,
-            _FILTER_GLOBAL, _FILTER_CHANGED,
+            _FILTER_GLOBAL, _FILTER_CHANGED, _FILTER_TEXT_ISSUES,
         ])
         self._filter.currentIndexChanged.connect(self._apply_filter)
         frow.addWidget(self._filter)
         vlayout.addWidget(filter_row)
 
-        self._table = QTableWidget(0, 5, container)
+        self._table = QTableWidget(0, _NUM_COLS, container)
         self._table.setHorizontalHeaderLabels(
-            ["Article", "Variant Condition", "Value", "Currency", "Change"]
+            ["Article", "Variant Condition", "Value", "Currency",
+             "Text Block ID", "Text Block", "Change"]
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(
@@ -265,8 +294,10 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(_COL_VARCOND, QHeaderView.ResizeMode.Stretch)
-        for c in (_COL_ARTICLE, _COL_VALUE, _COL_CURRENCY, _COL_CHANGE):
+        for c in (_COL_ARTICLE, _COL_VALUE, _COL_CURRENCY, _COL_TEXT_ID, _COL_CHANGE):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(_COL_TEXT, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(_COL_TEXT, 220)
         vlayout.addWidget(self._table, 1)
 
         layout.addWidget(container)
@@ -289,9 +320,16 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._records = list(snapshot.price_records) if snapshot else []
         self._added_keys = set()
         self._changed = {}
+        self._text_results = {}
+        self._price_texts = {
+            _text_name_key(t.name): (t.en or "")
+            for t in (getattr(snapshot, "text_blocks", None) or [])
+            if (t.type_code or "").lower() == "price"
+        } if snapshot else {}
         self._populate()
         self._update_summary(unresolved=0)
         self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
         if self.is_mdb_view() and snapshot is not None:
             self._summary.setText(
                 f"Imported MDB: {len(self._records):,} price record(s), "
@@ -353,11 +391,13 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._records = []
         self._added_keys = set()
         self._changed = {}
+        self._text_results = {}  # recomputed prices have not been compared with an MDB
         self._table.setSortingEnabled(False)
         self._table.clearContents()
         self._table.setRowCount(0)
         self._compute_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
+        self._preview_btn.setEnabled(False)
 
         self._price_params = params
         reporter = ProgressReporter(self)
@@ -428,6 +468,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         )
         self._compute_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(result.records) and not self.is_mdb_view())
+        self._preview_btn.setEnabled(bool(result.records) and not self.is_mdb_view())
         if result.warnings:
             QMessageBox.information(
                 self, "Compute Prices", "\n".join(result.warnings)
@@ -439,6 +480,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._pricing_baseline = []
         self._compute_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(self._context.active_snapshot and self._context.active_snapshot.price_records) and not self.is_mdb_view())
+        self._preview_btn.setEnabled(bool(self._context.active_snapshot and self._context.active_snapshot.price_records) and not self.is_mdb_view())
         QMessageBox.critical(
             self, "Compute Prices", f"Price computation failed:\n\n{message}"
         )
@@ -456,7 +498,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         mdb_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select existing OCD MDB to export prices into",
-            "",
+            self._last_mdb_path,
             "Access database (*.mdb)",
         )
         if not mdb_path:
@@ -477,6 +519,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
         self._export_btn.setEnabled(False)
         self._summary.setText("Exporting prices to MDB… the application remains available.")
+        self._last_mdb_path = mdb_path
         self._export_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).export(snapshot, mdb_path)
         )
@@ -486,9 +529,51 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._export_task.signals.failed.connect(self._on_price_export_failed)
         QThreadPool.globalInstance().start(self._export_task)
 
+    def _on_preview_export(self) -> None:
+        """Dry run: report planned price and text-block operations, write nothing."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None or not snapshot.price_records:
+            QMessageBox.information(self, "Preview Export", "Compute prices before previewing.")
+            return
+        mdb_path, _ = QFileDialog.getOpenFileName(
+            self, "Select existing OCD MDB to preview the export against",
+            self._last_mdb_path, "Access database (*.mdb)",
+        )
+        if not mdb_path:
+            return
+        self._last_mdb_path = mdb_path
+        self._preview_btn.setEnabled(False)
+        self._summary.setText("Previewing export (nothing is written)...")
+        self._preview_task = BackgroundTask(
+            lambda _progress: PriceMdbExportService(self._context).export(
+                snapshot, mdb_path, dry_run=True)
+        )
+        self._preview_task.signals.finished.connect(self._on_preview_finished)
+        self._preview_task.signals.failed.connect(self._on_price_export_failed)
+        QThreadPool.globalInstance().start(self._preview_task)
+
+    def _on_preview_finished(self, result: dict) -> None:
+        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        if not result.get("ok"):
+            self._summary.setText("Export preview failed.")
+            QMessageBox.critical(self, "Preview Export", result.get("error") or "Preview failed.")
+            return
+        self._apply_text_results(result)
+        self._summary.setText("Export preview: no MDB record was modified.")
+        PriceExportPreviewDialog(result, self).exec()
+
+    def _apply_text_results(self, result: dict) -> None:
+        """Show the row-level text-block results of a preview / export in the table."""
+        self._text_results = {row_result_key(e): e for e in (result.get("text_rows") or [])}
+        self._populate()
+
     def _on_price_export_finished(self, result: dict, mdb_path: str) -> None:
         """Handle background export completion on the GUI thread."""
         self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._last_mdb_path = mdb_path
+        if result.get("text_rows"):
+            self._apply_text_results(result)
         if not result.get("ok"):
             self._summary.setText("Price export failed.")
             QMessageBox.critical(
@@ -515,6 +600,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             f"Zero-price rows skipped: {result.get('skipped_zero_price', 0):,}\n"
             f"Read-back verified: {'yes' if result.get('verified') else 'not run'}\n"
             f"Writes that changed nothing: {result.get('failed', 0):,}\n\n"
+            + "\n".join(_text_result_lines(result)) + "\n\n"
             f"File: {result.get('mdb_path', mdb_path)}"
             + (f"\n\n{warnings}" if warnings else ""),
         )
@@ -556,9 +642,20 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         if mode == _FILTER_CHANGED and rec.key() not in self._changed \
                 and rec.key() not in self._added_keys:
             return False
-        if term and not text_match(term, rec.article_code, rec.variant_condition):
+        if mode == _FILTER_TEXT_ISSUES and self._text_cells(rec)[2] not in ISSUE_STATUSES:
             return False
+        if term:
+            tid, tcontent, _status = self._text_cells(rec)
+            if not text_match(term, rec.article_code, rec.variant_condition, tid, tcontent):
+                return False
         return True
+
+    def _text_cells(self, rec: PriceRecord) -> tuple[str, str, str]:
+        """``(id, text, status)`` for the Text Block columns of one record."""
+        return text_block_cells(
+            rec, self._text_results.get(record_result_key(rec)),
+            from_mdb=self.is_mdb_view(), price_texts=self._price_texts,
+        )
 
     def _visible_records(self) -> list[PriceRecord]:
         return [rec for rec in self._records if self._passes_filter(rec)]
@@ -585,6 +682,16 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._set(row, _COL_VARCOND, rec.variant_condition)
         self._set(row, _COL_VALUE, f"{rec.value:g}", align_right=True)
         self._set(row, _COL_CURRENCY, rec.currency)
+        tid, tcontent, tstatus = self._text_cells(rec)
+        self._set(row, _COL_TEXT_ID, tid, align_right=tstatus in (STATUS_CREATED, "existing"))
+        self._set(row, _COL_TEXT, tcontent)
+        for c in (_COL_TEXT_ID, _COL_TEXT):
+            item = self._table.item(row, c)
+            item.setToolTip(_STATUS_TIPS.get(tstatus, ""))
+            if tstatus in ISSUE_STATUSES:
+                item.setForeground(QBrush(_TEXT_ISSUE_FG))
+            elif tstatus == STATUS_NEW:
+                item.setBackground(QBrush(_TEXT_NEW_BG))
         if added:
             change = "new"
         elif prev is not None:
@@ -594,7 +701,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._set(row, _COL_CHANGE, change)
         if added or prev is not None:
             bg = _ADDED_BG if added else _CHANGED_BG
-            for c in range(5):
+            for c in range(_NUM_COLS):
                 item = self._table.item(row, c)
                 if item is not None:
                     item.setBackground(QBrush(bg))
@@ -635,6 +742,32 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             cur = params.currency or "All"
             parts.insert(0, f"[{cur} @ {params.mydate}, site {params.site_id}]")
         self._summary.setText("   ".join(parts))
+
+
+_STATUS_TIPS = {
+    "existing": "Text block already in the MDB (com_TextID).",
+    "created": "Text block written by the export and confirmed by read-back.",
+    "new": "Proposed: this text block would be created. Nothing has been written yet.",
+    "missing": "The global price has no text reference (com_TextID).",
+    "blocked": "Text mapping is missing or ambiguous; this row would not be inserted.",
+    "unverified": "Written, but the read-back did not confirm the text block.",
+    "unchecked": "Not compared with an MDB yet; use Preview Export to resolve it.",
+    "n/a": "Article prices carry no text block.",
+}
+
+
+def _text_result_lines(result: dict) -> list[str]:
+    """Post-export text-block totals: executed (and read-back verified) counts."""
+    t = result.get("text_result") or {}
+    linked = t.get("rows_linked")
+    return [
+        f"Text blocks created: {t.get('texts_created', 0):,}",
+        f"Text blocks reused: {t.get('texts_reused', 0):,}",
+        "Price rows linked to text blocks: " + ("not verified" if linked is None else f"{linked:,}"),
+        f"Existing text links preserved: {t.get('links_preserved', 0):,}",
+        f"Text operations skipped: {t.get('text_operations_skipped', 0):,}",
+        f"Failed text operations: {t.get('text_operations_failed', 0):,}",
+    ]
 
 
 def _v(widget: QWidget):

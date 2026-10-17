@@ -210,6 +210,7 @@ class PricingService(BaseService):
                 )
                 all_records.extend(records)
                 unresolved.extend(unres)
+            self._attach_product_codes(all_records, repo, conn, params.site_id)
         finally:
             conn.close()
 
@@ -361,6 +362,7 @@ class PricingService(BaseService):
                                 ("unresolved", "Unresolved",
                                  len(unresolved), ""),
                             ])
+            self._attach_product_codes(all_records, repo, conn, params.site_id)
         finally:
             conn.close()
 
@@ -378,6 +380,22 @@ class PricingService(BaseService):
                 True, f"Priced {n} items · {len(all_records)} records"
             )
         return result
+
+    @staticmethod
+    def _attach_product_codes(records, repo, conn, site_id) -> None:
+        """Fill ``product_code`` on global records: PDM's price-text label needs it.
+        A lookup failure only leaves the field empty (the exporter reports it)."""
+        items = sorted({r.variant_condition.split(" ", 1)[0] for r in records if r.is_global})
+        if not items or not hasattr(repo, "fetch_item_product_codes"):
+            return
+        try:
+            codes = {str(r.Item): str(r.Product_Code or "")
+                     for r in repo.fetch_item_product_codes(items, site_id, conn)}
+        except Exception:
+            return
+        for r in records:
+            if r.is_global:
+                r.product_code = codes.get(r.variant_condition.split(" ", 1)[0], "")
 
     @staticmethod
     def _accumulate_currencies(

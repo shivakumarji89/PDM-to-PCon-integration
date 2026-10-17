@@ -794,6 +794,8 @@ def price_record_to_dict(record: PriceRecord) -> dict[str, Any]:
         "currency": record.currency,
         "valid_from": record.valid_from,
         "valid_to": record.valid_to,
+        "product_code": record.product_code,
+        "text_id": record.text_id,
     }
 
 
@@ -807,6 +809,8 @@ def price_record_from_dict(data: dict[str, Any]) -> PriceRecord:
         currency=str(data.get("currency", "")),
         valid_from=str(data.get("valid_from", "")),
         valid_to=str(data.get("valid_to", "")),
+        product_code=str(data.get("product_code", "")),
+        text_id=str(data.get("text_id", "")),
     )
 
 

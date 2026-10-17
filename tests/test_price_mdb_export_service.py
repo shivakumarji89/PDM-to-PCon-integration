@@ -11,6 +11,12 @@ from models.snapshot import Snapshot
 from services.price_mdb_export_service import PriceMdbExportService
 
 
+_TEXT_COLS = ["com_TextID", "com_PackageID", "com_TextTypeCode", "com_TextName",
+              "com_StatusInfoID", "sys_tmpID", "sys_tmpTag", "com_Text_1_de", "com_Text_1_en",
+              "com_Text_1_fr", "com_Text_1_nl"]
+_TEXT_PROTO = [{c: None for c in _TEXT_COLS}]
+
+
 class _FakeMDB:
     def __init__(self):
         self.ops = []
@@ -35,6 +41,10 @@ class _FakeMDB:
         return True
 
     def read_table(self, _mdb, sql):
+        if sql.startswith("SELECT TOP 1 * FROM [tCOMd_Text]"):
+            return _TEXT_PROTO
+        if sql.startswith("SELECT MAX(com_TextID)"):
+            return [{"max_id": 500}]
         if sql.startswith("SELECT TOP 1 * FROM"):
             return []
         return self.rows.get(sql, [])
@@ -264,7 +274,7 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
         update = next(op for op in mdb.ops if op["op"] == "update")
         self.assertEqual(update["where"], {"com_GlobalPriceID": 100})
         self.assertEqual(update["set"], {"com_PriceValue": 284.0})
-        insert = next(op for op in mdb.ops if op["op"] == "insert")
+        insert = next(op for op in mdb.ops if op["op"] == "insert" and op["table"] == "tCOMd_GlobalPrice")
         self.assertEqual(insert["rows"][0]["com_PriceLevelCode"], "X")
 
     def test_duplicate_matching_rows_are_all_corrected_deterministically(self):
@@ -348,6 +358,10 @@ class _OptimizedFake(_RecordingMDB):
                 out[name] = self.rows[_LINKED_SQL]
             elif name in ("price_proto", "global_proto", "list_proto"):
                 out[name] = []
+            elif name == "text_proto":
+                out[name] = _TEXT_PROTO
+            elif name == "text_max":
+                out[name] = [{"max_id": 500}]
             elif name == "price_keys":
                 out[name] = self.rows[_PRICE_SQL]
             elif name == "global_keys":
@@ -357,11 +371,33 @@ class _OptimizedFake(_RecordingMDB):
             elif name in ("price_max", "global_max"):
                 out[name] = [{"max_id": 100}]
             else:  # post-write read-back chunk: echo what the batch wrote
-                out[name] = self._readback(name)
+                out[name] = self._readback(name, sql)
         return out
 
-    def _readback(self, name):
-        table = name.split(":")[0]
+    def _text_state(self):
+        """Texts as the MDB holds them after the recorded batch."""
+        state = {t["com_TextID"]: dict(t) for t in self.texts}
+        for op in self.ops:
+            if op["op"] == "insert" and op["table"] == "tCOMd_Text":
+                for r in op["rows"]:
+                    state[r["com_TextID"]] = dict(r)
+        return state
+
+    def _readback(self, name, sql=""):
+        kind = name.split(":")[0]
+        if kind == "texts":
+            wanted = {int(x) for x in sql.split("IN (")[1].rstrip(")").split(",")}
+            return [{**t, "id": t["com_TextID"]} for i, t in self._text_state().items() if i in wanted]
+        if kind == "textdup":
+            counts = {}
+            for t in self._text_state().values():
+                counts[t["com_TextName"]] = counts.get(t["com_TextName"], 0) + 1
+            return [{"com_TextName": n, "n": c} for n, c in counts.items() if f"'{n}'" in sql]
+        if kind == "links":
+            wanted = {int(x) for x in sql.split("IN (")[1].rstrip(")").split(",")}
+            return [{"id": g["com_GlobalPriceID"], "com_TextID": g.get("com_TextID")}
+                    for g in self.rows[_GLOBAL_SQL] if g["com_GlobalPriceID"] in wanted]
+        table = kind
         pk = "com_PriceID" if table == "tCOMd_Price" else "com_GlobalPriceID"
         rows = []
         for op in self.ops:
@@ -373,7 +409,17 @@ class _OptimizedFake(_RecordingMDB):
             elif op["op"] == "insert":
                 rows += [{"id": r[pk], "com_PriceValue": r["com_PriceValue"],
                           "com_PriceListID": r["com_PriceListID"],
-                          "com_VariantCondition": r["com_VariantCondition"]} for r in op["rows"]]
+                          "com_VariantCondition": r["com_VariantCondition"],
+                          "com_TextID": r.get("com_TextID")} for r in op["rows"]]
+        if table == "tCOMd_GlobalPrice":  # updated rows keep the link they had
+            seen = {r["id"] for r in rows}
+            for g in self.rows[_GLOBAL_SQL]:
+                for r in rows:
+                    if r["id"] == g["com_GlobalPriceID"] and r["id"] in seen and "com_TextID" not in r:
+                        r["com_TextID"] = g.get("com_TextID")
+            for r in rows:
+                r.setdefault("com_TextID", next((g.get("com_TextID") for g in self.rows[_GLOBAL_SQL]
+                                                 if g["com_GlobalPriceID"] == r["id"]), None))
         if self.corrupt:
             rows = [{**r, "com_PriceValue": -1} for r in rows]
         return rows
@@ -415,16 +461,18 @@ class PriceMdbExportPdmParityTests(unittest.TestCase):
             PriceRecord(is_global=True, variant_condition="GE2HBS.", value=69.0, currency="EUR",
                         valid_from="2026-10-16"),
             PriceRecord(is_global=True, variant_condition="NOTEXT.1", value=5.0, currency="EUR",
-                        valid_from="2026-10-16"),
+                        valid_from="2026-10-16", product_code="FR-AA-US"),
         ]
         result = _export(mdb, records)
-        rows = next(op for op in mdb.ops if op["op"] == "insert")["rows"]
-        self.assertEqual([r["com_TextID"] for r in rows], [77, 88, None])  # surcharge -> option-id text
+        rows = next(op for op in mdb.ops if op["op"] == "insert" and op["table"] == "tCOMd_GlobalPrice")["rows"]
+        # surcharge -> shared option-id text; known item -> its text; unknown item -> a NEW text.
+        self.assertEqual([r["com_TextID"] for r in rows], [77, 88, 500 + 1])
         self.assertEqual({r["com_PriceLevelCode"] for r in rows}, {"X"})
         # PDM stamps new global rows with the price list's validity, not the record's date.
         self.assertEqual({r["com_PriceValidFrom"] for r in rows}, {"#2026-01-01 00:00:00#"})
-        self.assertTrue(any("without a text link" in w for w in result["warnings"]))
         self.assertTrue(result["verified"])
+        self.assertEqual(result["text_result"]["rows_linked"], 3)
+
 
     def test_existing_row_currency_is_not_part_of_identity(self):
         # PDM matches by list + article + variant + level; the list fixes the currency.
@@ -488,3 +536,217 @@ class PriceMdbExportTargetReportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _global(vc, value=10.0, ccy="EUR", **kw):
+    return PriceRecord(is_global=True, variant_condition=vc, value=value, currency=ccy,
+                       valid_from="2026-10-16", **kw)
+
+
+def _texts_op(mdb):
+    return next((op for op in mdb.ops if op["op"] == "insert" and op["table"] == "tCOMd_Text"), None)
+
+
+def _global_op(mdb):
+    return next(op for op in mdb.ops if op["op"] == "insert" and op["table"] == "tCOMd_GlobalPrice")
+
+
+class PriceTextLabelTests(unittest.TestCase):
+    """PDM AddMissingGlobalPricingRecords naming (name = com_TextName, display = language text)."""
+
+    def test_labels_follow_pdm(self):
+        from services.price_text_blocks import price_text_labels
+        self.assertEqual(price_text_labels("GE2HBS.", "FR-AA-US"), ("GE2HBS.", "GE2HBS.  (FR-AA-US)"))
+        self.assertEqual(price_text_labels("GESNNU.1 8=1FD", "X"), ("8", "Surcharge 8"))
+        self.assertEqual(price_text_labels("A_B.1", "X"), ("A_B.1", "A_B.1"))
+        self.assertEqual(price_text_labels("NOCODE.1"), ("NOCODE.1", "NOCODE.1"))
+
+    def test_language_columns_use_the_schemas_prefix(self):
+        from services.price_text_blocks import language_columns
+        self.assertEqual(language_columns(_TEXT_COLS),
+                         ["com_Text_1_en", "com_Text_1_de", "com_Text_1_fr", "com_Text_1_nl"])
+        self.assertEqual(language_columns(["com_TextID", "com_TextName"]), [])
+
+
+class PriceMdbExportTextBlockTests(unittest.TestCase):
+    def test_new_global_creates_text_with_pdm_columns_and_links_it(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(mdb, [_global("GE2HBS.", product_code="FR-AA-US")])
+        text = _texts_op(mdb)["rows"][0]
+        self.assertEqual(text["com_TextTypeCode"], "price")
+        self.assertEqual(text["com_PackageID"], 1)
+        self.assertEqual(text["com_TextName"], "GE2HBS.")
+        for col in ("com_Text_1_en", "com_Text_1_de", "com_Text_1_fr", "com_Text_1_nl"):
+            self.assertEqual(text[col], "GE2HBS.  (FR-AA-US)")
+        self.assertNotIn("sys_tmpID", text)  # bookkeeping columns are never invented
+        self.assertEqual(_global_op(mdb)["rows"][0]["com_TextID"], text["com_TextID"])
+        self.assertEqual(mdb.ops[0]["table"], "tCOMd_Text")  # texts are written before their prices
+        self.assertEqual(result["text_result"]["texts_created"], 1)
+        self.assertTrue(result["verified"])
+
+    def test_text_is_created_once_and_shared_by_eur_and_gbp_rows(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(mdb, [_global("GE2HBS.", 10, "EUR", product_code="P"),
+                               _global("GE2HBS.", 9, "GBP", product_code="P")])
+        self.assertEqual(len(_texts_op(mdb)["rows"]), 1)
+        rows = _global_op(mdb)["rows"]
+        self.assertEqual(len({r["com_TextID"] for r in rows}), 1)
+        self.assertEqual(result["text_summary"]["text_create"], 1)
+        self.assertEqual(result["text_summary"]["text_link_new"], 1)
+        self.assertEqual(result["text_result"]["rows_linked"], 2)
+
+    def test_existing_text_is_reused_not_duplicated(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "ge2hbs."}])  # Jet compares case-insensitively
+        result = _export(mdb, [_global("GE2HBS.")])
+        self.assertIsNone(_texts_op(mdb))
+        self.assertEqual(_global_op(mdb)["rows"][0]["com_TextID"], 88)
+        self.assertEqual(result["text_summary"]["text_reuse"], 1)
+        self.assertEqual(result["text_summary"]["text_create"], 0)
+        self.assertEqual(result["text_result"]["texts_reused"], 1)
+
+    def test_ambiguous_text_name_blocks_the_row_instead_of_guessing(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 1, "com_TextName": "8"}, {"com_TextID": 2, "com_TextName": "8"}])
+        result = _export(mdb, [_global("X.1 8=AA"), _global("OK.1")])
+        self.assertEqual(result["text_summary"]["text_missing_or_ambiguous"], 1)
+        self.assertEqual(result["skipped_text_blocked"], 1)
+        self.assertEqual(result["inserted_global_prices"], 1)
+        self.assertTrue(any(e["text_status"] == "ambiguous" for e in result["text_rows"]))
+
+    def test_missing_language_columns_block_creation_with_a_reason(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        orig = mdb.read_tables
+
+        def no_lang_cols(m, q):
+            out = orig(m, q)
+            if "text_proto" in out:
+                out["text_proto"] = [{"com_TextID": 1}]
+            return out
+
+        mdb.read_tables = no_lang_cols
+        result = _export(mdb, [_global("NEW.1")])
+        self.assertEqual(result["inserted_global_prices"], 0)
+        self.assertEqual(mdb.ops, [])
+        self.assertIn("language columns", result["text_rows"][0]["reason"])
+
+    def test_existing_rows_keep_their_links_and_are_reported(self):
+        globals_ = [
+            {"com_GlobalPriceID": 100, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "L.1",
+             "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": 55},
+            {"com_GlobalPriceID": 101, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "U.1",
+             "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": None},
+        ]
+        mdb = _OptimizedFake(_eur_gbp_lists(), globals_=globals_, linked=[21, 22],
+                             texts=[{"com_TextID": 55, "com_TextName": "L.1"}])
+        result = _export(mdb, [_global("L.1", 5.0), _global("U.1", 6.0)])
+        self.assertEqual({op["op"] for op in mdb.ops}, {"update"})
+        for op in mdb.ops:  # only the value is written: links are never touched
+            self.assertEqual(set(op["set"]), {"com_PriceValue"})
+        self.assertEqual(result["text_summary"]["text_preserve"], 1)
+        self.assertEqual(result["text_summary"]["text_unlinked_existing"], 1)
+        self.assertEqual(result["text_result"]["links_preserved"], 1)
+        self.assertTrue(result["verified"])
+
+    def test_article_prices_never_get_a_text(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(mdb, [_rec(9.0, "EUR")])
+        self.assertIsNone(_texts_op(mdb))
+        self.assertIsNone(next(op for op in mdb.ops if op["table"] == "tCOMd_Price")["rows"][0]["com_TextID"])
+        self.assertEqual(result["text_rows"][0]["action"], "none")
+
+    def test_dry_run_reports_text_operations_and_writes_nothing(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "OLD."}])
+        result = _export_dry(mdb, [_global("OLD."), _global("NEW.1"), _global("NEW.1", 8, "GBP"),
+                                   _rec(9.0, "EUR")])
+        self.assertEqual(mdb.ops, [])
+        summary = result["text_summary"]
+        self.assertEqual((summary["text_reuse"], summary["text_create"], summary["text_link_new"]), (1, 1, 1))
+        self.assertEqual(summary["price_rows_to_insert"], 4)
+        actions = {(e["variant_condition"], e["currency"]): e["action"] for e in result["text_rows"]}
+        self.assertEqual(actions[("NEW.1", "EUR")], "create")
+        # A planned text never shows an id: nothing has been written yet.
+        self.assertTrue(all(e["text_id"] is None for e in result["text_rows"]
+                            if e["action"] in ("create", "link_new")))
+        self.assertEqual([e["text_id"] for e in result["text_rows"] if e["action"] == "reuse"], [88])
+
+    def test_second_export_creates_no_rows_or_texts(self):
+        first = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        _export(first, [_global("NEW.1")])
+        text = _texts_op(first)["rows"][0]
+        written = _global_op(first)["rows"][0]
+        second = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                                globals_=[{**written, "com_GlobalPriceID": 100}],
+                                texts=[{"com_TextID": text["com_TextID"], "com_TextName": text["com_TextName"]}])
+        result = _export(second, [_global("NEW.1")])
+        self.assertEqual(second.ops, [])
+        self.assertEqual((result["inserted_global_prices"], result["text_result"]["texts_created"]), (0, 0))
+        self.assertEqual(result["text_summary"]["text_preserve"], 1)
+
+    def test_failed_batch_rolls_back_prices_and_texts_together(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22], batch_ok=False)
+        result = _export(mdb, [_global("NEW.1")])
+        self.assertFalse(result["ok"])
+        self.assertTrue(mdb.transaction)  # prices and texts share one transaction
+        self.assertEqual(result["text_result"]["texts_created"], 0)
+        self.assertEqual(result["text_result"]["text_operations_failed"], 1)
+
+    def test_readback_detects_a_missing_text_as_dangling(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        base = mdb._readback
+        mdb._readback = lambda name, sql="": [] if name.startswith("texts:") else base(name, sql)
+        result = _export(mdb, [_global("NEW.1")])
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["verified"])
+        self.assertTrue(any("missing after write" in f or "dangling" in f
+                            for f in result["verification_failures"]))
+        self.assertEqual(result["text_result"]["texts_created"], 1)
+        self.assertGreater(result["text_result"]["text_operations_failed"], 0)
+        self.assertEqual(result["text_rows"][0]["text_status"], "unverified")
+        self.assertIsNone(result["text_rows"][0]["text_id"])
+
+    def test_readback_detects_a_wrong_link(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": "OLD."}])
+        base = mdb._readback
+
+        def wrong_link(name, sql=""):
+            rows = base(name, sql)
+            if name.startswith("tCOMd_GlobalPrice:"):
+                rows = [{**r, "com_TextID": 999} for r in rows]
+            return rows
+
+        mdb._readback = wrong_link
+        result = _export(mdb, [_global("OLD.")])
+        self.assertFalse(result["verified"])
+        self.assertTrue(any("text link 999 != 88" in f for f in result["verification_failures"]))
+
+    def test_duplicate_text_after_write_is_a_failure(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        base = mdb._readback
+        mdb._readback = lambda name, sql="": ([{"com_TextName": "NEW.1", "n": 2}]
+                                              if name.startswith("textdup:") else base(name, sql))
+        result = _export(mdb, [_global("NEW.1")])
+        self.assertFalse(result["verified"])
+        self.assertTrue(any("duplicate texts" in f for f in result["verification_failures"]))
+
+    def test_unknown_product_code_is_reported_not_invented(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(mdb, [_global("NEW.1")])
+        self.assertEqual(_texts_op(mdb)["rows"][0]["com_Text_1_en"], "NEW.1")
+        self.assertTrue(any("Product_Code" in w for w in result["warnings"]))
+
+
+class PriceMdbExportFarFutureValidityTests(unittest.TestCase):
+    def test_new_article_price_copies_a_9999_validity_end_instead_of_blanking_it(self):
+        # Real MDB: Access's "no end" 9999-12-31 arrives as /Date(253402194600000)/ and
+        # must not collapse to "" (which Access rejects as a date: data type mismatch).
+        existing = _eur_row(pid=1, value=1.0, com_PriceValidFrom="/Date(1788719400000)/",
+                            com_PriceValidTo="/Date(253402194600000)/")
+        mdb = _OptimizedFake(_eur_gbp_lists(), prices=[existing], linked=[21, 22])
+        result = _export(mdb, [_rec(5.0, "EUR", variant_condition=" 99=ZZ", level="X")])
+        row = next(op for op in mdb.ops if op["table"] == "tCOMd_Price")["rows"][0]
+        self.assertTrue(result["ok"])
+        self.assertRegex(row["com_PriceValidFrom"], r"^#2026-09-0[67] 00:00:00#$")
+        self.assertRegex(row["com_PriceValidTo"], r"^#9999-12-(30|31) 00:00:00#$")

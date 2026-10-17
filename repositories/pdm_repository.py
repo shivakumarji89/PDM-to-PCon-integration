@@ -1399,6 +1399,29 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, params, connection=connection))
         return rows
 
+    def fetch_item_product_codes(
+        self,
+        items: Sequence[Any],
+        site_id: int = 1,
+        connection: Any = None,
+    ) -> list[Any]:
+        """``(Item, Product_Code)`` per item, resolved as PDM's global-price text
+        builder does: the item's ``ProductCodeIdOverride`` wins over its product's
+        ``ProductCodeId``, scoped to the site."""
+        vals = [str(i) for i in items if i]
+        rows: list[Any] = []
+        for chunk in self._chunked(vals, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT DISTINCT Item.Item, pc.Product_Code "
+                "FROM Item INNER JOIN Product ON Item.ProductId = Product.ProductId "
+                "INNER JOIN Product_Code pc ON CASE WHEN Item.ProductCodeIdOverride IS NOT NULL "
+                "THEN Item.ProductCodeIdOverride ELSE Product.ProductCodeId END = pc.ProductCodeId "
+                f"AND pc.SiteId = ? WHERE Item.Item IN ({ph})"
+            )
+            rows.extend(self._execute(query, (site_id,) + tuple(chunk), connection=connection))
+        return rows
+
     def fetch_item_base_prices_all_sites(
         self,
         items: Sequence[Any],

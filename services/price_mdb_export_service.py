@@ -19,6 +19,10 @@ from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.ocd_export_service import OcdExportService, _DATE_MAX, _DATE_MIN
 from services.price_update_service import _mdb_date_literal
+from services.price_text_blocks import (
+    ACTION_CREATE, ACTION_LINK_NEW, ACTION_NONE, ACTION_PRESERVE, ACTION_REUSE,
+    ACTION_SKIP, ACTION_UNLINKED, language_columns, name_key, price_text_labels,
+)
 
 
 #: Level of every new global price row: PDM's AddMissingGlobalPricingRecords
@@ -68,7 +72,13 @@ class PriceMdbExportService(BaseService):
                 instant = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
                     milliseconds=int(match.group(1))
                 )
-                return instant.astimezone().strftime("%Y%m%d")
+                try:
+                    return instant.astimezone().strftime("%Y%m%d")
+                except (OverflowError, OSError):
+                    # Windows cannot convert dates near year 9999 (Access's
+                    # 9999-12-31 "no end" validity): shift by the current offset.
+                    offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+                    return (instant + offset).strftime("%Y%m%d")
             except (ValueError, OverflowError, OSError):
                 return fallback
         digits = re.sub(r"\D", "", text)
@@ -80,17 +90,6 @@ class PriceMdbExportService(BaseService):
             except ValueError:
                 return fallback
         return fallback
-
-    @staticmethod
-    def _price_text_name(variant_condition: str) -> str:
-        """``tCOMd_Text.com_TextName`` of a global price's 'price' text, as PDM's
-        ``AddMissingGlobalPricingRecords`` derives it: a surcharge row
-        (``ITEM 8=1FD``) shares the option-id text ``8``; any other variant
-        condition is its own text name."""
-        vc = variant_condition or ""
-        if " " in vc and "=" in vc and vc.index(" ") < vc.index("="):
-            return vc[vc.index(" ") + 1:].split("=", 1)[0]
-        return vc
 
     def export(self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False) -> dict[str, Any]:
         """Write ``snapshot.price_records`` into ``mdb_path`` (see module docstring).
@@ -133,6 +132,7 @@ class PriceMdbExportService(BaseService):
                     "price_proto": "SELECT TOP 1 * FROM [tCOMd_Price]",
                     "global_proto": "SELECT TOP 1 * FROM [tCOMd_GlobalPrice]",
                     "list_proto": "SELECT TOP 1 * FROM [tCOMd_PriceList2]",
+                    "text_proto": "SELECT TOP 1 * FROM [tCOMd_Text]",
                     "linked": "SELECT DISTINCT com_PriceListID FROM tCOMd_DistributionRegionPriceList",
                 })
                 linked_list_ids = {str(r.get("com_PriceListID")) for r in initial["linked"]}
@@ -142,6 +142,7 @@ class PriceMdbExportService(BaseService):
                 price_proto = self._clean_prototype(initial["price_proto"], "tCOMd_Price")
                 global_proto = self._clean_prototype(initial["global_proto"], "tCOMd_GlobalPrice")
                 list_proto = self._clean_prototype(initial["list_proto"], "tCOMd_PriceList2")
+                text_columns = list(initial["text_proto"][0]) if initial["text_proto"] else []
                 # Avoid serializing every existing price row from a potentially
                 # large MDB. The relevant identity rows and ID maxima are fetched
                 # in a second bridge session after list/article mapping is known.
@@ -174,6 +175,8 @@ class PriceMdbExportService(BaseService):
                 price_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_Price")
                 global_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_GlobalPrice")
                 list_proto = OcdExportService(self.context)._prototype(mdb, "tCOMd_PriceList2")
+                text_rows = mdb_service.read_table(mdb, "SELECT TOP 1 * FROM [tCOMd_Text]")
+                text_columns = list(text_rows[0]) if text_rows else []
         except Exception as exc:
             return {"ok": False, "error": f"Could not read destination MDB schema/data: {exc}"}
 
@@ -184,6 +187,8 @@ class PriceMdbExportService(BaseService):
             for row in articles
         }
         package_id = packages[0].get("com_PackageID")
+        text_lang_cols = language_columns(text_columns)
+        en_col = next((c for c in text_lang_cols if c.endswith("_en")), "")
 
         def norm_date(value: Any, fallback: str) -> str:
             return self._normalize_mdb_date(value, fallback)
@@ -312,20 +317,23 @@ class PriceMdbExportService(BaseService):
                     ),
                     "global_keys": (
                         "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, com_VariantCondition, "
-                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
+                        "com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue, com_TextID "
                         "FROM tCOMd_GlobalPrice WHERE com_PackageID = " + str(package_id) + " "
                         "AND com_PriceListID IN (" + list_filter + ")"
                     ),
                     "texts": (
-                        "SELECT com_TextID, com_TextName FROM tCOMd_Text WHERE "
+                        "SELECT com_TextID, com_TextName" + (", " + en_col if en_col else "")
+                        + " FROM tCOMd_Text WHERE "
                         "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id)
                     ),
+                    "text_max": "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text",
                     "price_max": "SELECT MAX(com_PriceID) AS max_id FROM tCOMd_Price",
                     "global_max": "SELECT MAX(com_GlobalPriceID) AS max_id FROM tCOMd_GlobalPrice",
                 })
                 existing_prices = targeted["price_keys"]
                 existing_globals = targeted["global_keys"]
                 price_texts = targeted["texts"]
+                text_max_rows = targeted["text_max"]
                 price_max_rows = targeted["price_max"]
                 global_max_rows = targeted["global_max"]
             except Exception as exc:
@@ -334,6 +342,7 @@ class PriceMdbExportService(BaseService):
             price_texts = mdb_service.read_table(
                 mdb, "SELECT com_TextID, com_TextName FROM tCOMd_Text WHERE "
                      "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id))
+            text_max_rows = mdb_service.read_table(mdb, "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text")
             price_max_rows = [{"max_id": max((int(r.get("com_PriceID") or 0) for r in existing_prices), default=0)}]
             global_max_rows = [{"max_id": max((int(r.get("com_GlobalPriceID") or 0) for r in existing_globals), default=0)}]
 
@@ -362,15 +371,25 @@ class PriceMdbExportService(BaseService):
         existing_price_keys = set(existing_price_by_key)
         existing_global_keys = set(existing_global_by_key)
         handled_keys: set[tuple] = set()  # identities already planned this run
-        text_ids = {str(t.get("com_TextName")): t.get("com_TextID") for t in price_texts}
+        # Existing price texts by case-insensitive name (Jet's `=`, as PDM's lookup);
+        # several ids under one name is ambiguous and is never guessed.
+        text_ids_by_name: dict[str, list[Any]] = {}
+        for t in price_texts:
+            text_ids_by_name.setdefault(name_key(t.get("com_TextName")), []).append(t.get("com_TextID"))
+        next_text_id = int((text_max_rows[0].get("max_id") if text_max_rows else 0) or 0) + 1
+        text_rows_new: list[dict[str, Any]] = []   # tCOMd_Text rows to create
+        new_text_ids: dict[str, Any] = {}          # name key -> id allocated this run
+        text_plan: list[dict[str, Any]] = []       # one entry per priced row
+        blocked_rows = 0
         # Validity of a new article price: PDM copies the article's existing price
         # dates (addNewArticlePriceRecord); a new global price takes the list's.
         article_validity = {
             (str(r.get("com_ArticleID")), str(r.get("com_PriceListID"))): (
                 norm_date(r.get("com_PriceValidFrom"), ""), norm_date(r.get("com_PriceValidTo"), ""))
             for r in existing_prices if r.get("com_PriceValidFrom") and r.get("com_PriceValidTo")
+            if norm_date(r.get("com_PriceValidFrom"), "") and norm_date(r.get("com_PriceValidTo"), "")
         }
-        missing_text_names: set[str] = set()
+        missing_product_codes: set[str] = set()
         planned_update_detail: list[dict[str, Any]] = []
         # Lists that receive a write / records that hit several existing rows:
         # reported so the target can be checked before anything is written.
@@ -389,6 +408,23 @@ class PriceMdbExportService(BaseService):
         global_rows: list[dict[str, Any]] = []
         skipped_existing = skipped_unmapped = skipped_ambiguous = skipped_zero = 0
         value_updates: list[dict[str, Any]] = []
+
+        text_name_by_id = {str(t.get("com_TextID")): str(t.get("com_TextName") or "") for t in price_texts}
+        text_content_by_id = {str(t.get("com_TextID")): str(t.get(en_col) or "") for t in price_texts} if en_col else {}
+
+        def text_entry(record, price_list, operation):
+            """Row-level text plan; ``text_id`` is only ever an id already in the MDB."""
+            return {
+                "table": "tCOMd_GlobalPrice" if record.is_global else "tCOMd_Price",
+                "article_code": record.article_code or "",
+                "variant_condition": record.variant_condition or "",
+                "level": record.level,
+                "currency": (record.currency or "").strip().upper(),
+                "list": price_list["label"], "operation": operation,
+                "action": ACTION_NONE, "text_name": "", "text_id": None,
+                "text_status": "n/a" if not record.is_global else "", "text_content": "",
+                "reason": "",
+            }
 
         for record in snapshot.price_records:
             price_list = record_list(record)
@@ -470,6 +506,20 @@ class PriceMdbExportService(BaseService):
                     duplicate_matches += 1
                 if not stale:
                     skipped_existing += 1
+                # Text links of matched rows are never rewritten (PDM's value update
+                # does not touch com_TextID); the plan only reports them.
+                linked_id = next((r.get("com_TextID") for r in existing_map[row_key]
+                                  if r.get("com_TextID") not in (None, "")), None)
+                entry = text_entry(record, price_list, "update" if stale else "unchanged")
+                if is_global:
+                    entry["row_ids"] = [r.get(primary_key) for r in existing_map[row_key]]
+                    entry.update(
+                        action=ACTION_PRESERVE if linked_id is not None else ACTION_UNLINKED,
+                        text_id=linked_id,
+                        text_name=text_name_by_id.get(str(linked_id), ""),
+                        text_content=text_content_by_id.get(str(linked_id), ""),
+                        text_status="existing" if linked_id is not None else "missing")
+                text_plan.append(entry)
                 continue
             valid_from, valid_to = (
                 article_validity.get((str(article_id), str(price_list["id"])))
@@ -494,11 +544,41 @@ class PriceMdbExportService(BaseService):
                 "com_StatusInfoID": None,
             }
             if is_global:
-                text_name = self._price_text_name(record.variant_condition)
-                if text_ids.get(text_name) is None:
-                    missing_text_names.add(text_name)
-                common["com_TextID"] = text_ids.get(text_name)
+                text_name, display = price_text_labels(record.variant_condition, record.product_code)
+                tkey = name_key(text_name)
+                known = text_ids_by_name.get(tkey, [])
+                entry = text_entry(record, price_list, "insert")
+                entry["text_name"] = text_name
+                if len(known) > 1:
+                    entry.update(action=ACTION_SKIP, text_status="ambiguous",
+                                 reason=f"{len(known)} price texts are named '{text_name}'")
+                elif len(known) == 1:
+                    entry.update(action=ACTION_REUSE, text_id=known[0], text_status="existing",
+                                 text_content=text_content_by_id.get(str(known[0]), ""))
+                elif tkey in new_text_ids:
+                    entry.update(action=ACTION_LINK_NEW, text_status="new")
+                elif not text_lang_cols:
+                    entry.update(action=ACTION_SKIP, text_status="missing",
+                                 reason="tCOMd_Text has no language columns to create the text in")
+                else:
+                    entry.update(action=ACTION_CREATE, text_status="new", text_content=display)
+                    new_text_ids[tkey] = next_text_id
+                    text_rows_new.append({
+                        "com_TextID": next_text_id, "com_PackageID": package_id,
+                        "com_TextTypeCode": "price", "com_TextName": text_name,
+                        **{col: display for col in text_lang_cols},
+                    })
+                    next_text_id += 1
+                    if (not record.product_code and "_" not in (record.variant_condition or "")
+                            and not display.startswith("Surcharge ")):
+                        missing_product_codes.add(text_name)
+                text_plan.append(entry)
+                if entry["action"] == ACTION_SKIP:
+                    blocked_rows += 1
+                    continue
+                common["com_TextID"] = entry["text_id"] if entry["text_id"] is not None else new_text_ids[tkey]
                 note_target(price_list, "inserts")
+                entry["row_ids"] = [next_global_id]
                 global_rows.append(OcdExportService._row(global_proto, {
                     "com_GlobalPriceID": next_global_id,
                     "com_PackageID": package_id,
@@ -507,6 +587,7 @@ class PriceMdbExportService(BaseService):
                 next_global_id += 1
                 existing_global_keys.add(row_key)
             else:
+                text_plan.append(text_entry(record, price_list, "insert"))
                 note_target(price_list, "inserts")
                 price_rows.append(OcdExportService._row(price_proto, {
                     "com_PriceID": next_price_id,
@@ -516,7 +597,11 @@ class PriceMdbExportService(BaseService):
                 next_price_id += 1
                 existing_price_keys.add(row_key)
 
-        ops = list(value_updates)
+        ops = []
+        if text_rows_new:
+            # Texts first: the global rows that follow reference their ids.
+            ops.append({"op": "insert", "table": "tCOMd_Text", "rows": text_rows_new})
+        ops.extend(value_updates)
         if list_rows:
             ops.append({"op": "insert", "table": "tCOMd_PriceList2", "rows": list_rows})
         if price_rows:
@@ -528,19 +613,43 @@ class PriceMdbExportService(BaseService):
             "inserted_price_lists": 0, "updated_prices": 0, "updated_global_prices": 0,
             "skipped_existing": skipped_existing, "skipped_unmapped": skipped_unmapped,
             "skipped_ambiguous": skipped_ambiguous, "skipped_zero_price": skipped_zero,
+            "skipped_text_blocked": blocked_rows,
             "failed": 0, "verified": None, "verification_failures": [], "warnings": [],
         }
         report["target_lists"] = sorted(target_lists.values(), key=lambda e: str(e["id"]))
         report["duplicate_matches"] = duplicate_matches
+        report["text_rows"] = text_plan
+
+        def count_action(*actions):
+            return sum(1 for e in text_plan if e["action"] in actions)
+
+        text_summary = {
+            "price_rows_to_update": len(value_updates),
+            "price_rows_to_insert": len(price_rows) + len(global_rows),
+            "text_reuse": count_action(ACTION_REUSE),
+            "text_create": count_action(ACTION_CREATE),
+            "text_link_new": count_action(ACTION_LINK_NEW),
+            "text_preserve": count_action(ACTION_PRESERVE),
+            "text_unlinked_existing": count_action(ACTION_UNLINKED),
+            "text_missing_or_ambiguous": count_action(ACTION_SKIP),
+            "rows_blocked": blocked_rows,
+        }
+        report["text_summary"] = text_summary
         for entry in report["target_lists"]:
             if not entry["linked"] and entry["id"] not in {r.get("com_PriceListID") for r in list_rows}:
                 report["warnings"].append(
                     f"Target price list '{entry['label']}' (id {entry['id']}) is not linked to a "
                     "distribution region; pCon will not read prices written to it.")
-        if missing_text_names:
+        if blocked_rows:
+            reasons = sorted({e["reason"] for e in text_plan if e["action"] == ACTION_SKIP})
             report["warnings"].append(
-                f"{len(missing_text_names)} new global price(s) have no matching 'price' text in "
-                "tCOMd_Text and were inserted without a text link (PDM would create the text).")
+                f"{blocked_rows} new global price row(s) were not inserted because their text "
+                "block is missing or ambiguous: " + "; ".join(reasons[:3]))
+        if missing_product_codes:
+            report["warnings"].append(
+                f"{len(missing_product_codes)} new price text(s) were created without PDM's "
+                "'(Product_Code)' label suffix because the computed prices carry no product "
+                "code; recompute prices to include it.")
         if dry_run:
             # Report the plan only: nothing is executed.
             report.update({
@@ -554,11 +663,13 @@ class PriceMdbExportService(BaseService):
             })
             return {"ok": True, "error": None, **report}
         if not ops:
+            report["text_result"] = self._text_result(text_summary, 0, None)
             return {"ok": True, "error": None, **report}
         batch = mdb_service.execute_batch(mdb, ops, transaction=True)
         if not batch.ok:
             # The batch runs in one transaction, so a failure leaves the MDB
             # untouched: nothing was written, whatever was planned.
+            report["text_result"] = self._text_result(text_summary, 0, None, failed=len(text_rows_new))
             return {"ok": False, "error": batch.first_error(), **report, "failed": len(ops)}
 
         # Count what the bridge actually executed, not what was planned. Doubles
@@ -567,12 +678,16 @@ class PriceMdbExportService(BaseService):
         if len(results) != len(ops):
             results = [None] * len(ops)
         failed = 0
+        texts_created = 0
         for op, res in zip(ops, results):
             planned = len(op["rows"]) if op["op"] == "insert" else 1
             done = planned if res is None else (res.inserted if op["op"] == "insert" else res.updated)
             if done < planned:
                 failed += planned - done
             if op["op"] == "insert":
+                if op["table"] == "tCOMd_Text":
+                    texts_created += done
+                    continue
                 name = {"tCOMd_PriceList2": "inserted_price_lists", "tCOMd_Price": "inserted_prices",
                         "tCOMd_GlobalPrice": "inserted_global_prices"}[op["table"]]
             else:
@@ -588,21 +703,55 @@ class PriceMdbExportService(BaseService):
                 "distribution region (tCOMd_DistributionRegionPriceList); pCon will not read it "
                 "until it is linked.")
 
+        stats = None
         if optimized_reads:
-            failures = self._verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows)
+            failures, stats = self._verify_writes(
+                mdb, mdb_service, value_updates, price_rows, global_rows,
+                text_rows_new, text_plan, text_lang_cols, package_id)
             report["verified"] = not failures
             report["verification_failures"] = failures[:10]
-            if failures:
-                return {
-                    "ok": False, **report,
-                    "error": f"Post-write verification failed for {len(failures)} row(s); "
-                             "the MDB does not hold the intended values.",
-                }
+            report["verification_failure_count"] = len(failures)
+        # Row-level results: only a verified id is shown as written.
+        for entry in text_plan:
+            if entry["action"] in (ACTION_CREATE, ACTION_LINK_NEW):
+                tid = new_text_ids.get(name_key(entry["text_name"]))
+                ok = stats is None or tid in stats["texts_ok"]
+                entry["text_id"] = tid if ok else None
+                entry["text_status"] = "created" if ok else "unverified"
+            elif entry["action"] == ACTION_REUSE:
+                entry["text_status"] = "existing"
+        report["text_result"] = self._text_result(text_summary, texts_created, stats)
+        if report["verified"] is False:
+            return {
+                "ok": False, **report,
+                "error": f"Post-write verification failed for {report['verification_failure_count']} row(s); "
+                         "the MDB does not hold the intended values.",
+            }
         return {"ok": True, "error": None, **report}
 
     @staticmethod
-    def _verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows) -> list[str]:
-        """Read the written rows back and compare them with what was intended."""
+    def _text_result(summary, created, stats, failed=0) -> dict[str, Any]:
+        """Actual (executed, and where verified read back) text-block results."""
+        verified = stats is not None
+        return {
+            "texts_created": created,
+            "texts_reused": stats["reused_ok"] if verified else summary["text_reuse"],
+            "rows_linked": stats["rows_linked_ok"] if verified else None,
+            "links_preserved": stats["preserved_ok"] if verified else summary["text_preserve"],
+            "text_operations_skipped": summary["text_missing_or_ambiguous"],
+            "text_operations_failed": failed + (len(stats["failures"]) if verified else 0),
+            "readback_verified": verified,
+        }
+
+    @staticmethod
+    def _verify_writes(mdb, mdb_service, value_updates, price_rows, global_rows,
+                       text_rows_new=(), text_plan=(), text_lang_cols=(), package_id=None):
+        """Read the written rows back and compare them with what was intended.
+
+        Returns ``(failures, stats)``: ``failures`` lists every mismatch (price
+        values, list/variant identity, text links, text content, duplicate texts,
+        dangling references); ``stats`` holds the verified text-block counts.
+        """
         expected: dict[str, dict[Any, tuple[float, Any, Any]]] = {"tCOMd_Price": {}, "tCOMd_GlobalPrice": {}}
         pk = {"tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID"}
         for op in value_updates:
@@ -612,23 +761,60 @@ class PriceMdbExportService(BaseService):
             for row in rows:
                 expected[table][row[pk[table]]] = (
                     row["com_PriceValue"], row["com_PriceListID"], row["com_VariantCondition"])
+        # Text links expected on global rows: inserted rows carry the planned id,
+        # preserved/unlinked rows must still hold what they held before.
+        expected_text_link: dict[Any, Any] = {r["com_GlobalPriceID"]: r.get("com_TextID") for r in global_rows}
+        for entry in text_plan:
+            if entry["action"] in (ACTION_PRESERVE, ACTION_UNLINKED):
+                for row_id in entry.get("row_ids") or []:
+                    expected_text_link[row_id] = entry["text_id"]
+        created = {r["com_TextID"]: r for r in text_rows_new}
+        referenced = {v for v in expected_text_link.values() if v is not None} | set(created)
+
         queries: dict[str, str] = {}
         for table, wanted in expected.items():
             ids = sorted(wanted)
             for n in range(0, len(ids), 400):
                 chunk = ", ".join(str(i) for i in ids[n:n + 400])
+                extra = ", com_TextID" if table == "tCOMd_GlobalPrice" else ""
                 queries[f"{table}:{n}"] = (
-                    f"SELECT {pk[table]} AS id, com_PriceValue, com_PriceListID, com_VariantCondition "
+                    f"SELECT {pk[table]} AS id, com_PriceValue, com_PriceListID, com_VariantCondition{extra} "
                     f"FROM {table} WHERE {pk[table]} IN ({chunk})")
+        unchanged_ids = sorted(i for i in expected_text_link if i not in expected["tCOMd_GlobalPrice"])
+        for n in range(0, len(unchanged_ids), 400):
+            chunk = ", ".join(str(i) for i in unchanged_ids[n:n + 400])
+            queries[f"links:{n}"] = (
+                f"SELECT com_GlobalPriceID AS id, com_TextID FROM tCOMd_GlobalPrice "
+                f"WHERE com_GlobalPriceID IN ({chunk})")
+        text_ids = sorted(referenced)
+        lang = ", ".join(text_lang_cols)
+        for n in range(0, len(text_ids), 400):
+            chunk = ", ".join(str(i) for i in text_ids[n:n + 400])
+            queries[f"texts:{n}"] = (
+                "SELECT com_TextID AS id, com_PackageID, com_TextTypeCode, com_TextName"
+                + (", " + lang if lang else "") + f" FROM tCOMd_Text WHERE com_TextID IN ({chunk})")
+        names = sorted({r["com_TextName"] for r in text_rows_new})
+        for n in range(0, len(names), 100):
+            in_list = ", ".join("'" + x.replace("'", "''") + "'" for x in names[n:n + 100])
+            queries[f"textdup:{n}"] = (
+                "SELECT com_TextName, COUNT(*) AS n FROM tCOMd_Text WHERE com_TextTypeCode = 'price' "
+                f"AND com_PackageID = {package_id} AND com_TextName IN ({in_list}) GROUP BY com_TextName")
+        stats = {"texts_ok": set(), "reused_ok": 0, "rows_linked_ok": 0, "preserved_ok": 0, "failures": []}
         if not queries:
-            return []
+            return [], stats
         try:
             read = mdb_service.read_tables(mdb, queries)
         except Exception as exc:  # unreadable after a write is itself a failure
-            return [f"read-back failed: {exc}"]
+            stats["failures"] = [f"read-back failed: {exc}"]
+            return [f"read-back failed: {exc}"], stats
+
+        def rows_of(prefix):
+            return [r for chunk, rows in read.items() if chunk.startswith(prefix + ":") for r in rows]
+
         failures: list[str] = []
+        text_failures: list[str] = []
         for table, wanted in expected.items():
-            found = {r["id"]: r for chunk, rows in read.items() if chunk.startswith(table + ":") for r in rows}
+            found = {r["id"]: r for r in rows_of(table)}
             for row_id, (value, list_id, varcond) in wanted.items():
                 row = found.get(row_id)
                 if row is None:
@@ -644,4 +830,47 @@ class PriceMdbExportService(BaseService):
                         str(row["com_PriceListID"]) != str(list_id)
                         or str(row["com_VariantCondition"] or "") != str(varcond or "")):
                     failures.append(f"{table} {row_id}: list/variant differs from intended")
-        return failures
+
+        link_rows = {r["id"]: r for r in rows_of("tCOMd_GlobalPrice")}
+        link_rows.update({r["id"]: r for r in rows_of("links")})
+        texts = {r["id"]: r for r in rows_of("texts")}
+        link_ok: dict[Any, bool] = {}
+        for row_id, want in expected_text_link.items():
+            row = link_rows.get(row_id)
+            if row is None:
+                continue  # already reported as a missing price row
+            got = row.get("com_TextID")
+            if str(got if got is not None else "") != str(want if want is not None else ""):
+                text_failures.append(f"tCOMd_GlobalPrice {row_id}: text link {got} != {want}")
+            elif want is not None and want not in texts:
+                text_failures.append(f"tCOMd_GlobalPrice {row_id}: text {want} does not exist (dangling)")
+            else:
+                link_ok[row_id] = True
+        for text_id, want in created.items():
+            row = texts.get(text_id)
+            if row is None:
+                text_failures.append(f"tCOMd_Text {text_id}: row missing after write")
+                continue
+            bad = [c for c in ("com_TextTypeCode", "com_TextName", *text_lang_cols)
+                   if str(row.get(c) or "") != str(want.get(c) or "")]
+            if str(row.get("com_PackageID")) != str(want["com_PackageID"]):
+                bad.append("com_PackageID")
+            if bad:
+                text_failures.append(f"tCOMd_Text {text_id}: {', '.join(bad)} differ from intended")
+            else:
+                stats["texts_ok"].add(text_id)
+        for row in rows_of("textdup"):
+            if int(row.get("n") or 0) != 1:
+                text_failures.append(f"tCOMd_Text '{row.get('com_TextName')}': {row.get('n')} duplicate texts")
+
+        inserted_global_ids = {r["com_GlobalPriceID"] for r in global_rows}
+        for entry in text_plan:
+            ids = entry.get("row_ids") or []
+            if entry["action"] == ACTION_REUSE and ids and all(link_ok.get(i) for i in ids):
+                stats["reused_ok"] += 1
+            if entry["action"] in (ACTION_REUSE, ACTION_CREATE, ACTION_LINK_NEW):
+                stats["rows_linked_ok"] += sum(1 for i in ids if i in inserted_global_ids and link_ok.get(i))
+            if entry["action"] == ACTION_PRESERVE and ids and all(link_ok.get(i) for i in ids):
+                stats["preserved_ok"] += 1
+        stats["failures"] = text_failures
+        return failures + text_failures, stats
