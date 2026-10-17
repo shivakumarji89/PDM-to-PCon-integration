@@ -66,6 +66,18 @@ def test_default_names_use_year_and_the_sole_mid_year_suffix():
     assert default_names(["EUR"], "20270705", lists, named) == {"EUR": "EURO_2027_2"}
 
 
+def test_default_names_skip_occupied_suffixes_and_other_currency_names():
+    lists = [
+        L(19, "EURO_2026", "EUR", "20260101", "20260906"),
+        L(20, "EURO_2026_2", "EUR", "20260101", "20260906"),
+        L(21, "GBP_2027", "EUR"),
+    ]
+
+    assert default_names(["EUR"], "20261016", lists) == {"EUR": "EURO_2026_3"}
+    assert default_names(["EUR"], "20270105", lists) == {"EUR": "EURO_2027"}
+    assert default_names(["GBP"], "20270105", lists) == {"GBP": "GBP_2027_2"}
+
+
 def test_reuse_existing_list_covering_the_date():
     plan = resolve_targets({"EUR": "EURO_2026_2"}, [L(21, "EURO_2026_2", "EUR")], {"21"}, "20261016")["EUR"]
     assert (plan.action, plan.list_id, plan.ok, plan.linked) == ("reuse", 21, True, True)

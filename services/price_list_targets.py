@@ -142,8 +142,8 @@ def default_names(
     snapshot_lists: Sequence[Any] = (),
 ) -> dict[str, str]:
     """Prefilled target names. A list the snapshot already names for a currency
-    wins; otherwise ``EURO_<year>`` / ``GBP_<year>``, moving to the sole mid-year
-    suffix ``_2`` when the base list exists but does not cover the computation date."""
+    wins; otherwise use ``EURO_<year>`` / ``GBP_<year>`` or the first available
+    numeric suffix when that name is occupied."""
     names: dict[str, str] = {}
     year = comp_date[:4] if len(comp_date) == 8 else ""
     for ccy in dict.fromkeys((c or "").strip().upper() for c in currencies if c):
@@ -154,17 +154,22 @@ def default_names(
             names[ccy] = named.replace(" ", "_")
             continue
         base = f"{currency_token(ccy)}_{year}" if year else currency_token(ccy)
-        chosen = base
-        for suffix in ("", "_2"):
-            candidate = base + suffix
-            same = [r for r in existing_lists
-                    if label_key(r.get("com_PriceListLabel")) == label_key(candidate)
-                    and str(r.get("sys_ISOCurrencyCode") or "").strip().upper() == ccy]
-            chosen = candidate
-            if not same:
+        suffix = 0
+        while True:
+            candidate = base if suffix == 0 else f"{base}_{suffix}"
+            matches = [
+                r for r in existing_lists
+                if label_key(r.get("com_PriceListLabel")) == label_key(candidate)
+            ]
+            reusable = [
+                r for r in matches
+                if str(r.get("sys_ISOCurrencyCode") or "").strip().upper() == ccy
+                and _covers(r, comp_date)
+            ]
+            if not matches or (len(matches) == 1 and len(reusable) == 1):
+                chosen = candidate
                 break
-            if any(_covers(r, comp_date) for r in same):
-                break
+            suffix = 2 if suffix == 0 else suffix + 1
         names[ccy] = chosen
     return names
 
