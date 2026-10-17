@@ -188,3 +188,12 @@ def test_target_selectors_offer_currency_scoped_lists_and_create_new():
     assert dialog.names()["EUR"] != "EURO_2026_2"
     assert dialog.plans["EUR"].action == "create"
     assert dialog.plans["EUR"].ok
+
+
+
+def test_pricing_computes_eur_and_gbp_even_without_snapshot_price_lists():
+    from services.pricing_service import PriceParams, PricingService
+
+    snapshot = Snapshot()
+    service = PricingService.__new__(PricingService)
+    assert service.target_currencies(snapshot, PriceParams(currency="USD")) == ["EUR", "GBP"]
