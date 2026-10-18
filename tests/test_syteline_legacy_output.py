@@ -39,7 +39,7 @@ def test_legacy_character_filter_keeps_only_source_allow_list_and_controls():
 def test_legacy_record_normalization_preserves_source_replacements():
     assert normalize_legacy_record("HAR-F\tBOCFAB-OF-2-HAR\té") == "H-F\tBOCFAB-OF-2-HAR\t"
     assert normalize_legacy_record("x-BOCFAB-y") == "x-BOCFAB-y"
-    assert normalize_legacy_record("x-BOCFAB-BOCFAB-OF-2-HAR") == "x-BOCFAB-BOCFAB-OF-2-HAR"
+    assert normalize_legacy_record("x-BOCFAB-OF-2-HAR") == "x-OF-2-HAR"
 
 
 def test_item_records_are_deduplicated_and_9f_materials_deduplicate_by_first_field():
