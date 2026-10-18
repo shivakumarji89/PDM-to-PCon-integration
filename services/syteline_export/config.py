@@ -15,7 +15,7 @@ ScopeMode = Literal["products", "range", "list"]
 LEGACY_TSV_HEADERS: dict[str, tuple[str, ...]] = {
     "description": ("Lang", "Item", "Description"),
     "planning": (
-        "Item", "Description", "Product Code", "Vendor", "Call", "Stocked",
+        "Item", "Description", "Product Code", "Vendor Call", "Stocked",
         "Dock to Stock", "Fixed lead time", "Planner Code", "Days Supply",
         "Safety Stock", "Buyer", "CustomH", "CustomW", "CustomD",
         "Gross Weight", "LocRank", "Location", "Origin Country", "Pack qty",
