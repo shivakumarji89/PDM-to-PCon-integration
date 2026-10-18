@@ -251,6 +251,14 @@ class SyteLineExportPage(BasePage):
             self.region = self._combo(["EMEA", "Asia", "LAC", "USA"], "EMEA")
             layout.addWidget(self.region, row, 1, 1, 2)
             row += 1
+            self.compare_xml = QPushButton("Compare")
+            self.validate_xml = QPushButton("Validate")
+            for button in (self.compare_xml, self.validate_xml):
+                button.setEnabled(False)
+                button.setToolTip("Legacy XML comparison/validation requires the OFDA data and validation workflow.")
+            layout.addWidget(self.compare_xml, row, 1)
+            layout.addWidget(self.validate_xml, row, 2)
+            row += 1
         if include_pbom:
             layout.addWidget(QLabel("PBOM Type:"), row, 0)
             self.pbom_type = self._combo([])
