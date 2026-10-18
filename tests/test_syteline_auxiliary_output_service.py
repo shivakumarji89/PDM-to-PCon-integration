@@ -122,7 +122,7 @@ def test_header_only_outputs_match_legacy_verbose_extract(tmp_path):
     with outputs["planning"].open(encoding="utf-8-sig", newline="") as stream:
         planning = stream.read()
     assert description == "Lang\tItem\tDescription\r\n"
-    assert planning.startswith("Item\tDescription\tProduct Code\tVendor Call\tStocked\r\n")
+    assert planning.startswith("Item\tDescription\tProduct Code\tVendor Call\tStocked\tDock to Stock\t")
     assert planning.endswith("Kanban qty\r\n")
     assert outputs["description"].parent == tmp_path / "temp"
 
