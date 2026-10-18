@@ -377,7 +377,7 @@ class SyteLineExportPage(BasePage):
         self.item_list.model().rowsRemoved.connect(self._save_settings)
         for widget in (self.export_products, self.range_check, self.list_check):
             widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
-        self.filter_product_code.toggled.connect(self._update_scope_controls)
+        self.filter_product_code.toggled.connect(lambda *_args: self._update_scope_controls())
 
     def _save_settings(self, *_args) -> None:
         for key, widget in [
