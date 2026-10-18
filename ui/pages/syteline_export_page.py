@@ -393,12 +393,38 @@ class SyteLineExportPage(BasePage):
             language=self.language.currentText().strip(),
             currency=self.currency.currentText().strip(),
             scope_mode=scope_mode,
+            site_id=int(self.site.currentData() or 0),
+            catalogue_id=int(self.catalogue.currentData() or 0),
+            language_id=int(self.language.currentData() or 0),
+            other_language_id=int(self.other_language.currentData() or 0),
+            currency_id=int(self.currency.currentData() or 0),
+            product_code_id=(
+                int(self.product_line.currentData() or 0)
+                if self.filter_product_code.isChecked() else -1
+            ),
+            effective_date=self.effective_date.date().toString("yyyy-MM-dd"),
+            export_all_catalogues_in_site=self.export_all_in_site.isChecked(),
+            active_only=self.checks["active_only"].isChecked(),
+            export_base_prices=self.checks["base_prices"].isChecked(),
+            export_bom_data=self.export_bom_data.isChecked(),
+            extend_sp_options=self.checks["extend_sp_options"].isChecked(),
+            length5_feats=self.checks["length_5_feats"].isChecked(),
+            ignore_option_dependencies=self.checks["ignore_option_dependencies"].isChecked(),
+            unique_components=self.checks["unique_phantoms"].isChecked(),
+            plc_phantoms=self.checks["plc_prefix"].isChecked(),
+            exclude_superproducts=self.checks["csi_exclude_superproducts"].isChecked(),
+            superproducts_only=self.checks["superproducts_only"].isChecked(),
+            flatten_fabrics=self.checks["flatten_fabrics"].isChecked() if "flatten_fabrics" in self.checks else False,
+            include_url=self.checks["include_url"].isChecked(),
+            short_description=self.checks["short_description"].isChecked(),
+            format_csi=self.tabs.currentIndex() == 1,
+            export_mode=("syteline", "csi", "ofda", "other")[self.tabs.currentIndex()],
             min_item=self.min_item.text(),
             max_item=self.max_item.text(),
             item_list=items,
             options=frozenset(options),
         )
-        errors = config.validate()
+        errors = config.validate_for_execution()
         if errors:
             self.status.setText("Setup validation failed: " + " ".join(errors))
             return
