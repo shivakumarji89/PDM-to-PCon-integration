@@ -12,6 +12,11 @@ This is a separate top-level module in MK Product Workbench based on
 - Local persistence for editable controls and selected item lists using application settings.
 - Local scope-control behavior: range endpoints are enabled only for range mode and item-list editing is
   enabled only for list mode.
+- Read-only metadata loading for site, language, currency, permitted catalogue and product-code choices, using
+  source-mapped legacy PDM queries and parameterized user/site/catalogue IDs. The authenticated PDM User ID is
+  required to query the legacy `PDMUserCatalogues` access list.
+- Source-mapped SQL and atomic TSV writers for price-formula and product-code outputs. The legacy product-code
+  file's five-column header/four-column row mismatch is preserved deliberately.
 - Clear UI guardrails for functions whose data dependencies have not been ported: scheduler, contract
   loading, multi-site/language/currency selection, BOM export, queueing and live export remain disabled.
   Compare/Validate XML also remain disabled until their legacy behavior is ported.
