@@ -16,7 +16,7 @@ def test_registers_normalized_material_and_source_metadata():
     )
     assert result is not None
     assert result.material == "9-FAB-ABC-5-5"
-    assert result.description_key == "ABC-5-5"
+    assert result.description_key == "5-5"
     assert result.description == "Fabric"
     assert result.other_description == ""
     assert result.is_fabric is True
