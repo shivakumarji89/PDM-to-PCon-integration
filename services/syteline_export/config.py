@@ -118,6 +118,8 @@ class SyteLineExportConfig:
     exclude_superproducts: bool = False
     superproducts_only: bool = False
     flatten_fabrics: bool = False
+    include_url: bool = True
+    short_description: bool = True
     miller_cad: bool = False
     item_report: bool = False
     send_tradenet: str = ""
