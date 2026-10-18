@@ -486,7 +486,10 @@ class PriceMdbExportService(BaseService):
         planned_bases: set[tuple] = set()
         planned_global_bases: set[tuple] = set()
 
-        def is_surcharge(vc):
+        def is_surcharge(record):
+            if record.source_item and record.pdm_lookup_code:
+                return record.pdm_lookup_code != record.source_item
+            vc = record.variant_condition
             vc = vc or ""
             return " " in vc and "=" in vc and vc.index(" ") < vc.index("=")
 
@@ -497,7 +500,7 @@ class PriceMdbExportService(BaseService):
                     priced = float(record.value) != 0.0 and __import__("math").isfinite(float(record.value))
                 except (TypeError, ValueError):
                     priced = False
-                if mapped is not None and priced and not is_surcharge(record.variant_condition):
+                if mapped is not None and priced and not is_surcharge(record):
                     planned_global_bases.add(
                         (str(package_id), str(mapped["id"]), (record.variant_condition or "").casefold(), ""))
                 continue
@@ -566,7 +569,7 @@ class PriceMdbExportService(BaseService):
                 table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
                 stale = 0
                 matched_rows = existing_map[row_key]
-                if not is_global or not is_surcharge(record.variant_condition):
+                if not is_global or not is_surcharge(record):
                     # PDM's Article base/surcharge and Global base lookups retain
                     # only the last matching ID; its Global surcharge loop
                     # processes each existing row.
@@ -625,8 +628,9 @@ class PriceMdbExportService(BaseService):
             if not is_global and (record.level or "B").strip() == "X":
                 bk = base_key(article_id, price_list["id"], record.variant_condition)
                 no_base = bk not in planned_bases and bk not in existing_base_keys
-            elif is_global and is_surcharge(record.variant_condition):
-                gk = (str(package_id), str(price_list["id"]), record.variant_condition.split(" ")[0].casefold(), "")
+            elif is_global and is_surcharge(record):
+                source_item = record.source_item or record.variant_condition.split(" ")[0]
+                gk = (str(package_id), str(price_list["id"]), source_item.casefold(), "")
                 no_base = gk not in planned_global_bases and gk not in existing_global_base_keys
             if no_base:
                 skipped_no_base += 1

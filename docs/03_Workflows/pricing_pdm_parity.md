@@ -46,7 +46,95 @@ never consults `tCOMd_DistributionRegionPriceList` - the list is whatever the us
 * Every vendor global row has a `com_TextID`; all 760 variants of the earlier export resolve through the
   PDM text-name rule to an existing `price` text.
 
-## Global increment fetch comparison (PDM Test, 2026-10-18)
+## Current Global source implementation and measured limits
+
+Work continued on `main` after safely fast-forwarding to `199540b` (the remote
+Syteline changes were preserved). Global pricing no longer uses the filtered
+`PDMOptionDataReportWithIncList` wrapper. A dedicated source query in
+[`pdm_repository.py`](../../repositories/pdm_repository.py) reproduces PDM's
+selected catalogue/direct-and-parent-component scope, substring item scope,
+active status, site/override product code, currency/matrix joins,
+`FabricBands.Application=1`, and projected SQL ordering. The generic option
+report procedure is unchanged for other consumers.
+
+Both compute paths in
+[`pricing_service.py`](../../services/pricing_service.py) propagate catalogue
+and program; missing catalogue fails explicitly. `BasePriceRef` selects the
+correct initial increment field, but the secondary predicate deliberately
+remains `IncrementalPrice = selected_raw`, including references 2/3.
+The source's first-index cache, last non-null secondary value, and -1 sentinel
+are preserved. This is not a generic quantity-tier implementation: a fresh
+schema read found three alternative base/increment fields and one component
+`Quantity`. Meeting Table `GETH.1022FS4W` populates only field 1; Florence
+`1205S1BQ` populates all three; live site-9 Embody/CD cases exercise references
+2/3. Bands are selected independently from Application 1.
+
+Source/raw lookup identity and stored target condition are now separate,
+backward-compatible snapshot metadata (`source_item`, `pdm_lookup_code`).
+Substring-expanded items stay Global. RYM/RYT conditions now follow the actual
+source key (`3848=RYMPSH.12SW_OKG`, for example); product-code attachment and
+export surcharge/base classification preserve that identity even without a
+space. Fake-target tests cover duplicate surcharge updates and missing bases.
+
+**Evidence B, independent original-source SQL versus actual repository calls
+on PDMTEST**, GBP/EUR, 15/16-Oct-2026:
+
+| Measured stage | Before | After |
+|---|---|---|
+| Global calculated increments, 108 scenarios | 596 exact / 1,340 comparison slots = **44.48%**; 68/108 multiset passes, 60 ordered | **1,052/1,052 exact**, 108/108 multiset and order passes |
+| Global source-lookup metadata, same scenarios | 316/1,340 = **23.58%**; 60/108 multiset passes, 52 ordered | **1,052/1,052 exact**, 108/108 multiset and order passes |
+| Article fetch, 96 scenarios, unchanged implementation | **936/936 exact** | **936/936 exact** |
+
+The denominator includes same-identity field differences, missing and extra
+records; duplicates are not collapsed. Global totals exclude base observations.
+Sixteen corrected Global scenarios are empty controls; all 92 nonempty
+scenarios match. These results do **not** measure exported or physical rows.
+
+A supplemental nonempty Ratio-accessories sample, `RZTA.`/405/site 1 at
+16-Oct-2026 in both currencies, matches all four measured stages, **6/6**
+records. No nonempty `swoop`/`memo` fixture was found; those branches and
+Ratio's category-wide Worksurfaces/Screens modes remain live-unverified.
+
+**Known boundary, not completed parity:** a separate current-code 14-scenario
+sample (RYM, RYT, `lf` MRFN, `av` AS2, site-9 Embody) matches **318/318** source
+records, source projections and source-lookup metadata. The actual prepared
+condition parsed by PDM matches only **20/318 (6.29%)**, 4/14 scenarios.
+There are 298 lookup-field differences for `lf`/`av`/`embody`: PDM compares
+plain source codes such as `AJ`, while the tool prepares
+`MRFN121HWAP 9227=AJ`. Storing the source key does not make those target
+conditions equivalent. No unsafe plain-code placeholders were invented.
+Read-only target rows/list/package context are needed to replay the original
+target scan, parser, item-reference and band fallback before correcting that
+boundary safely. Actual UI and current physical MDB output remain **NOT
+VERIFIED**.
+
+The procedure definition still returns null and `VIEW DEFINITION` permission
+is 0. An approved DBA definition/grant is required to inspect its internals,
+but it is no longer a dependency of Global source fetching.
+
+Fresh validation: **113 focused**, **159 broader non-GUI**, and **21 offscreen
+GUI** pricing tests pass; changed-file editor diagnostics are clear.
+Article duplicate-loop tests retain
+the last supplied target row, but physical duplicate-ID parity cannot be
+claimed without deterministic MDB ordering. No Development/Metatype changes,
+MDB-writing differential run, live MDB write, or production export occurred.
+
+Exact inputs, missing/extra counts, source/cache details, regression commands,
+and the deliberately failing target-condition measurement are in
+[`pdm_ui_tool_fetch_parity.md`](./pdm_ui_tool_fetch_parity.md). The read-only
+comparison command is:
+
+```powershell
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --article
+```
+
+The current script includes target-condition checks and exits 1 for their
+known mismatches; a source-only 100% figure must not hide that result.
+
+## Historical filtered-procedure comparison (PDM Test, 2026-10-18)
+
+The following narrower captures predate the source-query implementation above
+and are retained as historical evidence, not current full-workflow verification.
 
 For `GETH.1022FS4W`, GBP, `16-Oct-2026`, site 1, catalogue 660,
 `layout_studio` (`variableincs=true`), the original PDM source query returned
@@ -60,7 +148,7 @@ price-bearing options for this item.
 For all 16 price-bearing rows, the key `(OptionValueId, OptionId,
 OrderCodeValue)` matched, and PDM's `fnGetListPrice` values matched the tool
 procedure's computed `IncPrice`. `PriceBand` was null on both sides. The PDM
-query orders by `OrderCodeValue`; the tool Global fetch now filters inactive
+query orders by `OrderCodeValue`; the then-current Global fetch filtered inactive
 or null-priced rows and sorts by `OrderCodeValue2` to reproduce that order.
 Regression coverage checks all 24 procedure rows, the eight null exclusions,
 and the resulting 16 ordered Global price records.
@@ -226,7 +314,11 @@ written. The MDB is not assumed unwritable.
 | second export | wrote nothing | wrote nothing |
 
 
-## Actual PDM differential (real PDM, not a transcription)
+## Historical actual PDM differential (real PDM, not a transcription)
+
+This committed capture predates the current source-query changes. It was not
+rerun for this update; its compiled-runtime/MDB outcomes are not new UI or
+target verification of the implementation above.
 
 **What was run.** The installed, compiled `PDMMaintenance.exe` (assembly version 1.0.9686.24988; its method signatures
 match the source in `Desktop\PDM`) was loaded as a library from a copy and `UpdatePriceThread.execThread` - the method
@@ -245,7 +337,7 @@ every INSERT/UPDATE in the exercised PDM methods targets `tCOMd_*` Jet tables. H
 | S2 same, EUR list 21 | yes | **MATCH** |
 | S3 first prices for articles that exist but have no price row | yes | **MATCH** (rows, validity) |
 | S4 duplicate article identity, one stale | yes | **MATCH** |
-| S4b duplicate identity, both stale | yes | difference, intentional (below) |
+| S4b duplicate identity, both stale | yes | historical difference; subsequent duplicate-loop fix retains the last supplied row |
 | S5 / S8 global base + surcharge update, GBP / EUR, one missing global row | yes | identical except the missing row: PDM's value update never inserts (needs its placeholders step) |
 | S6 PDM two-step (placeholders -> values) vs Pricing one step, text reused | yes | **MATCH** |
 | S7 same, price text missing: created | yes | **MATCH** (text name, type, `<item>  (<Product_Code>)` in 4 languages, link) |
@@ -270,7 +362,7 @@ real MDB every article upcharge has a base row (0 of 24 dangle) and every global
 
 | Difference | Real-PDM evidence | Disposition |
 |---|---|---|
-| Duplicate identities: Pricing updates every stale duplicate | S4b: PDM updated only the last-read row, left the other at the stale value | Intentional - pCon may read either row. Real-MDB scope has no duplicates (`duplicate_matches` 0). |
+| Historical duplicate identities: Pricing updated every stale duplicate | S4b: PDM updated only the last-read row, left the other at the stale value | Subsequently fixed to retain the last supplied Article/base row. Physical ID agreement is unverified because target queries do not guarantee row order. |
 | Existing text content is not rewritten | S10: PDM reset a hand-edited label to `GE2HBS.  (FR-AA-US)` | Intentional - the price export is not a text-maintenance tool; label is cosmetic. Consequence: a text PDM would refresh stays as it is. |
 | Text lookup restricted to `com_TextTypeCode = 'price'` | S11: PDM linked the new global row to an `artlong` text and **overwrote that article text's labels** | Intentional and protective. 0 such collisions in the real MDB today. |
 | Ambiguous price-text name blocks the row | `tCOMd_Text` rejects a second text with the same package + type + name (case-insensitive; verified: "duplicate values in the index"), so this cannot occur within type `price` | Defensive only; kept and unit-tested. |

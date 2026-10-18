@@ -39,6 +39,9 @@ class PriceRecord:
     #: ``com_TextID`` read from an imported MDB row; empty for computed records
     #: (a computed record has no text id until an export actually writes one).
     text_id: str = ""
+    source_item: str = ""
+    #: PDM's comparison key, not necessarily the stored pCon condition.
+    pdm_lookup_code: str = ""
 
     def key(self) -> tuple[bool, str, str, str, str]:
         """Identity for year-over-year diffing (everything but the value)."""

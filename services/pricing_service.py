@@ -15,9 +15,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
 
+from core.errors import PDMQueryError
 from models.price_record import PriceRecord
 from models.snapshot import Snapshot
-from repositories.pdm_repository import PDMRepository
+from repositories.pdm_repository import GlobalOptionPriceRow, PDMRepository
 from services.base_service import BaseService
 from services.varcond_service import VarCondService
 
@@ -53,6 +54,7 @@ class PriceParams:
     valid_from: str = ""            # com_PriceValidFrom
     valid_to: str = ""              # com_PriceValidTo
     program_code: str = ""          # PDM text_programcode / package reg_ProgramCode
+    catalogue_id: str | int | None = None
 
 
 @dataclass
@@ -169,8 +171,8 @@ class PricingService(BaseService):
 
         Classifies every article as super (global) or plain (article) pricing,
         then fetches base and increment prices from PDM. Article increments use
-        PDM's inline ``fnGetListPrice`` query; global increments retain the
-        option procedure path. Runs once per price-list currency (EUR + GBP + ...)
+        PDM's inline ``fnGetListPrice`` query; global increments use the
+        catalogue-scoped source query. Runs once per price-list currency
         so every list gets its records, fills ``snapshot.price_records`` (the
         persisted baseline) and returns it.
         """
@@ -209,7 +211,9 @@ class PricingService(BaseService):
                     if item in super_codes:
                         inc_rows.extend(
                             repo.fetch_global_option_increment_prices(
-                                [item], cur, params.mydate, params.site_id, conn
+                                [item], cur, params.mydate, params.site_id, conn,
+                                catalogue_id=self._global_catalogue(snapshot, params),
+                                program_code=program_code,
                             )
                         )
                     else:
@@ -255,9 +259,8 @@ class PricingService(BaseService):
 
         Base prices are fetched in small set-based batches to avoid extra base-price
         round trips. Article upcharges use PDM's inline query and Global upcharges
-        use the per-item procedure. Each item's base + upcharge records are emitted
-        immediately after that item completes, so the UI does not wait for the
-        whole 10-item batch.
+        use PDM's catalogue-scoped query. Each item's base + upcharge records are
+        emitted immediately, so the UI does not wait for the whole 10-item batch.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
@@ -334,7 +337,7 @@ class PricingService(BaseService):
 
                     # Fetch each item's increments separately so the completed
                     # item's records can be emitted immediately. Global items use
-                    # PDM's per-item procedure; Article items use the inline query.
+                    # PDM's scoped query; Article items use the inline query.
                     for offset, item in enumerate(chunk):
                         item_no = start + offset + 1
 
@@ -346,7 +349,9 @@ class PricingService(BaseService):
 
                         if item in super_codes:
                             inc_rows = repo.fetch_global_option_increment_prices(
-                                [item], cur, params.mydate, params.site_id, conn
+                                [item], cur, params.mydate, params.site_id, conn,
+                                catalogue_id=self._global_catalogue(snapshot, params),
+                                program_code=program_code,
                             )
                         else:
                             inc_rows = repo.fetch_article_option_increment_prices(
@@ -411,10 +416,20 @@ class PricingService(BaseService):
         return result
 
     @staticmethod
+    def _global_catalogue(snapshot: Snapshot, params: PriceParams) -> str | int:
+        catalogue = params.catalogue_id
+        if catalogue is None:
+            catalogue = getattr(snapshot.product, "catalogue_id", None)
+        if catalogue is None or str(catalogue).strip() == "":
+            raise PDMQueryError("Global pricing requires the selected catalogue.")
+        return catalogue
+
+    @staticmethod
     def _attach_product_codes(records, repo, conn, site_id) -> None:
         """Fill ``product_code`` on global records: PDM's price-text label needs it.
         A lookup failure only leaves the field empty (the exporter reports it)."""
-        items = sorted({r.variant_condition.split(" ", 1)[0] for r in records if r.is_global})
+        items = sorted({r.source_item or r.variant_condition.split(" ", 1)[0]
+                        for r in records if r.is_global})
         if not items or not hasattr(repo, "fetch_item_product_codes"):
             return
         try:
@@ -424,7 +439,9 @@ class PricingService(BaseService):
             return
         for r in records:
             if r.is_global:
-                r.product_code = codes.get(r.variant_condition.split(" ", 1)[0], "")
+                r.product_code = codes.get(
+                    r.source_item or r.variant_condition.split(" ", 1)[0], ""
+                )
 
     @staticmethod
     def _accumulate_currencies(
@@ -481,6 +498,8 @@ class PricingService(BaseService):
                         currency=params.currency,
                         valid_from=params.valid_from,
                         valid_to=params.valid_to,
+                        source_item=item,
+                        pdm_lookup_code=item,
                     )
                 )
             else:
@@ -508,19 +527,24 @@ class PricingService(BaseService):
             if raw is None or str(raw).strip() == "":
                 continue
             code = str(getattr(row, "Code", getattr(row, "OrderCodeValue2", ""))).replace("#", "")
-            if item in super_codes:
-                # Super product increment -> global, full item code (no slicing),
-                # matching PDM: "DTWB1E3.C 3785=CD".
+            if item in super_codes or isinstance(row, GlobalOptionPriceRow):
+                condition = f"{item} {row.OptionId}={code}"
+                if isinstance(row, GlobalOptionPriceRow) and row.LookupCode.startswith(
+                    f"{row.OptionId}={item}_"
+                ):
+                    condition = row.LookupCode.replace("#", "")
                 records.append(
                     PriceRecord(
                         is_global=True,
                         article_code="",
-                        variant_condition=f"{item} {row.OptionId}={code}",
+                        variant_condition=condition,
                         level="",
                         value=float(raw),
                         currency=params.currency,
                         valid_from=params.valid_from,
                         valid_to=params.valid_to,
+                        source_item=item,
+                        pdm_lookup_code=str(getattr(row, "LookupCode", "")),
                     )
                 )
                 continue

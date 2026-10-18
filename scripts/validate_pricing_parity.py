@@ -4,6 +4,10 @@ Proves the batched price queries return values identical to calling PDM's own
 ``fnGetListPrice*`` functions one item at a time, and measures the round-trip
 speedup. Read-only: nothing is written to PDM or any MDB.
 
+This is a batching/self-consistency check, not an original-PDM oracle. For
+duplicate-preserving Global source comparisons use
+``python -B -m scripts.pdm_differential.fetch_parity --article``.
+
 Because it needs a live PDM SQL Server connection it is NOT part of the offline
 suite - run it explicitly against real item codes:
 

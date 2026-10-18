@@ -12,6 +12,8 @@ Read-only: this repository never writes to PDM.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Sequence
 
 from core.errors import PDMConnectionError, PDMQueryError
@@ -71,6 +73,19 @@ class _ArticleIncPriceRow:
         self.Code = self.OrderCodeValue
         self.IncPrice = getattr(row, "IncPrice", None)
         self.PriceBand = getattr(row, "PriceBand", None)
+
+
+@dataclass
+class GlobalOptionPriceRow:
+    Item: str
+    OptionValueId: int
+    OptionId: int
+    Code: str
+    SourceCode: str
+    LookupCode: str
+    RawIncrement: Decimal
+    PriceBand: int | None
+    IncPrice: Decimal | int
 
 
 class PDMRepository(BaseRepository):
@@ -1532,30 +1547,169 @@ class PDMRepository(BaseRepository):
         mydate: str,
         site_id: int,
         connection: Any = None,
-    ) -> list[Any]:
-        """Return the active, priced global increment rows.
+        *,
+        catalogue_id: str | int,
+        program_code: str = "",
+    ) -> list[GlobalOptionPriceRow]:
+        """Replay PDM's per-item Global query, secondary calculation and cache.
 
-        PDM's global path excludes options without source increment rows and
-        discards rows without a calculated increment before matching pCon records.
-        The shared procedure can return such rows, so keep them out of the global
-        pricing pipeline and preserve PDM's OrderCodeValue ordering.
+        This is the UpdatePriceThread path (categoryId=-1, categoryname="").
+        The generic option-report procedure is deliberately not used here.
         """
-        rows = self.fetch_item_option_increment_prices(
-            items, currency, mydate, site_id, connection
+        if catalogue_id is None or str(catalogue_id).strip() == "":
+            raise PDMQueryError("Global pricing requires the selected catalogue.")
+        owns_connection = connection is None
+        conn = self.get_connection() if owns_connection else connection
+        result: list[GlobalOptionPriceRow] = []
+        try:
+            for item in (str(value) for value in items if value):
+                query, params = self._global_price_query(
+                    item, currency, mydate, site_id, catalogue_id, program_code
+                )
+                source_rows = self._execute(query, params, connection=conn)
+                cached_items: list[str] = []
+                cached_raw: list[Decimal] = []
+                cached_prices: list[Decimal] = []
+                for row in source_rows:
+                    raw = row.RawIncrement
+                    if raw is None:
+                        continue
+                    source_item = str(row.Item)
+                    source_code = str(row.OrderCodeValue or "")
+                    prefix = self._global_source_prefix(source_item, program_code)
+                    if item.startswith("WE51"):
+                        prefix = f"{source_item} {row.OptionId}="
+                    code = source_code[len(prefix):] if prefix else source_code
+                    item_index = (
+                        cached_items.index(source_item)
+                        if source_item in cached_items else -1
+                    )
+                    raw_index = cached_raw.index(raw) if raw in cached_raw else -1
+                    price: Decimal | int = -1
+                    if item_index >= 0 and item_index == raw_index:
+                        price = cached_prices[raw_index]
+                    else:
+                        secondary, secondary_params = self._global_price_query(
+                            item, currency, mydate, site_id, catalogue_id,
+                            program_code, option_value_id=row.OptionValueId,
+                            raw_increment=raw,
+                        )
+                        for calculated in self._execute(
+                            secondary, secondary_params, connection=conn
+                        ):
+                            if calculated.NewPrice is not None:
+                                cached_items.append(str(calculated.Item))
+                                cached_raw.append(raw)
+                                cached_prices.append(calculated.NewPrice)
+                                price = calculated.NewPrice
+                    # The original helper tests count > -1, so a successful
+                    # query always takes this branch, even for zero option IDs.
+                    lookup = (
+                        f"{row.OptionId}={source_code}"
+                        if program_code == "revive"
+                        and source_item.startswith(("RYM", "RYT"))
+                        else source_code.replace("_", f" {row.OptionId}=")
+                    )
+                    result.append(GlobalOptionPriceRow(
+                        source_item, row.OptionValueId, row.OptionId, code,
+                        source_code, lookup, raw, row.PriceBand, price,
+                    ))
+        finally:
+            if owns_connection:
+                conn.close()
+        return result
+
+    @staticmethod
+    def _global_source_prefix(item: str, program_code: str) -> str:
+        nonvariable = {
+            "aeron", "verus", "lino", "embody", "cosm", "mirra2", "sayl",
+            "setu", "celle", "keyn", "caper", "mirra", "em", "lf", "av",
+            "ce", "cp",
+        }
+        if program_code.lower().replace("_", "").replace(" ", "") in nonvariable:
+            return ""
+        return item if program_code == "memo" else item + "_"
+
+    @staticmethod
+    def _global_price_query(
+        item: str,
+        currency: str,
+        mydate: str,
+        site_id: int,
+        catalogue_id: str | int,
+        program_code: str,
+        *,
+        option_value_id: int | None = None,
+        raw_increment: Decimal | None = None,
+    ) -> tuple[str, tuple[Any, ...]]:
+        selected = """CASE WHEN pc.BasePriceRef = 1 THEN itov.IncrementalPrice
+            WHEN pc.BasePriceRef = 2 THEN itov.IncrementalPrice2
+            WHEN pc.BasePriceRef = 3 THEN itov.IncrementalPrice3 END"""
+        if item.startswith("WE51"):
+            code = "Item.Item + ' ' + CONVERT(varchar, optval.OptionId) + '=' + optval.OrderCodeValue"
+        elif PDMRepository._global_source_prefix(item, program_code):
+            separator = "" if program_code == "memo" else "_"
+            code = f"Item.Item + '{separator}' + optval.OrderCodeValue"
+        else:
+            code = "optval.OrderCodeValue"
+        secondary = option_value_id is not None
+        projection = (
+            f"""Item.Item, optval.OptionValueId, optval.OrderCodeValue,
+                dbo.fnGetListPrice(?, {selected}, pc.PriceCode, ?, 'DMY',
+                    pm.Rounding, ?, NULL) AS NewPrice, fb.PriceBand"""
+            if secondary else
+            f"""Item.Item, optval.OptionValueId, optval.OptionId,
+                {code} AS OrderCodeValue, {selected} AS RawIncrement, fb.PriceBand"""
         )
-        if any(row.Status is None for row in rows):
-            raise PDMQueryError(
-                "Global option-price results did not include option Status."
+        scopes = (
+            """INNER JOIN CatalogueItems ci ON Item.ItemId = ci.ItemId
+                AND ci.CatalogueId = ?""",
+            """INNER JOIN ItemComponents itco ON Item.ItemId = itco.SubItemId
+                INNER JOIN Item parent_item ON itco.ItemId = parent_item.ItemId
+                INNER JOIN CatalogueItems ci_parent
+                    ON parent_item.ItemId = ci_parent.ItemId
+                    AND ci_parent.CatalogueId = ?""",
+        )
+        branches: list[str] = []
+        parameters: list[Any] = []
+        for scope in scopes:
+            branches.append(f"""
+                SELECT DISTINCT {projection}
+                FROM ItemOptionValues itov
+                CROSS JOIN (SELECT NULL AS ProductCodeIdOverride) x
+                INNER JOIN OptionValue optval ON itov.OptionValueId = optval.OptionValueId
+                INNER JOIN Item ON itov.ItemId = Item.ItemId
+                {scope}
+                INNER JOIN Product ON Item.ProductId = Product.ProductId
+                INNER JOIN Product_Code pc ON CASE WHEN (
+                    SELECT ProductCodeIdOverride FROM Item i2 WHERE i2.ItemId = Item.ItemId
+                ) IS NOT NULL THEN (
+                    SELECT ProductCodeIdOverride FROM Item i2 WHERE i2.ItemId = Item.ItemId
+                ) ELSE Product.ProductCodeId END = pc.ProductCodeId AND pc.SiteId = ?
+                INNER JOIN PriceMatrix pm ON pc.PriceCode = pm.ItemPriceCode
+                INNER JOIN Currency ON pm.CustPriceCode = Currency.PriceCode
+                    AND Currency.Currency = ?
+                INNER JOIN ProductRange pr ON Product.ProductRangeId = pr.ProductRangeId
+                LEFT OUTER JOIN FabricBands fb ON itov.OptionValueId = fb.OptionValueId
+                    AND fb.Application = 1
+                WHERE """ + (
+                    "optval.OptionValueId = ? AND itov.IncrementalPrice = ?"
+                    if secondary else "optval.Status = 1"
+                ) + {
+                    "swoop": " AND (Product.Product LIKE 'OAW1%' OR Product.Product LIKE 'OAW2%')",
+                    "lf": " AND Product.Product NOT LIKE 'MRF7%'",
+                    "av": " AND Product.Product NOT LIKE 'AS7%'",
+                }.get(program_code, "") + " AND Item.Item LIKE ?"
             )
-        return sorted(
-            (
-                row
-                for row in rows
-                if str(row.Status) == "1"
-                and row.IncPrice is not None
-                and str(row.IncPrice).strip() != ""
-            ),
-            key=lambda row: str(getattr(row, "OrderCodeValue2", "") or ""),
+            if secondary:
+                parameters.extend((currency, mydate, site_id))
+            parameters.extend((catalogue_id, site_id, currency))
+            if secondary:
+                parameters.extend((option_value_id, raw_increment))
+            parameters.append("%" + item + "%")
+        return (
+            " UNION ".join(branches) + ("" if secondary else " ORDER BY OrderCodeValue"),
+            tuple(parameters),
         )
 
     def fetch_article_option_increment_prices(

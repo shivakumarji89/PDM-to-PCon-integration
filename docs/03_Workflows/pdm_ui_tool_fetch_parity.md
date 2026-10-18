@@ -10,14 +10,267 @@ No production database, MDB, or export workflow was used.
 
 | Scenario | Status | What the evidence establishes |
 |---|---|---|
-| Article Price | **MATCH** (tested source rows; bounded) | Ten item codes in GBP/EUR were compared at the same date/site. Tool base values and Article inline-query row identities/values matched the source-equivalent PDM results. Program-filter execution, actual UI-selected rows, and physical duplicate target IDs remain unverified. |
-| Global Price | **MISMATCH** (raw intermediate result sets); **MATCH** (priced rows after PDM-equivalent filtering for tested inputs) | For four item codes, GBP/EUR, and each associated catalogue, source-scoped PDM priced rows match the tool procedure's priced rows after filtering. The procedure returns additional null-priced rows (24 vs 16 for `GETH.1022FS4W`); those rows have no item-specific increment row. The procedure definition and broader program behavior remain unavailable/unverified. |
+| Article Price | **MATCH**, evidence B, tested fetches | 96 scenarios, 936 base/increment observations, all exact against source-equivalent SQL. No Article calculation change in this update. Physical duplicate ID selection and actual UI/MDB results remain **NOT VERIFIED**. |
+| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; **MISMATCH**, prepared target lookup for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. This is not export parity: a separate current-code target-condition comparison finds 298 lookup-field differences in 318 observations for `lf`/`av`/`embody`. Actual UI/MDB results remain **NOT VERIFIED**. |
 
 These are bounded results, not a claim of universal or full UI parity. The
 actual PDM UI was not run against a pCon MDB. The live evidence below comes
 from source-equivalent PDM SQL and read-only tool repository/procedure calls
 against non-production PDM Test; target-MDB selection and record IDs remain
 unverified.
+
+## Current implementation and before/after measurement
+
+The clean `main` baseline was safely fast-forwarded from `ab591a7` to
+`199540b5d14c694f7ea733e92dcde026515f6bbc` before implementation. The intervening
+remote commits concern Syteline, not these pricing methods. No branch, reset,
+production SQL write, MDB write, or export was used.
+
+Evidence levels in this section:
+
+- **A:** actual original application output versus tool output: not captured.
+- **B:** independently transcribed original source SQL/calculation against
+  `DBCHIP11V.PDMTEST`, compared with actual repository calls: measured below.
+- **C:** deterministic mocked regression tests: separate from live evidence.
+
+### Changes and source rules
+
+[`fetch_global_option_increment_prices`](../../repositories/pdm_repository.py)
+now uses a dedicated source-query builder; it does not call the generic option
+report procedure. The generic `fetch_item_option_increment_prices` remains
+unchanged for other consumers. Both
+[`compute` and `compute_streaming`](../../services/pricing_service.py) pass the
+selected catalogue and generation program. An explicit `PriceParams.catalogue_id`
+overrides `snapshot.product.catalogue_id`; a missing catalogue raises a query
+error rather than issuing an unscoped request.
+
+The reproduced path is `UpdatePriceThread.execThread` calling
+`UpdatePConItemIncrementalPrice` with a selected item, `categoryId=-1` and
+`categoryname=""`, not the separate category-wide UI modes:
+
+- Initial `SELECT DISTINCT ... UNION SELECT DISTINCT`: direct catalogue items
+  plus subitems with a catalogue parent. Item scope is `LIKE '%selecteditem%'`,
+  not exact equality. Preserve SQL projection multiplicity; do not add a
+  dictionary or another Python deduplication step.
+- Resolve item product-code override, otherwise product product-code, for the
+  selected site; retain `PriceMatrix`, requested `Currency`, `ProductRange`,
+  `OptionValue.Status=1`, and `FabricBands.Application=1`.
+- Preserve `lf`'s `NOT LIKE 'MRF7%'`, `av`'s `NOT LIKE 'AS7%'`, and the source
+  `swoop` product predicate. Sort by the **SQL-projected** order code, not raw
+  option code: for `WE51`, `61=MS` precedes `62=DS`.
+- `Product_Code.BasePriceRef` selects `IncrementalPrice`, `IncrementalPrice2`,
+  or `IncrementalPrice3`. Skip null selected raw increments.
+- Replay the secondary `fnGetListPrice` query with the same scope, date, site,
+  currency and rounding. Its predicate deliberately remains
+  `itov.IncrementalPrice = selected_raw`, even for references 2/3; it does not
+  repeat the active-status filter or specify ordering.
+- Preserve the source's cache: compare the first item index with the first
+  raw-increment index. Initial secondary processing takes the last non-null
+  returned price; later cache reuse can take the first cached price. No
+  secondary value leaves the source sentinel **-1**, not zero/null.
+- Preserve the actual source helper's `count > -1` behavior, not its apparent
+  intended multiple-option-ID test. For `revive` RYM/RYT, source lookup is
+  `OptionId=ITEM_CODE` (e.g. `3848=RYMPSH.12SW_OKG`); other variable increments
+  replace underscores with ` OptionId=`. The source's non-variable program list
+  and WE51 exception remain distinct.
+
+`GlobalOptionPriceRow` retains option-value ID, option ID, raw code, projected
+source code, selected raw increment, price band, calculated price and source
+lookup. `PriceRecord` persists `source_item` and `pdm_lookup_code`, separately
+from the actual pCon target condition; old snapshots default these fields to
+empty. Substring-expanded items remain Global records. RYM/RYT prepared
+conditions now round-trip through the original target parser. Product-code
+attachment and surcharge/base classification use source-item metadata so that
+these no-space conditions do not accidentally become base records or update
+only the last duplicate.
+
+### Exact live matrix and metrics (B)
+
+Main Global matrix: 27 item/program/catalogue/site configurations, each in GBP
+and EUR at `15-Oct-2026` and `16-Oct-2026` (108 scenarios):
+
+| Item | Program | Catalogues | Site |
+|---|---|---|---:|
+| `GEMAP.12S1M` | `layout_studio` | 394, 414, 660 | 1 |
+| `GEBH.10` | `layout_studio` | 414, 521, 660, 662 | 1 |
+| `DTW2B1T2.C` | `layout_studio` | 521, 662 | 1 |
+| `GETH.1022FS4W` | `layout_studio` | 660, 662 | 1 |
+| `MRFN121HWAP` | `lf` | 4, 652 | 1 |
+| `AS7EA52AA`, `AS2EA32AA` | `av` | 4, 683 | 1 |
+| `WE5110L` | `caper` | 4, 652 | 1 |
+| `RY3VFTB.105512F`, `RYMPSH.12SW`, `RYTRFA.0812SW` | `revive` | 658 | 1 |
+| `894-176092` | empty | 301 | 1 |
+| `PDRSDNBFG.1114` | `ratio` | 755 | 1 |
+| `1205S1BQ` | empty | 649 | 1 |
+| `CN132AWAA` | `embody` | 4 | 9 |
+| `CD63NC0600` | empty | 172 | 9 |
+
+Article matrix: 24 item/program configurations, both currencies and dates,
+site 1 (96 scenarios). The exact item/program pairs are `ARTICLE_CASES` in
+[`fetch_parity.py`](../../scripts/pdm_differential/fetch_parity.py); they include
+the ten layout items above/in the historical Article section, normal and
+`lf`/`av` controls, WE51, all three Revive items, Monarch, `OAW102`, Ratio,
+and `2003`. Article queries have no catalogue argument.
+
+Complete Global comparison tuples are `(Item, OptionValueId, OptionId,
+raw Code, calculated IncPrice, PriceBand)` plus source lookup for the lookup
+stage. Currency/date/site/catalogue/program are scenario inputs. Decimal
+values are numerically normalized; nulls and duplicate multiplicity are
+retained. Business pairing key is `(Item, OptionValueId)`. After exact multiset
+intersection E, remaining same-key pairs count as field differences V; residual
+missing M and extra X also enter the denominator. Record accuracy is
+`E / (E + V + M + X)`. Ordering is checked separately.
+
+| Stage | PDM / tool | Exact | V / M / X | Record accuracy | Multiset scenarios | Ordered scenarios |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline Global processed increments | 1,052 / 1,128 | 596 | 244 / 212 / 288 | 596/1,340 = **44.48%** | 68/108 | 60/108 |
+| Corrected Global processed increments | 1,052 / 1,052 | 1,052 | 0 / 0 / 0 | **100% in this matrix** | 108/108 | 108/108 |
+| Baseline Global source-lookup preparation | 1,052 / 1,128 | 316 | 524 / 212 / 288 | 316/1,340 = **23.58%** | 60/108 | 52/108 |
+| Corrected Global source-lookup metadata | 1,052 / 1,052 | 1,052 | 0 / 0 / 0 | **100% in this matrix** | 108/108 | 108/108 |
+| Article fetch, before and after | 936 / 936 | 936 | 0 / 0 / 0 | **100% in this matrix** | 96/96 | 96/96 observed |
+
+These Global totals contain **increments only**, not Global base observations,
+and are not directly comparable with earlier percentages that included bases.
+Source duplicate complete tuples: 0; baseline tool duplicate complete tuples:
+48; corrected tool: 0. This does not say option IDs are unique: different
+option-value identities sharing an option ID remain distinct. There are 16
+empty corrected Global scenarios (negative controls), so the nonempty result
+is also 92/92. Article includes base-function observations, including nulls;
+this table is not a count of rows selected for export. Observed Article order
+agreement cannot prove deterministic order where neither query orders rows.
+Global ordering also has no additional tie-breaker, and its secondary query
+has no `ORDER BY`; observed agreement is not a guarantee for tied rows or
+future execution plans.
+
+The main commands were:
+
+```powershell
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --baseline-ref 199540b --article
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --article
+```
+
+Baseline exit 1 (measured mismatches); corrected exit 0 for the two Global
+stages and Article stage present when that run started. The script subsequently
+added **separate** source-projection and actual target-condition checks; a
+current full run also reports known target-condition failures and exits 1.
+Do not confuse the earlier source-only success with full target success.
+The old `validate_pricing_parity.py` is a batching/self-consistency check, not
+an independent original-PDM oracle.
+
+### Demonstrated discrepancies corrected
+
+- `MRFN121HWAP`: restore the source identities/multiplicity instead of the
+  procedure's repeated/missing options.
+- `AS7EA52AA`: correctly excludes all increments in the tested `av` scope.
+  `AS2EA32AA`: restores 46 source identities per scenario and Application-1
+  bands, including option-value 148810, rather than 30 procedure rows.
+- `RY3VFTB.105512F`: restores source bands; RYM/RYT retain the actual projected
+  and lookup codes rather than deriving them from a generic target condition.
+- `1205S1BQ`: source substring scope also includes `1205S1BQI`; the old exact
+  item procedure omitted those records.
+- `CN132AWAA` (site 9, reference 2) and `CD63NC0600` (site 9, reference 3):
+  preserve the secondary field-1 equality and cache, including -1 when no
+  secondary match exists. CD's two source bands are null, not procedure 2/3.
+- `GETH.1022FS4W`: source inner joins return the applicable 16 rows. The old
+  procedure's eight additional null rows have no selected-item increment
+  association; filtering them explained this case but not the other defects.
+
+### Variable populated fields are not quantity tiers
+
+A fresh read of `sys.columns` finds three decimal base fields and three decimal
+increment fields, `Product_Code.BasePriceRef`, and one integer
+`ItemComponents.Quantity` (also `SPItemPricePercentage`); no numbered
+quantity-tier matrix was discovered. PDM labels its price bases Euro, Dollar
+and Tertiary. Populated field counts vary, not the actual schema:
+
+| Series/item | Base fields 1 / 2 / 3 | Non-null increment assignments 1 / 2 / 3 | Tested selection |
+|---|---|---:|---|
+| Meeting Table `GETH.1022FS4W` | 850.64729330 / null / null | 24 / 0 / 0 | Site 1, ref 1 |
+| Florence `1205S1BQ` | 4000 / 3780 / 3860 | 10 / 7 / 10 | Site 1, ref 1 |
+| U-Series `2003` | 2050 / 3089 / null | 52 / 18 / 0 | Article control; no Global catalogue fixture |
+| Monarch `894-176092` | null / 3849.89124000 / null | 0 / 17 / 0 | Site 1, ref 2; empty Global matrix control |
+| Embody `CN132AWAA` | 1645 / 2483.78 / null | 11 / 14 / 0 | Site 9, ref 2 |
+| CD `CD63NC0600` | null / null / 169 | 0 / 0 / 2 | Site 9, ref 3 |
+
+Counts above include inactive assignments, before source scope/status filtering.
+Price bands come independently from `FabricBands.Application=1`, not field
+position or quantity. No generic quantity-column abstraction was added.
+
+### Additional current-code checks and remaining boundary
+
+The nonempty Ratio accessories item `RZTA.`, catalogue 405, site 1, GBP/EUR,
+`16-Oct-2026` contributes **two supplemental scenarios**, not part of the
+108-scenario aggregate. All four stages match 6/6 records, ordered, with
+option-value IDs 287202/287203/287204, option ID 6867, codes DB3/DN2/DR1.
+This exercises the worker's default category-name mode, **not** the separate
+Ratio Worksurfaces/Screens modes.
+
+```powershell
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --item RZTA. --dates 16-Oct-2026
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --item RYMPSH.12SW --item RYTRFA.0812SW --item MRFN121HWAP --item AS2EA32AA --item CN132AWAA --dates 16-Oct-2026
+```
+
+The second command deliberately distinguishes metadata from actual prepared
+conditions: **318/318** processed/source-projection/source-lookup records match,
+14/14 scenarios. But only **20/318 (6.29%)** actual target-parser lookups match,
+4/14 scenarios; the other **298** are field differences, no missing/extra rows.
+The 20 matches are RYM/RYT after the condition fix. For `lf`, `av`, and `embody`,
+PDM's source comparison key is a plain option code (`AJ`, for example), while
+the tool prepares an item/option-qualified condition
+(`MRFN121HWAP 9227=AJ`). Persisting the correct source key does **not** fix
+selection of physical target rows. The command exits **1**, intentionally.
+
+No speculative plain-code placeholders were introduced: source comparison
+keys are not necessarily valid stored pCon conditions. Safely completing that
+boundary requires read-only target Global rows and list/package context for
+these series, then replaying PDM's target scan, parser, item-reference and band
+fallback against those exact rows. No such current comparison was made.
+
+Nonempty live coverage includes default variable increments, `lf`/`av`
+routing, WE51, RY3V/RYM/RYT, non-variable Embody, and Ratio accessories.
+Read-only fixture discovery found no applicable nonempty `swoop` or `memo`
+sample; their transcribed source rules remain **live-unverified**, as do other
+non-variable families and category-wide modes. No program-rule coverage
+percentage is invented.
+
+Fresh permission checks return `HAS_PERMS_BY_NAME(...,'VIEW DEFINITION')=0`
+and `OBJECT_DEFINITION(...)=NULL`. An authorized DBA-provided definition or
+read-only `VIEW DEFINITION` grant is still needed to explain procedure internals;
+the corrected Global path no longer depends on that procedure. Actual UI
+capture, target list/text relationships, physical target rows, and physical
+duplicate IDs remain unmeasured. The duplicate loop is covered with fake
+ordered target rows, but neither original MDB query guarantees physical order.
+
+### Regression and static validation (C)
+
+- Focused Article/Global/source/export/text suite: **113 passed**.
+- Broader non-GUI pricing suite: **159 passed**.
+- GUI pricing export/text-block suite: **21 passed**, using installed Python
+  3.12 and offscreen Qt; fake MDB adapters only.
+- Editor Problems: no errors in changed Python implementation/tests; Pylance
+  reports all six Global-fetch call sites signature-compatible.
+- The editor test runner discovered no tests; pytest was used directly.
+- Tests cover the source SQL/parameters, catalogue scope, all three field
+  selectors, secondary/cache/null behavior, duplicates, WE51 order, actual
+  RYM/RYT mapping, both compute routes, snapshot serialization and fake-target
+  duplicate/base-prerequisite behavior. No real MDB writer was invoked.
+
+```powershell
+& .\.venv\Scripts\python.exe -B -m pytest -p no:cacheprovider tests\test_pdm_price_fetch_parity.py tests\test_global_price_source_parity.py tests\test_price_mdb_export_service.py tests\test_pricing_pdm_text_parity.py -q
+& .\.venv\Scripts\python.exe -B -m pytest -p no:cacheprovider tests\test_price_list_service.py tests\test_price_list_targets.py tests\test_price_mdb_export_service.py tests\test_price_product_code.py tests\test_pricing_pdm_text_parity.py tests\test_pdm_price_fetch_parity.py tests\test_pdm_differential_report.py tests\test_global_price_source_parity.py -q
+git diff --check
+```
+
+GUI command (existing Python 3.12 with PySide6):
+
+```powershell
+$env:QT_QPA_PLATFORM='offscreen'
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -B -m pytest -p no:cacheprovider tests\test_pricing_export_workflow.py tests\test_pricing_page_text_blocks.py -q
+```
+
+The historical sections below retain earlier captures and are not additional
+measurements of this implementation. In particular, historical compiled-PDM
+MDB outcomes do not establish current UI or physical-row parity.
 
 ## Implementations traced
 
@@ -69,11 +322,9 @@ unverified.
   Both compute paths pass `PriceParams.program_code` or fall back to the
   snapshot's `generation_program`; the Pricing page supplies that snapshot
   value.
-- Global fetch still calls `PDMOptionDataReportWithIncList`; its pricing
-  wrapper now keeps only active rows with non-null increment values. The
-  shared lower-level procedure method remains unchanged for its other callers.
-  The Global wrapper sorts the surviving rows by `OrderCodeValue2`, matching
-  PDM's `ORDER BY OrderCodeValue`.
+- Global fetch uses the catalogue-scoped source path described above. The
+  filtered-procedure implementation discussed in historical captures below is
+  superseded; the shared generic procedure method is unchanged.
 - `PricingService.build_records` maps base rows to Article level `B` or Global
   records and priced option rows to level `X`. The target MDB export is separate
   and was not run.

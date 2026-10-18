@@ -285,18 +285,26 @@ def test_article_price_streaming_uses_generation_program(monkeypatch):
 def test_global_increment_fetch_keeps_only_active_priced_rows(monkeypatch):
     repo = PDMRepository(None)
     source_rows = [
-        SimpleNamespace(Status=1, IncPrice=16.0, OptionValueId=10),
-        SimpleNamespace(Status=1, IncPrice=None, OptionValueId=11),
-        SimpleNamespace(Status=0, IncPrice=9.0, OptionValueId=12),
+        SimpleNamespace(
+            Item="GETH.1022FS4W", OrderCodeValue="GETH.1022FS4W_AA",
+            RawIncrement=16, OptionValueId=10, OptionId=8, PriceBand=None,
+        ),
+        SimpleNamespace(
+            Item="GETH.1022FS4W", OrderCodeValue="GETH.1022FS4W_BB",
+            RawIncrement=None, OptionValueId=11, OptionId=8, PriceBand=None,
+        ),
     ]
-    monkeypatch.setattr(
-        repo,
-        "fetch_item_option_increment_prices",
-        lambda *args: source_rows,
-    )
+    def execute(query, params, connection=None):
+        assert "fb.Application = 1" in query
+        if "AS NewPrice" in query:
+            return [SimpleNamespace(Item="GETH.1022FS4W", NewPrice=16)]
+        assert "optval.Status = 1" in query
+        return source_rows
+    monkeypatch.setattr(repo, "_execute", execute)
 
     rows = repo.fetch_global_option_increment_prices(
-        ["GETH.1022FS4W"], "GBP", "16-Oct-2026", 1, connection=object()
+        ["GETH.1022FS4W"], "GBP", "16-Oct-2026", 1, connection=object(),
+        catalogue_id=660,
     )
 
     assert [(row.OptionValueId, row.IncPrice) for row in rows] == [(10, 16.0)]
@@ -359,14 +367,23 @@ def test_global_fetch_matches_pdm_priced_rows_and_query_order(monkeypatch):
         ]
     ]
     repo = PDMRepository(None)
-    monkeypatch.setattr(
-        repo,
-        "fetch_item_option_increment_prices",
-        lambda *args: procedure_rows,
-    )
+    def execute(query, params, connection=None):
+        if "AS NewPrice" in query:
+            return [SimpleNamespace(Item="GETH.1022FS4W", NewPrice=params[7])]
+        return [
+            SimpleNamespace(
+                Item="GETH.1022FS4W", OptionValueId=vid, OptionId=oid,
+                OrderCodeValue=f"GETH.1022FS4W_{code}",
+                RawIncrement=value, PriceBand=None,
+            ) for vid, oid, code, value in priced
+        ]
+    monkeypatch.setattr(repo, "_execute", execute)
+    monkeypatch.setattr(repo, "fetch_item_option_increment_prices",
+                        lambda *args: (_ for _ in ()).throw(AssertionError("procedure")))
 
     rows = repo.fetch_global_option_increment_prices(
-        ["GETH.1022FS4W"], "GBP", "16-Oct-2026", 1, connection=object()
+        ["GETH.1022FS4W"], "GBP", "16-Oct-2026", 1, connection=object(),
+        catalogue_id=660,
     )
 
     assert len(procedure_rows) == 24
@@ -387,7 +404,7 @@ def test_global_fetch_matches_pdm_priced_rows_and_query_order(monkeypatch):
         (300315, 3832, "PLV"),
     }
     assert [
-        (row.OptionValueId, row.OptionId, row.OrderCodeValue2, row.IncPrice)
+        (row.OptionValueId, row.OptionId, row.Code, row.IncPrice)
         for row in rows
     ] == priced
 
@@ -427,8 +444,9 @@ def test_global_price_compute_uses_global_increment_fetch(monkeypatch):
         calls["article"].append(list(items))
         return []
 
-    def fetch_global(self, items, currency, mydate, site_id, connection=None):
-        calls["global"].append((list(items), currency))
+    def fetch_global(self, items, currency, mydate, site_id, connection=None,
+                     *, catalogue_id, program_code=""):
+        calls["global"].append((list(items), currency, catalogue_id, program_code))
         return [
             SimpleNamespace(
                 Item=item, OptionId=3827, Code="DB3", IncPrice=16.0, PriceBand=None
@@ -455,13 +473,13 @@ def test_global_price_compute_uses_global_increment_fetch(monkeypatch):
         "10": [{"sub_item": "GETH.1022FS4W", "quantity": 1, "sequence": "1"}]
     }
     result = PricingService(None).compute(
-        PriceParams(mydate="16-Oct-2026", site_id=1), snapshot
+        PriceParams(mydate="16-Oct-2026", site_id=1, catalogue_id=660), snapshot
     )
 
     assert calls["article"] == []
     assert calls["global"] == [
-        (["GETH.1022FS4W"], "EUR"),
-        (["GETH.1022FS4W"], "GBP"),
+        (["GETH.1022FS4W"], "EUR", 660, ""),
+        (["GETH.1022FS4W"], "GBP", 660, ""),
     ]
     assert result.records
     assert all(record.is_global for record in result.records)

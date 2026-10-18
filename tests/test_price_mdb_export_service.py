@@ -394,6 +394,36 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
         )
         self.assertEqual(result["updated_global_prices"], 2)
 
+    def test_revive_lookup_condition_is_still_a_surcharge_for_duplicate_updates(self):
+        condition = "3848=RYMPSH.12SW_OKG"
+        duplicate = {
+            "com_PackageID": 1, "com_PriceListID": 21,
+            "com_VariantCondition": condition, "com_PriceLevelCode": "X",
+            "sys_ISOCurrencyCode": "EUR",
+        }
+        mdb = _RecordingMDB(_eur_gbp_lists(), globals_=[
+            {"com_GlobalPriceID": 101, "com_PriceValue": 10.0, **duplicate},
+            {"com_GlobalPriceID": 102, "com_PriceValue": 20.0, **duplicate},
+        ], linked=[21, 22])
+        result = _export(mdb, [PriceRecord(
+            is_global=True, variant_condition=condition,
+            source_item="RYMPSH.12SW", pdm_lookup_code=condition,
+            value=52.0, currency="EUR",
+        )])
+        self.assertEqual([op["where"]["com_GlobalPriceID"] for op in mdb.ops], [101, 102])
+        self.assertEqual(result["updated_global_prices"], 2)
+
+    def test_revive_increment_without_source_item_base_is_not_inserted(self):
+        condition = "3848=RYMPSH.12SW_OKG"
+        mdb = _RecordingMDB(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(mdb, [PriceRecord(
+            is_global=True, variant_condition=condition,
+            source_item="RYMPSH.12SW", pdm_lookup_code=condition,
+            value=52.0, currency="EUR",
+        )])
+        self.assertEqual(mdb.ops, [])
+        self.assertEqual(result["skipped_no_base_price"], 1)
+
     def test_ambiguous_price_list_is_reported_not_guessed(self):
         lists = [_plist(5, "EURO_A", "EUR"), _plist(6, "EURO_B", "EUR")]
         mdb = _RecordingMDB(lists, linked=[5, 6])

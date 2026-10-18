@@ -33,6 +33,17 @@ def test_global_records_get_the_items_product_code_including_surcharges():
     assert repo.asked == (["GE2HBS."], 3)       # one lookup per distinct item, article rows excluded
 
 
+def test_revive_lookup_keeps_product_identity_separate_from_condition():
+    record = PriceRecord(
+        is_global=True, variant_condition="3848=RYMPSH.12SW_OKG",
+        source_item="RYMPSH.12SW", pdm_lookup_code="3848=RYMPSH.12SW_OKG",
+    )
+    repo = _Repo([("RYMPSH.12SW", "RYM-PC")])
+    PricingService._attach_product_codes([record], repo, None, 1)
+    assert repo.asked == (["RYMPSH.12SW"], 1)
+    assert record.product_code == "RYM-PC"
+
+
 def test_lookup_failure_leaves_codes_empty_instead_of_failing_the_compute():
     recs = _records()
     PricingService._attach_product_codes(recs, _Repo(fail=True), None, 1)
