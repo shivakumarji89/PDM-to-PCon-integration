@@ -14,7 +14,8 @@ def test_catalogue_query_uses_bound_site_and_language_values_and_unreleased_unio
     assert "CatalogueItemsUnreleased" in query.sql
     assert 3 in query.parameters
     assert 12 in query.parameters
-    assert "3" not in query.sql
+    assert "WHERE pc.SiteId = ?" in query.sql
+    assert "WHERE pc.SiteId = 3" not in query.sql
 
 
 def test_range_query_uses_bound_item_values_and_preserves_browning_exception():
