@@ -360,6 +360,9 @@ class SyteLineExportPage(BasePage):
         from pathlib import Path
         from services.syteline_export.config import SyteLineExportConfig
 
+        if not self.output_directory.text().strip():
+            self.status.setText("Setup validation failed: choose an existing output folder.")
+            return
         if self.list_check.isChecked():
             scope_mode = "list"
         elif self.range_check.isChecked():
@@ -454,6 +457,7 @@ class SyteLineExportPage(BasePage):
             combo.clear()
             for choice in choices:
                 combo.addItem(choice.label, userData=choice.id)
+                combo.setItemData(combo.count() - 1, getattr(choice, "code", ""), Qt.ItemDataRole.UserRole + 1)
             if current:
                 index = combo.findText(current)
                 if index >= 0:
@@ -500,6 +504,7 @@ class SyteLineExportPage(BasePage):
         for key, widget in [
             ("min_item", self.min_item), ("max_item", self.max_item),
             ("catalogue_code_override", self.catalogue_code_override),
+            ("output_directory", self.output_directory),
         ]:
             widget.setText(self.settings.value(self.PREFIX + key, widget.text(), type=str))
         self.pdm_user_id.setText(self.settings.value(self.PREFIX + "pdm_user_id", "", type=str))
@@ -530,7 +535,7 @@ class SyteLineExportPage(BasePage):
             self.currency, self.export_type, self.contract,
         ]:
             widget.currentTextChanged.connect(self._save_settings)
-        for widget in [self.min_item, self.max_item, self.catalogue_code_override]:
+        for widget in [self.min_item, self.max_item, self.catalogue_code_override, self.output_directory]:
             widget.textChanged.connect(self._save_settings)
         self.effective_date.dateChanged.connect(self._save_settings)
         for widget in [
@@ -563,6 +568,7 @@ class SyteLineExportPage(BasePage):
         for key, widget in [
             ("min_item", self.min_item), ("max_item", self.max_item),
             ("catalogue_code_override", self.catalogue_code_override),
+            ("output_directory", self.output_directory),
         ]:
             self.settings.setValue(self.PREFIX + key, widget.text())
         self.settings.setValue(self.PREFIX + "pdm_user_id", self.pdm_user_id.text().strip())
