@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from repositories.pdm_repository import PDMRepository
+from services.syteline_export.config import LEGACY_TSV_HEADERS
 
 
 PRICE_FORMULA_HEADER = (
@@ -98,6 +99,34 @@ class SyteLineAuxiliaryOutputService:
                 pass
             raise
         return target
+
+    @staticmethod
+    def write_header_only_outputs(
+        export_directory: str | Path,
+        export_file_name: str = "PDMExport",
+        format_csi: bool = False,
+    ) -> dict[str, Path]:
+        """Write the two header-only files emitted by legacy ExportThread.
+
+        The legacy source writes the planning and description headers but does
+        not append data rows to either file. They live under the export temp
+        directory, with a _csi suffix in CSI mode.
+        """
+        root = Path(export_directory).expanduser()
+        if not root.is_dir():
+            raise ValueError(f"Export directory does not exist: {root}")
+        temp = root / "temp"
+        temp.mkdir(exist_ok=True)
+        suffix = "_csi" if format_csi else ""
+        outputs = {
+            "description": temp / f"{export_file_name}_description_data{suffix}.txt",
+            "planning": temp / f"{export_file_name}_planning_data{suffix}.txt",
+        }
+        for family, target in outputs.items():
+            SyteLineAuxiliaryOutputService._write_tsv(
+                target, LEGACY_TSV_HEADERS[family], ()
+            )
+        return outputs
 
     def write_price_formula(self, path: str | Path, site_id: int, item_price_codes: Iterable[str]) -> Path:
         return self._write_tsv(path, PRICE_FORMULA_HEADER, self.price_formula_rows(site_id, item_price_codes))
