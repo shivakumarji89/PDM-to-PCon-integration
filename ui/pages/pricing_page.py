@@ -364,12 +364,14 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
     def _params(self) -> PriceParams:
         d = self._date.date()
         sel = self._currency.currentText()
+        snapshot = self._context.active_snapshot
         return PriceParams(
             currency="" if sel == "All" else sel,
             mydate=d.toString("dd-MMM-yyyy"),
             site_id=self._site.value(),
             valid_from=d.toString("yyyy-MM-dd"),
             valid_to="",
+            program_code=str(getattr(snapshot, "generation_program", "") or ""),
         )
 
     def _on_compute(self) -> None:

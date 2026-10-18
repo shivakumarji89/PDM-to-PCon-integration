@@ -29,7 +29,7 @@ never consults `tCOMd_DistributionRegionPriceList` - the list is whatever the us
 | Zero price | never written (`num7 != 0.0`) -> "unresolved" | skipped, counted as `skipped_zero_price` |
 | Unchanged value | counted `samevaluecount`, no write | skipped, counted `skipped_existing` |
 | Update | `UPDATE ... SET com_PriceValue WHERE <PK>` | same, value only |
-| Duplicates | base path updates the **last** row read; surcharge path updates every row | updates **every** differing duplicate row (decision in commit 5a5655e) - intentional difference |
+| Duplicates | PDM retains the last matching ID for Article base, Article surcharge, and Global base; Global surcharge processes each matched row | Article base/surcharge and Global base update only the last matching target row; Global surcharge updates every differing matched row |
 | Missing article row | inserted at level `B`, validity copied from the article's existing price rows | same |
 | Missing global row | created separately: level **`X`**, `com_TextID` linked to the `price` text, list's validity dates, value filled by the update | inserted at level `X` with the value, `com_TextID` resolved by PDM's name rule (surcharge `ITEM 8=1FD` -> text `8`): an existing text is **reused**, a missing one is **created** exactly as PDM does (see *Text blocks* below), list's validity dates. |
 | Transaction | none | one transaction; a failed batch changes nothing |
@@ -46,14 +46,76 @@ never consults `tCOMd_DistributionRegionPriceList` - the list is whatever the us
 * Every vendor global row has a `com_TextID`; all 760 variants of the earlier export resolve through the
   PDM text-name rule to an existing `price` text.
 
+## Global increment fetch comparison (PDM Test, 2026-10-18)
+
+For `GETH.1022FS4W`, GBP, `16-Oct-2026`, site 1, catalogue 660,
+`layout_studio` (`variableincs=true`), the original PDM source query returned
+16 active increment rows. A read-only tool call to
+`PDMOptionDataReportWithIncList` returned those same 16 priced option
+identities plus eight active rows with `IncPrice=NULL`. Each of the eight has
+no matching `ItemOptionValues` row for the selected item; PDM's source query
+requires that row via an inner join. Their status is active, but they are not
+price-bearing options for this item.
+
+For all 16 price-bearing rows, the key `(OptionValueId, OptionId,
+OrderCodeValue)` matched, and PDM's `fnGetListPrice` values matched the tool
+procedure's computed `IncPrice`. `PriceBand` was null on both sides. The PDM
+query orders by `OrderCodeValue`; the tool Global fetch now filters inactive
+or null-priced rows and sorts by `OrderCodeValue2` to reproduce that order.
+Regression coverage checks all 24 procedure rows, the eight null exclusions,
+and the resulting 16 ordered Global price records.
+
+This explains the observed intermediate row-count difference for this input;
+it does not prove the stored procedure's internal implementation or parity
+for every catalogue/program. The current SQL principal has `EXECUTE` but not
+`VIEW DEFINITION` on the procedure. Its definition must be provided through an
+approved read-only route before making claims about other scopes.
+
+The subsequent read-only matrix covered `GEMAP.12S1M`, `GEBH.10`,
+`DTW2B1T2.C`, and `GETH.1022FS4W` in GBP and EUR at the same date/site, with
+PDM's source query run for every catalogue associated with each item
+(394/414/660; 414/521/660/662; 521/662; and 660/662 respectively). The
+source query's priced row counts were 3, 4, 1, and 16 per catalogue. The tool
+procedure returned 27/14/6/24 rows per item and currency, of which the same
+3/4/1/16 priced option identities and values matched the source query; the
+remaining 24/10/5/8 rows were null-priced. A read-only check in both currencies
+found no item-specific `ItemOptionValues` row for any such null option.
+Therefore the 16-vs-24 observation is an intermediate-row difference, not a
+priced-row discrepancy for the tested matrix. It remains a raw result-set
+mismatch and does not establish untested procedure scope.
+
+Article base function values and Article inline-query rows were also compared
+for ten representative items in GBP/EUR at the same date/site; the values and
+row multisets matched the source-equivalent PDM queries. The Article report
+contains the item-level identities and values. The UI did not run and no
+target MDB was opened or modified for this fetch comparison.
+
+PDM's `programCodeHasVariableIncs` returns false for `aeron`, `verus`,
+`lino`, `embody`, `cosm`, `mirra2`, `sayl`, `setu`, `celle`, `keyn`, `caper`,
+`mirra`, `em`, `lf`, `av`, `ce`, and `cp`, and true by default. The live
+Global identity comparison used `layout_studio` only. The exporter/source
+code tracing does not prove the tool's normalized Global record mapping for
+the other program-specific branches (`swoop`, `ratio`, `memo`, `WE51`,
+`RY3V`/`RYM`/`RYT`, or multiple-option-ID handling).
+
+The regression runs covering these fetch and export contracts passed: 82
+focused Article/Global/export tests, 127 broader non-GUI pricing tests, and 21
+focused GUI pricing tests under offscreen Qt. The exact commands and remaining
+runtime limitations are recorded in
+[`pdm_ui_tool_fetch_parity.md`](./pdm_ui_tool_fetch_parity.md). No live PDM UI
+execution, MDB write, export, or MDB-writing differential harness was used for
+these fetch comparisons.
+
 ## Decisions on the two intentional differences
 
-**Duplicate rows - keep "update every duplicate".** PDM's base-price path updates the last row it reads;
-its surcharge path updates all rows. pCon can read either duplicate, so correcting only one can leave a stale
-value on screen (the reason for commit 5a5655e). Every row is written only if its own value differs, so the
-result is a superset of PDM's and never worse. The real MDB has **no** duplicate identity in the planned
-scope (`duplicate_matches: 0` in the dry run), so on current data both behaviours are identical. The export
-reports `duplicate_matches`, so a duplicate-bearing file is visible before writing.
+**Duplicate rows.** Inspection of `PriceMaintenance.UpdatePConItemPrice` and
+`UpdatePConItemIncrementalPrice` confirms that PDM retains the last matching ID
+for Article base, Article surcharge, and Global base rows; its Global surcharge
+path processes every matching row. The exporter follows those separate rules,
+with focused regression tests for each. The target SELECTs do not specify
+`ORDER BY`, and the historical differential normalizes away primary keys and
+row order. Thus the selection rule is source-confirmed, but the physical
+duplicate ID selected by each runtime remains unverified.
 
 **Price-list selection - honour the named list, prefer linked, warn if unlinked.** PDM writes to the list the
 user selected. The Pricing page has no list picker: the target is the list named by the snapshot's price lists

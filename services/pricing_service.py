@@ -52,6 +52,7 @@ class PriceParams:
     site_id: int = 1               # site_selector
     valid_from: str = ""            # com_PriceValidFrom
     valid_to: str = ""              # com_PriceValidTo
+    program_code: str = ""          # PDM text_programcode / package reg_ProgramCode
 
 
 @dataclass
@@ -167,11 +168,11 @@ class PricingService(BaseService):
         """Compute OCD price records for the active snapshot (PDM-accurate).
 
         Classifies every article as super (global) or plain (article) pricing,
-        then pulls base and increment prices from PDM in a few batched queries -
-        the values are computed by SQL Server's own ``fnGetListPrice*`` functions,
-        so they are byte-identical to PDM's *Update pCon Prices* output. Runs once
-        per price-list currency (EUR + GBP + ...) so every list gets its records,
-        fills ``snapshot.price_records`` (the persisted baseline) and returns it.
+        then fetches base and increment prices from PDM. Article increments use
+        PDM's inline ``fnGetListPrice`` query; global increments retain the
+        option procedure path. Runs once per price-list currency (EUR + GBP + ...)
+        so every list gets its records, fills ``snapshot.price_records`` (the
+        persisted baseline) and returns it.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
@@ -185,6 +186,9 @@ class PricingService(BaseService):
 
         prefix_by_item = self._prefix_by_item(snapshot)
         currencies = self.target_currencies(snapshot, params)
+        program_code = (
+            params.program_code or getattr(snapshot, "generation_program", "") or ""
+        ).strip()
 
         all_records: list[PriceRecord] = []
         unresolved: list[str] = []
@@ -200,11 +204,25 @@ class PricingService(BaseService):
                     connection=conn,
                     site_id=params.site_id,
                 )
-                # Increments for every item: non-super -> article upcharge, super
-                # -> global increment (both pulled from the same computed query).
-                inc_rows = repo.fetch_item_option_increment_prices(
-                    items, cur, params.mydate, params.site_id, conn
-                )
+                inc_rows = []
+                for item in items:
+                    if item in super_codes:
+                        inc_rows.extend(
+                            repo.fetch_global_option_increment_prices(
+                                [item], cur, params.mydate, params.site_id, conn
+                            )
+                        )
+                    else:
+                        inc_rows.extend(
+                            repo.fetch_article_option_increment_prices(
+                                [item],
+                                cur,
+                                params.mydate,
+                                params.site_id,
+                                conn,
+                                program_code=program_code,
+                            )
+                        )
                 records, unres = self.build_records(
                     base_rows, inc_rows, super_codes, prefix_by_item, cparams
                 )
@@ -236,10 +254,10 @@ class PricingService(BaseService):
         """Compute prices while delivering each completed item to the UI.
 
         Base prices are fetched in small set-based batches to avoid extra base-price
-        round trips. Option upcharges are still obtained from the same PDM stored
-        procedure, one item at a time as that procedure already executes per item.
-        Each item's base + upcharge records are emitted immediately after that item
-        completes, so the UI does not wait for the whole 10-item batch.
+        round trips. Article upcharges use PDM's inline query and Global upcharges
+        use the per-item procedure. Each item's base + upcharge records are emitted
+        immediately after that item completes, so the UI does not wait for the
+        whole 10-item batch.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
@@ -254,6 +272,9 @@ class PricingService(BaseService):
 
         prefix_by_item = self._prefix_by_item(snapshot)
         currencies = self.target_currencies(snapshot, params)
+        program_code = (
+            params.program_code or getattr(snapshot, "generation_program", "") or ""
+        ).strip()
 
         product_by_item = {
             a.code: str(a.product_id)
@@ -311,10 +332,9 @@ class PricingService(BaseService):
                     )
                     base_by_item = {str(row.Item): row for row in base_rows}
 
-                    # The PDM option-price procedure is already executed once per
-                    # item internally. Calling it with one item here lets us emit
-                    # that item's completed records immediately without adding
-                    # any additional PDM procedure execution.
+                    # Fetch each item's increments separately so the completed
+                    # item's records can be emitted immediately. Global items use
+                    # PDM's per-item procedure; Article items use the inline query.
                     for offset, item in enumerate(chunk):
                         item_no = start + offset + 1
 
@@ -324,9 +344,19 @@ class PricingService(BaseService):
                                 f"fetching option upcharges for {item}..."
                             )
 
-                        inc_rows = repo.fetch_item_option_increment_prices(
-                            [item], cur, params.mydate, params.site_id, conn
-                        )
+                        if item in super_codes:
+                            inc_rows = repo.fetch_global_option_increment_prices(
+                                [item], cur, params.mydate, params.site_id, conn
+                            )
+                        else:
+                            inc_rows = repo.fetch_article_option_increment_prices(
+                                [item],
+                                cur,
+                                params.mydate,
+                                params.site_id,
+                                conn,
+                                program_code=program_code,
+                            )
                         base_row = base_by_item.get(str(item))
                         records, unres = self.build_records(
                             [base_row] if base_row is not None else [],

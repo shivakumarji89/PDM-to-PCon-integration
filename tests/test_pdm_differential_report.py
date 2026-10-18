@@ -34,6 +34,38 @@ def test_core_parity_scenarios_match_exactly():
         assert by_name[name]["verification_status"] == "MATCH", name
 
 
+def test_historical_article_duplicate_mismatch_remains_explicit():
+    scenario = next(
+        s for s in _report()["scenarios"]
+        if s["scenario"] == "S4b_duplicates_both_stale"
+    )
+
+    assert scenario["verification_status"] == "DIFFERENCE_EXPLAINED"
+    assert scenario["classification"] == "intentional"
+    pdm_only = [json.loads(row) for row in scenario["differences"]["only_in_pdm_result"]]
+    pricing_only = [json.loads(row) for row in scenario["differences"]["only_in_pricing_result"]]
+    assert len(pdm_only) == len(pricing_only) == 1
+    assert pdm_only[0][:6] == pricing_only[0][:6]
+    assert (pdm_only[0][6], pricing_only[0][6]) == (9.0, 171.0)
+
+
+def test_historical_single_step_global_placeholder_difference_remains_explicit():
+    scenario = next(
+        s for s in _report()["scenarios"]
+        if s["scenario"] == "S5_global_update"
+    )
+
+    assert scenario["verification_status"] == "DIFFERENCE_EXPLAINED"
+    assert "GE2HDF." in scenario["pdm_output"][0]["notfound"]
+    pricing_only = [
+        json.loads(row)
+        for row in scenario["differences"]["only_in_pricing_result"]
+    ]
+    assert len(pricing_only) == 1
+    assert pricing_only[0][:4] == ["global", "GBP_2026_2", "", "GE2HDF."]
+    assert pricing_only[0][6] == 114.0
+
+
 def test_every_difference_has_a_reason_and_classification():
     for sc in _report()["scenarios"]:
         if sc["verification_status"] == "DIFFERENCE_EXPLAINED":

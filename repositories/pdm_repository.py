@@ -30,6 +30,7 @@ class _IncPriceRow:
         "IncPrice", "IsFabric", "Quantity", "ParentOptId",
         "ParentOptValId", "ParentOptValCode",
         "FeaturePositionString", "TertiaryOption", "DisplayOrder", "DisplayOrdinal",
+        "PriceBand",
     )
 
     def __init__(self, item: str, row: Any) -> None:
@@ -50,6 +51,26 @@ class _IncPriceRow:
         )
         self.DisplayOrder = getattr(row, "DisplayOrder", None)
         self.DisplayOrdinal = getattr(row, "DisplayOrdinal", None)
+        self.PriceBand = getattr(row, "PriceBand", None)
+
+
+class _ArticleIncPriceRow:
+    """Wrap one row from PDM's Article Price inline increment query."""
+
+    __slots__ = (
+        "Item", "OptionId", "OptionValueId", "OrderCodeValue",
+        "OrderCodeValue2", "Code", "IncPrice", "PriceBand",
+    )
+
+    def __init__(self, item: str, row: Any) -> None:
+        self.Item = item
+        self.OptionId = getattr(row, "OptionId", None)
+        self.OptionValueId = getattr(row, "OptionValueId", None)
+        self.OrderCodeValue = getattr(row, "OrderCodeValue", None)
+        self.OrderCodeValue2 = self.OrderCodeValue
+        self.Code = self.OrderCodeValue
+        self.IncPrice = getattr(row, "IncPrice", None)
+        self.PriceBand = getattr(row, "PriceBand", None)
 
 
 class PDMRepository(BaseRepository):
@@ -1502,6 +1523,121 @@ class PDMRepository(BaseRepository):
             if owns_connection:
                 conn.close()
 
+        return rows
+
+    def fetch_global_option_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+    ) -> list[Any]:
+        """Return the active, priced global increment rows.
+
+        PDM's global path excludes options without source increment rows and
+        discards rows without a calculated increment before matching pCon records.
+        The shared procedure can return such rows, so keep them out of the global
+        pricing pipeline and preserve PDM's OrderCodeValue ordering.
+        """
+        rows = self.fetch_item_option_increment_prices(
+            items, currency, mydate, site_id, connection
+        )
+        if any(row.Status is None for row in rows):
+            raise PDMQueryError(
+                "Global option-price results did not include option Status."
+            )
+        return sorted(
+            (
+                row
+                for row in rows
+                if str(row.Status) == "1"
+                and row.IncPrice is not None
+                and str(row.IncPrice).strip() != ""
+            ),
+            key=lambda row: str(getattr(row, "OrderCodeValue2", "") or ""),
+        )
+
+    def fetch_article_option_increment_prices(
+        self,
+        items: Sequence[Any],
+        currency: str,
+        mydate: str,
+        site_id: int,
+        connection: Any = None,
+        program_code: str = "",
+    ) -> list[Any]:
+        """Fetch Article Price increments using PDM's inline SQL and filters."""
+        vals = [str(item) for item in items if item]
+        rows: list[Any] = []
+        query = """
+            SELECT DISTINCT
+                optval.OptionValueId,
+                optval.OptionId,
+                optval.OrderCodeValue AS OrderCodeValue,
+                dbo.fnGetListPrice(
+                    ?,
+                    CASE
+                        WHEN pc.BasePriceRef = 1 THEN itov.IncrementalPrice
+                        WHEN pc.BasePriceRef = 2 THEN itov.IncrementalPrice2
+                        WHEN pc.BasePriceRef = 3 THEN itov.IncrementalPrice3
+                    END,
+                    pc.PriceCode,
+                    ?,
+                    'DMY',
+                    pm.Rounding,
+                    ?,
+                    NULL
+                ) AS IncPrice,
+                fb.PriceBand
+            FROM ItemOptionValues itov
+            CROSS JOIN (SELECT NULL AS ProductCodeIdOverride) x
+            INNER JOIN OptionValue optval
+                ON itov.OptionValueId = optval.OptionValueId
+            INNER JOIN Item
+                ON itov.ItemId = Item.ItemId
+            INNER JOIN Product
+                ON Item.ProductId = Product.ProductId
+            INNER JOIN Product_Code pc
+                ON CASE
+                    WHEN (
+                        SELECT ProductCodeIdOverride
+                        FROM Item i2
+                        WHERE i2.ItemId = Item.ItemId
+                    ) IS NOT NULL THEN (
+                        SELECT ProductCodeIdOverride
+                        FROM Item i2
+                        WHERE i2.ItemId = Item.ItemId
+                    )
+                    ELSE Product.ProductCodeId
+                END = pc.ProductCodeId
+                AND pc.SiteId = ?
+            INNER JOIN PriceMatrix pm
+                ON pc.PriceCode = pm.ItemPriceCode
+            INNER JOIN Currency
+                ON pm.CustPriceCode = Currency.PriceCode
+                AND Currency.Currency = ?
+            INNER JOIN ProductRange pr
+                ON Product.ProductRangeId = pr.ProductRangeId
+            LEFT OUTER JOIN FabricBands fb
+                ON itov.OptionValueId = fb.OptionValueId
+                AND fb.Application = 1
+            WHERE optval.Status = 1
+                AND Item.Item = ?
+        """
+        if program_code == "lf":
+            query += " AND Product.Product NOT LIKE 'MRF7%'"
+        elif program_code == "av":
+            query += " AND Product.Product NOT LIKE 'AS7%'"
+
+        for item in vals:
+            params = (currency, mydate, site_id, site_id, currency, item)
+            rows.extend(
+                _ArticleIncPriceRow(item, row)
+                for row in self._execute(
+                    query, params, connection=connection
+                )
+            )
         return rows
 
     def fetch_category_master_notes(

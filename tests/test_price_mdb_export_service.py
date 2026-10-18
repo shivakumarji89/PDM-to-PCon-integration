@@ -277,7 +277,34 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
         insert = next(op for op in mdb.ops if op["op"] == "insert" and op["table"] == "tCOMd_GlobalPrice")
         self.assertEqual(insert["rows"][0]["com_PriceLevelCode"], "X")
 
-    def test_duplicate_matching_rows_are_all_corrected_deterministically(self):
+    def test_missing_global_placeholder_is_created_with_price_and_text_for_full_pdm_workflow(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        result = _export(
+            mdb,
+            [PriceRecord(
+                is_global=True, variant_condition="GE2HDF.", value=114.0,
+                currency="GBP", valid_from="2026-10-16", product_code="FR-AA-US",
+            )],
+        )
+
+        self.assertTrue(result["ok"] and result["verified"], result)
+        self.assertEqual(result["inserted_global_prices"], 1)
+        self.assertEqual(result["updated_global_prices"], 0)
+        self.assertEqual(result["text_summary"]["text_create"], 1)
+        text = _texts_op(mdb)["rows"][0]
+        global_row = next(
+            op for op in mdb.ops
+            if op["op"] == "insert" and op["table"] == "tCOMd_GlobalPrice"
+        )["rows"][0]
+        self.assertEqual(global_row["com_VariantCondition"], "GE2HDF.")
+        self.assertEqual(global_row["com_PriceValue"], 114.0)
+        self.assertEqual(global_row["com_PriceLevelCode"], "X")
+        self.assertEqual(global_row["sys_ISOCurrencyCode"], "GBP")
+        self.assertEqual(global_row["com_PriceListID"], 22)
+        self.assertEqual(global_row["com_TextID"], text["com_TextID"])
+        self.assertEqual(text["com_TextName"], "GE2HDF.")
+
+    def test_article_base_duplicate_updates_only_last_row_returned(self):
         dup = {"com_ArticleID": 4, "com_PriceListID": 21, "com_VariantCondition": "",
                "com_PriceLevelCode": "B", "sys_ISOCurrencyCode": "EUR"}
         prices = [{"com_PriceID": 1, "com_PriceValue": 0.0, **dup},
@@ -285,9 +312,87 @@ class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
                   {"com_PriceID": 3, "com_PriceValue": 1.0, **dup}]
         mdb = _RecordingMDB(_eur_gbp_lists(), prices=prices, linked=[21, 22])
         result = _export(mdb, [_rec(9.0, "EUR")])
-        self.assertEqual([op["where"]["com_PriceID"] for op in mdb.ops], [1, 3])
-        self.assertEqual(result["updated_prices"], 2)
+        self.assertEqual([op["where"]["com_PriceID"] for op in mdb.ops], [3])
+        self.assertEqual(result["updated_prices"], 1)
         self.assertEqual(result["inserted_prices"], 0)
+        self.assertEqual(result["duplicate_matches"], 1)
+
+    def test_article_base_duplicate_leaves_earlier_stale_row_if_last_returned_is_current(self):
+        dup = {"com_ArticleID": 4, "com_PriceListID": 21, "com_VariantCondition": "",
+               "com_PriceLevelCode": "B", "sys_ISOCurrencyCode": "EUR"}
+        prices = [{"com_PriceID": 1, "com_PriceValue": 1.0, **dup},
+                  {"com_PriceID": 2, "com_PriceValue": 9.0, **dup}]
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=prices, linked=[21, 22])
+        result = _export(mdb, [_rec(9.0, "EUR")])
+        self.assertEqual(mdb.ops, [])
+        self.assertEqual(result["updated_prices"], 0)
+        self.assertEqual(result["skipped_existing"], 1)
+
+    def test_article_surcharge_duplicate_updates_only_last_returned_row(self):
+        dup = {"com_ArticleID": 4, "com_PriceListID": 21, "com_VariantCondition": " 8=AA",
+               "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR"}
+        prices = [{"com_PriceID": 1, "com_PriceValue": 1.0, **dup},
+                  {"com_PriceID": 2, "com_PriceValue": 2.0, **dup}]
+        mdb = _RecordingMDB(_eur_gbp_lists(), prices=prices, linked=[21, 22])
+        result = _export(mdb, [_rec(9.0, "EUR", variant_condition=" 8=AA", level="X")])
+        self.assertEqual([op["where"]["com_PriceID"] for op in mdb.ops], [2])
+        self.assertEqual(result["updated_prices"], 1)
+
+    def test_global_base_duplicate_updates_only_last_returned_row(self):
+        duplicate = {
+            "com_PackageID": 1,
+            "com_PriceListID": 21,
+            "com_VariantCondition": "GE2HDF.",
+            "com_PriceLevelCode": "X",
+            "sys_ISOCurrencyCode": "EUR",
+        }
+        globals_ = [
+            {"com_GlobalPriceID": 101, "com_PriceValue": 10.0, **duplicate},
+            {"com_GlobalPriceID": 102, "com_PriceValue": 20.0, **duplicate},
+        ]
+        mdb = _RecordingMDB(_eur_gbp_lists(), globals_=globals_, linked=[21, 22])
+        result = _export(
+            mdb,
+            [PriceRecord(
+                is_global=True,
+                variant_condition="GE2HDF.",
+                value=114.0,
+                currency="EUR",
+                valid_from="2026-10-16",
+            )],
+        )
+        self.assertEqual(
+            [op["where"]["com_GlobalPriceID"] for op in mdb.ops], [102]
+        )
+        self.assertEqual(result["updated_global_prices"], 1)
+
+    def test_global_surcharge_duplicate_updates_each_differing_row(self):
+        duplicate = {
+            "com_PackageID": 1,
+            "com_PriceListID": 21,
+            "com_VariantCondition": "GE2HDF. 3827=DB3",
+            "com_PriceLevelCode": "X",
+            "sys_ISOCurrencyCode": "EUR",
+        }
+        globals_ = [
+            {"com_GlobalPriceID": 101, "com_PriceValue": 10.0, **duplicate},
+            {"com_GlobalPriceID": 102, "com_PriceValue": 20.0, **duplicate},
+        ]
+        mdb = _RecordingMDB(_eur_gbp_lists(), globals_=globals_, linked=[21, 22])
+        result = _export(
+            mdb,
+            [PriceRecord(
+                is_global=True,
+                variant_condition="GE2HDF. 3827=DB3",
+                value=114.0,
+                currency="EUR",
+                valid_from="2026-10-16",
+            )],
+        )
+        self.assertEqual(
+            [op["where"]["com_GlobalPriceID"] for op in mdb.ops], [101, 102]
+        )
+        self.assertEqual(result["updated_global_prices"], 2)
 
     def test_ambiguous_price_list_is_reported_not_guessed(self):
         lists = [_plist(5, "EURO_A", "EUR"), _plist(6, "EURO_B", "EUR")]
@@ -537,11 +642,11 @@ class PriceMdbExportTargetReportTests(unittest.TestCase):
         self.assertEqual(mdb.ops[0]["rows"][0]["com_PriceListID"], 30)
         self.assertTrue(any("EURO_SPECIAL" in w for w in result["warnings"]))
 
-    def test_records_matching_duplicate_rows_are_counted(self):
+    def test_duplicate_matches_are_counted_when_only_last_base_row_is_updated(self):
         mdb = _RecordingMDB(_eur_gbp_lists(), prices=[_eur_row(1, 0.0), _eur_row(2, 0.0)], linked=[21, 22])
         result = _export(mdb, [_rec(9.0, "EUR")])
         self.assertEqual(result["duplicate_matches"], 1)
-        self.assertEqual(result["updated_prices"], 2)
+        self.assertEqual(result["updated_prices"], 1)
 
 
 if __name__ == "__main__":

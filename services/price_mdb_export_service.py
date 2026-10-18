@@ -559,14 +559,19 @@ class PriceMdbExportService(BaseService):
                 continue
             handled_keys.add((is_global, row_key))
             if row_key in target_keys:
-                # Correct only com_PriceValue, on every row sharing this identity
-                # (some OCD files carry duplicates and pCon may read any of them);
-                # a row that already holds the value is left alone. Identity,
-                # validity, currency and all unrelated rows remain untouched.
+                # Correct only com_PriceValue; a row already holding the value
+                # is left alone. Identity, validity, currency and unrelated rows
+                # remain untouched.
                 primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
                 table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
                 stale = 0
-                for existing_row in existing_map[row_key]:
+                matched_rows = existing_map[row_key]
+                if not is_global or not is_surcharge(record.variant_condition):
+                    # PDM's Article base/surcharge and Global base lookups retain
+                    # only the last matching ID; its Global surcharge loop
+                    # processes each existing row.
+                    matched_rows = matched_rows[-1:]
+                for existing_row in matched_rows:
                     existing_value = existing_row.get("com_PriceValue")
                     try:
                         same_value = existing_value is not None and abs(
