@@ -80,16 +80,22 @@ class MetatypeTemplateService:
         template_names = self._template_names()
         required = set(template_names)
 
-        # A directory is initialized only when every bundled template file exists.
-        if required:
+        # The schema and option-type catalogue identify an established Metatype.
+        # Do not backfill missing ancillary templates into an existing project: those
+        # files may have been intentionally omitted or customized by its owner.
+        core_files = {SCHEMA_NAME, "go_types.csv"}
+        if required and core_files.issubset(required):
             for directory in numbered:
                 present = {p.name for p in directory.iterdir() if p.is_file() and not p.is_symlink()}
-                if required.issubset(present):
+                if core_files.issubset(present):
                     return TemplateInitializationResult(
                         "existing", series, str(directory),
-                        existing=tuple(sorted(required)),
-                        message="All bundled template files already exist. No files were changed.",
+                        existing=tuple(sorted(present.intersection(required))),
+                        message="Existing Metatype detected. No files were changed.",
                     )
+
+        # A directory containing only some template files is a conflict, not a
+        # target for automatic repair, because initialization must never overwrite.
 
         target = numbered[0] if numbered else self.repository_root / series / "1"
         if required and target.is_dir():
