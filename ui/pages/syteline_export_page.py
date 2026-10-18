@@ -112,6 +112,7 @@ class SyteLineExportPage(BasePage):
         self.effective_date.setDate(QDate.currentDate())
         effective_row.addWidget(self.effective_date)
         self.export_all_in_site = QCheckBox("Export All in Site")
+        self.export_all_in_site.setChecked(True)
         self.export_bom_data = QCheckBox("Export BOM Data")
         self.export_bom_data.setEnabled(False)
         self.export_bom_data.setToolTip("BOM export remains disabled until legacy BOM queries and output parity are verified.")
@@ -130,9 +131,6 @@ class SyteLineExportPage(BasePage):
         output_row.addWidget(self.browse_output)
         root.addLayout(output_row)
 
-        self.export_products = QCheckBox("Export Products")
-        self.export_products.setChecked(True)
-        root.addWidget(self.export_products)
         self.filter_product_code = QCheckBox("Filter by Product Code")
         root.addWidget(self.filter_product_code)
         self.product_line = self._combo([])
@@ -190,8 +188,8 @@ class SyteLineExportPage(BasePage):
             ("plc_prefix", "Use PLC Prefix", False),
             ("separate_increments", "Separate Increments", False),
             ("superproducts_only", "SuperProducts Only", False),
-            ("include_url", "Include URL", False),
-            ("short_description", "Short Description", False),
+            ("include_url", "Include URL", True),
+            ("short_description", "Short Description", True),
         ], include_export_type=True)
         self._add_tab("SyteLine (CSI)", [
             ("csi_flatten_fabrics", "Flatten (Exclude) Fabric Type Level", False),
@@ -325,16 +323,16 @@ class SyteLineExportPage(BasePage):
         self._updating_scope_controls = True
         try:
             if source is not None and source.isChecked():
-                for widget in (self.export_products, self.range_check, self.list_check):
+                for widget in (self.filter_product_code, self.range_check, self.list_check):
                     if widget is not source:
                         widget.setChecked(False)
             else:
                 # Older saved settings may contain multiple checked modes.
                 if self.list_check.isChecked():
-                    self.export_products.setChecked(False)
+                    self.filter_product_code.setChecked(False)
                     self.range_check.setChecked(False)
                 elif self.range_check.isChecked():
-                    self.export_products.setChecked(False)
+                    self.filter_product_code.setChecked(False)
                     self.list_check.setChecked(False)
             ranged, listed = self.range_check.isChecked(), self.list_check.isChecked()
             self.min_item.setEnabled(ranged)
@@ -343,7 +341,7 @@ class SyteLineExportPage(BasePage):
             self.add_items.setEnabled(listed)
             self.remove_items.setEnabled(listed)
             self.clear_items.setEnabled(listed)
-            self.product_line.setEnabled(self.export_products.isChecked() and self.filter_product_code.isChecked())
+            self.product_line.setEnabled(self.filter_product_code.isChecked())
         finally:
             self._updating_scope_controls = False
 
@@ -363,15 +361,17 @@ class SyteLineExportPage(BasePage):
             scope_mode = "list"
         elif self.range_check.isChecked():
             scope_mode = "range"
-        else:
+        elif self.filter_product_code.isChecked():
             scope_mode = "products"
+        else:
+            scope_mode = "catalogue"
         items = tuple(
             self.item_list.item(index).text().strip()
             for index in range(self.item_list.count())
             if self.item_list.item(index).text().strip()
         )
         options = set()
-        if self.export_products.isChecked():
+        if self.filter_product_code.isChecked():
             options.add("products")
         if self.range_check.isChecked():
             options.add("ranges")
@@ -510,7 +510,7 @@ class SyteLineExportPage(BasePage):
             if parsed_date.isValid():
                 self.effective_date.setDate(parsed_date)
         for key, widget in [
-            ("export_products", self.export_products), ("filter_product_code", self.filter_product_code),
+            ("filter_product_code", self.filter_product_code),
             ("range_check", self.range_check), ("list_check", self.list_check),
             ("export_all_in_site", self.export_all_in_site), ("export_bom_data", self.export_bom_data),
         ]:
@@ -535,7 +535,7 @@ class SyteLineExportPage(BasePage):
             widget.textChanged.connect(self._save_settings)
         self.effective_date.dateChanged.connect(self._save_settings)
         for widget in [
-            self.export_products, self.filter_product_code, self.range_check, self.list_check,
+            self.filter_product_code, self.filter_product_code, self.range_check, self.list_check,
             self.export_all_in_site, self.export_bom_data, *self.checks.values(),
         ]:
             widget.toggled.connect(self._save_settings)
@@ -547,7 +547,7 @@ class SyteLineExportPage(BasePage):
                 getattr(self, attr).currentTextChanged.connect(self._save_settings)
         self.item_list.model().rowsInserted.connect(self._save_settings)
         self.item_list.model().rowsRemoved.connect(self._save_settings)
-        for widget in (self.export_products, self.range_check, self.list_check):
+        for widget in (self.filter_product_code, self.range_check, self.list_check):
             widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
         self.filter_product_code.toggled.connect(lambda *_args: self._update_scope_controls())
         self.site.currentIndexChanged.connect(self._load_product_codes)
@@ -570,7 +570,7 @@ class SyteLineExportPage(BasePage):
         self.settings.setValue(self.PREFIX + "pdm_user_id", self.pdm_user_id.text().strip())
         self.settings.setValue(self.PREFIX + "effective_date", self.effective_date.date().toString("yyyy-MM-dd"))
         for key, widget in [
-            ("export_products", self.export_products), ("filter_product_code", self.filter_product_code),
+            ("filter_product_code", self.filter_product_code),
             ("range_check", self.range_check), ("list_check", self.list_check),
             ("export_all_in_site", self.export_all_in_site), ("export_bom_data", self.export_bom_data),
         ]:
