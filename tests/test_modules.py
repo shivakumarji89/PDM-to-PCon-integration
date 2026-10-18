@@ -10,6 +10,7 @@ def test_top_level_modules_are_defined_in_order():
         WorkbenchModule.METATYPE,
         WorkbenchModule.OAP,
         WorkbenchModule.BULK_UPDATE,
+        WorkbenchModule.SYTELINE_EXPORT,
     ]
 
 
@@ -19,6 +20,7 @@ def test_module_titles():
     assert module_title(WorkbenchModule.QA_VALIDATION) == "QA Validation"
     assert module_title(WorkbenchModule.METATYPE) == "Metatype"
     assert module_title(WorkbenchModule.OAP) == "OAP"
+    assert module_title(WorkbenchModule.SYTELINE_EXPORT) == "SyteLine Export"
 
 
 def test_module_workflow_mapping_uses_existing_workflows():
@@ -57,6 +59,9 @@ def test_module_workflow_mapping_uses_existing_workflows():
         WorkflowStep.METATYPE_SETUP,
         WorkflowStep.METATYPE_RELATIONS,
         WorkflowStep.METATYPE_REVIEW,
+    )
+    assert module_workflows(WorkbenchModule.SYTELINE_EXPORT) == (
+        WorkflowStep.SYTELINE_EXPORT,
     )
 
 
