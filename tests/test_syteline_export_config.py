@@ -83,6 +83,19 @@ def test_captured_legacy_superprod_rows_keep_19_columns():
     assert len(rows[1]) == 19  # 7 descriptive columns + FP1..FP12
 
 
+@pytest.mark.parametrize(
+    ("output_name", "expected_header"),
+    [
+        ("material", "Parent Item\\tFeature\\tComponent\\tOpt code\\tInc. price\\tMatl Qty\\tScrap fact\\tSeq\\tEffect Date\\tObs Date\\tOper Num\\tBackFlush"),
+        ("priceformula", "Site\\tCustPriceCode\\tItemPriceCode\\tPriceFormula\\tPriceFactor\\tEffectiveDate"),
+        ("productcode", "Site\\tProductCode\\tDescription\\tPriceCode\\tUnitCode"),
+    ],
+)
+def test_additional_legacy_output_headers_match_source(output_name, expected_header):
+    rows = parse_legacy_tsv(expected_header + "\\n", output_name)
+    assert rows == (LEGACY_TSV_HEADERS[output_name],)
+
+
 def test_empty_item_output_is_allowed_without_guessing_its_schema():
     assert parse_legacy_tsv("", "item") == ()
 
