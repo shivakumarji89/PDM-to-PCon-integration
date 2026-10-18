@@ -27,8 +27,11 @@ class SyteLineExportPage(BasePage):
         )
         self._context = context
         self.settings = QSettings()
+        self._building = True
         self._build_ui()
         self._load_settings()
+        self._building = False
+        self._connect_autosave()
         self._update_scope_controls()
 
     @staticmethod
@@ -53,8 +56,8 @@ class SyteLineExportPage(BasePage):
 
         selectors = QGridLayout()
         self.site = self._combo(["UK", "US", "DE", "FR", "NL"], "UK")
-        self.language = self._combo(["English", "German", "French", "Dutch"], "English")
-        self.other_language = self._combo(["English", "German", "French", "Dutch"], "English")
+        self.language = self._combo(["English", "French", "Italian", "Japanese"], "English")
+        self.other_language = self._combo(["English", "French", "Italian", "Japanese"], "English")
         for col, (label, widget) in enumerate([
             ("Site:", self.site), ("Language:", self.language), ("Other Language:", self.other_language)
         ]):
@@ -101,11 +104,14 @@ class SyteLineExportPage(BasePage):
         self.currency = self._combo(["GBP", "EUR", "USD"], "GBP")
         scope.addWidget(self.currency, 3, 1)
         list_buttons = QHBoxLayout()
-        self.add_items = QPushButton("Add Items…")
+        self.add_items = QPushButton("Add Item(s)")
+        self.remove_items = QPushButton("Remove Selected")
         self.clear_items = QPushButton("Clear List")
         self.add_items.clicked.connect(self._add_items)
+        self.remove_items.clicked.connect(self._remove_selected_items)
         self.clear_items.clicked.connect(self.item_list.clear)
         list_buttons.addWidget(self.add_items)
+        list_buttons.addWidget(self.remove_items)
         list_buttons.addWidget(self.clear_items)
         scope.addLayout(list_buttons, 3, 2)
         self.params = QPushButton("Params")
@@ -206,7 +212,7 @@ class SyteLineExportPage(BasePage):
 
     def _add_items(self) -> None:
         text, accepted = QInputDialog.getMultiLineText(
-            self, "Add items", "Enter item codes (one per line or comma-separated):"
+            self, "Add Item(s)", "Enter item codes (one per line or comma-separated):"
         )
         if not accepted:
             return
@@ -216,6 +222,10 @@ class SyteLineExportPage(BasePage):
             if item and item not in existing:
                 self.item_list.addItem(item)
                 existing.add(item)
+
+    def _remove_selected_items(self) -> None:
+        for item in self.item_list.selectedItems():
+            self.item_list.takeItem(self.item_list.row(item))
 
     def _show_params(self) -> None:
         QMessageBox.information(
@@ -230,6 +240,7 @@ class SyteLineExportPage(BasePage):
         self.max_item.setEnabled(ranged)
         self.item_list.setEnabled(listed)
         self.add_items.setEnabled(listed)
+        self.remove_items.setEnabled(listed)
         self.clear_items.setEnabled(listed)
 
     def _load_settings(self) -> None:
@@ -249,10 +260,25 @@ class SyteLineExportPage(BasePage):
         self.item_list.addItems(self.settings.value(self.PREFIX + "items", [], type=list))
         for key, widget in self.checks.items():
             widget.setChecked(self.settings.value(self.PREFIX + "options/" + key, widget.isChecked(), type=bool))
+
+    def _connect_autosave(self) -> None:
+        for widget in [
+            self.site, self.language, self.other_language, self.catalogue, self.product_line,
+            self.currency, self.export_type, self.contract,
+        ]:
+            widget.currentTextChanged.connect(self._save_settings)
+        for widget in [self.min_item, self.max_item]:
+            widget.textChanged.connect(self._save_settings)
+        for widget in [self.filter_product_code, self.range_check, self.list_check, *self.checks.values()]:
+            widget.toggled.connect(self._save_settings)
+        self.item_list.model().rowsInserted.connect(self._save_settings)
+        self.item_list.model().rowsRemoved.connect(self._save_settings)
         self.range_check.toggled.connect(self._update_scope_controls)
         self.list_check.toggled.connect(self._update_scope_controls)
 
-    def _save_settings(self) -> None:
+    def _save_settings(self, *_args) -> None:
+        if getattr(self, "_building", False):
+            return
         for key, widget in [
             ("site", self.site), ("language", self.language), ("other_language", self.other_language),
             ("catalogue", self.catalogue), ("product_line", self.product_line), ("currency", self.currency),
@@ -272,4 +298,3 @@ class SyteLineExportPage(BasePage):
         for key, widget in self.checks.items():
             self.settings.setValue(self.PREFIX + "options/" + key, widget.isChecked())
         self.settings.sync()
-        self.status.setText("Configuration saved locally; no database operation or export was executed.")
