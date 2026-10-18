@@ -18,8 +18,9 @@ This is a separate top-level module in MK Product Workbench based on
 - Read-only metadata loading for site, language, currency, permitted catalogue and product-code choices, using
   source-mapped legacy PDM queries and parameterized user/site/catalogue IDs. The authenticated PDM User ID is
   required to query the legacy `PDMUserCatalogues` access list.
-- Source-mapped SQL and atomic TSV writers for price-formula and product-code outputs. The legacy product-code
-  file's five-column header/four-column row mismatch is preserved deliberately.
+- Parameterized item-selection SQL ported from the legacy `ExportThread`: catalogue, product-code, range, list, active-only, unreleased-catalogue, Browning range exception, alternate description, list-price query conditions, and super-product exclusion query rewrite. SQL values are bound as parameters.
+- Standard SyteLine item-row formatter ported for resolved item inputs, including legacy status/reason mapping, price source and negative-price clamp, description character replacement, note/legacy marker selection, fixed fields, 20 feature slots, and dimensions. It does not resolve option values or build material/BOM rows by itself.
+- Source-mapped SQL and atomic TSV writers for price-formula and product-code outputs. The legacy product-code file's five-column header/four-column row mismatch is preserved deliberately.
 - Clear UI guardrails for functions whose data dependencies have not been ported: scheduler, contract
   loading, multi-site/language/currency selection, BOM export, queueing and live export remain disabled.
   Compare/Validate XML also remain disabled until their legacy behavior is ported.
@@ -55,12 +56,7 @@ ODBC driver, and a PDM User ID that is permitted by `PDMUserCatalogues`. The aut
 entered explicitly because this application does not yet share the legacy PDM Maintenance authentication
 session.
 
-The exporter is not yet 100% functionally equivalent or production-ready. The source-defined header-only
-planning and description files, plus price-formula and product-code outputs, now have writers. The core
-item/material/super-product transformation, base-price calculations, option/dependency traversal,
-CSI-specific formatting, OFDA/CET generation and validation, queue/scheduler execution, and differential
-output verification remain unported. Live export remains disabled; metadata connectivity and auxiliary
-writers are not a claim of end-to-end export parity.
+The exporter is not yet 100% functionally equivalent or production-ready. The source-defined header-only planning and description files, price-formula and product-code outputs, parameterized item-selection query, and standard item-row formatter now have implementations and unit coverage. The option/dependency traversal, material/super-product/BOM row generation, full base-price behavior, CSI-specific formatting, OFDA/CET generation and validation, queue/scheduler execution, and differential output verification remain unported. Live export remains disabled; query and row-formatting helpers are not a claim of end-to-end export parity.
 
 ## Remaining work before Phase 1 can be signed off
 
