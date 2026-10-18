@@ -108,6 +108,6 @@ def test_writer_matches_legacy_literal_tab_concatenation(tmp_path):
     SyteLineAuxiliaryOutputService._write_tsv(
         target, ("First", "Second"), (("contains\ttab", "value"),)
     )
-    assert target.read_text(encoding="utf-8-sig") == (
-        "First\tSecond\\r\\ncontains\ttab\tvalue\\r\\n"
-    )
+    with target.open(encoding="utf-8-sig", newline="") as stream:
+        output = stream.read()
+    assert output == "First\tSecond\r\ncontains\ttab\tvalue\r\n"
