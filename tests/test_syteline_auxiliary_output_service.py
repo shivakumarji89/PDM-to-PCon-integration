@@ -111,3 +111,25 @@ def test_writer_matches_legacy_literal_tab_concatenation(tmp_path):
     with target.open(encoding="utf-8-sig", newline="") as stream:
         output = stream.read()
     assert output == "First\tSecond\r\ncontains\ttab\tvalue\r\n"
+
+
+def test_header_only_outputs_match_legacy_verbose_extract(tmp_path):
+    outputs = SyteLineAuxiliaryOutputService.write_header_only_outputs(tmp_path, "PDMExport")
+    assert outputs["description"].name == "PDMExport_description_data.txt"
+    assert outputs["planning"].name == "PDMExport_planning_data.txt"
+    with outputs["description"].open(encoding="utf-8-sig", newline="") as stream:
+        description = stream.read()
+    with outputs["planning"].open(encoding="utf-8-sig", newline="") as stream:
+        planning = stream.read()
+    assert description == "Lang\\tItem\\tDescription\\r\\n"
+    assert planning.startswith("Item\\tDescription\\tProduct Code\\tVendor Call\\tStocked\\r\\n")
+    assert planning.endswith("Kanban qty\\r\\n")
+    assert outputs["description"].parent == tmp_path / "temp"
+
+
+def test_header_only_outputs_use_csi_suffix(tmp_path):
+    outputs = SyteLineAuxiliaryOutputService.write_header_only_outputs(
+        tmp_path, "PDMExport", format_csi=True
+    )
+    assert outputs["description"].name == "PDMExport_description_data_csi.txt"
+    assert outputs["planning"].name == "PDMExport_planning_data_csi.txt"
