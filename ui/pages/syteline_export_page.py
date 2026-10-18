@@ -1,240 +1,275 @@
-"""Isolated SyteLine export configuration workspace.
+"""Legacy-shaped SyteLine export workspace.
 
-Export execution deliberately remains disabled until legacy SQL, transformations,
-external dependencies and reference-output parity have been verified.
+This phase mirrors the visible legacy PDM controls. Export execution remains guarded
+until SQL mappings and output parity can be verified.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QPlainTextEdit, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
+    QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 from core.application_context import ApplicationContext
 from ui.pages.base_page import BasePage
 
 
 class SyteLineExportPage(BasePage):
-    """Standalone SyteLine export settings and validation page."""
+    """Legacy PDM export controls, isolated from other workbench workflows."""
+
+    PREFIX = "syteline/"
 
     def __init__(self, context: ApplicationContext, parent: QWidget | None = None) -> None:
         super().__init__(
-            "SyteLine Export",
-            "Separate legacy-compatible export workspace. Existing modules and workflows are unchanged.",
+            "Export PDM Data",
+            "Legacy SyteLine export configuration. Live export remains guarded pending parity verification.",
             parent, show_placeholder=False, content_stretch=True,
         )
         self._context = context
-        self._settings = QSettings()
+        self.settings = QSettings()
         self._build_ui()
         self._load_settings()
         self._update_scope_controls()
 
+    @staticmethod
+    def _combo(items: list[str], selected: str = "") -> QComboBox:
+        widget = QComboBox()
+        widget.addItems(items)
+        if selected:
+            widget.setCurrentText(selected)
+        return widget
+
     def _build_ui(self) -> None:
         root = QVBoxLayout()
-        root.setSpacing(10)
+        root.setSpacing(6)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Specify the export parameters:"))
+        header.addStretch(1)
+        self.scheduler = QPushButton("Scheduler")
+        self.scheduler.setEnabled(False)
+        self.scheduler.setToolTip("Scheduler integration awaits the legacy workflow port.")
+        header.addWidget(self.scheduler)
+        root.addLayout(header)
 
-        source = QGroupBox("Source and output")
-        form = QFormLayout(source)
-        self.server = QLineEdit()
-        self.server.setPlaceholderText("SQL Server host\\instance")
-        self.database = QLineEdit()
-        self.database.setPlaceholderText("SyteLine database name")
-        self.output_directory = QLineEdit()
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse_output)
-        output_row = QHBoxLayout()
-        output_row.addWidget(self.output_directory, 1)
-        output_row.addWidget(browse)
-        output_widget = QWidget()
-        output_widget.setLayout(output_row)
-        form.addRow("SQL Server", self.server)
-        form.addRow("Database", self.database)
-        form.addRow("Output folder", output_widget)
-        root.addWidget(source)
+        selectors = QGridLayout()
+        self.site = self._combo(["UK", "US", "DE", "FR", "NL"], "UK")
+        self.language = self._combo(["English", "German", "French", "Dutch"], "English")
+        self.other_language = self._combo(["English", "German", "French", "Dutch"], "English")
+        for col, (label, widget) in enumerate([
+            ("Site:", self.site), ("Language:", self.language), ("Other Language:", self.other_language)
+        ]):
+            selectors.addWidget(QLabel(label), 0, col)
+            selectors.addWidget(widget, 1, col)
+        root.addLayout(selectors)
 
-        scope = QGroupBox("Export scope")
-        scope_form = QFormLayout(scope)
-        self.site = QComboBox()
-        self.site.setEditable(True)
-        self.site.addItems(["uk", "us", "de", "fr", "nl"])
-        self.product_line = QLineEdit()
-        self.catalogue = QLineEdit()
-        self.language = QLineEdit()
-        self.currency = QComboBox()
-        self.currency.setEditable(True)
-        self.currency.addItems(["GBP", "EUR", "USD"])
-        self.scope_mode = QComboBox()
-        self.scope_mode.addItem("Selected products", "products")
-        self.scope_mode.addItem("Item range", "range")
-        self.scope_mode.addItem("Explicit item list", "list")
-        self.min_item = QLineEdit()
-        self.max_item = QLineEdit()
-        self.item_list = QPlainTextEdit()
-        self.item_list.setPlaceholderText("One item code per line")
-        self.item_list.setMaximumHeight(72)
-        for label, widget in (
-            ("Site", self.site), ("Product line", self.product_line),
-            ("Catalogue", self.catalogue), ("Language", self.language),
-            ("Currency", self.currency), ("Scope", self.scope_mode),
-            ("First item", self.min_item), ("Last item", self.max_item),
-            ("Item list", self.item_list),
-        ):
-            scope_form.addRow(label, widget)
-        self.scope_mode.currentIndexChanged.connect(self._update_scope_controls)
-        root.addWidget(scope)
+        catalogue_label = QHBoxLayout()
+        catalogue_label.addWidget(QLabel("Select a Catalogue to export:"))
+        self.catalogue_required = QLabel("< Required >")
+        self.catalogue_required.setStyleSheet("color: #b42318;")
+        catalogue_label.addWidget(self.catalogue_required)
+        catalogue_label.addStretch(1)
+        root.addLayout(catalogue_label)
+        self.catalogue = self._combo([])
+        self.catalogue.setEditable(True)
+        self.catalogue.setPlaceholderText("Catalogue")
+        root.addWidget(self.catalogue)
 
-        options = QGroupBox("Export options")
-        options_layout = QGridLayout(options)
-        definitions = (
-            ("products", "Products"), ("ranges", "Ranges"), ("lists", "Lists"),
-            ("base_prices", "Base prices"), ("ofda", "OFDA data"),
-            ("bom", "Bill of materials"), ("feature_options", "Feature options"),
-            ("active_only", "Active items only"), ("all_catalogues", "All catalogues in site"),
-            ("multi_site", "Multi-site"), ("multi_language", "Multi-language"),
-            ("multi_currency", "Multi-currency"), ("plc_phantoms", "PLC phantoms"),
-            ("flatten_fabrics", "Flatten fabrics"),
-            ("exclude_super_products", "Exclude super-products"),
-            ("super_products_only", "Super-products only"),
-            ("include_url", "Include URL"), ("short_description", "Short descriptions"),
-            ("validate_output", "Validate output"),
-        )
-        self.option_checks: dict[str, QCheckBox] = {}
-        for index, (key, caption) in enumerate(definitions):
-            check = QCheckBox(caption)
-            self.option_checks[key] = check
-            options_layout.addWidget(check, index // 3, index % 3)
-        for key in ("products", "base_prices", "validate_output"):
-            self.option_checks[key].setChecked(True)
-        root.addWidget(options)
+        self.filter_product_code = QCheckBox("Filter by Product Code")
+        root.addWidget(self.filter_product_code)
+        self.product_line = self._combo([])
+        self.product_line.setEditable(True)
+        self.product_line.setPlaceholderText("Product line / superproduct")
+        root.addWidget(self.product_line)
 
-        notice = QLabel(
-            "Export execution is disabled in this stage. This page does not connect to "
-            "SQL Server or read/write source data. The legacy SQL, transformation rules, "
-            "dependencies and reference outputs must be mapped and tested before enabling export."
-        )
-        notice.setWordWrap(True)
-        notice.setObjectName("pageSubtitle")
-        root.addWidget(notice)
+        scope = QGridLayout()
+        self.range_check = QCheckBox("Items within a range:")
+        self.list_check = QCheckBox("Items from specified list:")
+        self.min_item = QLineEdit("WE")
+        self.max_item = QLineEdit("WE")
+        self.min_item.setMaximumWidth(180)
+        self.max_item.setMaximumWidth(180)
+        self.item_list = QListWidget()
+        self.item_list.setMaximumHeight(70)
+        scope.addWidget(self.range_check, 0, 0, 1, 2)
+        scope.addWidget(self.list_check, 0, 2, 1, 2)
+        scope.addWidget(QLabel("From Item:"), 1, 0)
+        scope.addWidget(self.min_item, 1, 1)
+        scope.addWidget(self.item_list, 1, 2, 2, 1)
+        scope.addWidget(QLabel("To Item:"), 2, 0)
+        scope.addWidget(self.max_item, 2, 1)
+        scope.addWidget(QLabel("Currency:"), 3, 0)
+        self.currency = self._combo(["GBP", "EUR", "USD"], "GBP")
+        scope.addWidget(self.currency, 3, 1)
+        list_buttons = QHBoxLayout()
+        self.add_items = QPushButton("Add Items…")
+        self.clear_items = QPushButton("Clear List")
+        self.add_items.clicked.connect(self._add_items)
+        self.clear_items.clicked.connect(self.item_list.clear)
+        list_buttons.addWidget(self.add_items)
+        list_buttons.addWidget(self.clear_items)
+        scope.addLayout(list_buttons, 3, 2)
+        self.params = QPushButton("Params")
+        self.params.clicked.connect(self._show_params)
+        params_row = QHBoxLayout()
+        params_row.addStretch(1)
+        params_row.addWidget(self.params)
+        scope.addLayout(params_row, 4, 2, 1, 2)
+        root.addLayout(scope)
 
-        actions = QHBoxLayout()
-        save = QPushButton("Save configuration")
-        save.clicked.connect(self._save_settings)
-        validate = QPushButton("Validate configuration")
-        validate.clicked.connect(self._validate_configuration)
-        self.export_button = QPushButton("Export")
-        self.export_button.setEnabled(False)
-        self.export_button.setToolTip("Awaiting legacy query mapping and output-parity tests.")
-        actions.addWidget(save)
-        actions.addWidget(validate)
-        actions.addWidget(self.export_button)
-        actions.addStretch(1)
-        root.addLayout(actions)
-        self.status = QLabel("Configuration not yet validated.")
+        self.tabs = QTabWidget()
+        self.checks: dict[str, QCheckBox] = {}
+        self._add_tab("SyteLine", [
+            ("active_only", "Export Active Items Only", True),
+            ("flatten_fab", "Flatten Fab", False),
+            ("length_5_feats", "Use length 5 Feats", False),
+            ("short_phantoms", "Short Phantoms", False),
+            ("ignore_option_dependencies", "Ignore Option to Option Dependencies", False),
+            ("extend_sp_options", "Extend SP Options", False),
+            ("base_prices", "Export Base Prices", True),
+            ("unique_phantoms", "Unique Phantoms", True),
+            ("plc_prefix", "Use PLC Prefix", False),
+        ], include_export_type=True)
+        self._add_tab("SyteLine (CSI)", [
+            ("csi_active_only", "Export Active Items Only", True),
+            ("csi_short_descriptions", "Short Descriptions", False),
+            ("csi_exclude_superproducts", "Exclude Superproducts", False),
+            ("csi_superproducts_only", "Superproducts Only", False),
+            ("csi_plc_phantoms", "PLC Phantoms", False),
+            ("csi_short_phantoms", "Short Phantoms", False),
+            ("csi_unique_fabrics", "Unique Fabric Types", False),
+        ])
+        self._add_tab("OFDA (CET)", [
+            ("ofda_export", "Export OFDA (CET) data", False),
+            ("ofda_validate", "Validate export data", False),
+            ("ofda_designer_images", "Include designer images", False),
+        ])
+        self._add_tab("Other", [
+            ("other_base_prices", "Export Base Prices", True),
+            ("other_include_url", "Include URL items", False),
+            ("other_short_descriptions", "Short descriptions", False),
+            ("other_exclude_superproducts", "Exclude Superproducts", False),
+            ("other_superproducts_only", "Superproducts Only", False),
+            ("other_validate", "Validate export", False),
+        ])
+        root.addWidget(self.tabs, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.queue = QPushButton("Queue")
+        self.export = QPushButton("Export")
+        self.queue.setEnabled(False)
+        self.export.setEnabled(False)
+        self.queue.setToolTip("Queue execution is not yet ported.")
+        self.export.setToolTip("Live export is disabled pending legacy query and output parity tests.")
+        buttons.addWidget(self.queue)
+        buttons.addWidget(self.export)
+        root.addLayout(buttons)
+
+        footer = QHBoxLayout()
+        self.status = QLabel("Ready — live export is not yet enabled.")
         self.status.setWordWrap(True)
-        root.addWidget(self.status)
-        root.addStretch(1)
-
+        self.elapsed = QLabel("Time: 00:00:00")
+        footer.addWidget(self.status, 1)
+        footer.addWidget(self.elapsed)
+        root.addLayout(footer)
         content = QWidget()
         content.setLayout(root)
         self.add_content(content)
 
-    def _browse_output(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self, "Choose SyteLine export folder", self.output_directory.text()
+    def _add_tab(self, title: str, definitions: list[tuple[str, str, bool]], include_export_type: bool = False) -> None:
+        page = QWidget()
+        layout = QGridLayout(page)
+        row = 0
+        if include_export_type:
+            layout.addWidget(QLabel("Export Type:"), row, 0)
+            self.export_type = self._combo([
+                "Verbose Extract (full)", "Verbose Extract", "Compact Extract"
+            ], "Verbose Extract (full)")
+            layout.addWidget(self.export_type, row, 1, 1, 2)
+            row += 1
+            self.load_contract = QPushButton("Load")
+            self.load_contract.setEnabled(False)
+            self.contract = self._combo([])
+            self.contract.setEnabled(False)
+            layout.addWidget(self.load_contract, row, 0)
+            layout.addWidget(QLabel("Contract:"), row, 1)
+            layout.addWidget(self.contract, row, 2)
+            row += 1
+        for key, label, default in definitions:
+            check = QCheckBox(label)
+            check.setChecked(default)
+            self.checks[key] = check
+            layout.addWidget(check, row, 0, 1, 3)
+            row += 1
+        layout.setRowStretch(row, 1)
+        self.tabs.addTab(page, title)
+
+    def _add_items(self) -> None:
+        text, accepted = QInputDialog.getMultiLineText(
+            self, "Add items", "Enter item codes (one per line or comma-separated):"
         )
-        if path:
-            self.output_directory.setText(path)
+        if not accepted:
+            return
+        existing = {self.item_list.item(i).text() for i in range(self.item_list.count())}
+        for raw in text.replace(",", "\n").splitlines():
+            item = raw.strip()
+            if item and item not in existing:
+                self.item_list.addItem(item)
+                existing.add(item)
+
+    def _show_params(self) -> None:
+        QMessageBox.information(
+            self, "Params",
+            "The legacy Params dialog depends on database-backed definitions. "
+            "Its source behavior must be ported before this action can be enabled.",
+        )
 
     def _update_scope_controls(self, *_args) -> None:
-        mode = self.scope_mode.currentData()
-        self.min_item.setEnabled(mode == "range")
-        self.max_item.setEnabled(mode == "range")
-        self.item_list.setEnabled(mode == "list")
+        ranged, listed = self.range_check.isChecked(), self.list_check.isChecked()
+        self.min_item.setEnabled(ranged)
+        self.max_item.setEnabled(ranged)
+        self.item_list.setEnabled(listed)
+        self.add_items.setEnabled(listed)
+        self.clear_items.setEnabled(listed)
 
     def _load_settings(self) -> None:
-        defaults = {
-            "server": "", "database": "", "output_directory": "", "site": "uk",
-            "product_line": "", "catalogue": "", "language": "", "currency": "GBP",
-            "scope_mode": "products", "min_item": "", "max_item": "", "item_list": "",
-        }
-        widgets = {
-            "server": self.server, "database": self.database,
-            "output_directory": self.output_directory, "product_line": self.product_line,
-            "catalogue": self.catalogue, "language": self.language,
-            "min_item": self.min_item, "max_item": self.max_item,
-        }
-        for key, widget in widgets.items():
-            widget.setText(self._settings.value(f"syteline/{key}", defaults[key], type=str))
-        self.site.setCurrentText(self._settings.value("syteline/site", "uk", type=str))
-        self.currency.setCurrentText(self._settings.value("syteline/currency", "GBP", type=str))
-        self.item_list.setPlainText(self._settings.value("syteline/item_list", "", type=str))
-        mode_index = self.scope_mode.findData(
-            self._settings.value("syteline/scope_mode", "products", type=str)
-        )
-        if mode_index >= 0:
-            self.scope_mode.setCurrentIndex(mode_index)
-        for key, check in self.option_checks.items():
-            check.setChecked(self._settings.value(
-                f"syteline/options/{key}",
-                key in {"products", "base_prices", "validate_output"}, type=bool,
-            ))
+        for key, widget in [
+            ("site", self.site), ("language", self.language), ("other_language", self.other_language),
+            ("catalogue", self.catalogue), ("product_line", self.product_line), ("currency", self.currency),
+            ("export_type", self.export_type), ("contract", self.contract),
+        ]:
+            widget.setCurrentText(self.settings.value(self.PREFIX + key, widget.currentText(), type=str))
+        for key, widget in [("min_item", self.min_item), ("max_item", self.max_item)]:
+            widget.setText(self.settings.value(self.PREFIX + key, widget.text(), type=str))
+        for key, widget in [
+            ("filter_product_code", self.filter_product_code), ("range_check", self.range_check),
+            ("list_check", self.list_check),
+        ]:
+            widget.setChecked(self.settings.value(self.PREFIX + key, widget.isChecked(), type=bool))
+        self.item_list.addItems(self.settings.value(self.PREFIX + "items", [], type=list))
+        for key, widget in self.checks.items():
+            widget.setChecked(self.settings.value(self.PREFIX + "options/" + key, widget.isChecked(), type=bool))
+        self.range_check.toggled.connect(self._update_scope_controls)
+        self.list_check.toggled.connect(self._update_scope_controls)
 
     def _save_settings(self) -> None:
-        values = {
-            "server": self.server.text().strip(), "database": self.database.text().strip(),
-            "output_directory": self.output_directory.text().strip(),
-            "site": self.site.currentText().strip(),
-            "product_line": self.product_line.text().strip(),
-            "catalogue": self.catalogue.text().strip(), "language": self.language.text().strip(),
-            "currency": self.currency.currentText().strip(),
-            "scope_mode": self.scope_mode.currentData(),
-            "min_item": self.min_item.text().strip(), "max_item": self.max_item.text().strip(),
-            "item_list": self.item_list.toPlainText(),
-        }
-        for key, value in values.items():
-            self._settings.setValue(f"syteline/{key}", value)
-        for key, check in self.option_checks.items():
-            self._settings.setValue(f"syteline/options/{key}", check.isChecked())
-        self._settings.sync()
-        self.status.setText("Configuration saved locally. No database connection or export was run.")
-
-    def _validate_configuration(self) -> None:
-        errors: list[str] = []
-        if not self.server.text().strip():
-            errors.append("SQL Server is required.")
-        if not self.database.text().strip():
-            errors.append("Database name is required.")
-        if not self.site.currentText().strip():
-            errors.append("Site is required.")
-        if not self.currency.currentText().strip():
-            errors.append("Currency is required.")
-        output = self.output_directory.text().strip()
-        if not output:
-            errors.append("Output folder is required.")
-        elif not Path(output).expanduser().is_dir():
-            errors.append("Output folder must already exist.")
-        mode = self.scope_mode.currentData()
-        if mode == "range":
-            first, last = self.min_item.text().strip(), self.max_item.text().strip()
-            if not first or not last:
-                errors.append("Both range endpoints are required.")
-            elif first > last:
-                errors.append("First item must not sort after last item.")
-        elif mode == "list":
-            items = [x.strip() for x in self.item_list.toPlainText().splitlines() if x.strip()]
-            if not items:
-                errors.append("Enter at least one item code.")
-            elif len(items) != len(set(items)):
-                errors.append("Item list contains duplicates.")
-        data_types = {"products", "ranges", "lists", "base_prices", "ofda", "bom"}
-        if not any(self.option_checks[key].isChecked() for key in data_types):
-            errors.append("Select at least one export data type.")
-        if errors:
-            self.status.setText("Configuration issues:\n• " + "\n• ".join(errors))
-        else:
-            self.status.setText(
-                "Local configuration checks passed. SQL connectivity, extraction and output "
-                "generation have not been tested."
-            )
+        for key, widget in [
+            ("site", self.site), ("language", self.language), ("other_language", self.other_language),
+            ("catalogue", self.catalogue), ("product_line", self.product_line), ("currency", self.currency),
+            ("export_type", self.export_type), ("contract", self.contract),
+        ]:
+            self.settings.setValue(self.PREFIX + key, widget.currentText())
+        for key, widget in [("min_item", self.min_item), ("max_item", self.max_item)]:
+            self.settings.setValue(self.PREFIX + key, widget.text())
+        for key, widget in [
+            ("filter_product_code", self.filter_product_code), ("range_check", self.range_check),
+            ("list_check", self.list_check),
+        ]:
+            self.settings.setValue(self.PREFIX + key, widget.isChecked())
+        self.settings.setValue(self.PREFIX + "items", [
+            self.item_list.item(i).text() for i in range(self.item_list.count())
+        ])
+        for key, widget in self.checks.items():
+            self.settings.setValue(self.PREFIX + "options/" + key, widget.isChecked())
+        self.settings.sync()
+        self.status.setText("Configuration saved locally; no database operation or export was executed.")
