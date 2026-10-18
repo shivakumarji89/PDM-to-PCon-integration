@@ -92,7 +92,7 @@ class SyteLineExportConfig:
     catalogue: str = ""
     language: str = ""
     currency: str = "GBP"
-    scope_mode: ScopeMode = "products"
+    scope_mode: ScopeMode = "catalogue"
     min_item: str = ""
     max_item: str = ""
     item_list: tuple[str, ...] = ()
@@ -105,7 +105,7 @@ class SyteLineExportConfig:
     product_code_id: int = -1
     export_mode: Literal["syteline", "csi", "ofda", "other"] = "syteline"
     effective_date: str = ""
-    export_all_catalogues_in_site: bool = False
+    export_all_catalogues_in_site: bool = True
     active_only: bool = True
     export_base_prices: bool = True
     export_bom_data: bool = False
@@ -174,6 +174,7 @@ class SyteLineExportConfig:
             ("site_id", "Site"),
             ("catalogue_id", "Catalogue"),
             ("language_id", "Language"),
+            ("other_language_id", "Other Language"),
             ("currency_id", "Currency"),
         ):
             if getattr(self, field_name) < 1:
