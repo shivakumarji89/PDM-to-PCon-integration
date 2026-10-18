@@ -55,12 +55,12 @@ ODBC driver, and a PDM User ID that is permitted by `PDMUserCatalogues`. The aut
 entered explicitly because this application does not yet share the legacy PDM Maintenance authentication
 session.
 
-The exporter is not yet 100% functionally equivalent or production-ready. The core item/material/super-product
-transformation, planning and description row logic, base-price calculations, option/dependency traversal,
+The exporter is not yet 100% functionally equivalent or production-ready. The source-defined header-only
+planning and description files, plus price-formula and product-code outputs, now have writers. The core
+item/material/super-product transformation, base-price calculations, option/dependency traversal,
 CSI-specific formatting, OFDA/CET generation and validation, queue/scheduler execution, and differential
-output verification remain unported. Only price-formula and product-code auxiliary outputs have dedicated
-source-mapped query/writer implementations so far. Live export remains disabled; metadata connectivity and
-two auxiliary writers are not a claim of end-to-end export parity.
+output verification remain unported. Live export remains disabled; metadata connectivity and auxiliary
+writers are not a claim of end-to-end export parity.
 
 ## Remaining work before Phase 1 can be signed off
 
