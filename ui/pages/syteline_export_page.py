@@ -5,10 +5,10 @@ until SQL mappings and output parity can be verified.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QDate, QSettings
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
-    QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QDateEdit, QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 from core.application_context import ApplicationContext
 from ui.pages.base_page import BasePage
