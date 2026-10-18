@@ -45,15 +45,19 @@ evidence only; it does not establish SQL mapping, transformation, filtering, pri
 
 ## Safety and verification boundary
 
-The page does not connect to SQL Server or read/write SyteLine/PDM data. Saving settings only writes local
-application settings. The legacy implementation depends on database-backed site/catalogue/language/currency
-IDs, product-code mappings, contracts, stored procedures, BOM/material transforms, price calculations,
-feature/option logic, CSI formatting, OFDA/CET outputs, validation and queue behavior. These must not be
-approximated with invented SQL or placeholder output.
+The metadata loader connects read-only to the configured PDM database to retrieve site, language, currency,
+permitted catalogue and product-code choices. It does not write to PDM or connect to SyteLine. SQL Server
+connectivity requires a reachable configured server, appropriate read permissions, an installed SQL Server
+ODBC driver, and a PDM User ID that is permitted by `PDMUserCatalogues`. The authenticated user ID is
+entered explicitly because this application does not yet share the legacy PDM Maintenance authentication
+session.
 
-The current Phase 1 deliverable is a legacy-shaped configuration surface plus local validation of captured
-TSV structure, not 100% functional parity and not production-ready export execution. Export remains disabled
-until the execution path and output formats are ported and differentially tested.
+The exporter is not yet 100% functionally equivalent or production-ready. The core item/material/super-product
+transformation, planning and description row logic, base-price calculations, option/dependency traversal,
+CSI-specific formatting, OFDA/CET generation and validation, queue/scheduler execution, and differential
+output verification remain unported. Only price-formula and product-code auxiliary outputs have dedicated
+source-mapped query/writer implementations so far. Live export remains disabled; metadata connectivity and
+two auxiliary writers are not a claim of end-to-end export parity.
 
 ## Remaining work before Phase 1 can be signed off
 
