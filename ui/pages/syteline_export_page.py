@@ -429,6 +429,7 @@ class SyteLineExportPage(BasePage):
             ("catalogue_code_override", self.catalogue_code_override),
         ]:
             widget.setText(self.settings.value(self.PREFIX + key, widget.text(), type=str))
+        self.pdm_user_id.setText(self.settings.value(self.PREFIX + "pdm_user_id", "", type=str))
         saved_date = self.settings.value(self.PREFIX + "effective_date", "", type=str)
         if saved_date:
             parsed_date = QDate.fromString(saved_date, "yyyy-MM-dd")
@@ -475,6 +476,9 @@ class SyteLineExportPage(BasePage):
         for widget in (self.export_products, self.range_check, self.list_check):
             widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
         self.filter_product_code.toggled.connect(lambda *_args: self._update_scope_controls())
+        self.site.currentIndexChanged.connect(self._load_product_codes)
+        self.catalogue.currentIndexChanged.connect(self._load_product_codes)
+        self.pdm_user_id.textChanged.connect(self._save_settings)
 
     def _save_settings(self, *_args) -> None:
         for key, widget in [
@@ -488,6 +492,7 @@ class SyteLineExportPage(BasePage):
             ("catalogue_code_override", self.catalogue_code_override),
         ]:
             self.settings.setValue(self.PREFIX + key, widget.text())
+        self.settings.setValue(self.PREFIX + "pdm_user_id", self.pdm_user_id.text().strip())
         self.settings.setValue(self.PREFIX + "effective_date", self.effective_date.date().toString("yyyy-MM-dd"))
         for key, widget in [
             ("export_products", self.export_products), ("filter_product_code", self.filter_product_code),
