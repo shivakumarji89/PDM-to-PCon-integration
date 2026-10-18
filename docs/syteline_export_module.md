@@ -1,30 +1,49 @@
 # SyteLine Export module
 
 This is a separate top-level module in MK Product Workbench based on
-`Archive_demmy/PDMMaintenance/SytelineExport.cs`.
+`Archive_demmy/PDMMaintenance/SytelineExport.cs` and its legacy export helpers.
 
-## Current stage
+## Phase 1 scope
 
-- Dedicated module card and standalone workflow page.
-- Locally persisted SQL Server/database, site, product line, catalogue, language,
-  currency, output folder, scope and export-option settings.
+- Dedicated top-level module and isolated workflow page.
+- Legacy-shaped controls for site, language, other language, catalogue, product-line/product-code filter,
+  currency, range/list scope, effective date, catalogue-code override, export-all-in-site and legacy
+  option tabs (SyteLine, SyteLine CSI, OFDA/CET and Other).
+- Local persistence for editable controls and selected item lists using application settings.
+- Local scope-control behavior: range endpoints are enabled only for range mode and item-list editing is
+  enabled only for list mode.
+- Clear UI guardrails for functions whose data dependencies have not been ported: scheduler, contract
+  loading, multi-site/language/currency selection, BOM export, queueing and live export remain disabled.
+  Compare/Validate XML also remain disabled until their legacy behavior is ported.
 - Local configuration validation and unit-test coverage.
-- Export execution is intentionally disabled. The legacy exporter contains
-  domain-specific SQL, BOM/material transformations, feature-option handling,
-  price logic, CSI formatting, validation, queueing and several output files.
-  Those rules and dependencies must be mapped and compared with reference outputs
-  before execution is enabled.
-- This page does not connect to SQL Server or read/write SyteLine/PDM data.
-  Saving settings only writes local application settings.
 
-## Remaining parity work
+## Safety and verification boundary
 
-1. Trace the legacy SQL calls and exporter/helper dependencies.
-2. Identify stored procedures, connection settings, external assemblies and
-   DTS/Excel/COM assumptions.
-3. Capture known-good output files for representative sites, catalogues,
-   currencies, products, ranges, explicit lists, BOMs, super-products and options.
-4. Implement a read-only extraction adapter, transformations and output writers,
-   with cancellation and diagnostics.
-5. Differential-test every output against reference files before enabling export
-   behind preflight and explicit confirmation.
+The page does not connect to SQL Server or read/write SyteLine/PDM data. Saving settings only writes local
+application settings. The legacy implementation depends on database-backed site/catalogue/language/currency
+IDs, product-code mappings, contracts, stored procedures, BOM/material transforms, price calculations,
+feature/option logic, CSI formatting, OFDA/CET outputs, validation and queue behavior. These must not be
+approximated with invented SQL or placeholder output.
+
+The current Phase 1 deliverable is a legacy-shaped configuration surface, not 100% functional parity and
+not production-ready export execution. Export remains disabled until the execution path and output formats
+are ported and differentially tested.
+
+## Remaining work before Phase 1 can be signed off
+
+1. Finish a control-by-control inventory against the full legacy form and document every mapped, intentionally
+   disabled, hidden, or unsupported control.
+2. Trace each legacy control to its handler, value mapping and downstream export-thread argument.
+3. Identify stored procedures, connection settings, external assemblies and Excel/COM assumptions.
+4. Add unit tests for parameter mapping, validation, persistence, and mode-dependent controls.
+5. Obtain representative known-good legacy output files for sites, catalogues, currencies, products, ranges,
+   explicit lists, BOMs, super-products and options.
+6. Implement read-only extraction adapters, transformations, writers, cancellation and diagnostics.
+7. Differential-test each generated output against known-good files before enabling export behind preflight
+   checks and explicit confirmation.
+
+## Known legacy output families
+
+The legacy exporter creates separate item, material, super-product, description, planning, price-formula and
+product-code outputs, with additional CSI/OFDA/CET and optional downstream formats. Each output family needs
+an explicit field mapping and parity test; a successful UI render or SQL query alone is not proof of parity.
