@@ -1,8 +1,8 @@
-"""Port of ExportThread.addMaterialToItemTab conversion bookkeeping."""
+"""Port of ExportThread material bookkeeping and option-value normalization."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping, Any
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,56 @@ class ConvertedMaterial:
     feature_length: int
     child_feature_length: int
     option_id: int
+
+
+# Exact ParentOptValId special cases from ExportThread's option-report SELECT.
+_OPTION_VALUE_PREFIXES = {
+    149730: "m", 195468: "m",
+    194397: "c", 195469: "c",
+    197074: "m", 197077: "m",
+    197075: "c", 197076: "c",
+    197237: "m", 197329: "m",
+    197238: "c", 197240: "c",
+}
+
+
+def normalize_legacy_option_report_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    flatten_fabrics: bool = False,
+) -> list[dict[str, Any]]:
+    """Apply source-visible option value transformations to raw procedure rows.
+
+    This ports the CASE expression and FSC marker handling visible in
+    ExportThread.cs. It is not a replacement for its full dependency traversal,
+    feature ordering, or material/BOM assembly.
+    """
+    normalized_rows: list[dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
+        order_value = "" if row.get("OrderCodeValue2") is None else str(row["OrderCodeValue2"])
+        parent_id = row.get("ParentOptValId")
+        try:
+            prefix = _OPTION_VALUE_PREFIXES.get(int(parent_id)) if parent_id not in (None, "") else None
+        except (TypeError, ValueError):
+            prefix = None
+        if prefix:
+            order_value = prefix + order_value
+        if flatten_fabrics and order_value.endswith("#"):
+            continue
+        row["OrderCodeValue2"] = order_value
+        try:
+            fsc_compliant = int(row.get("fsccompliant") or 0) == 1
+        except (TypeError, ValueError):
+            fsc_compliant = str(row.get("fsccompliant", "")).strip().lower() in {"true", "yes"}
+        option_name = str(row.get("optval_name") or "").lower()
+        row["OptChildCount"] = (
+            1 if "customers own" in option_name
+            else row.get("OptChildCount")
+        )
+        row["DisplayName"] = str(row.get("optval_name") or "") + ("#" if fsc_compliant else "")
+        normalized_rows.append(row)
+    return normalized_rows
 
 
 class LegacyMaterialConversionRegistry:
