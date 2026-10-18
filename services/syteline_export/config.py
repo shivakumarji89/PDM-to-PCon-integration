@@ -12,6 +12,14 @@ ScopeMode = Literal["products", "range", "list"]
 # Headers captured from the supplied legacy Verbose Extract files.
 # The item output was empty in the supplied run, so its schema is deliberately
 # not guessed here.
+# The legacy product-code writer emits four data fields beneath a five-column
+# header (UnitCode is not written). Accept that observed source behavior rather
+# than falsely treating every real legacy file as malformed.
+LEGACY_TSV_ROW_WIDTHS: dict[str, frozenset[int]] = {
+    "productcode": frozenset({4, 5}),
+}
+
+
 LEGACY_TSV_HEADERS: dict[str, tuple[str, ...]] = {
     "description": ("Lang", "Item", "Description"),
     "planning": (
@@ -64,10 +72,12 @@ def parse_legacy_tsv(text: str, output_name: str) -> tuple[tuple[str, ...], ...]
             f"{output_name} header mismatch: expected {expected!r}, got {rows[0]!r}"
         )
     width = len(rows[0])
+    allowed_widths = LEGACY_TSV_ROW_WIDTHS.get(output_name, frozenset({width}))
     for line_number, row in enumerate(rows[1:], start=2):
-        if len(row) != width:
+        if len(row) not in allowed_widths:
+            expected = " or ".join(str(n) for n in sorted(allowed_widths))
             raise ValueError(
-                f"{output_name} row {line_number} has {len(row)} columns; expected {width}."
+                f"{output_name} row {line_number} has {len(row)} columns; expected {expected}."
             )
     return rows
 
