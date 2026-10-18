@@ -16,18 +16,23 @@ This is a separate top-level module in MK Product Workbench based on
   loading, multi-site/language/currency selection, BOM export, queueing and live export remain disabled.
   Compare/Validate XML also remain disabled until their legacy behavior is ported.
 - Local configuration validation and unit-test coverage.
-- TSV structure validation for the known legacy description, planning and super-product headers, including
-  header-only output and row-width checks.
+- TSV structure validation for the known legacy description, planning, super-product, material, price-formula and
+  product-code headers, including header-only output and row-width checks.
 
 ## Captured legacy Verbose Extract evidence
 
-The supplied extraction contains four files:
+The supplied sample extraction contained three readable files and an empty item file:
 - `PDMExport_description_data.txt`: header `Lang\tItem\tDescription`, no data rows.
 - `PDMExport_item_data.txt`: empty in this run; its header/schema is therefore unknown.
-- `PDMExport_planning_data.txt`: the captured 23-column header, no data rows.
+- `PDMExport_planning_data.txt`: the captured 22-column header, no data rows.
 - `PDMExport_superprod_data.txt`: populated tab-separated records with the captured 19-column header
   (`Item`, `Super Description`, `Seq`, `Component`, `Quantity`, `Description`, `Num Features`,
   and `FP1` through `FP12`).
+
+Additional output headers were verified directly against `Archive_demmy/PDMMaintenance/ExportThread.cs`:
+- Material: 12 columns, beginning `Parent Item`, `Feature`, `Component`.
+- Price formula: 6 columns, `Site`, `CustPriceCode`, `ItemPriceCode`, `PriceFormula`, `PriceFactor`, `EffectiveDate`.
+- Product code: 5 declared header columns, `Site`, `ProductCode`, `Description`, `PriceCode`, `UnitCode`. The legacy row writer emits four values, so this header/row-width discrepancy must be preserved as a known legacy defect until its downstream contract is verified.
 
 An empty item file is accepted as an observed empty result for this run, not as proof that item exports
 are always empty. No item header or row mapping is inferred. The sample output provides structural
