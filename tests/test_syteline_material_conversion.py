@@ -1,4 +1,7 @@
-from services.syteline_export.material_conversion import LegacyMaterialConversionRegistry
+from services.syteline_export.material_conversion import (
+    LegacyMaterialConversionRegistry,
+    normalize_legacy_option_report_rows,
+)
 
 
 def test_registers_normalized_material_and_source_metadata():
@@ -63,3 +66,23 @@ def test_requires_child_option_id():
         registry.add(
             "ABC", "desc", "", 1, False, False, "F01", 2, []
         )
+
+
+def test_option_report_normalizes_legacy_matching_and_contrast_codes_and_fsc_marker():
+    rows = normalize_legacy_option_report_rows([
+        {"ParentOptValId": 149730, "OrderCodeValue2": "OAK", "fsccompliant": 1, "optval_name": "Oak"},
+        {"ParentOptValId": 194397, "OrderCodeValue2": "ASH", "fsccompliant": 0, "optval_name": "Ash"},
+        {"ParentOptValId": 12, "OrderCodeValue2": "BLK", "fsccompliant": 0, "optval_name": "Customers Own Fabric"},
+    ])
+    assert rows[0]["OrderCodeValue2"] == "mOAK"
+    assert rows[0]["DisplayName"] == "Oak#"
+    assert rows[1]["OrderCodeValue2"] == "cASH"
+    assert rows[2]["OptChildCount"] == 1
+
+
+def test_option_report_flattening_skips_hash_suffixed_values():
+    rows = normalize_legacy_option_report_rows([
+        {"ParentOptValId": 12, "OrderCodeValue2": "FAB#", "fsccompliant": 0, "optval_name": "Fabric"},
+        {"ParentOptValId": 12, "OrderCodeValue2": "WOOD", "fsccompliant": 0, "optval_name": "Wood"},
+    ], flatten_fabrics=True)
+    assert [row["OrderCodeValue2"] for row in rows] == ["WOOD"]
