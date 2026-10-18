@@ -66,9 +66,9 @@ class SyteLineExportPage(BasePage):
         header = QLabel("Specify the export parameters:")
         root.addWidget(header)
         selectors = QGridLayout()
-        self.site = self._combo(["UK", "Japan"], "UK")
-        self.language = self._combo(["English", "French", "Italian", "Japanese"], "English")
-        self.other_language = self._combo(["English", "French", "Italian", "Japanese"], "English")
+        self.site = self._combo([])
+        self.language = self._combo([])
+        self.other_language = self._combo([])
         for col, (label, widget) in enumerate([
             ("Site:", self.site), ("Language:", self.language), ("Other Language:", self.other_language)
         ]):
@@ -153,7 +153,7 @@ class SyteLineExportPage(BasePage):
         scope.addWidget(QLabel("To Item:"), 2, 0)
         scope.addWidget(self.max_item, 2, 1)
         scope.addWidget(QLabel("Currency:"), 3, 0)
-        self.currency = self._combo(["GBP", "EUR", "USD"], "GBP")
+        self.currency = self._combo([])
         scope.addWidget(self.currency, 3, 1)
         list_buttons = QHBoxLayout()
         self.add_items = QPushButton("Add Item(s)")
@@ -443,10 +443,10 @@ class SyteLineExportPage(BasePage):
             sites = self.metadata_service.sites()
             languages = self.metadata_service.languages()
             currencies = self.metadata_service.currencies()
-            self._replace_choices(self.site, sites)
-            self._replace_choices(self.language, languages)
-            self._replace_choices(self.other_language, languages)
-            self._replace_choices(self.currency, currencies)
+            self._replace_choices(self.site, sites, self.settings.value(self.PREFIX + "site", "", type=str))
+            self._replace_choices(self.language, languages, self.settings.value(self.PREFIX + "language", "", type=str))
+            self._replace_choices(self.other_language, languages, self.settings.value(self.PREFIX + "other_language", "", type=str))
+            self._replace_choices(self.currency, currencies, self.settings.value(self.PREFIX + "currency", "", type=str))
             user_text = self.pdm_user_id.text().strip()
             if user_text:
                 try:
@@ -454,7 +454,7 @@ class SyteLineExportPage(BasePage):
                 except ValueError as error:
                     raise ValueError("PDM User ID must be a positive integer.") from error
                 catalogues = self.metadata_service.catalogues(user_id)
-                self._replace_choices(self.catalogue, catalogues)
+                self._replace_choices(self.catalogue, catalogues, self.settings.value(self.PREFIX + "catalogue", "", type=str))
             else:
                 self.catalogue.clear()
                 self.product_line.clear()
@@ -471,8 +471,8 @@ class SyteLineExportPage(BasePage):
             self.load_database_choices.setEnabled(True)
 
     @staticmethod
-    def _replace_choices(combo: QComboBox, choices) -> None:
-        current = combo.currentText()
+    def _replace_choices(combo: QComboBox, choices, preferred_text: str = "") -> None:
+        current = combo.currentText() or preferred_text
         combo.blockSignals(True)
         try:
             combo.clear()
@@ -496,12 +496,15 @@ class SyteLineExportPage(BasePage):
         try:
             choices = self.metadata_service.product_codes(int(site_id), int(catalogue_id))
             current_id = self.product_line.currentData()
+            preferred_text = self.settings.value(self.PREFIX + "product_line", "", type=str)
             self.product_line.blockSignals(True)
             try:
                 self.product_line.clear()
                 for choice in choices:
                     self.product_line.addItem(choice.label, userData=choice.id)
                 index = self.product_line.findData(current_id)
+                if index < 0 and preferred_text:
+                    index = self.product_line.findText(preferred_text)
                 if index >= 0:
                     self.product_line.setCurrentIndex(index)
                 elif self.product_line.count():
