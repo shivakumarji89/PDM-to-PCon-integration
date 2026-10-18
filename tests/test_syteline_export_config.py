@@ -120,3 +120,59 @@ def test_known_output_rejects_unexpected_header():
 def test_known_output_rejects_malformed_row_width():
     with pytest.raises(ValueError, match="row 2 has 2 columns"):
         parse_legacy_tsv("Lang\tItem\tDescription\nEN\tA1\n", "description")
+
+
+def test_legacy_thread_argument_mapping_preserves_scope_and_flags(tmp_path):
+    config = make_config(
+        tmp_path,
+        site_id=2,
+        catalogue_id=10,
+        language_id=3,
+        other_language_id=4,
+        currency_id=5,
+        product_code_id=8,
+        scope_mode="list",
+        item_list=("A1", "B2"),
+        export_mode="csi",
+        active_only=False,
+        export_base_prices=False,
+        export_bom_data=True,
+        length5_feats=True,
+        ignore_option_dependencies=True,
+        unique_components=False,
+        flatten_fabrics=True,
+    )
+    mapped = config.legacy_thread_arguments()
+    assert mapped["siteId"] == 2
+    assert mapped["catalogueId"] == 10
+    assert mapped["languageId"] == 3
+    assert mapped["otherlanguageId"] == 4
+    assert mapped["productCodeId"] == 8
+    assert mapped["productcheck"] is False
+    assert mapped["rangecheck"] is False
+    assert mapped["listcheck"] is True
+    assert mapped["itemlist"] == ["A1", "B2"]
+    assert mapped["syteline"] is False
+    assert mapped["formatCSI"] is True
+    assert mapped["exportBasePrices"] is False
+    assert mapped["exportBOMData"] is True
+    assert mapped["length5Feats"] is True
+    assert mapped["ignoreOptDeps"] is True
+    assert mapped["uniqueComponents"] is False
+    assert mapped["flattenFabrics"] is True
+
+
+def test_execution_validation_requires_live_database_ids(tmp_path):
+    errors = make_config(tmp_path).validate_for_execution()
+    assert "Site must be selected from live database choices." in errors
+    assert "Catalogue must be selected from live database choices." in errors
+    assert "Language must be selected from live database choices." in errors
+    assert "Currency must be selected from live database choices." in errors
+
+
+def test_catalogue_scope_maps_to_no_product_range_or_list_filters(tmp_path):
+    config = make_config(tmp_path, scope_mode="catalogue")
+    mapped = config.legacy_thread_arguments()
+    assert mapped["productcheck"] is False
+    assert mapped["rangecheck"] is False
+    assert mapped["listcheck"] is False
