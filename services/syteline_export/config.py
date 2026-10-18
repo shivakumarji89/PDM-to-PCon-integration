@@ -97,6 +97,90 @@ class SyteLineExportConfig:
     max_item: str = ""
     item_list: tuple[str, ...] = ()
     options: frozenset[str] = field(default_factory=frozenset)
+    site_id: int = 0
+    catalogue_id: int = 0
+    language_id: int = 0
+    other_language_id: int = 0
+    currency_id: int = 0
+    product_code_id: int = -1
+    export_mode: Literal["syteline", "csi", "ofda", "other"] = "syteline"
+    effective_date: str = ""
+    export_all_catalogues_in_site: bool = False
+    active_only: bool = True
+    export_base_prices: bool = True
+    export_bom_data: bool = False
+    extend_sp_options: bool = False
+    run_as_service: bool = False
+    length5_feats: bool = False
+    ignore_option_dependencies: bool = False
+    unique_components: bool = True
+    plc_phantoms: bool = False
+    exclude_superproducts: bool = False
+    superproducts_only: bool = False
+    flatten_fabrics: bool = False
+    miller_cad: bool = False
+    item_report: bool = False
+    send_tradenet: str = ""
+    send_contract: str = ""
+
+    def legacy_thread_arguments(self) -> dict[str, object]:
+        """Return the source-named arguments accepted by legacy ExportThread.initThread.
+
+        This is a deterministic mapping contract only; it does not invoke the
+        legacy thread or enable export.
+        """
+        return {
+            "siteId": self.site_id,
+            "site": self.site,
+            "catalogueId": self.catalogue_id,
+            "languageId": self.language_id,
+            "currency": self.currency,
+            "productCodeId": self.product_code_id,
+            "productcheck": self.scope_mode == "products",
+            "rangecheck": self.scope_mode == "range",
+            "minitem": self.min_item,
+            "maxitem": self.max_item,
+            "listcheck": self.scope_mode == "list",
+            "itemlist": list(self.item_list),
+            "activeonly": self.active_only,
+            "syteline": self.export_mode == "syteline",
+            "millerCAD": self.miller_cad,
+            "itemreport": self.item_report,
+            "sendTradeNet": self.send_tradenet,
+            "sendContract": self.send_contract,
+            "exportBasePrices": self.export_base_prices,
+            "effectiveDate": self.effective_date,
+            "exportAllCataloguesInSite": self.export_all_catalogues_in_site,
+            "otherlanguageId": self.other_language_id,
+            "exportBOMData": self.export_bom_data,
+            "extendSPOpts": self.extend_sp_options,
+            "runAsService": self.run_as_service,
+            "length5Feats": self.length5_feats,
+            "ignoreOptDeps": self.ignore_option_dependencies,
+            "uniqueComponents": self.unique_components,
+            "formatCSI": self.export_mode == "csi",
+            "plcPhantoms": self.plc_phantoms,
+            "excludeSuperProducts": self.exclude_superproducts,
+            "superProductsOnly": self.superproducts_only,
+            "flattenFabrics": self.flatten_fabrics,
+        }
+
+    def validate_for_execution(self) -> tuple[str, ...]:
+        """Validate local values and required database identities before execution."""
+        errors = list(self.validate())
+        for field_name, label in (
+            ("site_id", "Site"),
+            ("catalogue_id", "Catalogue"),
+            ("language_id", "Language"),
+            ("currency_id", "Currency"),
+        ):
+            if getattr(self, field_name) < 1:
+                errors.append(f"{label} must be selected from live database choices.")
+        if self.scope_mode == "products" and self.product_code_id == 0:
+            errors.append("Product code ID must be -1 for all products or a live product-code ID.")
+        if self.export_mode not in {"syteline", "csi", "ofda", "other"}:
+            errors.append("Unsupported export mode.")
+        return tuple(errors)
 
     def validate(self) -> tuple[str, ...]:
         errors: list[str] = []
