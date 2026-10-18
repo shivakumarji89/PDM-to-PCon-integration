@@ -52,8 +52,20 @@ def test_captured_legacy_description_header_only_is_valid():
     assert rows == (LEGACY_TSV_HEADERS["description"],)
 
 
+def test_captured_legacy_planning_header_matches_legacy_source():
+    expected = (
+        "Item", "Description", "Product Code", "Vendor Call", "Stocked",
+        "Dock to Stock", "Fixed lead time", "Planner Code", "Days Supply",
+        "Safety Stock", "Buyer", "CustomH", "CustomW", "CustomD",
+        "Gross Weight", "LocRank", "Location", "Origin Country", "Pack qty",
+        "Accept Requirement", "Pass Requirement", "Kanban qty",
+    )
+    assert LEGACY_TSV_HEADERS["planning"] == expected
+    assert len(expected) == 22
+
+
 def test_captured_legacy_planning_header_only_is_valid():
-    header = "\t".join(LEGACY_TSV_HEADERS["planning"])
+    header = "\\t".join(LEGACY_TSV_HEADERS["planning"])
     assert parse_legacy_tsv(header + "\n", "planning") == (
         LEGACY_TSV_HEADERS["planning"],
     )
