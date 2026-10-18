@@ -40,5 +40,5 @@ jobs:
           status=0
           python -m pytest -q -rf 2>&1 | tee pytest.log || status=$?
           # Surface failed test ids as annotations (logs are not readable without signing in).
-          grep -E '^(FAILED|ERROR) ' pytest.log | head -50 | while read -r line; do echo "::error title=pytest::${line}"; done
+          grep -E '^(FAILED|ERROR) ' pytest.log | head -50 | while read -r line; do echo "::error title=pytest::${line}"; done || true
           exit $status
