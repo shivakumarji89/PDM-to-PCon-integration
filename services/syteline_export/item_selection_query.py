@@ -153,7 +153,7 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
             params.append(selection.catalogue_id)
         else:
             # The original replaces the inner join with two left joins in this mode.
-            sql = "".join(fields).replace(
+            sql = " ".join(fields).replace(
                 "INNER JOIN CatalogueItems ON Item.ItemId = CatalogueItems.ItemId ",
                 "LEFT OUTER JOIN CatalogueItems ON Item.ItemId = CatalogueItems.ItemId "
                 "LEFT OUTER JOIN CatalogueItemsUnreleased ON Item.ItemId = CatalogueItemsUnreleased.ItemId ",
@@ -164,7 +164,7 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
 
     if selection.active_only:
         fields.append("AND Product.Status = 1 AND Item.Status = 1 ")
-    base_sql = "".join(fields)
+    base_sql = " ".join(fields)
     sql = base_sql
     if not selection.active_only:
         # Keep the source's UNION against unreleased catalogue membership.
