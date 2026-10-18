@@ -101,3 +101,13 @@ def test_writer_requires_existing_directory(tmp_path):
     service, _, _ = make_service()
     with pytest.raises(ValueError, match="does not exist"):
         service._write_tsv(tmp_path / "missing" / "out.tsv", PRICE_FORMULA_HEADER, [])
+
+
+def test_writer_matches_legacy_literal_tab_concatenation(tmp_path):
+    target = tmp_path / "raw.tsv"
+    SyteLineAuxiliaryOutputService._write_tsv(
+        target, ("First", "Second"), (("contains\\ttab", "value"),)
+    )
+    assert target.read_text(encoding="utf-8-sig") == (
+        "First\\tSecond\\r\\ncontains\\ttab\\tvalue\\r\\n"
+    )
