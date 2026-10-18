@@ -172,6 +172,10 @@ class SyteLineExportPage(BasePage):
             ("base_prices", "Export Base Prices", True),
             ("unique_phantoms", "Unique Phantoms", True),
             ("plc_prefix", "Use PLC Prefix", False),
+            ("separate_increments", "Separate Increments", False),
+            ("superproducts_only", "SuperProducts Only", False),
+            ("include_url", "Include URL", False),
+            ("short_description", "Short Description", False),
         ], include_export_type=True)
         self._add_tab("SyteLine (CSI)", [
             ("csi_flatten_fabrics", "Flatten (Exclude) Fabric Type Level", False),
