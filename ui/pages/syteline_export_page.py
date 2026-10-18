@@ -27,10 +27,8 @@ class SyteLineExportPage(BasePage):
         )
         self._context = context
         self.settings = QSettings()
-        self._building = True
         self._build_ui()
         self._load_settings()
-        self._building = False
         self._connect_autosave()
         self._update_scope_controls()
 
@@ -45,17 +43,20 @@ class SyteLineExportPage(BasePage):
     def _build_ui(self) -> None:
         root = QVBoxLayout()
         root.setSpacing(6)
-        header = QHBoxLayout()
-        header.addWidget(QLabel("Specify the export parameters:"))
-        header.addStretch(1)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(QLabel("Export PDM Data   v1.0.9686.24988"))
+        title_row.addStretch(1)
         self.scheduler = QPushButton("Scheduler")
         self.scheduler.setEnabled(False)
         self.scheduler.setToolTip("Scheduler integration awaits the legacy workflow port.")
-        header.addWidget(self.scheduler)
-        root.addLayout(header)
+        title_row.addWidget(self.scheduler)
+        root.addLayout(title_row)
 
+        header = QLabel("Specify the export parameters:")
+        root.addWidget(header)
         selectors = QGridLayout()
-        self.site = self._combo(["UK", "US", "DE", "FR", "NL"], "UK")
+        self.site = self._combo(["UK", "Japan"], "UK")
         self.language = self._combo(["English", "French", "Italian", "Japanese"], "English")
         self.other_language = self._combo(["English", "French", "Italian", "Japanese"], "English")
         for col, (label, widget) in enumerate([
@@ -136,27 +137,23 @@ class SyteLineExportPage(BasePage):
             ("plc_prefix", "Use PLC Prefix", False),
         ], include_export_type=True)
         self._add_tab("SyteLine (CSI)", [
-            ("csi_active_only", "Export Active Items Only", True),
-            ("csi_short_descriptions", "Short Descriptions", False),
-            ("csi_exclude_superproducts", "Exclude Superproducts", False),
-            ("csi_superproducts_only", "Superproducts Only", False),
+            ("csi_flatten_fabrics", "Flatten (Exclude) Fabric Type Level", False),
             ("csi_plc_phantoms", "PLC Phantoms", False),
             ("csi_short_phantoms", "Short Phantoms", False),
-            ("csi_unique_fabrics", "Unique Fabric Types", False),
-        ])
+            ("csi_exclude_superproducts", "Exclude SuperProducts", False),
+        ], include_site_ref=True)
         self._add_tab("OFDA (CET)", [
             ("ofda_export", "Export OFDA (CET) data", False),
+            ("ofda_backup_xml", "Backup Previous OFDA XML (server only)", True),
+            ("ofda_web_configurator", "Web Configurator Format", False),
             ("ofda_validate", "Validate export data", False),
-            ("ofda_designer_images", "Include designer images", False),
-        ])
+        ], include_region=True)
         self._add_tab("Other", [
-            ("other_base_prices", "Export Base Prices", True),
-            ("other_include_url", "Include URL items", False),
-            ("other_short_descriptions", "Short descriptions", False),
-            ("other_exclude_superproducts", "Exclude Superproducts", False),
-            ("other_superproducts_only", "Superproducts Only", False),
-            ("other_validate", "Validate export", False),
-        ])
+            ("other_naughtone", "Naughtone", False),
+            ("other_unreleased_data", "Unreleased Data", False),
+            ("other_attribute_group_codes", "Attribute Group Codes", False),
+            ("other_exclude_panels", "Exclude Panels", False),
+        ], include_pbom=True)
         root.addWidget(self.tabs, 1)
 
         buttons = QHBoxLayout()
@@ -182,15 +179,17 @@ class SyteLineExportPage(BasePage):
         content.setLayout(root)
         self.add_content(content)
 
-    def _add_tab(self, title: str, definitions: list[tuple[str, str, bool]], include_export_type: bool = False) -> None:
+    def _add_tab(
+        self, title: str, definitions: list[tuple[str, str, bool]],
+        include_export_type: bool = False, include_site_ref: bool = False,
+        include_region: bool = False, include_pbom: bool = False,
+    ) -> None:
         page = QWidget()
         layout = QGridLayout(page)
         row = 0
         if include_export_type:
             layout.addWidget(QLabel("Export Type:"), row, 0)
-            self.export_type = self._combo([
-                "Verbose Extract (full)", "Verbose Extract", "Compact Extract"
-            ], "Verbose Extract (full)")
+            self.export_type = self._combo(["Verbose Extract (full)"], "Verbose Extract (full)")
             layout.addWidget(self.export_type, row, 1, 1, 2)
             row += 1
             self.load_contract = QPushButton("Load")
@@ -200,6 +199,22 @@ class SyteLineExportPage(BasePage):
             layout.addWidget(self.load_contract, row, 0)
             layout.addWidget(QLabel("Contract:"), row, 1)
             layout.addWidget(self.contract, row, 2)
+            row += 1
+        if include_site_ref:
+            layout.addWidget(QLabel("Site Ref:"), row, 0)
+            self.site_ref = QLineEdit()
+            layout.addWidget(self.site_ref, row, 1, 1, 2)
+            row += 1
+        if include_region:
+            layout.addWidget(QLabel("Region:"), row, 0)
+            self.region = self._combo(["EMEA", "Asia", "LAC", "USA"], "EMEA")
+            layout.addWidget(self.region, row, 1, 1, 2)
+            row += 1
+        if include_pbom:
+            layout.addWidget(QLabel("PBOM Type:"), row, 0)
+            self.pbom_type = self._combo([])
+            self.pbom_type.setEnabled(False)
+            layout.addWidget(self.pbom_type, row, 1, 1, 2)
             row += 1
         for key, label, default in definitions:
             check = QCheckBox(label)
@@ -258,6 +273,12 @@ class SyteLineExportPage(BasePage):
         ]:
             widget.setChecked(self.settings.value(self.PREFIX + key, widget.isChecked(), type=bool))
         self.item_list.addItems(self.settings.value(self.PREFIX + "items", [], type=list))
+        if hasattr(self, "site_ref"):
+            self.site_ref.setText(self.settings.value(self.PREFIX + "site_ref", "", type=str))
+        if hasattr(self, "region"):
+            self.region.setCurrentText(self.settings.value(self.PREFIX + "region", "EMEA", type=str))
+        if hasattr(self, "pbom_type"):
+            self.pbom_type.setCurrentText(self.settings.value(self.PREFIX + "pbom_type", "", type=str))
         for key, widget in self.checks.items():
             widget.setChecked(self.settings.value(self.PREFIX + "options/" + key, widget.isChecked(), type=bool))
 
@@ -271,14 +292,18 @@ class SyteLineExportPage(BasePage):
             widget.textChanged.connect(self._save_settings)
         for widget in [self.filter_product_code, self.range_check, self.list_check, *self.checks.values()]:
             widget.toggled.connect(self._save_settings)
+        for attr in ("site_ref",):
+            if hasattr(self, attr):
+                getattr(self, attr).textChanged.connect(self._save_settings)
+        for attr in ("region", "pbom_type"):
+            if hasattr(self, attr):
+                getattr(self, attr).currentTextChanged.connect(self._save_settings)
         self.item_list.model().rowsInserted.connect(self._save_settings)
         self.item_list.model().rowsRemoved.connect(self._save_settings)
         self.range_check.toggled.connect(self._update_scope_controls)
         self.list_check.toggled.connect(self._update_scope_controls)
 
     def _save_settings(self, *_args) -> None:
-        if getattr(self, "_building", False):
-            return
         for key, widget in [
             ("site", self.site), ("language", self.language), ("other_language", self.other_language),
             ("catalogue", self.catalogue), ("product_line", self.product_line), ("currency", self.currency),
@@ -295,6 +320,12 @@ class SyteLineExportPage(BasePage):
         self.settings.setValue(self.PREFIX + "items", [
             self.item_list.item(i).text() for i in range(self.item_list.count())
         ])
+        if hasattr(self, "site_ref"):
+            self.settings.setValue(self.PREFIX + "site_ref", self.site_ref.text())
+        if hasattr(self, "region"):
+            self.settings.setValue(self.PREFIX + "region", self.region.currentText())
+        if hasattr(self, "pbom_type"):
+            self.settings.setValue(self.PREFIX + "pbom_type", self.pbom_type.currentText())
         for key, widget in self.checks.items():
             self.settings.setValue(self.PREFIX + "options/" + key, widget.isChecked())
         self.settings.sync()
