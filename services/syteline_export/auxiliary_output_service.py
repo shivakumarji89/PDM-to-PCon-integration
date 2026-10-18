@@ -5,7 +5,6 @@ They do not pretend to replace the complex item/material/BOM transformation.
 """
 from __future__ import annotations
 
-import csv
 import os
 import tempfile
 from pathlib import Path
@@ -84,9 +83,11 @@ class SyteLineAuxiliaryOutputService:
         fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as stream:
-                writer = csv.writer(stream, delimiter="\t", lineterminator="\r\n")
-                writer.writerow(header)
-                writer.writerows(rows)
+                # The legacy C# writer concatenates fields with literal tabs; it
+                # does not apply CSV quoting or escaping.
+                stream.write("\t".join(header) + "\r\n")
+                for row in rows:
+                    stream.write("\t".join("" if value is None else str(value) for value in row) + "\r\n")
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary_name, target)
