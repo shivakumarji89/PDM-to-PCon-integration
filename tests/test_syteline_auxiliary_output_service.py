@@ -80,7 +80,7 @@ def test_price_formula_writer_uses_legacy_header_and_atomic_tsv(tmp_path):
     service, _, _ = make_service((("UK", "C1", "P1", "F1", 12.5, "18 Oct 2026"),))
     target = tmp_path / "priceformula.txt"
     service.write_price_formula(target, 2, ["P1"])
-    with target.open(encoding="utf-8-sig", newline="") as stream:
+    with target.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream, delimiter="\t"))
     assert tuple(rows[0]) == PRICE_FORMULA_HEADER
     assert rows[1] == ["UK", "C1", "P1", "F1", "12.5", "18 Oct 2026"]
@@ -90,7 +90,7 @@ def test_product_code_writer_preserves_legacy_four_field_row_under_five_field_he
     service, _, _ = make_service((("UK", "ABC", "Sample", "GBP"),))
     target = tmp_path / "productcode.txt"
     service.write_product_codes(target, 1, ["ABC"])
-    with target.open(encoding="utf-8-sig", newline="") as stream:
+    with target.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream, delimiter="\t"))
     assert tuple(rows[0]) == PRODUCT_CODE_HEADER
     assert rows[1] == ["UK", "ABC", "Sample", "GBP"]
@@ -108,7 +108,7 @@ def test_writer_matches_legacy_literal_tab_concatenation(tmp_path):
     SyteLineAuxiliaryOutputService._write_tsv(
         target, ("First", "Second"), (("contains\ttab", "value"),)
     )
-    with target.open(encoding="utf-8-sig", newline="") as stream:
+    with target.open(encoding="utf-8", newline="") as stream:
         output = stream.read()
     assert output == "First\tSecond\r\ncontains\ttab\tvalue\r\n"
 
@@ -117,9 +117,9 @@ def test_header_only_outputs_match_legacy_verbose_extract(tmp_path):
     outputs = SyteLineAuxiliaryOutputService.write_header_only_outputs(tmp_path, "PDMExport")
     assert outputs["description"].name == "PDMExport_description_data.txt"
     assert outputs["planning"].name == "PDMExport_planning_data.txt"
-    with outputs["description"].open(encoding="utf-8-sig", newline="") as stream:
+    with outputs["description"].open(encoding="utf-8", newline="") as stream:
         description = stream.read()
-    with outputs["planning"].open(encoding="utf-8-sig", newline="") as stream:
+    with outputs["planning"].open(encoding="utf-8", newline="") as stream:
         planning = stream.read()
     assert description == "Lang\tItem\tDescription\r\n"
     assert planning.startswith("Item\tDescription\tProduct Code\tVendor Call\tStocked\tDock to Stock\t")
