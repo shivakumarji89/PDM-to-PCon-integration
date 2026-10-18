@@ -50,9 +50,8 @@ def allocate_legacy_output_paths(
         default_name = f"b-{stem}"
         if export_file_name != default_name:
             suffix = export_file_name.replace(default_name, "").lstrip("_")
-            if suffix:
-                item = root / f"b-{stem}_{suffix}.asc"
-                material = root / f"o-{stem}_{suffix}.asc"
+            item = root / f"b-{stem}_{suffix}.asc"
+            material = root / f"o-{stem}_{suffix}.asc"
         return LegacyOutputPaths(item, material, None, None, None, None, None)
 
     suffix = "_csi" if format_csi else ""
@@ -73,8 +72,8 @@ def remove_legacy_nonstandard_characters(data: str) -> str:
     return "".join(
         character
         for character in data
-        if character in _LEGACY_ALLOWED or character in "\\r\\n\\t"
-    ).replace("\\r\\n\\r\\n", "\\r\\n")
+        if character in _LEGACY_ALLOWED or character in "\r\n\t"
+    ).replace("\r\n\r\n", "\r\n")
 
 
 def normalize_legacy_record(data: str) -> str:
@@ -93,7 +92,7 @@ class LegacyRecordDeduplicator:
 
     def accept(self, data: str, *, is_item: bool) -> bool:
         if data.startswith(_LEGACY_MATERIAL_PREFIX):
-            material = data.split("\\t", 1)[0]
+            material = data.split("\t", 1)[0]
             if material in self._materials_on_item_tab:
                 return False
             self._materials_on_item_tab.add(material)
