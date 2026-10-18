@@ -23,12 +23,14 @@ class SyteLineItemRecord:
     export_base_prices: bool = True
     product_code: str = ""
     price_code: str = ""
+    component_cost: object = 0
     volume_litres: object = None
     weight_kilos: object = None
     commodity_code: str = ""
     notes: str = ""
     legacy_item: str = ""
     feature_codes: Sequence[str] = ()
+    feature_prefix: str = "BOCFAB"
     height: object = None
     width: object = None
     depth: object = None
@@ -80,7 +82,7 @@ def format_syteline_item_record(record: SyteLineItemRecord) -> str:
         status_code,
         status_description,
         _source_number(price),
-        "0",
+        _source_number(record.component_cost),
         "",
         "",
         record.product_code,
@@ -111,7 +113,15 @@ def format_syteline_item_record(record: SyteLineItemRecord) -> str:
         "0",
         "",
     ]
-    features = list(record.feature_codes[:20])
+    features: list[str] = []
+    for raw_feature in record.feature_codes[:20]:
+        feature = str(raw_feature).replace(record.feature_prefix + "-", "")
+        if "bocfab" not in feature.lower():
+            if "-HAR-" in feature:
+                feature = feature.split("-HAR-", 1)[1]
+            features.append(feature)
+        else:
+            features.append("")
     fields.extend(features)
     fields.extend([""] * (20 - len(features)))
     fields.extend([str(record.height or ""), str(record.width or ""), str(record.depth or ""), ""])
