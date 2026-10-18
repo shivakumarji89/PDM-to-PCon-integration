@@ -27,6 +27,8 @@ class SyteLineExportPage(BasePage):
         )
         self._context = context
         self.settings = QSettings()
+        from services.syteline_export.metadata_service import SyteLineMetadataService
+        self.metadata_service = SyteLineMetadataService(context)
         self._build_ui()
         self._load_settings()
         self._connect_autosave()
@@ -51,6 +53,14 @@ class SyteLineExportPage(BasePage):
         self.scheduler.setEnabled(False)
         self.scheduler.setToolTip("Scheduler integration awaits the legacy workflow port.")
         title_row.addWidget(self.scheduler)
+        title_row.addWidget(QLabel("PDM User ID:"))
+        self.pdm_user_id = QLineEdit()
+        self.pdm_user_id.setMaximumWidth(90)
+        self.pdm_user_id.setPlaceholderText("Required")
+        title_row.addWidget(self.pdm_user_id)
+        self.load_database_choices = QPushButton("Load DB Choices")
+        self.load_database_choices.clicked.connect(self._load_database_choices)
+        title_row.addWidget(self.load_database_choices)
         root.addLayout(title_row)
 
         header = QLabel("Specify the export parameters:")
@@ -210,7 +220,7 @@ class SyteLineExportPage(BasePage):
         root.addLayout(buttons)
 
         footer = QHBoxLayout()
-        self.status = QLabel("Ready — live export is not yet enabled.")
+        self.status = QLabel("Ready — load database choices before configuring a legacy export.")
         self.status.setWordWrap(True)
         self.elapsed = QLabel("Time: 00:00:00")
         footer.addWidget(self.status, 1)
