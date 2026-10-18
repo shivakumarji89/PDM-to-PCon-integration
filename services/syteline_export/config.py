@@ -198,7 +198,7 @@ class SyteLineExportConfig:
             errors.append("Site is required.")
         if not self.output_file_name.strip():
             errors.append("Output file name is required.")
-        elif any(separator in self.output_file_name for separator in ("/", "\\\\")):
+        elif "/" in self.output_file_name or chr(92) in self.output_file_name:
             errors.append("Output file name must not contain a directory path.")
         if not self.currency.strip():
             errors.append("Currency is required.")
