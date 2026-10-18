@@ -560,7 +560,7 @@ class SyteLineExportPage(BasePage):
             widget.textChanged.connect(self._save_settings)
         self.effective_date.dateChanged.connect(self._save_settings)
         for widget in [
-            self.filter_product_code, self.filter_product_code, self.range_check, self.list_check,
+            self.filter_product_code, self.range_check, self.list_check,
             self.export_all_in_site, self.export_bom_data, *self.checks.values(),
         ]:
             widget.toggled.connect(self._save_settings)
