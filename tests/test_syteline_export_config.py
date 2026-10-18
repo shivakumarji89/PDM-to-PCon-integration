@@ -48,23 +48,23 @@ def test_output_directory_must_exist(tmp_path):
 
 
 def test_captured_legacy_description_header_only_is_valid():
-    rows = parse_legacy_tsv("Lang\\tItem\\tDescription\\n", "description")
+    rows = parse_legacy_tsv("Lang\tItem\tDescription\\n", "description")
     assert rows == (LEGACY_TSV_HEADERS["description"],)
 
 
 def test_captured_legacy_planning_header_only_is_valid():
-    header = "\\t".join(LEGACY_TSV_HEADERS["planning"])
+    header = "\t".join(LEGACY_TSV_HEADERS["planning"])
     assert parse_legacy_tsv(header + "\\n", "planning") == (
         LEGACY_TSV_HEADERS["planning"],
     )
 
 
-def test_captured_legacy_superprod_rows_keep_20_columns():
-    header = "\\t".join(LEGACY_TSV_HEADERS["superprod"])
+def test_captured_legacy_superprod_rows_keep_19_columns():
+    header = "\t".join(LEGACY_TSV_HEADERS["superprod"])
     sample = (
-        "GE2HPS.\\tHardware Pack / Rectangular Primary / Sliding\\t1\\tGEHCS."
-        "\\t1\\tHardware Pack / Sliding Top Rail\\t0"
-        "\\t" + "\\t".join([""] * 12) + "\\n"
+        "GE2HPS.\tHardware Pack / Rectangular Primary / Sliding\t1\tGEHCS."
+        "\t1\tHardware Pack / Sliding Top Rail\t0"
+        "\t" + "\t".join([""] * 12) + "\\n"
     )
     rows = parse_legacy_tsv(header + "\\n" + sample, "superprod")
     assert len(rows) == 2
@@ -82,9 +82,9 @@ def test_empty_known_output_is_rejected_because_header_is_missing():
 
 def test_known_output_rejects_unexpected_header():
     with pytest.raises(ValueError, match="header mismatch"):
-        parse_legacy_tsv("Lang\\tItem\\tWrong\\n", "description")
+        parse_legacy_tsv("Lang\tItem\tWrong\\n", "description")
 
 
 def test_known_output_rejects_malformed_row_width():
     with pytest.raises(ValueError, match="row 2 has 2 columns"):
-        parse_legacy_tsv("Lang\\tItem\\tDescription\\nEN\\tA1\\n", "description")
+        parse_legacy_tsv("Lang\tItem\tDescription\\nEN\tA1\\n", "description")
