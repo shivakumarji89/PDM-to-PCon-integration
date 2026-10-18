@@ -88,6 +88,7 @@ class SyteLineExportConfig:
     database: str
     output_directory: Path
     site: str
+    output_file_name: str = "PDMExport"
     product_line: str = ""
     catalogue: str = ""
     language: str = ""
@@ -132,6 +133,8 @@ class SyteLineExportConfig:
         legacy thread or enable export.
         """
         return {
+            "filename": self.output_file_name,
+            "directory": str(self.output_directory.expanduser()),
             "siteId": self.site_id,
             "site": self.site,
             "catalogueId": self.catalogue_id,
@@ -193,6 +196,10 @@ class SyteLineExportConfig:
             errors.append("Database name is required.")
         if not self.site.strip():
             errors.append("Site is required.")
+        if not self.output_file_name.strip():
+            errors.append("Output file name is required.")
+        elif any(separator in self.output_file_name for separator in ("/", "\\\\")):
+            errors.append("Output file name must not contain a directory path.")
         if not self.currency.strip():
             errors.append("Currency is required.")
         if not str(self.output_directory).strip():
