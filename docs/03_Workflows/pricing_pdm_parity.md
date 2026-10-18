@@ -69,12 +69,18 @@ schema read found three alternative base/increment fields and one component
 `1205S1BQ` populates all three; live site-9 Embody/CD cases exercise references
 2/3. Bands are selected independently from Application 1.
 
-Source/raw lookup identity and stored target condition are now separate,
+Source/raw lookup identity and stored target condition remain separate,
 backward-compatible snapshot metadata (`source_item`, `pdm_lookup_code`).
-Substring-expanded items stay Global. RYM/RYT conditions now follow the actual
-source key (`3848=RYMPSH.12SW_OKG`, for example); product-code attachment and
-export surcharge/base classification preserve that identity even without a
-space. Fake-target tests cover duplicate surcharge updates and missing bases.
+Substring-expanded items stay Global. `variant_condition` now follows the
+direct-item target shape created by `AddMissingGlobalPricingRecords`: ordinary
+Global rows use `ITEM OptionId=Code`, while `memo` uses `ITEMCode`. In
+particular, RYM/RYT retain their separate worker lookup keys
+(`3848=RYMPSH.12SW_OKG`, for example) without treating those keys as stored
+target conditions. The component-specific placeholder branch adds a
+parent-option prefix not present in `GlobalOptionPriceRow`; that mapping
+remains unverified. Product-code attachment and export surcharge/base
+classification preserve source identity even without a space. Fake-target
+tests cover duplicate surcharge updates and missing bases.
 
 **Evidence B, independent original-source SQL versus actual repository calls
 on PDMTEST**, GBP/EUR, 15/16-Oct-2026:
@@ -95,24 +101,25 @@ A supplemental nonempty Ratio-accessories sample, `RZTA.`/405/site 1 at
 records. No nonempty `swoop`/`memo` fixture was found; those branches and
 Ratio's category-wide Worksurfaces/Screens modes remain live-unverified.
 
-**Known boundary, not completed parity:** a separate current-code 14-scenario
-sample (RYM, RYT, `lf` MRFN, `av` AS2, site-9 Embody) matches **318/318** source
-records, source projections and source-lookup metadata. The actual prepared
-condition parsed by PDM matches only **20/318 (6.29%)**, 4/14 scenarios.
-There are 298 lookup-field differences for `lf`/`av`/`embody`: PDM compares
-plain source codes such as `AJ`, while the tool prepares
-`MRFN121HWAP 9227=AJ`. Storing the source key does not make those target
-conditions equivalent. No unsafe plain-code placeholders were invented.
-Read-only target rows/list/package context are needed to replay the original
-target scan, parser, item-reference and band fallback before correcting that
-boundary safely. Actual UI and current physical MDB output remain **NOT
-VERIFIED**.
+**Known boundary, not completed parity:** the earlier 14-scenario sample
+(RYM, RYT, `lf` MRFN, `av` AS2, site-9 Embody) matched **318/318** source
+records, source projections and source-lookup metadata. Before the target
+condition change, the worker-parser comparison matched **20/318 (6.29%)**.
+That sample predates the current AddMissing-shaped conditions and is not a
+measurement of the current builder. The source itself has conflicting paths:
+`UpdatePConItemIncrementalPrice` compares plain source codes for `lf`/`av`/
+`embody` and special `OptionId=ITEM_CODE` keys for RYM/RYT, while
+`AddMissingGlobalPricingRecords` creates item-qualified conditions for those
+rows. The current builder follows the latter for stored conditions and keeps
+worker keys in `pdm_lookup_code`; no physical target MDB is available to
+establish how existing rows are laid out. Fetch parity remains measured, but
+current target-row selection and physical MDB output remain **NOT VERIFIED**.
 
 The procedure definition still returns null and `VIEW DEFINITION` permission
 is 0. An approved DBA definition/grant is required to inspect its internals,
 but it is no longer a dependency of Global source fetching.
 
-Fresh validation: **113 focused**, **159 broader non-GUI**, and **21 offscreen
+Fresh validation: **36 focused**, **166 broader non-GUI**, and **21 offscreen
 GUI** pricing tests pass; changed-file editor diagnostics are clear.
 Article duplicate-loop tests retain
 the last supplied target row, but physical duplicate-ID parity cannot be
@@ -120,7 +127,7 @@ claimed without deterministic MDB ordering. No Development/Metatype changes,
 MDB-writing differential run, live MDB write, or production export occurred.
 
 Exact inputs, missing/extra counts, source/cache details, regression commands,
-and the deliberately failing target-condition measurement are in
+and the deliberately failing worker-target matching diagnostic are in
 [`pdm_ui_tool_fetch_parity.md`](./pdm_ui_tool_fetch_parity.md). The read-only
 comparison command is:
 
@@ -128,8 +135,9 @@ comparison command is:
 & .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --article
 ```
 
-The current script includes target-condition checks and exits 1 for their
-known mismatches; a source-only 100% figure must not hide that result.
+The current script includes worker-target matching diagnostics and exits 1
+when parsed prepared conditions disagree with the update worker's key. The
+diagnostic is not a check of the missing-record generator or physical MDB rows.
 
 ## Historical filtered-procedure comparison (PDM Test, 2026-10-18)
 

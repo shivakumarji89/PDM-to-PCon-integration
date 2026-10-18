@@ -301,13 +301,15 @@ def run(args):
                         right_lookup,
                     )
                     totals["global_source_lookup_preparation"].append(lp)
-                    target = compare(
+                    # This measures compatibility with the update worker's
+                    # parser/key, not AddMissingGlobalPricingRecords output.
+                    worker_match = compare(
                         [r + (s.LookupCode.replace("#", ""),)
                          for r, s in zip(left, expected, strict=True)],
                         [r + (target_lookup(record.variant_condition, program),)
                          for r, record in zip(right, records, strict=True)],
                     )
-                    totals["global_target_condition_lookup"].append(target)
+                    totals["global_worker_target_matching"].append(worker_match)
                     if not args.baseline_ref:
                         projection = compare(
                             [(s.Item, s.OptionValueId, s.OptionId, s.Code,
@@ -323,7 +325,7 @@ def run(args):
                         "initial_rows": len(initial),
                         "source_null_raw": sum(r.RawIncrement is None for r in initial),
                         "fetch": m, "source_lookup_preparation": lp,
-                        "target_condition_lookup": target,
+                        "worker_target_matching": worker_match,
                     }, default=str), flush=True)
         if args.article:
             for item, program in ARTICLE_CASES:

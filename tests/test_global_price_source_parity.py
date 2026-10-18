@@ -224,22 +224,45 @@ def test_scope_expanded_items_remain_global_and_keep_lookup_separate_from_target
     assert price_record_from_dict({}).pdm_lookup_code == ""
 
 
-@pytest.mark.parametrize("item,option_id", [
-    ("RYMPSH.12SW", 3848), ("RYTRFA.0812SW", 6027),
-])
-def test_revive_prepared_condition_round_trips_through_original_parser(item, option_id):
-    from scripts.pdm_differential.fetch_parity import target_lookup
-
-    lookup = f"{option_id}={item}_OKG"
+@pytest.mark.parametrize(
+    "program,item,option_id,code,source_code,lookup,condition",
+    [
+        ("lf", "MRFN121HWAP", 9227, "AJ", "AJ", "AJ",
+         "MRFN121HWAP 9227=AJ"),
+        ("av", "AS2EA32AA", 8, "1FD#", "1FD#", "1FD#",
+         "AS2EA32AA 8=1FD"),
+        ("embody", "CN132AWAA", 8, "AJ", "AJ", "AJ",
+         "CN132AWAA 8=AJ"),
+        ("layout_studio", "GETH.1022FS4W", 9168, "AA",
+         "GETH.1022FS4W_AA", "GETH.1022FS4W 9168=AA",
+         "GETH.1022FS4W 9168=AA"),
+        ("caper", "WE5110L", 62, "DS", "WE5110L 62=DS",
+         "WE5110L 62=DS",
+         "WE5110L 62=DS"),
+        ("revive", "RYMPSH.12SW", 3848, "OKG",
+         "RYMPSH.12SW_OKG",
+         "3848=RYMPSH.12SW_OKG", "RYMPSH.12SW 3848=OKG"),
+        ("revive", "RYTRFA.0812SW", 6027, "OKG",
+         "RYTRFA.0812SW_OKG",
+         "6027=RYTRFA.0812SW_OKG", "RYTRFA.0812SW 6027=OKG"),
+        ("ratio", "RZTA.", 6867, "DB3", "RZTA._DB3", "RZTA. 6867=DB3",
+         "RZTA. 6867=DB3"),
+        ("memo", "MEMO123", 8, "AA", "MEMO123AA", "MEMO123AA",
+         "MEMO123AA"),
+    ],
+)
+def test_global_direct_item_condition_matches_pdm_missing_record_shape(
+    program, item, option_id, code, source_code, lookup, condition,
+):
     row = GlobalOptionPriceRow(
-        item, 62547, option_id, "OKG", f"{item}_OKG", lookup,
+        item, 1, option_id, code, source_code, lookup,
         Decimal("21"), None, Decimal("52"),
     )
     records, _ = PricingService.build_records(
-        [], [row], {item}, {}, PriceParams(program_code="revive")
+        [], [row], {item}, {}, PriceParams(program_code=program)
     )
-    assert records[0].variant_condition == lookup
-    assert target_lookup(records[0].variant_condition, "revive") == lookup
+    assert records[0].variant_condition == condition
+    assert records[0].pdm_lookup_code == lookup
 
 
 @pytest.mark.parametrize("streaming", [False, True])

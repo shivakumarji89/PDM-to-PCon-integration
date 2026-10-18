@@ -11,7 +11,7 @@ No production database, MDB, or export workflow was used.
 | Scenario | Status | What the evidence establishes |
 |---|---|---|
 | Article Price | **MATCH**, evidence B, tested fetches | 96 scenarios, 936 base/increment observations, all exact against source-equivalent SQL. No Article calculation change in this update. Physical duplicate ID selection and actual UI/MDB results remain **NOT VERIFIED**. |
-| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; **MISMATCH**, prepared target lookup for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. This is not export parity: a separate current-code target-condition comparison finds 298 lookup-field differences in 318 observations for `lf`/`av`/`embody`. Actual UI/MDB results remain **NOT VERIFIED**. |
+| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; direct-item target condition follows the source placeholder path; worker matching remains internally inconsistent for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. Direct-item `variant_condition` follows `AddMissingGlobalPricingRecords`; `pdm_lookup_code` separately preserves the update worker's lookup key. Component-parent mapping, existing-row selection and physical UI/MDB results remain **NOT VERIFIED**. |
 
 These are bounded results, not a claim of universal or full UI parity. The
 actual PDM UI was not run against a pCon MDB. The live evidence below comes
@@ -77,11 +77,16 @@ The reproduced path is `UpdatePriceThread.execThread` calling
 `GlobalOptionPriceRow` retains option-value ID, option ID, raw code, projected
 source code, selected raw increment, price band, calculated price and source
 lookup. `PriceRecord` persists `source_item` and `pdm_lookup_code`, separately
-from the actual pCon target condition; old snapshots default these fields to
-empty. Substring-expanded items remain Global records. RYM/RYT prepared
-conditions now round-trip through the original target parser. Product-code
-attachment and surcharge/base classification use source-item metadata so that
-these no-space conditions do not accidentally become base records or update
+from the target condition; old snapshots default these fields to empty.
+Substring-expanded items remain Global records. Direct-item stored conditions
+follow `AddMissingGlobalPricingRecords`: ordinary rows use
+`ITEM OptionId=Code`; `memo` uses `ITEMCode`. RYM/RYT worker lookup keys remain
+`OptionId=ITEM_CODE` metadata and are not substituted for the generated target
+condition. The source's component-specific placeholder path includes a
+parent-option prefix not available on `GlobalOptionPriceRow`, so that mapping
+is not claimed.
+Product-code attachment and surcharge/base classification use source-item
+metadata so these records do not accidentally become base records or update
 only the last duplicate.
 
 ### Exact live matrix and metrics (B)
@@ -150,10 +155,12 @@ The main commands were:
 ```
 
 Baseline exit 1 (measured mismatches); corrected exit 0 for the two Global
-stages and Article stage present when that run started. The script subsequently
-added **separate** source-projection and actual target-condition checks; a
-current full run also reports known target-condition failures and exits 1.
-Do not confuse the earlier source-only success with full target success.
+stages and Article stage present when that run started. The script subsequently added **separate** source-projection and worker-target
+matching diagnostics; a run exits 1 when the parsed prepared condition does not
+match the update worker's source key. This diagnostic exposes conflicting
+source paths; it is not a measurement of `AddMissingGlobalPricingRecords`
+output or physical MDB rows. Do not confuse source-fetch success with full
+target-row verification.
 The old `validate_pricing_parity.py` is a batching/self-consistency check, not
 an independent original-PDM oracle.
 
@@ -165,7 +172,8 @@ an independent original-PDM oracle.
   `AS2EA32AA`: restores 46 source identities per scenario and Application-1
   bands, including option-value 148810, rather than 30 procedure rows.
 - `RY3VFTB.105512F`: restores source bands; RYM/RYT retain the actual projected
-  and lookup codes rather than deriving them from a generic target condition.
+  and lookup codes as separate metadata from the AddMissing-generated target
+  condition.
 - `1205S1BQ`: source substring scope also includes `1205S1BQI`; the old exact
   item procedure omitted those records.
 - `CN132AWAA` (site 9, reference 2) and `CD63NC0600` (site 9, reference 3):
@@ -207,24 +215,33 @@ Ratio Worksurfaces/Screens modes.
 
 ```powershell
 & .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --item RZTA. --dates 16-Oct-2026
-& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --item RYMPSH.12SW --item RYTRFA.0812SW --item MRFN121HWAP --item AS2EA32AA --item CN132AWAA --dates 16-Oct-2026
+& .\.venv\Scripts\python.exe -B -m scripts.pdm_differential.fetch_parity --item RYMPSH.12SW --item RYTRFA.0812SW --item MRFN121HWAP --item AS2EA32AA --item CN132AWAA --dates 16-Oct-2026 --currencies GBP
 ```
 
-The second command deliberately distinguishes metadata from actual prepared
-conditions: **318/318** processed/source-projection/source-lookup records match,
-14/14 scenarios. But only **20/318 (6.29%)** actual target-parser lookups match,
-4/14 scenarios; the other **298** are field differences, no missing/extra rows.
-The 20 matches are RYM/RYT after the condition fix. For `lf`, `av`, and `embody`,
-PDM's source comparison key is a plain option code (`AJ`, for example), while
-the tool prepares an item/option-qualified condition
-(`MRFN121HWAP 9227=AJ`). Persisting the correct source key does **not** fix
-selection of physical target rows. The command exits **1**, intentionally.
+The prior run of the second command, before the current target-condition
+builder, matched **318/318** processed/source-projection/source-lookup records
+across 14/14 scenarios. Its worker-parser diagnostic matched **20/318 (6.29%)**
+and had 298 field differences, no missing/extra rows. Those target-condition
+counts are historical and do not measure the current builder.
 
-No speculative plain-code placeholders were introduced: source comparison
-keys are not necessarily valid stored pCon conditions. Safely completing that
-boundary requires read-only target Global rows and list/package context for
-these series, then replaying PDM's target scan, parser, item-reference and band
-fallback against those exact rows. No such current comparison was made.
+Direct source inspection established two incompatible rules: the update
+worker compares plain source codes for `lf`/`av`/`embody` and
+`OptionId=ITEM_CODE` for RYM/RYT, while `AddMissingGlobalPricingRecords`
+creates item-qualified Global conditions for these same cases. The current
+tool follows the missing-record generator for `variant_condition` and retains
+worker keys separately. Regression tests cover both representations without
+claiming they are interchangeable. No read-only target Global rows/list/
+package context was available, so existing-row selection and physical MDB
+output remain **NOT VERIFIED**.
+
+A fresh read-only PDMTEST run of the same five item inputs, restricted to
+GBP/16-Oct-2026, completed seven actual catalogue/program scenarios:
+processed fetch, source projection and source lookup were each **159/159**
+exact and ordered. The current worker-target diagnostic was **0/159** exact
+(159 same-identity field differences, no missing/extra rows), so the command
+exited 1 intentionally. This confirms the source-path conflict for the
+current AddMissing-shaped conditions; it does not compare against physical
+target rows or establish their validity.
 
 Nonempty live coverage includes default variable increments, `lf`/`av`
 routing, WE51, RY3V/RYM/RYT, non-variable Embody, and Ratio accessories.
