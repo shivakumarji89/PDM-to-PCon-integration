@@ -130,3 +130,18 @@ def test_ofda_xml_actions_are_present_but_guarded(monkeypatch):
     assert page.validate_xml.text() == "Validate"
     assert not page.compare_xml.isEnabled()
     assert not page.validate_xml.isEnabled()
+
+
+def test_setup_preflight_accepts_valid_live_metadata_and_existing_output_folder(monkeypatch, tmp_path):
+    page = make_page(monkeypatch)
+    page.pdm_user_id.setText("123")
+    page._load_database_choices()
+    page.output_directory.setText(str(tmp_path))
+    page._validate_setup()
+    assert "internally valid" in page.status.text()
+
+
+def test_setup_preflight_rejects_missing_output_folder(monkeypatch):
+    page = make_page(monkeypatch)
+    page._validate_setup()
+    assert "choose an existing output folder" in page.status.text()
