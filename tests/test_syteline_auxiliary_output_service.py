@@ -80,6 +80,7 @@ def test_price_formula_writer_uses_legacy_header_and_atomic_tsv(tmp_path):
     service, _, _ = make_service((("UK", "C1", "P1", "F1", 12.5, "18 Oct 2026"),))
     target = tmp_path / "priceformula.txt"
     service.write_price_formula(target, 2, ["P1"])
+    assert not target.read_bytes().startswith(b"\\xef\\xbb\\xbf")
     with target.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream, delimiter="\t"))
     assert tuple(rows[0]) == PRICE_FORMULA_HEADER
