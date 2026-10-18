@@ -95,8 +95,6 @@ class SyteLineExportPage(BasePage):
         catalogue_label.addStretch(1)
         root.addLayout(catalogue_label)
         self.catalogue = self._combo([])
-        self.catalogue.setEditable(True)
-        self.catalogue.setPlaceholderText("Catalogue")
         root.addWidget(self.catalogue)
 
         override_row = QHBoxLayout()
@@ -138,8 +136,6 @@ class SyteLineExportPage(BasePage):
         self.filter_product_code = QCheckBox("Filter by Product Code")
         root.addWidget(self.filter_product_code)
         self.product_line = self._combo([])
-        self.product_line.setEditable(True)
-        self.product_line.setPlaceholderText("Product line / superproduct")
         root.addWidget(self.product_line)
 
         scope = QGridLayout()
