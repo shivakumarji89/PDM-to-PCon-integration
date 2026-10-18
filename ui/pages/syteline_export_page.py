@@ -338,6 +338,85 @@ class SyteLineExportPage(BasePage):
         finally:
             self._updating_scope_controls = False
 
+    def _load_database_choices(self, *_args) -> None:
+        """Load the same metadata families used by the legacy form, read-only."""
+        self.load_database_choices.setEnabled(False)
+        self.status.setText("Loading site, language and currency choices from PDM...")
+        try:
+            sites = self.metadata_service.sites()
+            languages = self.metadata_service.languages()
+            currencies = self.metadata_service.currencies()
+            self._replace_choices(self.site, sites)
+            self._replace_choices(self.language, languages)
+            self._replace_choices(self.other_language, languages)
+            self._replace_choices(self.currency, currencies)
+            user_text = self.pdm_user_id.text().strip()
+            if user_text:
+                try:
+                    user_id = int(user_text)
+                except ValueError as error:
+                    raise ValueError("PDM User ID must be a positive integer.") from error
+                catalogues = self.metadata_service.catalogues(user_id)
+                self._replace_choices(self.catalogue, catalogues)
+            else:
+                self.catalogue.clear()
+                self.product_line.clear()
+            if self.site.currentData() is not None and self.catalogue.currentData() is not None:
+                self._load_product_codes()
+            self.status.setText(
+                f"Loaded {len(sites)} sites, {len(languages)} languages and {len(currencies)} currencies. "
+                + (f"Loaded {self.catalogue.count()} permitted catalogues." if user_text else
+                   "Enter the authenticated PDM User ID and load again to retrieve permitted catalogues.")
+            )
+        except Exception as error:
+            self.status.setText(f"Database choices could not be loaded: {error}")
+        finally:
+            self.load_database_choices.setEnabled(True)
+
+    @staticmethod
+    def _replace_choices(combo: QComboBox, choices) -> None:
+        current = combo.currentText()
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            for choice in choices:
+                combo.addItem(choice.label, userData=choice.id)
+            if current:
+                index = combo.findText(current)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+            if combo.count() and combo.currentIndex() < 0:
+                combo.setCurrentIndex(0)
+        finally:
+            combo.blockSignals(False)
+
+    def _load_product_codes(self, *_args) -> None:
+        site_id = self.site.currentData()
+        catalogue_id = self.catalogue.currentData()
+        if site_id is None or catalogue_id is None:
+            return
+        try:
+            choices = self.metadata_service.product_codes(int(site_id), int(catalogue_id))
+            current_id = self.product_line.currentData()
+            self.product_line.blockSignals(True)
+            try:
+                self.product_line.clear()
+                for choice in choices:
+                    self.product_line.addItem(choice.label, userData=choice.id)
+                index = self.product_line.findData(current_id)
+                if index >= 0:
+                    self.product_line.setCurrentIndex(index)
+                elif self.product_line.count():
+                    self.product_line.setCurrentIndex(0)
+            finally:
+                self.product_line.blockSignals(False)
+            self.status.setText(
+                f"Loaded {len(choices)} product-code choices for the selected site and catalogue."
+            )
+        except Exception as error:
+            self.product_line.clear()
+            self.status.setText(f"Product-code choices could not be loaded: {error}")
+
     def _load_settings(self) -> None:
         for key, widget in [
             ("site", self.site), ("language", self.language), ("other_language", self.other_language),
