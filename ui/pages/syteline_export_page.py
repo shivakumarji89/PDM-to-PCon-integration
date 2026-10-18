@@ -371,8 +371,8 @@ class SyteLineExportPage(BasePage):
             if self.item_list.item(index).text().strip()
         )
         options = set()
-        if self.filter_product_code.isChecked():
-            options.add("products")
+        # The item export is the primary output family in every scope mode.
+        options.add("products")
         if self.range_check.isChecked():
             options.add("ranges")
         if self.list_check.isChecked():
