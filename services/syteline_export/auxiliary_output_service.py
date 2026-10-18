@@ -84,7 +84,7 @@ class SyteLineAuxiliaryOutputService:
         target = target.resolve()
         fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as stream:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
                 # The legacy C# writer concatenates fields with literal tabs; it
                 # does not apply CSV quoting or escaping.
                 stream.write("\t".join(header) + "\r\n")
