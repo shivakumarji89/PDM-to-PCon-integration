@@ -80,7 +80,7 @@ class SyteLineAuxiliaryOutputService:
         target = Path(path).expanduser()
         if not target.parent.is_dir():
             raise ValueError(f"Output directory does not exist: {target.parent}")
-        target.parent = target.parent.resolve()
+        target = target.resolve()
         fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as stream:
