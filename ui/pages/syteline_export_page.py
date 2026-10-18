@@ -574,7 +574,6 @@ class SyteLineExportPage(BasePage):
         self.item_list.model().rowsRemoved.connect(self._save_settings)
         for widget in (self.filter_product_code, self.range_check, self.list_check):
             widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
-        self.filter_product_code.toggled.connect(lambda *_args: self._update_scope_controls())
         self.site.currentIndexChanged.connect(self._load_product_codes)
         self.catalogue.currentIndexChanged.connect(self._load_product_codes)
         self.pdm_user_id.textChanged.connect(self._save_settings)
