@@ -188,3 +188,12 @@ def test_legacy_thread_mapping_includes_output_destination(tmp_path):
     mapped = config.legacy_thread_arguments()
     assert mapped["filename"] == "PDMExport"
     assert mapped["directory"] == str(tmp_path)
+
+
+def test_default_export_flags_match_legacy_export_thread_constructor(tmp_path):
+    config = make_config(tmp_path)
+    mapped = config.legacy_thread_arguments()
+    assert mapped["activeonly"] is False
+    assert mapped["exportAllCataloguesInSite"] is False
+    assert mapped["length5Feats"] is True
+    assert mapped["uniqueComponents"] is False
