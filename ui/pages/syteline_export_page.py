@@ -290,14 +290,35 @@ class SyteLineExportPage(BasePage):
             "Its source behavior must be ported before this action can be enabled.",
         )
 
-    def _update_scope_controls(self, *_args) -> None:
-        ranged, listed = self.range_check.isChecked(), self.list_check.isChecked()
-        self.min_item.setEnabled(ranged)
-        self.max_item.setEnabled(ranged)
-        self.item_list.setEnabled(listed)
-        self.add_items.setEnabled(listed)
-        self.remove_items.setEnabled(listed)
-        self.clear_items.setEnabled(listed)
+    def _update_scope_controls(self, source=None) -> None:
+        # The legacy updateControls handler makes product, range and list modes
+        # mutually exclusive. Normalize persisted combinations as well as clicks.
+        if getattr(self, "_updating_scope_controls", False):
+            return
+        self._updating_scope_controls = True
+        try:
+            if source is not None and source.isChecked():
+                for widget in (self.export_products, self.range_check, self.list_check):
+                    if widget is not source:
+                        widget.setChecked(False)
+            else:
+                # Older saved settings may contain multiple checked modes.
+                if self.list_check.isChecked():
+                    self.export_products.setChecked(False)
+                    self.range_check.setChecked(False)
+                elif self.range_check.isChecked():
+                    self.export_products.setChecked(False)
+                    self.list_check.setChecked(False)
+            ranged, listed = self.range_check.isChecked(), self.list_check.isChecked()
+            self.min_item.setEnabled(ranged)
+            self.max_item.setEnabled(ranged)
+            self.item_list.setEnabled(listed)
+            self.add_items.setEnabled(listed)
+            self.remove_items.setEnabled(listed)
+            self.clear_items.setEnabled(listed)
+            self.product_line.setEnabled(self.export_products.isChecked() and self.filter_product_code.isChecked())
+        finally:
+            self._updating_scope_controls = False
 
     def _load_settings(self) -> None:
         for key, widget in [
@@ -354,8 +375,9 @@ class SyteLineExportPage(BasePage):
                 getattr(self, attr).currentTextChanged.connect(self._save_settings)
         self.item_list.model().rowsInserted.connect(self._save_settings)
         self.item_list.model().rowsRemoved.connect(self._save_settings)
-        self.range_check.toggled.connect(self._update_scope_controls)
-        self.list_check.toggled.connect(self._update_scope_controls)
+        for widget in (self.export_products, self.range_check, self.list_check):
+            widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
+        self.filter_product_code.toggled.connect(self._update_scope_controls)
 
     def _save_settings(self, *_args) -> None:
         for key, widget in [
