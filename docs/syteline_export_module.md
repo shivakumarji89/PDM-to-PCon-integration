@@ -9,7 +9,10 @@ This is a separate top-level module in MK Product Workbench based on
 - Legacy-shaped controls for site, language, other language, catalogue, product-line/product-code filter,
   currency, range/list scope, effective date, catalogue-code override, export-all-in-site and legacy
   option tabs (SyteLine, SyteLine CSI, OFDA/CET and Other).
-- Local persistence for editable controls and selected item lists using application settings.
+- Local persistence for editable controls, output folder, PDM User ID and selected item lists using application settings.
+- Output-folder selection and a setup preflight that checks database-selected IDs and maps current controls to
+  the legacy `ExportThread.initThread` argument names. This is a mapping/validation boundary only; it does not
+  start the legacy thread or enable export.
 - Local scope-control behavior: range endpoints are enabled only for range mode and item-list editing is
   enabled only for list mode.
 - Read-only metadata loading for site, language, currency, permitted catalogue and product-code choices, using
