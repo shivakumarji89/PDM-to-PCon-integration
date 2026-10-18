@@ -65,7 +65,7 @@ def test_captured_legacy_planning_header_matches_legacy_source():
 
 
 def test_captured_legacy_planning_header_only_is_valid():
-    header = "\\t".join(LEGACY_TSV_HEADERS["planning"])
+    header = "\t".join(LEGACY_TSV_HEADERS["planning"])
     assert parse_legacy_tsv(header + "\n", "planning") == (
         LEGACY_TSV_HEADERS["planning"],
     )
@@ -86,20 +86,20 @@ def test_captured_legacy_superprod_rows_keep_19_columns():
 @pytest.mark.parametrize(
     ("output_name", "expected_header"),
     [
-        ("material", "Parent Item\\tFeature\\tComponent\\tOpt code\\tInc. price\\tMatl Qty\\tScrap fact\\tSeq\\tEffect Date\\tObs Date\\tOper Num\\tBackFlush"),
-        ("priceformula", "Site\\tCustPriceCode\\tItemPriceCode\\tPriceFormula\\tPriceFactor\\tEffectiveDate"),
-        ("productcode", "Site\\tProductCode\\tDescription\\tPriceCode\\tUnitCode"),
+        ("material", "Parent Item\tFeature\tComponent\tOpt code\tInc. price\tMatl Qty\tScrap fact\tSeq\tEffect Date\tObs Date\tOper Num\tBackFlush"),
+        ("priceformula", "Site\tCustPriceCode\tItemPriceCode\tPriceFormula\tPriceFactor\tEffectiveDate"),
+        ("productcode", "Site\tProductCode\tDescription\tPriceCode\tUnitCode"),
     ],
 )
 def test_additional_legacy_output_headers_match_source(output_name, expected_header):
-    rows = parse_legacy_tsv(expected_header + "\\n", output_name)
+    rows = parse_legacy_tsv(expected_header + "\n", output_name)
     assert rows == (LEGACY_TSV_HEADERS[output_name],)
 
 
 def test_product_code_accepts_legacy_four_field_rows_under_five_field_header():
-    header = "\\t".join(LEGACY_TSV_HEADERS["productcode"])
-    row = "UK\\tABC\\tExample\\tGBP"
-    rows = parse_legacy_tsv(header + "\\n" + row + "\\n", "productcode")
+    header = "\t".join(LEGACY_TSV_HEADERS["productcode"])
+    row = "UK\tABC\tExample\tGBP"
+    rows = parse_legacy_tsv(header + "\n" + row + "\n", "productcode")
     assert rows[1] == ("UK", "ABC", "Example", "GBP")
 
 
