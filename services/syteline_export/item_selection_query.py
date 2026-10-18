@@ -102,6 +102,8 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
         "AND pd.LanguageId = ? LEFT OUTER JOIN OtherDescription item_desc "
         "ON Item.DescriptionId = item_desc.DescriptionId AND item_desc.LanguageId = ? "
     )
+    # These are deliberately separate: ProductDescription is the primary
+    # language; OtherDescription uses the alternate language in the legacy query.
     params.extend([selection.language_id, selection.language_id])
     joins_catalogue_items = selection.syteline or selection.miller_cad or selection.item_report
     if joins_catalogue_items:
