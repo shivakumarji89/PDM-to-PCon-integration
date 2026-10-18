@@ -96,6 +96,13 @@ def test_additional_legacy_output_headers_match_source(output_name, expected_hea
     assert rows == (LEGACY_TSV_HEADERS[output_name],)
 
 
+def test_product_code_accepts_legacy_four_field_rows_under_five_field_header():
+    header = "\\t".join(LEGACY_TSV_HEADERS["productcode"])
+    row = "UK\\tABC\\tExample\\tGBP"
+    rows = parse_legacy_tsv(header + "\\n" + row + "\\n", "productcode")
+    assert rows[1] == ("UK", "ABC", "Example", "GBP")
+
+
 def test_empty_item_output_is_allowed_without_guessing_its_schema():
     assert parse_legacy_tsv("", "item") == ()
 
