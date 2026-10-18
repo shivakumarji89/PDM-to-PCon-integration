@@ -176,8 +176,8 @@ class SyteLineExportConfig:
         ):
             if getattr(self, field_name) < 1:
                 errors.append(f"{label} must be selected from live database choices.")
-        if self.scope_mode == "products" and self.product_code_id == 0:
-            errors.append("Product code ID must be -1 for all products or a live product-code ID.")
+        if self.scope_mode == "products" and self.product_code_id < 1:
+            errors.append("Select a product code from live database choices when product-code filtering is enabled.")
         if self.export_mode not in {"syteline", "csi", "ofda", "other"}:
             errors.append("Unsupported export mode.")
         return tuple(errors)
