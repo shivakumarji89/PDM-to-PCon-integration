@@ -29,7 +29,7 @@ class ItemSelection:
     export_all_catalogues_in_site: bool = False
     exclude_superproducts: bool = False
     max_description_length: int = 200
-    include_list_price: bool = False
+    export_base_prices: bool = True
     currency: str = "GBP"
     list_price_effective_date: str = ""
 
@@ -80,7 +80,7 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
         selection.max_description_length,
         selection.max_description_length,
     ]
-    if selection.include_list_price or selection.miller_cad or (selection.syteline and not selection.active_only):
+    if selection.miller_cad or (selection.syteline and not selection.export_base_prices):
         fields.append("dbo.fnGetListPriceByItem(Item.Item, ?, ?, ?, NULL) AS ListPrice,")
         params.extend([
             selection.currency, selection.list_price_effective_date, selection.site_id,
