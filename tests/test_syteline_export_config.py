@@ -176,3 +176,15 @@ def test_catalogue_scope_maps_to_no_product_range_or_list_filters(tmp_path):
     assert mapped["productcheck"] is False
     assert mapped["rangecheck"] is False
     assert mapped["listcheck"] is False
+
+
+@pytest.mark.parametrize("name", ["", "folder/name", "folder\\\\name"])
+def test_output_prefix_must_be_a_single_file_name(tmp_path, name):
+    assert "Output file name" in " ".join(make_config(tmp_path, output_file_name=name).validate())
+
+
+def test_legacy_thread_mapping_includes_output_destination(tmp_path):
+    config = make_config(tmp_path, output_file_name="PDMExport")
+    mapped = config.legacy_thread_arguments()
+    assert mapped["filename"] == "PDMExport"
+    assert mapped["directory"] == str(tmp_path)
