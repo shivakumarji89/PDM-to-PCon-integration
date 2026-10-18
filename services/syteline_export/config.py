@@ -7,7 +7,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Literal
 
-ScopeMode = Literal["products", "range", "list"]
+ScopeMode = Literal["catalogue", "products", "range", "list"]
 
 # Headers captured from the supplied legacy Verbose Extract files.
 # The item output was empty in the supplied run, so its schema is deliberately
@@ -196,6 +196,8 @@ class SyteLineExportConfig:
             errors.append("Output folder is required.")
         elif not self.output_directory.expanduser().is_dir():
             errors.append("Output folder must already exist.")
+        if self.scope_mode not in {"catalogue", "products", "range", "list"}:
+            errors.append("Unknown export scope mode.")
         if self.scope_mode == "range":
             if not self.min_item.strip() or not self.max_item.strip():
                 errors.append("Both range endpoints are required.")
