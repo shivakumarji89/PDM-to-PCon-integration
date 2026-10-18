@@ -106,8 +106,8 @@ def test_writer_requires_existing_directory(tmp_path):
 def test_writer_matches_legacy_literal_tab_concatenation(tmp_path):
     target = tmp_path / "raw.tsv"
     SyteLineAuxiliaryOutputService._write_tsv(
-        target, ("First", "Second"), (("contains\\ttab", "value"),)
+        target, ("First", "Second"), (("contains\ttab", "value"),)
     )
     assert target.read_text(encoding="utf-8-sig") == (
-        "First\\tSecond\\r\\ncontains\\ttab\\tvalue\\r\\n"
+        "First\tSecond\\r\\ncontains\ttab\tvalue\\r\\n"
     )
