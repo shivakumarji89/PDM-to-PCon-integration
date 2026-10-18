@@ -26,6 +26,18 @@ LEGACY_TSV_HEADERS: dict[str, tuple[str, ...]] = {
         "Description", "Num Features", "FP1", "FP2", "FP3", "FP4", "FP5",
         "FP6", "FP7", "FP8", "FP9", "FP10", "FP11", "FP12",
     ),
+    "material": (
+        "Parent Item", "Feature", "Component", "Opt code", "Inc. price",
+        "Matl Qty", "Scrap fact", "Seq", "Effect Date", "Obs Date",
+        "Oper Num", "BackFlush",
+    ),
+    "priceformula": (
+        "Site", "CustPriceCode", "ItemPriceCode", "PriceFormula",
+        "PriceFactor", "EffectiveDate",
+    ),
+    "productcode": (
+        "Site", "ProductCode", "Description", "PriceCode", "UnitCode",
+    ),
 }
 
 
