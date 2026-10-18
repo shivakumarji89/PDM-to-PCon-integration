@@ -78,3 +78,11 @@ def test_product_line_filter_only_enables_with_product_scope(monkeypatch):
     assert not page.product_line.isEnabled()
     page.export_products.setChecked(True)
     assert page.product_line.isEnabled()
+
+
+def test_ofda_xml_actions_are_present_but_guarded(monkeypatch):
+    page = make_page(monkeypatch)
+    assert page.compare_xml.text() == "Compare"
+    assert page.validate_xml.text() == "Validate"
+    assert not page.compare_xml.isEnabled()
+    assert not page.validate_xml.isEnabled()
