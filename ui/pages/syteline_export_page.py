@@ -66,6 +66,17 @@ class SyteLineExportPage(BasePage):
             selectors.addWidget(widget, 1, col)
         root.addLayout(selectors)
 
+        multi_selectors = QHBoxLayout()
+        self.multi_sites = QPushButton("Sites…")
+        self.multi_languages = QPushButton("Languages…")
+        self.multi_currencies = QPushButton("Currencies…")
+        for button in (self.multi_sites, self.multi_languages, self.multi_currencies):
+            button.setEnabled(False)
+            button.setToolTip("Multi-selection depends on database-backed site, language and currency definitions.")
+            multi_selectors.addWidget(button)
+        multi_selectors.addStretch(1)
+        root.addLayout(multi_selectors)
+
         catalogue_label = QHBoxLayout()
         catalogue_label.addWidget(QLabel("Select a Catalogue to export:"))
         self.catalogue_required = QLabel("< Required >")
@@ -78,6 +89,32 @@ class SyteLineExportPage(BasePage):
         self.catalogue.setPlaceholderText("Catalogue")
         root.addWidget(self.catalogue)
 
+        override_row = QHBoxLayout()
+        override_row.addWidget(QLabel("Catalogue Code override:"))
+        self.catalogue_code_override = QLineEdit()
+        self.catalogue_code_override.setPlaceholderText("Optional legacy catalogue code override")
+        override_row.addWidget(self.catalogue_code_override, 1)
+        root.addLayout(override_row)
+
+        effective_row = QHBoxLayout()
+        effective_row.addWidget(QLabel("Effective date:"))
+        self.effective_date = QDateEdit()
+        self.effective_date.setCalendarPopup(True)
+        self.effective_date.setDisplayFormat("yyyy-MM-dd")
+        self.effective_date.setDate(QDate.currentDate())
+        effective_row.addWidget(self.effective_date)
+        self.export_all_in_site = QCheckBox("Export All in Site")
+        self.export_bom_data = QCheckBox("Export BOM Data")
+        self.export_bom_data.setEnabled(False)
+        self.export_bom_data.setToolTip("BOM export remains disabled until legacy BOM queries and output parity are verified.")
+        effective_row.addWidget(self.export_all_in_site)
+        effective_row.addWidget(self.export_bom_data)
+        effective_row.addStretch(1)
+        root.addLayout(effective_row)
+
+        self.export_products = QCheckBox("Export Products")
+        self.export_products.setChecked(True)
+        root.addWidget(self.export_products)
         self.filter_product_code = QCheckBox("Filter by Product Code")
         root.addWidget(self.filter_product_code)
         self.product_line = self._combo([])
@@ -265,11 +302,20 @@ class SyteLineExportPage(BasePage):
             ("export_type", self.export_type), ("contract", self.contract),
         ]:
             widget.setCurrentText(self.settings.value(self.PREFIX + key, widget.currentText(), type=str))
-        for key, widget in [("min_item", self.min_item), ("max_item", self.max_item)]:
-            widget.setText(self.settings.value(self.PREFIX + key, widget.text(), type=str))
         for key, widget in [
-            ("filter_product_code", self.filter_product_code), ("range_check", self.range_check),
-            ("list_check", self.list_check),
+            ("min_item", self.min_item), ("max_item", self.max_item),
+            ("catalogue_code_override", self.catalogue_code_override),
+        ]:
+            widget.setText(self.settings.value(self.PREFIX + key, widget.text(), type=str))
+        saved_date = self.settings.value(self.PREFIX + "effective_date", "", type=str)
+        if saved_date:
+            parsed_date = QDate.fromString(saved_date, "yyyy-MM-dd")
+            if parsed_date.isValid():
+                self.effective_date.setDate(parsed_date)
+        for key, widget in [
+            ("export_products", self.export_products), ("filter_product_code", self.filter_product_code),
+            ("range_check", self.range_check), ("list_check", self.list_check),
+            ("export_all_in_site", self.export_all_in_site), ("export_bom_data", self.export_bom_data),
         ]:
             widget.setChecked(self.settings.value(self.PREFIX + key, widget.isChecked(), type=bool))
         self.item_list.addItems(self.settings.value(self.PREFIX + "items", [], type=list))
@@ -288,9 +334,13 @@ class SyteLineExportPage(BasePage):
             self.currency, self.export_type, self.contract,
         ]:
             widget.currentTextChanged.connect(self._save_settings)
-        for widget in [self.min_item, self.max_item]:
+        for widget in [self.min_item, self.max_item, self.catalogue_code_override]:
             widget.textChanged.connect(self._save_settings)
-        for widget in [self.filter_product_code, self.range_check, self.list_check, *self.checks.values()]:
+        self.effective_date.dateChanged.connect(self._save_settings)
+        for widget in [
+            self.export_products, self.filter_product_code, self.range_check, self.list_check,
+            self.export_all_in_site, self.export_bom_data, *self.checks.values(),
+        ]:
             widget.toggled.connect(self._save_settings)
         for attr in ("site_ref",):
             if hasattr(self, attr):
@@ -310,11 +360,16 @@ class SyteLineExportPage(BasePage):
             ("export_type", self.export_type), ("contract", self.contract),
         ]:
             self.settings.setValue(self.PREFIX + key, widget.currentText())
-        for key, widget in [("min_item", self.min_item), ("max_item", self.max_item)]:
-            self.settings.setValue(self.PREFIX + key, widget.text())
         for key, widget in [
-            ("filter_product_code", self.filter_product_code), ("range_check", self.range_check),
-            ("list_check", self.list_check),
+            ("min_item", self.min_item), ("max_item", self.max_item),
+            ("catalogue_code_override", self.catalogue_code_override),
+        ]:
+            self.settings.setValue(self.PREFIX + key, widget.text())
+        self.settings.setValue(self.PREFIX + "effective_date", self.effective_date.date().toString("yyyy-MM-dd"))
+        for key, widget in [
+            ("export_products", self.export_products), ("filter_product_code", self.filter_product_code),
+            ("range_check", self.range_check), ("list_check", self.list_check),
+            ("export_all_in_site", self.export_all_in_site), ("export_bom_data", self.export_bom_data),
         ]:
             self.settings.setValue(self.PREFIX + key, widget.isChecked())
         self.settings.setValue(self.PREFIX + "items", [
