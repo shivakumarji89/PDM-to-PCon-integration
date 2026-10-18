@@ -5,10 +5,10 @@ until SQL mappings and output parity can be verified.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QSettings
+from PySide6.QtCore import QDate, QSettings, Qt
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
-    QDateEdit, QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QDateEdit, QFileDialog, QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 from core.application_context import ApplicationContext
 from ui.pages.base_page import BasePage
@@ -122,6 +122,16 @@ class SyteLineExportPage(BasePage):
         effective_row.addStretch(1)
         root.addLayout(effective_row)
 
+        output_row = QHBoxLayout()
+        output_row.addWidget(QLabel("Output folder:"))
+        self.output_directory = QLineEdit()
+        self.output_directory.setPlaceholderText("Choose an existing output folder")
+        self.browse_output = QPushButton("Browse...")
+        self.browse_output.clicked.connect(self._browse_output_directory)
+        output_row.addWidget(self.output_directory, 1)
+        output_row.addWidget(self.browse_output)
+        root.addLayout(output_row)
+
         self.export_products = QCheckBox("Export Products")
         self.export_products.setChecked(True)
         root.addWidget(self.export_products)
@@ -208,6 +218,9 @@ class SyteLineExportPage(BasePage):
         root.addWidget(self.tabs, 1)
 
         buttons = QHBoxLayout()
+        self.validate_setup = QPushButton("Validate Setup")
+        self.validate_setup.clicked.connect(self._validate_setup)
+        buttons.addWidget(self.validate_setup)
         buttons.addStretch(1)
         self.queue = QPushButton("Queue")
         self.export = QPushButton("Export")
@@ -337,6 +350,66 @@ class SyteLineExportPage(BasePage):
             self.product_line.setEnabled(self.export_products.isChecked() and self.filter_product_code.isChecked())
         finally:
             self._updating_scope_controls = False
+
+    def _browse_output_directory(self) -> None:
+        selected = QFileDialog.getExistingDirectory(self, "Select export output folder", self.output_directory.text())
+        if selected:
+            self.output_directory.setText(selected)
+
+    def _validate_setup(self) -> None:
+        from pathlib import Path
+        from services.syteline_export.config import SyteLineExportConfig
+
+        if self.list_check.isChecked():
+            scope_mode = "list"
+        elif self.range_check.isChecked():
+            scope_mode = "range"
+        else:
+            scope_mode = "products"
+        items = tuple(
+            self.item_list.item(index).text().strip()
+            for index in range(self.item_list.count())
+            if self.item_list.item(index).text().strip()
+        )
+        options = set()
+        if self.export_products.isChecked():
+            options.add("products")
+        if self.range_check.isChecked():
+            options.add("ranges")
+        if self.list_check.isChecked():
+            options.add("lists")
+        if self.checks["base_prices"].isChecked():
+            options.add("base_prices")
+        if self.checks["ofda_export"].isChecked():
+            options.add("ofda")
+        if self.export_bom_data.isChecked():
+            options.add("bom")
+        config = SyteLineExportConfig(
+            server=self._context.config.pdm_server,
+            database=self._context.config.pdm_database,
+            output_directory=Path(self.output_directory.text().strip()),
+            site=str(self.site.currentData(Qt.ItemDataRole.UserRole + 1) or self.site.currentText()),
+            product_line=self.product_line.currentText().split("  |  ", 1)[0].strip(),
+            catalogue=self.catalogue.currentText().strip(),
+            language=self.language.currentText().strip(),
+            currency=self.currency.currentText().strip(),
+            scope_mode=scope_mode,
+            min_item=self.min_item.text(),
+            max_item=self.max_item.text(),
+            item_list=items,
+            options=frozenset(options),
+        )
+        errors = config.validate()
+        if errors:
+            self.status.setText("Setup validation failed: " + " ".join(errors))
+            return
+        if self.site.currentData() is None or self.catalogue.currentData() is None:
+            self.status.setText("Setup validation failed: load live database site and catalogue choices first.")
+            return
+        self.status.setText(
+            "Setup is internally valid. Export is still disabled until item/material/BOM transformations "
+            "and full legacy output parity are implemented and verified."
+        )
 
     def _load_database_choices(self, *_args) -> None:
         """Load the same metadata families used by the legacy form, read-only."""
