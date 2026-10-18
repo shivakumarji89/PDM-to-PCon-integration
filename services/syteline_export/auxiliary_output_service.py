@@ -12,6 +12,7 @@ from typing import Any, Callable, Iterable
 
 from repositories.pdm_repository import PDMRepository
 from services.syteline_export.config import LEGACY_TSV_HEADERS
+from services.syteline_export.legacy_output import allocate_legacy_output_paths
 
 
 PRICE_FORMULA_HEADER = (
@@ -115,12 +116,14 @@ class SyteLineAuxiliaryOutputService:
         root = Path(export_directory).expanduser()
         if not root.is_dir():
             raise ValueError(f"Export directory does not exist: {root}")
-        temp = root / "temp"
-        temp.mkdir(exist_ok=True)
-        suffix = "_csi" if format_csi else ""
+        paths = allocate_legacy_output_paths(
+            root, export_file_name, site="", currency="", format_csi=format_csi
+        )
+        assert paths.description is not None and paths.planning is not None
+        paths.description.parent.mkdir(exist_ok=True)
         outputs = {
-            "description": temp / f"{export_file_name}_description_data{suffix}.txt",
-            "planning": temp / f"{export_file_name}_planning_data{suffix}.txt",
+            "description": paths.description,
+            "planning": paths.planning,
         }
         for family, target in outputs.items():
             SyteLineAuxiliaryOutputService._write_tsv(
