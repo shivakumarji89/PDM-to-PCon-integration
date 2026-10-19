@@ -86,3 +86,24 @@ def test_option_report_flattening_skips_hash_suffixed_values():
         {"ParentOptValId": 12, "OrderCodeValue2": "WOOD", "fsccompliant": 0, "optval_name": "Wood"},
     ], flatten_fabrics=True)
     assert [row["OrderCodeValue2"] for row in rows] == ["WOOD"]
+
+
+
+def test_option_report_resolves_legacy_child_option_ids_and_sentinels():
+    rows = normalize_legacy_option_report_rows([
+        {"OptChildId": "42", "optval_name": "Leg", "OrderCodeValue2": "LEG", "fsccompliant": 0},
+        {"OptChildId": None, "optval_name": "Customers Own Fabric", "OrderCodeValue2": "COF", "fsccompliant": 0},
+        {"OptChildId": "", "optval_name": "Standard finish", "OrderCodeValue2": "STD", "fsccompliant": 0},
+    ])
+    assert rows[0]["ResolvedChildOptionIds"] == (42,)
+    assert rows[1]["ResolvedChildOptionIds"] == (8512,)
+    assert rows[2]["ResolvedChildOptionIds"] == (-2,)
+
+
+def test_option_report_rejects_non_numeric_child_option_id():
+    import pytest
+
+    with pytest.raises(ValueError, match="Invalid OptChildId"):
+        normalize_legacy_option_report_rows([
+            {"OptChildId": "not-an-id", "optval_name": "Leg", "OrderCodeValue2": "LEG"}
+        ])
