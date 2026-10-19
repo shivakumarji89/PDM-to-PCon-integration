@@ -57,8 +57,11 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
         raise ValueError("Unsupported item-selection scope.")
     if selection.scope_mode == "products" and selection.product_code_id < 1:
         raise ValueError("A product code ID is required for product scope.")
-    if selection.scope_mode == "range" and not (selection.min_item and selection.max_item):
-        raise ValueError("Both minimum and maximum item codes are required for range scope.")
+    if selection.scope_mode == "range":
+        if not selection.min_item.strip() or not selection.max_item.strip():
+            raise ValueError("Both minimum and maximum item codes are required for range scope.")
+        if selection.min_item > selection.max_item:
+            raise ValueError("Minimum item code must not sort after maximum item code.")
     if selection.scope_mode == "list":
         normalized_items = tuple(item.strip() for item in selection.item_list)
         if not normalized_items or any(not item for item in normalized_items):
