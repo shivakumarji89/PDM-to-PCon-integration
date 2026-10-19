@@ -251,21 +251,22 @@ def test_scope_expanded_items_remain_global_and_keep_lookup_separate_from_target
          "MEMO123AA"),
     ],
 )
-def test_global_direct_item_condition_matches_pdm_missing_record_shape(
-    program, item, option_id, code, source_code, lookup, condition,
+@pytest.mark.parametrize("component", [False, True])
+def test_global_condition_matches_pdm_option_suffix_shape(
+    program, item, option_id, code, source_code, lookup, condition, component,
 ):
     row = GlobalOptionPriceRow(
         item, 1, option_id, code, source_code, lookup,
         Decimal("21"), None, Decimal("52"),
     )
     records, _ = PricingService.build_records(
-        [], [row], set(), {}, PriceParams(program_code=program)
+        [], [row], {item} if component else set(), {}, PriceParams(program_code=program)
     )
     assert records[0].variant_condition == condition
     assert records[0].pdm_lookup_code == lookup
 
 
-def test_component_parent_global_condition_uses_the_parent_option_target_key():
+def test_component_parent_global_condition_keeps_worker_lookup_separate():
     item = "RYMPSH.12SW"
     source_code = f"{item}_OKG"
     lookup = f"3848={source_code}"
@@ -278,14 +279,16 @@ def test_component_parent_global_condition_uses_the_parent_option_target_key():
         [], [row], {item}, {}, PriceParams(program_code="revive")
     )
 
-    assert records[0].variant_condition == lookup
+    assert records[0].variant_condition == f"{item} 3848=OKG"
     assert records[0].pdm_lookup_code == lookup
+    assert price_record_from_dict(price_record_to_dict(records[0])) == records[0]
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_compute_paths_forward_snapshot_catalogue_and_program(monkeypatch, streaming):
+@pytest.mark.parametrize("program", ["revive", "memo"])
+def test_compute_paths_preserve_lookup_and_target(monkeypatch, streaming, program):
     snapshot = Snapshot(product=Product(catalogue_id="658"))
-    snapshot.generation_program = "revive"
+    snapshot.generation_program = program
     snapshot.article_components = {"1": [{"sub_item": "RYMPSH.12SW"}]}
     calls = []
     connection = SimpleNamespace(close=lambda: calls.append("closed"))
@@ -295,16 +298,34 @@ def test_compute_paths_forward_snapshot_catalogue_and_program(monkeypatch, strea
 
     def fetch_global(self, items, currency, mydate, site, conn, **kwargs):
         calls.append((items, currency, kwargs))
-        return []
+        source_code = "RYMPSH.12SWOKG" if program == "memo" else "RYMPSH.12SW_OKG"
+        lookup = source_code if program == "memo" else "3848=RYMPSH.12SW_OKG"
+        return [GlobalOptionPriceRow(
+            "RYMPSH.12SW", 62547, 3848, "OKG", source_code,
+            lookup, Decimal("21"), None, Decimal("64"),
+        )]
 
     monkeypatch.setattr(PDMRepository, "fetch_global_option_increment_prices", fetch_global)
     service = PricingService(MagicMock())
-    method = service.compute_streaming if streaming else service.compute
-    method(PriceParams(mydate="16-Oct-2026"), snapshot)
+    batches = []
+    params = PriceParams(mydate="16-Oct-2026")
+    if streaming:
+        result = service.compute_streaming(params, snapshot, on_batch=batches.extend)
+    else:
+        result = service.compute(params, snapshot)
     assert calls == [
-        (["RYMPSH.12SW"], cur, {"catalogue_id": "658", "program_code": "revive"})
+        (["RYMPSH.12SW"], cur, {"catalogue_id": "658", "program_code": program})
         for cur in ["EUR", "GBP"]
     ] + ["closed"]
+    target = "RYMPSH.12SWOKG" if program == "memo" else "RYMPSH.12SW 3848=OKG"
+    lookup = target if program == "memo" else "3848=RYMPSH.12SW_OKG"
+    assert [(r.currency, r.variant_condition, r.pdm_lookup_code, r.value)
+            for r in result.records] == [
+        (cur, target, lookup, 64.0) for cur in ["EUR", "GBP"]
+    ]
+    assert snapshot.price_records == result.records
+    if streaming:
+        assert batches == result.records
 
 
 def test_missing_catalogue_fails_explicitly():

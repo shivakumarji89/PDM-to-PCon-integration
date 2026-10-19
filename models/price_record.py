@@ -23,7 +23,8 @@ class PriceRecord:
     is_global: bool = False
     #: ``com_ArticleCode`` (base article). Empty for a global record.
     article_code: str = ""
-    #: ``com_VariantCondition``: "" base, " 9502=OK" upcharge, full item (global).
+    #: Target condition for insertion: "" base, " 9502=OK" upcharge, full item (global).
+    #: Matching an existing Global row must not rename its stored condition.
     variant_condition: str = ""
     #: ``com_PriceLevelCode``: 'B' base, 'X' upcharge. Ignored for global.
     level: str = "B"
@@ -40,7 +41,8 @@ class PriceRecord:
     #: (a computed record has no text id until an export actually writes one).
     text_id: str = ""
     source_item: str = ""
-    #: PDM's comparison key, not necessarily the stored pCon condition.
+    #: PDM worker's existing-row lookup key; separate from the insertion condition.
+    #: Empty on older snapshots: use variant_condition for exact matching.
     pdm_lookup_code: str = ""
 
     def key(self) -> tuple[bool, str, str, str, str]:

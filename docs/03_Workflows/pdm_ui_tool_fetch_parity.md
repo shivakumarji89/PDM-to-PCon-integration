@@ -4,21 +4,22 @@
 **Scope:** Article Price and Global Price only.
 **Data source:** the non-production `DBCHIP11V.PDMTEST` database, using the
 local PDM build `1.0.9686.24988` and its matching `PDMMaintenance` source.
-No production database or MDB was accessed, and no export workflow was run.
+No production database or MDB was accessed, and no write/export batch was run.
 The non-production Revive staging MDB mentioned below was inspected with
-read-only queries only.
+read-only queries only, including a guarded SELECT-only export preview.
 
 ## Result
 
 | Scenario | Status | What the evidence establishes |
 |---|---|---|
 | Article Price | **MATCH**, evidence B, tested fetches | 96 scenarios, 936 base/increment observations, all exact against source-equivalent SQL. No Article calculation change in this update. Physical duplicate ID selection and actual UI/MDB results remain **NOT VERIFIED**. |
-| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; direct-item and observed component-parent target conditions covered; worker matching remains internally inconsistent for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. Direct-item `variant_condition` follows `AddMissingGlobalPricingRecords`; component rows with the source's `OptionId=ITEM_suffix` shape retain that component-parent target key. Existing-row selection is covered by fake-target tests and an exact Revive staging-row fixture; physical UI/MDB results and arbitrary parent-option mapping remain **NOT VERIFIED**. |
+| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; worker lookup and option-suffix insertion conditions separated | Dedicated catalogue-scoped source queries historically matched 1,052 increment observations in 108 scenarios. Fresh seven-scenario source/lookup checks remain 159/159. Direct and component option-suffix rows use canonical insertion conditions; worker keys match existing rows without renaming them. A SELECT-only Revive staging preview selects row 122850. Physical UI/write results and arbitrary raw-selector parent-option mapping remain **NOT VERIFIED**. |
 
 These are bounded results, not a claim of universal or full UI parity. The
 actual PDM UI was not run against a pCon MDB. The live evidence below comes
 from source-equivalent PDM SQL and read-only tool repository/procedure calls
-against non-production PDM Test; target-MDB selection and record IDs remain
+against non-production PDM Test. Existing staging-row selection is now observed
+in a read-only preview; physical target writes/runtime interpretation remain
 unverified.
 
 ## Current implementation and before/after measurement
@@ -80,17 +81,22 @@ The reproduced path is `UpdatePriceThread.execThread` calling
 source code, selected raw increment, price band, calculated price and source
 lookup. `PriceRecord` persists `source_item` and `pdm_lookup_code`, separately
 from the target condition; old snapshots default these fields to empty.
-Substring-expanded items remain Global records. Direct-item stored conditions
+Substring-expanded items remain Global records. Option-suffix insertion conditions
 follow `AddMissingGlobalPricingRecords`: ordinary rows use
 `ITEM OptionId=Code`; `memo` uses `ITEMCode`. RYM/RYT worker lookup keys remain
 `OptionId=ITEM_CODE` metadata and are not substituted for the generated target
-condition for direct items. For component rows whose source key is the
-numeric-option-prefixed `OptionId=ITEM_suffix` form, the target condition now
-uses that key, matching the component-parent placeholder form. The non-production
+condition, including for component items. The f724311 component override was
+incorrect: the component rewrite in the original source is guarded by absence
+of `=`; actual option-procedure suffixes already contain it. The non-production
 Revive staging MDB (package 240, price list 12) contains both `RYMPSH.12SW`
 and `3848=RYMPSH.12SW_OKG`; this is read-only target-row evidence, not a
-production or UI export. Regression tests cover condition generation,
-exact-key matching and export preparation. The general
+production or UI export, nor proof of an insertion rule. Export prefers explicit
+worker-key matches (including `#`-stripped lookup), falls back to the canonical
+condition for repeat-run reuse, and inserts only the canonical condition if
+neither exists. Existing rows retain their stored condition and text link;
+previews report the matched condition, not the insertion candidate.
+Regression tests cover condition generation, matching and export preparation.
+The general raw-selector
 `FeaturePositionString`-to-component-option mapping and physical UI/MDB export
 remain unverified.
 Product-code attachment and surcharge/base classification use source-item
@@ -235,15 +241,17 @@ counts are historical and do not measure the current builder.
 Direct source inspection established incompatible paths: the update worker
 compares plain source codes for `lf`/`av`/`embody` and `OptionId=ITEM_CODE` for
 RYM/RYT, while `AddMissingGlobalPricingRecords` creates item-qualified
-conditions for direct items and parent-option-prefixed conditions for eligible
-components. The tool follows those separate shapes and retains worker keys as
-metadata. A read-only Revive staging MDB inspection found the exact
+conditions from option-procedure suffixes, even for components. The separate
+hardcoded raw-suffix branch can rewrite a component's condition only when the
+candidate has no `=`. The tool now separates worker matching from canonical
+option-suffix insertion. A read-only Revive staging MDB inspection found the exact
 `3848=RYMPSH.12SW_OKG` target condition alongside its base row in package 240;
-the synthetic export regression verifies exact-key row selection. This does
+both a synthetic export regression and a guarded SELECT-only preview select the
+worker-shaped existing row without renaming it. This does
 not prove the general parent-option mapping or physical production behavior,
 which remain **NOT VERIFIED**.
 
-A fresh read-only PDMTEST run of the same five item inputs, restricted to
+A prior read-only PDMTEST run of the same five item inputs, restricted to
 GBP/16-Oct-2026, completed seven actual catalogue/program scenarios:
 processed fetch, source projection and source lookup were each **159/159**
 exact and ordered. The current worker-target diagnostic was **0/159** exact
@@ -267,7 +275,67 @@ capture, target list/text relationships, physical target rows, and physical
 duplicate IDs remain unmeasured. The duplicate loop is covered with fake
 ordered target rows, but neither original MDB query guarantees physical order.
 
-### Regression and static validation (C)
+### Current condition correction (baseline f724311)
+
+Actual read-only procedure execution for `RYMPSH.12SW`/site 1/
+excludeFabricColours 1 returned option 3848, `OKG`, option-value ID 62547,
+`IncPriceBase=21`. `getOptionIncrementSuffixes` therefore produces
+` 3848=OKG`; item + suffix gives **`RYMPSH.12SW 3848=OKG`**, bypassing the
+component rewrite. The actual repository source fetch (catalogue 658, EUR,
+16-Oct-2026) returns five rows; OKG has price **64**, unchanged by this fix.
+
+| Measurement | f724311 | Corrected |
+|---|---|---|
+| OKG worker lookup | `3848=RYMPSH.12SW_OKG` | unchanged |
+| OKG insertion condition | `3848=RYMPSH.12SW_OKG` | `RYMPSH.12SW 3848=OKG` |
+| Seven-scenario source fetch / projection / lookup metadata | 159/159 each | 159/159 each; zero missing/extra, all seven ordered |
+| Worker parser applied to insertion conditions | 10/159 | 0/159; 159 field differences; diagnostic exits 1 |
+
+The last metric compares **different PDM paths**, not actual inserted target
+output; its zero result does not invalidate the canonical condition.
+
+The non-production staging file is
+`C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables\Revive\pcr_data_com_ocd.mdb`.
+Package 240 is `revive`; list 12 is `EURO_2022`, EUR. The existing reversed
+OKG row is **122850**, value 34, text **49959** (`3848_PF`,
+`Surcharge panel finish`); base row **125213** has value 249. There is no
+canonical OKG row in that list. A SELECT-only preview with writes/transactions
+rejected planned **one value update, zero inserts**, preserving condition and
+text 49959. A 2022 validity input selected the historic list solely for this
+matching check; it was not a 2026 export. The staging MDB SHA256 was unchanged.
+
+Current validation: **123 focused tests + 6 subtests**, **176 broader non-GUI
+tests + 6 subtests**, and **21 offscreen GUI tests** pass. The configured
+Python 3.14.6 venv lacks PySide6 (two GUI collection errors); the GUI suite
+passes with installed Python 3.12/PySide6 6.11.1. No dependencies were installed.
+The combined nine-file selection on Python 3.12 passes **197 tests + 6 subtests**.
+Both normal/streaming paths preserve separate fields in EUR/GBP and use the
+resolved generation program, including memo. Special-series controls include
+RYM/RYT, `lf`, `av`, Embody, WE51, Ratio and ordinary Global rows.
+Live site-1 suffix-procedure controls also return the expected option suffixes
+for `lf` MRFN, `av` AS2, RYT and ordinary GETH. No priced option-8/AJ suffix
+was returned for Embody `CN132AWAA` at site 1; its site-9 worker path is
+measured, but that option's live placeholder eligibility remains unverified.
+Repeat-run tests replay inserted mocked MDB rows and prove no duplicate and
+subsequent value-only updates. Worker/hash variants, duplicate updates,
+worker-precedence when both shapes exist, package/list isolation and snapshot
+serialization are covered.
+
+Commands and implementation details are in
+[`pricing_pdm_parity.md`](./pricing_pdm_parity.md#global-lookupinsertion-correction-exact-verification).
+`git diff --check` passes. Editor Problems reports no changed-file errors;
+direct Pylance analysis still reports pre-existing `reportArgumentType` at
+the unchanged list-ID conversion (export service line 194), plus pre-existing
+test fake/optional-access diagnostics, not in edited logic.
+
+Remaining gaps: screenshot MDB/package identity, actual PDM/pCon runtime
+interpretation and physical target write/read-back parity; inaccessible
+procedure body (`VIEW DEFINITION=0`); arbitrary raw-selector component
+remapping. Existing staging storage does not prove that the screenshot used
+this file, or that either form is universally valid/legacy. Recompute historic
+snapshots to refresh the insertion condition; no guessed migration is applied.
+
+### Historical regression and static validation (C)
 
 - Focused Article/Global/source/export/text suite: **113 passed**.
 - Broader non-GUI pricing suite: **159 passed**.

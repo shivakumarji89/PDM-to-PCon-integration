@@ -1177,11 +1177,123 @@ class PriceMdbExportGlobalSurchargeBaseTests(unittest.TestCase):
                                     {"com_TextID": 89, "com_TextName": "3848"}])
         records = [
             _global(item, 249.0),
-            _global(condition, 52.0, source_item=item, pdm_lookup_code=condition),
+            _global(f"{item} 3848=OKG", 52.0, source_item=item, pdm_lookup_code=condition),
         ]
 
+        preview = _export_strict(mdb, records, _T, dry_run=True)
         result = _export_strict(mdb, records, _T)
 
         self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (1, 0))
         update = next(op for op in mdb.ops if op["op"] == "update" and op["table"] == "tCOMd_GlobalPrice")
         self.assertEqual(update["where"], {"com_GlobalPriceID": 10})
+        self.assertEqual(update["set"], {"com_PriceValue": 52.0})
+        self.assertEqual(preview["plan_updates"][0]["variant_condition"], condition)
+        entry = next(e for e in result["text_rows"] if e["operation"] == "update")
+        self.assertEqual(entry["variant_condition"], condition)
+        self.assertEqual(entry["text_id"], 89)
+        self.assertTrue(result["verified"])
+
+    def test_missing_component_uses_option_suffix_and_second_run_does_not_duplicate(self):
+        item = "RYMPSH.12SW"
+        from decimal import Decimal
+        from repositories.pdm_repository import GlobalOptionPriceRow
+        from services.pricing_service import PriceParams, PricingService
+
+        records, _ = PricingService.build_records(
+            [], [GlobalOptionPriceRow(
+                item, 62547, 3848, "OKG", f"{item}_OKG",
+                f"3848={item}_OKG", Decimal("21"), None, Decimal("64"),
+            )], {item}, {}, PriceParams(currency="EUR", program_code="revive",
+                                       valid_from="2026-10-16"),
+        )
+        base = {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21,
+                "com_VariantCondition": item, "com_PriceLevelCode": "X",
+                "com_PriceValue": 249.0, "com_TextID": 88}
+        texts = [{"com_TextID": 88, "com_TextName": item}]
+        mdb = _OptimizedFake(_strict_lists(), globals_=[base], linked=[21, 22], texts=texts)
+        first = _export_strict(mdb, records * 2, _T)
+        self.assertTrue(first["ok"], first)
+        self.assertEqual((first["inserted_global_prices"], first["updated_global_prices"]), (1, 0))
+        self.assertTrue(first["verified"])
+        inserted = _global_op(mdb)["rows"]
+        self.assertEqual(inserted[0]["com_VariantCondition"], f"{item} 3848=OKG")
+        self.assertEqual(inserted[0]["com_PriceValue"], 64.0)
+        text_op = _texts_op(mdb)
+        assert text_op is not None
+        text = text_op["rows"][0]
+        self.assertEqual((text["com_TextName"], text["com_Text_1_en"]), ("3848", "Surcharge 3848"))
+        self.assertEqual(inserted[0]["com_TextID"], text["com_TextID"])
+
+        second_mdb = _OptimizedFake(_strict_lists(), globals_=[base, *inserted],
+                                    linked=[21, 22], texts=[*texts, text])
+        second = _export_strict(second_mdb, records, _T)
+        self.assertEqual((second["inserted_global_prices"], second["updated_global_prices"]), (0, 0))
+        self.assertEqual(second_mdb.ops, [])
+
+        records[0].value = 65.0
+        third = _export_strict(second_mdb, records, _T)
+        self.assertEqual((third["inserted_global_prices"], third["updated_global_prices"]), (0, 1))
+        update = second_mdb.ops[0]
+        self.assertEqual(update["set"], {"com_PriceValue": 65.0})
+        self.assertEqual(update["where"], {"com_GlobalPriceID": inserted[0]["com_GlobalPriceID"]})
+
+    def test_worker_key_precedes_canonical_fallback_and_keeps_list_scope(self):
+        item = "RYMPSH.12SW"
+        canonical = f"{item} 3848=OKG"
+        worker = f"3848={item}_OKG"
+        rows = [
+            {"com_GlobalPriceID": pid, "com_PackageID": package, "com_PriceListID": lid,
+             "com_VariantCondition": condition, "com_PriceValue": value, "com_TextID": 88}
+            for pid, package, lid, condition, value in [
+                (1, 1, 21, canonical, 1), (2, 1, 21, worker, 2),
+                (3, 1, 21, worker, 3), (4, 1, 22, worker, 4),
+                (5, 2, 21, worker, 5),
+            ]
+        ]
+        mdb = _OptimizedFake(_strict_lists(), globals_=rows, linked=[21, 22])
+        result = _export_strict(mdb, [
+            _global(canonical, 64.0, source_item=item, pdm_lookup_code=worker),
+        ], _T)
+        self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (2, 0))
+        self.assertEqual([op["where"] for op in mdb.ops],
+                         [{"com_GlobalPriceID": 2}, {"com_GlobalPriceID": 3}])
+        self.assertEqual(result["duplicate_matches"], 1)
+
+    def test_special_series_worker_keys_update_existing_rows_without_renaming(self):
+        for item, option, code, worker in [
+            ("MRFN121HWAP", 9227, "AJ", "AJ"),
+            ("AS2EA32AA", 8, "1FD", "1FD#"),
+            ("CN132AWAA", 8, "AJ", "AJ"),
+            ("GETH.1022FS4W", 9168, "AA", "GETH.1022FS4W 9168=AA"),
+            ("RYTRFA.0812SW", 6027, "OKG", "6027=RYTRFA.0812SW_OKG"),
+            ("MEMO123", 8, "AA", "MEMO123AA"),
+        ]:
+            with self.subTest(item=item):
+                stored = worker.replace("#", "")
+                canonical = f"{item} {option}={code}" if item != "MEMO123" else worker
+                row = {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21,
+                       "com_VariantCondition": stored, "com_PriceValue": 1.0, "com_TextID": 88}
+                mdb = _OptimizedFake(_strict_lists(), globals_=[row], linked=[21, 22])
+                records = [
+                    _global(canonical, 64, source_item=item, pdm_lookup_code=worker),
+                ]
+                preview = _export_strict(mdb, records, _T, dry_run=True)
+                result = _export_strict(mdb, records, _T)
+                self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (1, 0))
+                self.assertEqual(mdb.ops[0]["set"], {"com_PriceValue": 64.0})
+                self.assertEqual(preview["plan_updates"][0]["variant_condition"], stored)
+
+    def test_hash_and_hash_stripped_worker_matches_are_both_updated(self):
+        rows = [
+            {"com_GlobalPriceID": pid, "com_PackageID": 1, "com_PriceListID": 21,
+             "com_VariantCondition": condition, "com_PriceValue": 1.0, "com_TextID": 88}
+            for pid, condition in [(9, "1FD#"), (10, "1FD")]
+        ]
+        mdb = _OptimizedFake(_strict_lists(), globals_=rows, linked=[21, 22])
+        result = _export_strict(mdb, [
+            _global("AS2EA32AA 8=1FD", 64, source_item="AS2EA32AA", pdm_lookup_code="1FD#"),
+        ], _T)
+        self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (2, 0))
+        self.assertEqual([op["where"] for op in mdb.ops],
+                         [{"com_GlobalPriceID": 9}, {"com_GlobalPriceID": 10}])
+        self.assertTrue(all(op["set"] == {"com_PriceValue": 64.0} for op in mdb.ops))

@@ -544,6 +544,18 @@ class PriceMdbExportService(BaseService):
             )
             target_keys = existing_global_keys if is_global else existing_price_keys
             existing_map = existing_global_by_key if is_global else existing_price_by_key
+            match_keys = [row_key]
+            if is_global and is_surcharge(record) and record.pdm_lookup_code:
+                # The worker can identify a row whose stored condition differs
+                # from AddMissingGlobalPricingRecords' insertion condition.
+                # Prefer that identity; canonical fallback makes inserts repeatable.
+                worker_keys = [
+                    (row_key[0], row_key[1], condition, row_key[3])
+                    for condition in dict.fromkeys((
+                        record.pdm_lookup_code, record.pdm_lookup_code.replace("#", ""),
+                    ))
+                ]
+                match_keys = [k for k in worker_keys if k in existing_map] or match_keys
             try:
                 price_value = float(record.value)
             except (TypeError, ValueError):
@@ -557,18 +569,20 @@ class PriceMdbExportService(BaseService):
                 # unresolved/zero PDM price must not overwrite or create a row.
                 skipped_zero += 1
                 continue
-            if (is_global, row_key) in handled_keys:
+            if any((is_global, k) in handled_keys for k in [row_key, *match_keys]):
                 skipped_existing += 1  # same identity computed twice: first one wins
                 continue
             handled_keys.add((is_global, row_key))
-            if row_key in target_keys:
+            handled_keys.update((is_global, k) for k in match_keys)
+            if match_keys[0] in target_keys:
                 # Correct only com_PriceValue; a row already holding the value
                 # is left alone. Identity, validity, currency and unrelated rows
                 # remain untouched.
                 primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
                 table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
                 stale = 0
-                matched_rows = existing_map[row_key]
+                all_matches = [r for k in match_keys for r in existing_map[k]]
+                matched_rows = all_matches
                 if not is_global or not is_surcharge(record):
                     # PDM's Article base/surcharge and Global base lookups retain
                     # only the last matching ID; its Global surcharge loop
@@ -597,7 +611,7 @@ class PriceMdbExportService(BaseService):
                     note_target(price_list, "updates")
                     planned_update_detail.append({
                         "table": table_name, "id": existing_id,
-                        "variant_condition": record.variant_condition or "",
+                        "variant_condition": existing_row.get("com_VariantCondition") or "",
                         "list": price_list["label"], "from": existing_value, "to": price_value})
                     value_updates.append({
                         "op": "update",
@@ -605,17 +619,18 @@ class PriceMdbExportService(BaseService):
                         "set": {"com_PriceValue": price_value},
                         "where": {primary_key: existing_id},
                     })
-                if len(existing_map[row_key]) > 1:
+                if len(all_matches) > 1:
                     duplicate_matches += 1
                 if not stale:
                     skipped_existing += 1
                 # Text links of matched rows are never rewritten (PDM's value update
                 # does not touch com_TextID); the plan only reports them.
-                linked_id = next((r.get("com_TextID") for r in existing_map[row_key]
+                linked_id = next((r.get("com_TextID") for r in all_matches
                                   if r.get("com_TextID") not in (None, "")), None)
                 entry = text_entry(record, price_list, "update" if stale else "unchanged")
+                entry["variant_condition"] = match_keys[0][2]
                 if is_global:
-                    entry["row_ids"] = [r.get(primary_key) for r in existing_map[row_key]]
+                    entry["row_ids"] = [r.get(primary_key) for r in all_matches]
                     entry.update(
                         action=ACTION_PRESERVE if linked_id is not None else ACTION_UNLINKED,
                         text_id=linked_id,

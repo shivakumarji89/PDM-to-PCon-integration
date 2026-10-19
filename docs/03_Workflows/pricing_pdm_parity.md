@@ -69,21 +69,33 @@ schema read found three alternative base/increment fields and one component
 `1205S1BQ` populates all three; live site-9 Embody/CD cases exercise references
 2/3. Bands are selected independently from Application 1.
 
-Source/raw lookup identity and stored target condition remain separate,
-backward-compatible snapshot metadata (`source_item`, `pdm_lookup_code`).
-Substring-expanded items stay Global. Direct-item `variant_condition` follows
-the `AddMissingGlobalPricingRecords` shape: ordinary Global rows use
-`ITEM OptionId=Code`, while `memo` uses `ITEMCode`. For component rows where the
-source key is numeric-option-prefixed (`OptionId=ITEM_suffix`), the generated
-target condition uses that key, as in the source's component-parent placeholder
-branch. A read-only Revive staging MDB package 240 contains the exact
-`3848=RYMPSH.12SW_OKG` condition and its `RYMPSH.12SW` base in one list. Tests
-cover condition construction, exact existing-row selection and export
-preparation. This evidence does not verify the general
-`FeaturePositionString`-to-component-option mapping, physical UI behavior, or
-production MDB output. Product-code attachment and export surcharge/base
-classification preserve source identity even without a space. Fake-target
-tests cover duplicate surcharge updates and missing bases.
+Source/raw lookup identity and insertion condition are separate,
+backward-compatible snapshot fields (`source_item`, `pdm_lookup_code`,
+`variant_condition`). Substring-expanded items stay Global. Global option
+rows, including components, use `ITEM OptionId=Code` for insertion; `memo`
+uses `ITEMCode`. These are built from the item's actual option ID and raw
+option value, stripping `#`, not by rearranging the worker key.
+
+**Correction to f724311:** an existing reversed staging row does not establish
+the placeholder-generation rule. In `PriceMaintenance.cs:10062`, PDM builds
+`Item + suffix`; the component rewrite at 10064 runs only when that candidate
+has no `=`. The actual option-procedure suffix already contains `=`, so it
+bypasses the rewrite. Hardcoded raw selectors (`MYST`, `~W`, `~M`, etc.) have a
+different branch; this change does not implement or claim parity for those
+selector modes or arbitrary `FeaturePositionString` remapping.
+
+Export first checks the explicit worker key (also its `#`-stripped form),
+scoped to package/list. Matching existing rows receive **value-only** updates;
+their condition and text link are preserved and their actual stored condition
+is reported in the preview. If no worker row exists, exact canonical-condition
+matching allows a previously inserted row to be reused. If both representations
+exist, worker rows take precedence; the canonical row is not renamed or merged.
+If neither exists, insertion uses `variant_condition`. Records without lookup
+metadata retain exact-condition matching. Recompute old snapshots to obtain
+the corrected insertion condition; no guessed string migration is performed.
+Article pricing, source SQL, currency/list routing and product-code attachment
+are unchanged. Both compute paths now pass the resolved snapshot program to
+the builder as well as the source fetch, preserving the `memo` exception.
 
 **Evidence B, independent original-source SQL versus actual repository calls
 on PDMTEST**, GBP/EUR, 15/16-Oct-2026:
@@ -112,19 +124,19 @@ That sample predates the current AddMissing-shaped conditions and is not a
 measurement of the current builder. The source itself has conflicting paths:
 `UpdatePConItemIncrementalPrice` compares plain source codes for `lf`/`av`/
 `embody` and special `OptionId=ITEM_CODE` keys for RYM/RYT, while
-`AddMissingGlobalPricingRecords` creates item-qualified conditions for direct
-rows and a parent-option-prefixed condition for eligible component rows. The
-builder keeps worker keys in `pdm_lookup_code` and uses the component key only
-when the component path is selected. Staging evidence resolves the RYM target
-condition shape for the observed row, but not arbitrary parent-option mapping.
+`AddMissingGlobalPricingRecords` creates item-qualified conditions for
+option-procedure suffixes, even for components. Parent-option rewriting applies
+only to its separate raw-suffix branch. The builder keeps the worker key in
+`pdm_lookup_code`; staging proves an existing worker-shaped row, not a universal
+insertion rule or arbitrary parent-option mapping.
 Physical UI output and current production-MDB behavior remain **NOT VERIFIED**.
 
 The procedure definition still returns null and `VIEW DEFINITION` permission
 is 0. An approved DBA definition/grant is required to inspect its internals,
 but it is no longer a dependency of Global source fetching.
 
-Fresh validation: **36 focused**, **166 broader non-GUI**, and **21 offscreen
-GUI** pricing tests pass; changed-file editor diagnostics are clear.
+Historical validation before this condition correction: **36 focused**,
+**166 broader non-GUI**, and **21 offscreen GUI** pricing tests passed.
 Article duplicate-loop tests retain
 the last supplied target row, but physical duplicate-ID parity cannot be
 claimed without deterministic MDB ordering. No Development/Metatype changes,
@@ -142,6 +154,81 @@ comparison command is:
 The current script includes worker-target matching diagnostics and exits 1
 when parsed prepared conditions disagree with the update worker's key. The
 diagnostic is not a check of the missing-record generator or physical MDB rows.
+
+### Global lookup/insertion correction: exact verification
+
+Starting branch `main`, HEAD and fetched `origin/main`:
+`f72431186a09262ebc9d462695df06c2020dda41`. No branches or production MDB
+writes were used.
+
+Read-only PDMTEST, item `RYMPSH.12SW`, site 1, catalogue 658, EUR,
+`16-Oct-2026`:
+
+| Stage | Observed output |
+|---|---|
+| Exact `dbo.PDMOptionDataReportWithIncBase`, item/site/excludeFabricColours = `RYMPSH.12SW`/1/1 | Option 3848, value `OKG`, option-value ID 62547, `IncPriceBase=21.00000000` |
+| PDM `getOptionIncrementSuffixes` rule | ` 3848=OKG` |
+| PDM missing-row candidate | `RYMPSH.12SW 3848=OKG`; component rewrite bypassed because `=` is present |
+| Actual repository fetch | Five rows; OKG raw increment 21, projected `RYMPSH.12SW_OKG`, calculated price **64** |
+| Builder before / after | Before: lookup and target both `3848=RYMPSH.12SW_OKG`. After: lookup unchanged; target `RYMPSH.12SW 3848=OKG`; price unchanged at 64 |
+| Actual staging SELECT-only preview | Package 240 (`revive`), list 12 (`EURO_2022`, EUR), row **122850**, value 34 -> planned 64; **1 update, 0 inserts**; stored reversed condition and text **49959** preserved |
+
+Additional read-only suffix-procedure controls (same site 1 and exclusion
+flag, with PDM's item preprocessing) returned ` 9227=AJ` for `lf`
+`MRFN121HWAP` (six rows), ` 8=1FD` for `av` `AS2EA32AA` (one),
+` 6027=OKG` for `RYTRFA.0812SW` (one), and ` 9168=AA` for ordinary
+`GETH.1022FS4W` (one). Embody `CN132AWAA` had **no** priced suffix row for
+option 8/value AJ at site 1. Its site-9 worker fetch remains covered by the
+seven-scenario parity check and its format/matching by mocked tests; live
+placeholder eligibility for that particular Embody option is **unverified**.
+
+Staging file:
+`C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables\Revive\pcr_data_com_ocd.mdb`.
+The preview used 2022 validity solely to select that historic list; it was not
+a 2026 export. Its adapter rejected non-SELECT operations and transactions.
+The MDB SHA256 before/after was identical. No screenshot-format OKG row exists
+in the inspected list. No target writes or application-level pCon run occurred.
+
+The seven-scenario GBP/16-Oct-2026 read-only command above was rerun before
+and after this fix. Source fetch, projection and lookup metadata remain
+**159/159 exact**, seven multiset/order passes each, with zero missing/extra
+rows. The worker-parser-versus-insertion-condition diagnostic changes from
+**10/159** at f724311 to **0/159** after the correction (149 -> 159 field
+differences), and exits 1. That is the expected distinction between the PDM
+paths, **not** evidence that the canonical insertion condition is wrong.
+
+Validation commands:
+
+```powershell
+& .\.venv\Scripts\python.exe -m pytest tests\test_global_price_source_parity.py tests\test_price_mdb_export_service.py -q
+& .\.venv\Scripts\python.exe -m pytest tests\test_global_price_source_parity.py tests\test_pdm_price_fetch_parity.py tests\test_price_mdb_export_service.py tests\test_pricing_pdm_text_parity.py tests\test_price_list_targets.py tests\test_price_list_service.py tests\test_price_product_code.py -q
+$env:QT_QPA_PLATFORM = 'offscreen'
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pytest tests\test_pricing_export_workflow.py tests\test_pricing_page_text_blocks.py -q
+git diff --check
+```
+
+- Focused: **123 passed, 6 subtests passed**.
+- Broader non-GUI: **176 passed, 6 subtests passed** (Python 3.14.6).
+- GUI: **21 passed** with installed Python 3.12/PySide6 6.11.1. The configured
+  32-bit venv cannot collect these two GUI modules because PySide6 is absent;
+  no dependencies were installed.
+- Combined nine-file pricing selection on Python 3.12: **197 passed,
+  6 subtests passed**.
+- Regressions cover direct/component RYM and RYT; `lf`, `av`, Embody, ordinary,
+  WE51, Ratio and memo controls; existing-row value-only updates; hash variants;
+  canonical insertion/text linking; repeat-run reuse; worker precedence and
+  package/list scoping; serialization; normal/streaming EUR and GBP results.
+- Editor Problems reports no changed-file errors. Direct Pylance analysis
+  reports existing `reportArgumentType` diagnostics at the unchanged
+  `int(row.get("com_PriceListID"))` statement (line 194), plus existing test
+  fake/optional-access diagnostics outside the edited logic; no new errors.
+
+Remaining evidence gaps: the screenshot MDB/package identity is unknown;
+PDM/pCon runtime interpretation and physical write/read-back parity were not
+executed. The procedure can be executed but its body remains inaccessible
+(`VIEW DEFINITION=0`). Embody's AJ placeholder eligibility and nonempty memo
+runtime evidence remain unavailable. No claim of end-to-end or universal
+special-selector parity is made.
 
 ## Historical filtered-procedure comparison (PDM Test, 2026-10-18)
 
