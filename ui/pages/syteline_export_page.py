@@ -34,6 +34,7 @@ class SyteLineExportPage(BasePage):
         self._apply_authenticated_user_defaults()
         self._connect_autosave()
         self._update_scope_controls()
+        self._update_required_indicators()
 
     @staticmethod
     def _combo(items: list[str], selected: str = "") -> QComboBox:
@@ -384,6 +385,10 @@ class SyteLineExportPage(BasePage):
         lines.extend(f"• {name}" for name in enabled) if enabled else lines.append("• (none)")
         QMessageBox.information(self, "Export Parameters", "\\n".join(lines))
 
+    def _update_required_indicators(self, *_args) -> None:
+        """Keep the legacy red catalogue-required marker in sync with selection."""
+        self.catalogue_required.setVisible(self.catalogue.currentData() is None)
+
     def _update_scope_controls(self, source=None) -> None:
         # The legacy updateControls handler makes product, range and list modes
         # mutually exclusive. Normalize persisted combinations as well as clicks.
@@ -672,6 +677,7 @@ class SyteLineExportPage(BasePage):
                                if self._multi_choices[kind] else f"{kind.title()}…")
             if self.site.currentData() is not None and self.catalogue.currentData() is not None:
                 self._load_product_codes()
+            self._update_required_indicators()
             self.status.setText(
                 f"Loaded {len(sites)} sites, {len(languages)} languages and {len(currencies)} currencies. "
                 + (f"Loaded {self.catalogue.count()} permitted catalogues." if user_text else
@@ -813,6 +819,7 @@ class SyteLineExportPage(BasePage):
             widget.toggled.connect(lambda checked, source=widget: self._update_scope_controls(source if checked else None))
         self.site.currentIndexChanged.connect(self._load_product_codes)
         self.catalogue.currentIndexChanged.connect(self._load_product_codes)
+        self.catalogue.currentIndexChanged.connect(self._update_required_indicators)
         self.pdm_user_id.textChanged.connect(self._save_settings)
 
     def _save_settings(self, *_args) -> None:
