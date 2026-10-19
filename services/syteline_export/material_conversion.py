@@ -292,6 +292,7 @@ _MRFN_PARENT_SUFFIX_OPTION_VALUE_IDS = {300464, 300563, 300564, 300565, 300566, 
 
 def build_legacy_dependency_material(
     *,
+    item_code: str,
     parent_material: str,
     feature_position: str,
     option_position: int,
@@ -320,12 +321,11 @@ def build_legacy_dependency_material(
 
     if is_fabric or ignore_option_dependencies or child_count <= 0:
         return None
-    parent_for_code = parent if (is_superproduct and not use_resolved_superproduct_parent) else parent
-    # The legacy chooses the item's own code for ordinary superproducts, but
-    # the resolved parent material for the alternate/special superproduct path.
-    # Callers signal that path by passing the resolved parent as parent_material.
-    if is_superproduct and not use_resolved_superproduct_parent:
-        parent_for_code = str(parent_material or "")
+    parent_for_code = (
+        str(item_code or "")
+        if is_superproduct and not use_resolved_superproduct_parent
+        else parent
+    )
 
     if not feature or "|" not in feature:
         raise ValueError("feature_position must contain the legacy 'featureIndex|orderCode' format.")
