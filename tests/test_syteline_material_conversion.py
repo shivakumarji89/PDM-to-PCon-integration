@@ -304,3 +304,25 @@ def test_legacy_increment_accumulation_rejects_blank_token_and_bad_amount():
         sum_legacy_increment_entries(["PARENT|1"], "")
     with pytest.raises(ValueError, match="Invalid legacy increment amount"):
         sum_legacy_increment_entries(["PARENT|not-a-price"], "PARENT")
+
+
+
+def test_legacy_feature_positions_deduplicate_exclude_sentinels_and_strip_fsc_marker():
+    from services.syteline_export.material_conversion import assign_legacy_feature_positions
+
+    rows = [
+        {"OptionValueId": 10, "OptionId": 2, "OrderCodeValue2": "OAK#"},
+        {"OptionValueId": 10, "OptionId": 2, "OrderCodeValue2": "OAK#"},
+        {"OptionValueId": 11, "OptionId": 3, "OrderCodeValue2": "BLACK"},
+        {"OptionValueId": 292, "OptionId": 4, "OrderCodeValue2": "SKIP"},
+    ]
+    staged = assign_legacy_feature_positions(rows)
+    assert [row["FeaturePosition"] for row in staged] == ["1|OAK", "2|BLACK"]
+
+
+def test_legacy_feature_positions_reject_missing_numeric_identity():
+    import pytest
+    from services.syteline_export.material_conversion import assign_legacy_feature_positions
+
+    with pytest.raises(ValueError, match="numeric OptionValueId and OptionId"):
+        assign_legacy_feature_positions([{"OptionValueId": 1, "OrderCodeValue2": "X"}])
