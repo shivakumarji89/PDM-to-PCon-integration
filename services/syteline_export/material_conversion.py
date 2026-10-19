@@ -336,3 +336,37 @@ def build_legacy_dependency_material(
     if parent.startswith(("MRFN", "9-MRFN")) and value_id in _MRFN_PARENT_SUFFIX_OPTION_VALUE_IDS:
         code += "-" + str(parent_option_code or "")
     return code
+
+
+
+def assign_legacy_feature_positions(rows):
+    """Deduplicate sorted option rows and assign stage-10 feature positions.
+
+    Apply catalogue/item-specific legacy allowlists before calling this helper.
+    """
+    output = []
+    seen = set()
+    last_option_id = None
+    feature_index = 0
+    identity_fields = ("OptionValueId", "OptionId", "IsFabric", "OptDescId", "optvalDescId", "OrderCodeValue2", "ParentOptValId", "OptChildCount")
+    for source in rows:
+        row = dict(source)
+        try:
+            value_id = int(row["OptionValueId"])
+            option_id = int(row["OptionId"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Feature rows require numeric OptionValueId and OptionId.") from exc
+        if value_id in {292, 299, 300}:
+            continue
+        identity = tuple(row.get(field) for field in identity_fields)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if last_option_id is None or option_id != last_option_id:
+            feature_index += 1
+            last_option_id = option_id
+        code = str(row.get("OrderCodeValue2") or "").replace("#", "")
+        row["FeatureIndex"] = feature_index
+        row["FeaturePosition"] = f"{feature_index}|{code}"
+        output.append(row)
+    return output
