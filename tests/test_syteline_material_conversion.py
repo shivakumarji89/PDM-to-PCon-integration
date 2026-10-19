@@ -241,3 +241,46 @@ def test_dependency_material_code_rejects_malformed_feature_position():
             item_code="ITEM", parent_material="PARENT", feature_position="bad",
             option_position=1, option_value_id=9, child_option_count=1,
         )
+
+
+
+def test_legacy_feature_length_uses_maximum_order_code_length_when_configured_length_is_two():
+    from services.syteline_export.material_conversion import resolve_legacy_feature_length
+
+    assert resolve_legacy_feature_length(
+        configured_length=2, maximum_order_code_length=4, is_fabric=False
+    ) == 4
+    assert resolve_legacy_feature_length(
+        configured_length=3, maximum_order_code_length=5, is_fabric=False
+    ) == 3
+
+
+def test_legacy_length5_rule_only_changes_non_fabric_features():
+    from services.syteline_export.material_conversion import resolve_legacy_feature_length
+
+    assert resolve_legacy_feature_length(
+        configured_length=4, maximum_order_code_length=4,
+        is_fabric=False, length5_features=True,
+    ) == 5
+    assert resolve_legacy_feature_length(
+        configured_length=4, maximum_order_code_length=4,
+        is_fabric=True, length5_features=True,
+    ) == 4
+    assert resolve_legacy_feature_length(
+        configured_length=2, maximum_order_code_length=6,
+        is_fabric=False, length5_features=True,
+    ) == 6
+
+
+def test_legacy_feature_length_rejects_invalid_or_negative_lengths():
+    import pytest
+    from services.syteline_export.material_conversion import resolve_legacy_feature_length
+
+    with pytest.raises(ValueError, match="must be integers"):
+        resolve_legacy_feature_length(
+            configured_length="unknown", maximum_order_code_length=3, is_fabric=False
+        )
+    with pytest.raises(ValueError, match="cannot be negative"):
+        resolve_legacy_feature_length(
+            configured_length=-1, maximum_order_code_length=3, is_fabric=False
+        )
