@@ -98,3 +98,26 @@ def test_option_report_closes_connection_when_procedure_fails():
     with pytest.raises(RuntimeError, match="procedure unavailable"):
         service.fetch_option_report("ITEM-42")
     assert connection.closed
+
+
+
+def test_prepared_option_report_normalizes_orders_and_reconciles_children():
+    connection = FakeConnection()
+    columns = [
+        "Range2", "Product2", "DisplayOrder", "OrderCodeValue2", "DisplayOrdinal",
+        "OptionValueId", "OptionId", "IsFabric", "OptDescId", "optvalDescId",
+        "ParentOptValId", "OptChildCount", "OptChildId", "optval_name", "fsccompliant",
+    ]
+    connection.fake_cursor.description = [(name,) for name in columns]
+    connection.fake_cursor.fetchall = lambda: [
+        ("R", "P", 1, "LEG", 1, 10, 2, 0, 3, 4, None, 1, None, "Leg", 0),
+        ("R", "P", 1, "LEG", 2, 10, 2, 0, 3, 4, None, 1, 77, "Leg", 0),
+    ]
+    service = SyteLineItemSourceService(connection_factory=lambda: connection)
+
+    rows = service.fetch_prepared_option_report("ITEM-42")
+
+    assert len(rows) == 1
+    assert rows[0]["ResolvedChildOptionIds"] == (77,)
+    assert rows[0]["OrderCodeValue2"] == "LEG"
+    assert connection.closed
