@@ -1,6 +1,7 @@
 from services.syteline_export.material_conversion import (
     LegacyMaterialConversionRegistry,
     normalize_legacy_option_report_rows,
+    order_legacy_option_report_rows,
 )
 
 
@@ -107,3 +108,26 @@ def test_option_report_rejects_non_numeric_child_option_id():
         normalize_legacy_option_report_rows([
             {"OptChildId": "not-an-id", "optval_name": "Leg", "OrderCodeValue2": "LEG"}
         ])
+
+
+
+def test_option_report_order_matches_legacy_sort_keys():
+    rows = [
+        {"Range2": "R", "Product2": "P", "DisplayOrder": 1, "OrderCodeValue2": "A", "DisplayOrdinal": 1},
+        {"Range2": "R", "Product2": "P", "DisplayOrder": 1, "OrderCodeValue2": "LONG", "DisplayOrdinal": 2},
+        {"Range2": "R", "Product2": "P", "DisplayOrder": 0, "OrderCodeValue2": "Z", "DisplayOrdinal": 3},
+        {"Range2": "A", "Product2": "P", "DisplayOrder": 9, "OrderCodeValue2": "Z", "DisplayOrdinal": 4},
+    ]
+    ordered = order_legacy_option_report_rows(rows)
+    assert [row["DisplayOrdinal"] for row in ordered] == [4, 3, 2, 1]
+
+
+def test_of_item_option_order_uses_legacy_9b_length_adjustment():
+    rows = [
+        {"Range2": "R", "Product2": "P", "DisplayOrder": 1, "OrderCodeValue2": "9B", "DisplayOrdinal": 1},
+        {"Range2": "R", "Product2": "P", "DisplayOrder": 1, "OrderCodeValue2": "XYZ", "DisplayOrdinal": 2},
+    ]
+    ordinary = order_legacy_option_report_rows(rows, item_code="ITEM")
+    of_ordered = order_legacy_option_report_rows(rows, item_code="OF123")
+    assert [row["DisplayOrdinal"] for row in ordinary] == [2, 1]
+    assert [row["DisplayOrdinal"] for row in of_ordered] == [1, 2]
