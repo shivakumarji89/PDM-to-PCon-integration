@@ -66,6 +66,24 @@ def normalize_legacy_option_report_rows(
             1 if "customers own" in option_name
             else row.get("OptChildCount")
         )
+
+        # ExportThread stages one child ID per option row. A missing child is
+        # represented by the sentinel -2, except customer-owned options, which
+        # point to the legacy customer-owned material option 8512. Later rows
+        # for the same staged option can replace -2 with a real child ID; that
+        # grouping/reconciliation is handled by the traversal layer.
+        child_id = row.get("OptChildId")
+        if child_id is not None and str(child_id).strip():
+            try:
+                resolved_child_ids = (int(child_id),)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid OptChildId in legacy option report: {child_id!r}") from exc
+        elif "customers own" in option_name:
+            resolved_child_ids = (8512,)
+        else:
+            resolved_child_ids = (-2,)
+        row["ResolvedChildOptionIds"] = resolved_child_ids
+
         row["DisplayName"] = str(row.get("optval_name") or "") + ("#" if fsc_compliant else "")
         normalized_rows.append(row)
     return normalized_rows
