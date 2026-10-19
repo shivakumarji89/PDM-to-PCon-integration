@@ -440,8 +440,15 @@ class SyteLineExportPage(BasePage):
             ignore_option_dependencies=self.checks["ignore_option_dependencies"].isChecked(),
             unique_components=self.checks["unique_phantoms"].isChecked(),
             plc_phantoms=self.checks["plc_prefix"].isChecked(),
-            exclude_superproducts=self.checks["csi_exclude_superproducts"].isChecked(),
-            superproducts_only=self.checks["superproducts_only"].isChecked(),
+            exclude_superproducts=(
+                self.export_type.currentText() == "Exclude SuperProduct"
+                if self.tabs.currentIndex() == 0
+                else self.checks["csi_exclude_superproducts"].isChecked()
+            ),
+            superproducts_only=(
+                self.export_type.currentText() == "SuperProducts Only"
+                or self.checks["superproducts_only"].isChecked()
+            ),
             flatten_fabrics=self.checks["flatten_fab"].isChecked(),
             include_url=self.checks["include_url"].isChecked(),
             short_description=self.checks["short_description"].isChecked(),
