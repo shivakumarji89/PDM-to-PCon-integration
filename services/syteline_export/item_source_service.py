@@ -10,6 +10,7 @@ from services.syteline_export.item_selection_query import (
     build_item_selection_query,
 )
 from services.syteline_export.material_conversion import (
+    assign_legacy_feature_positions,
     normalize_legacy_option_report_rows,
     order_legacy_option_report_rows,
     reconcile_legacy_option_child_ids,
@@ -69,6 +70,41 @@ class SyteLineItemSourceService:
         )
         ordered = order_legacy_option_report_rows(normalized, item_code=item)
         return reconcile_legacy_option_child_ids(ordered)
+
+    def fetch_staged_option_features(
+        self,
+        long_item: str,
+        *,
+        allowed_option_ids: set[int] | list[int] | tuple[int, ...],
+        flatten_fabrics: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Prepare option rows and assign feature positions after an explicit allowlist.
+
+        The legacy exporter applies catalogue/item-specific allowlists before
+        assigning feature positions. Requiring the caller to supply the allowed
+        option IDs prevents this service from silently treating every procedure
+        row as exportable feature data.
+        """
+        item = str(long_item).strip()
+        if not item:
+            raise ValueError("A non-empty long item code is required.")
+        try:
+            allowed = {int(option_id) for option_id in allowed_option_ids}
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Allowed option IDs must all be integers.") from exc
+        if not allowed or any(option_id <= 0 for option_id in allowed):
+            raise ValueError("At least one positive allowed option ID is required.")
+
+        rows = self.fetch_prepared_option_report(item, flatten_fabrics=flatten_fabrics)
+        eligible = []
+        for row in rows:
+            try:
+                option_id = int(row.get("OptionId"))
+            except (TypeError, ValueError):
+                continue
+            if option_id in allowed:
+                eligible.append(row)
+        return assign_legacy_feature_positions(eligible)
 
     def fetch_option_report(self, long_item: str) -> list[dict[str, Any]]:
         """Read the option rows produced by the legacy PDMOptionDataReport procedure.
