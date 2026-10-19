@@ -579,7 +579,9 @@ class SyteLineExportPage(BasePage):
             )
             self._replace_choices(
                 self.other_language, languages, self.settings.value(self.PREFIX + "other_language", "", type=str),
-                preferred_id=self.language.property("preferred_id"),
+                preferred_id=self.other_language.property("preferred_id")
+                if self.other_language.property("preferred_id") is not None
+                else self.language.property("preferred_id"),
             )
             self._replace_choices(
                 self.currency, currencies, self.settings.value(self.PREFIX + "currency", "", type=str),
@@ -591,6 +593,8 @@ class SyteLineExportPage(BasePage):
                     user_id = int(user_text)
                 except ValueError as error:
                     raise ValueError("PDM User ID must be a positive integer.") from error
+                if user_id < 1:
+                    raise ValueError("PDM User ID must be a positive integer.")
                 catalogues = self.metadata_service.catalogues(user_id)
                 self._replace_choices(
                     self.catalogue, catalogues, self.settings.value(self.PREFIX + "catalogue", "", type=str),
@@ -599,9 +603,26 @@ class SyteLineExportPage(BasePage):
             else:
                 self.catalogue.clear()
                 self.product_line.clear()
+                self.status.setText(
+                    "Sites, languages and currencies loaded. Enter the authenticated PDM User ID "
+                    "to load only catalogues permitted for that user."
+                )
             for button in (self.multi_sites, self.multi_languages, self.multi_currencies):
                 button.setEnabled(True)
                 button.setToolTip("Choose multiple database-backed values.")
+            for kind, combo in (
+                ("sites", self.site), ("languages", self.language), ("currencies", self.currency)
+            ):
+                available = {int(combo.itemData(i)): combo.itemText(i) for i in range(combo.count())
+                             if combo.itemData(i) is not None}
+                self._multi_choices[kind] = [
+                    (item_id, label) for item_id, label in self._multi_choices[kind]
+                    if item_id in available
+                ]
+                button = {"sites": self.multi_sites, "languages": self.multi_languages,
+                          "currencies": self.multi_currencies}[kind]
+                button.setText(f"{kind.title()} ({len(self._multi_choices[kind])})"
+                               if self._multi_choices[kind] else f"{kind.title()}…")
             if self.site.currentData() is not None and self.catalogue.currentData() is not None:
                 self._load_product_codes()
             self.status.setText(
