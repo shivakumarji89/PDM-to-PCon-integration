@@ -224,3 +224,20 @@ def test_dependency_material_code_handles_superproduct_and_mrfn_rules():
     assert build_legacy_dependency_material(**args) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
     assert build_legacy_dependency_material(**{**args, "is_superproduct": True}) == "9-CURRENT-ITEM-[opt2]-A_B-PARENT-OPT"
     assert build_legacy_dependency_material(**{**args, "is_superproduct": True, "use_resolved_superproduct_parent": True}) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
+
+
+
+def test_parent_material_substitution_does_not_match_empty_current_material_by_containment():
+    parents = [{"OptionValueId": 10, "Material": "PARENT-MATERIAL"}]
+    assert resolve_legacy_parent_material("", 3, 10, parents) == ("", True)
+
+
+def test_dependency_material_code_rejects_malformed_feature_position():
+    import pytest
+    from services.syteline_export.material_conversion import build_legacy_dependency_material
+
+    with pytest.raises(ValueError, match="feature_position"):
+        build_legacy_dependency_material(
+            item_code="ITEM", parent_material="PARENT", feature_position="bad",
+            option_position=1, option_value_id=9, child_option_count=1,
+        )
