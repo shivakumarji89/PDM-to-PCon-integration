@@ -370,3 +370,31 @@ def assign_legacy_feature_positions(rows):
         row["FeaturePosition"] = f"{feature_index}|{code}"
         output.append(row)
     return output
+
+
+def resolve_legacy_feature_length(
+    *,
+    configured_length: int | str,
+    maximum_order_code_length: int | str,
+    is_fabric: bool,
+    length5_features: bool = False,
+) -> int:
+    """Apply ExportThread stage-20 feature-length rules to resolved SQL values.
+
+    The caller must resolve the selected option (including dependent fabric
+    option selection) and provide its SLFeatureLength and maximum order-code
+    length from the catalogue-scoped query. This function ports only the
+    source-visible post-query rules and performs no database access.
+    """
+    try:
+        feature_length = int(configured_length)
+        maximum_length = int(maximum_order_code_length)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Configured and maximum feature lengths must be integers.") from exc
+    if feature_length < 0 or maximum_length < 0:
+        raise ValueError("Feature lengths cannot be negative.")
+    if maximum_length > feature_length and feature_length == 2:
+        feature_length = maximum_length
+    if not is_fabric and feature_length > 2 and length5_features:
+        feature_length = 5
+    return feature_length
