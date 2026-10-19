@@ -476,3 +476,26 @@ def calculate_legacy_increment_total(
         parent_material, item_code, full_parent_item
     )
     return sum_legacy_increment_entries(increment_entries, token)
+
+
+class LegacyDependencyMaterialSequencer:
+    """Allocate legacy stage-16.5 sequence numbers for dependency materials.
+
+    A newly encountered 9-prefixed material starts at sequence 2; each later
+    occurrence increments its own sequence. Other materials require the
+    database-backed getItemSequence routine and are rejected here.
+    """
+
+    def __init__(self) -> None:
+        self._last_sequence_by_material: dict[str, int] = {}
+
+    def next_sequence(self, material: str) -> int:
+        key = str(material or "")
+        if not key.startswith("9-"):
+            raise ValueError(
+                "This sequencer only handles materials starting with 9-; "
+                "other materials require the legacy database-backed getItemSequence routine."
+            )
+        sequence = self._last_sequence_by_material.get(key, 1) + 1
+        self._last_sequence_by_material[key] = sequence
+        return sequence
