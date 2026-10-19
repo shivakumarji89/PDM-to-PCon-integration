@@ -346,11 +346,39 @@ class SyteLineExportPage(BasePage):
             self.item_list.takeItem(self.item_list.row(item))
 
     def _show_params(self) -> None:
-        QMessageBox.information(
-            self, "Params",
-            "The legacy Params dialog depends on database-backed definitions. "
-            "Its source behavior must be ported before this action can be enabled.",
-        )
+        """Display a read-only summary of the active legacy export parameters."""
+        if self.tabs.currentIndex() == 0:
+            mode = self.export_type.currentText()
+        else:
+            mode = self.tabs.tabText(self.tabs.currentIndex())
+        lines = [
+            f"Export tab: {self.tabs.tabText(self.tabs.currentIndex())}",
+            f"Export type: {mode}",
+            f"Site: {self.site.currentText() or '(not loaded)'}",
+            f"Language: {self.language.currentText() or '(not loaded)'}",
+            f"Other language: {self.other_language.currentText() or '(not loaded)'}",
+            f"Catalogue: {self.catalogue.currentText() or '(not loaded)'}",
+            f"Product-code filter: {self.product_line.currentText() if self.filter_product_code.isChecked() else '(disabled)'}",
+            f"Currency: {self.currency.currentText() or '(not loaded)'}",
+            f"Scope: {'specified item list' if self.list_check.isChecked() else 'item range' if self.range_check.isChecked() else 'product code' if self.filter_product_code.isChecked() else 'catalogue'}",
+        ]
+        if self.range_check.isChecked():
+            lines.append(f"Item range: {self.min_item.text().strip()} through {self.max_item.text().strip()}")
+        if self.list_check.isChecked():
+            lines.append("Items: " + (", ".join(
+                self.item_list.item(i).text() for i in range(self.item_list.count())
+            ) or "(empty list)"))
+        lines.append(f"Output folder: {self.output_directory.text().strip() or '(not set)'}")
+        lines.append(f"Effective date: {self.effective_date.date().toString('yyyy-MM-dd')}")
+        lines.append("")
+        lines.append("Enabled options:")
+        enabled = [checkbox.text() for checkbox in self.checks.values() if checkbox.isChecked()]
+        enabled.extend(checkbox.text() for checkbox in (
+            self.filter_product_code, self.range_check, self.list_check,
+            self.export_all_in_site, self.export_bom_data,
+        ) if checkbox.isChecked())
+        lines.extend(f"• {name}" for name in enabled) if enabled else lines.append("• (none)")
+        QMessageBox.information(self, "Export Parameters", "\\n".join(lines))
 
     def _update_scope_controls(self, source=None) -> None:
         # The legacy updateControls handler makes product, range and list modes
