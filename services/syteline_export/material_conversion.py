@@ -428,3 +428,36 @@ def sum_legacy_increment_entries(
                 f"Invalid legacy increment amount for parent {token!r}: {remainder!r}"
             ) from exc
     return total
+
+
+
+def normalize_legacy_increment_parent_token(
+    parent_material: str,
+    item_code: str,
+    full_parent_item: str,
+) -> str:
+    """Port ExportThread stage-16.8 parent token normalization for increments."""
+    token = str(parent_material or "")
+    item = str(item_code or "")
+    parent = str(full_parent_item or "")
+    if token.startswith("9-"):
+        token = token[2:]
+    replacement_mode = 0
+    if "-" in token:
+        if "-" in item:
+            token = token.replace(item, item.replace("-", "_"))
+            replacement_mode = 1
+        elif "-" in parent:
+            for part in parent.split("|"):
+                if part:
+                    token = token.replace(part, part.replace("-", "~"))
+            replacement_mode = 2
+        if "-" in token:
+            token = token.split("-", 1)[0]
+        if replacement_mode == 1:
+            token = token.replace(item.replace("-", "_"), item)
+        elif replacement_mode == 2:
+            for part in parent.split("|"):
+                if part:
+                    token = token.replace(part.replace("-", "~"), part)
+    return token
