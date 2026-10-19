@@ -283,7 +283,7 @@ def test_add_fabric_colour_knoll_special_suffixes():
     sql, params = h.db.calls[0][1], h.db.calls[0][2]
     assert params == (7, 7, 7, "CUR%", "%CU", -1)
     assert ") AND (optval.OrderCodevalue LIKE '%CU'" in sql
-    # text5 = "VOX": VOX->VO in both LIKEs, NOT IN list (1379-1382)
+    # text5 = "VOX": Replace VOX->VO in both LIKEs, NOT IN list (1379-1382)
     h = _fab_h([_fab_row()])
     h._catalogueId = 649
     h.add_fabric_colour("X-10-02#-VOX", 7, [101], False)
