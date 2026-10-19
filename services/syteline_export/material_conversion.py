@@ -1,6 +1,7 @@
 """Port of ExportThread material bookkeeping and option-value normalization."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Any
 
@@ -407,9 +408,13 @@ def sum_legacy_increment_entries(
 ) -> float:
     """Sum stage-16 increment rows matching the normalized parent token.
 
-    ExportThread searches each increment string for parent_item_short plus a
-    pipe, then adds the numeric remainder after replacing that token. The
-    caller must perform legacy parent-token normalization first.
+    ExportThread (stage 16.8) matches an entry on parent_item_short plus a pipe
+    and adds the numeric remainder. The legacy match is a substring search, so
+    an entry such as ``PREFIX-PARENT|4`` is "matched" and then crashes in
+    ``double.Parse``. That is treated as a legacy defect: an entry matches only
+    when it begins with ``<token>|``; other entries are ignored. A matching
+    entry with a non-numeric amount still raises ValueError, as legacy does.
+    The caller must perform legacy parent-token normalization first.
     """
     token = str(parent_item_short or "")
     if not token:
@@ -418,11 +423,14 @@ def sum_legacy_increment_entries(
     marker = token + "|"
     for entry in increment_entries:
         value = str(entry)
-        if marker not in value:
+        if not value.startswith(marker):
             continue
-        remainder = value.replace(marker, "")
+        remainder = value[len(marker):]
         try:
-            total += float(remainder)
+            amount = float(remainder)
+            if not math.isfinite(amount):
+                raise ValueError(remainder)
+            total += amount
         except ValueError as exc:
             raise ValueError(
                 f"Invalid legacy increment amount for parent {token!r}: {remainder!r}"

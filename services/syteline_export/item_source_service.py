@@ -47,6 +47,12 @@ class SyteLineItemSourceService:
             cursor = connection.cursor()
             cursor.timeout = 600
             cursor.execute(query.sql, *query.parameters)
+            if cursor.description is None:
+                raise RuntimeError(
+                    "The item-selection query returned no result set; an empty "
+                    "selection is a result set with zero rows, so this is a driver "
+                    "or database error."
+                )
             columns = [column[0] for column in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
         finally:
@@ -187,6 +193,8 @@ class SyteLineItemSourceService:
             cursor = connection.cursor()
             cursor.timeout = 600
             cursor.execute(sql, selected_catalogue_id, selected_option_id)
+            if cursor.description is None:
+                raise RuntimeError("The feature-length query returned no result set.")
             columns = [column[0] for column in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
         finally:

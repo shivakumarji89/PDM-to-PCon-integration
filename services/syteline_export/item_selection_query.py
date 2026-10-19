@@ -145,9 +145,10 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
             fields.append("AND CatalogueItems.CatalogueId = ? ")
             params.append(selection.catalogue_id)
     elif selection.scope_mode == "list":
-        if selection.item_list:
-            fields.append("AND Item.Item IN (" + ", ".join("?" for _ in selection.item_list) + ") ")
-            params.extend(selection.item_list)
+        # Bind the same stripped values that were validated above.
+        list_items = tuple(item.strip() for item in selection.item_list)
+        fields.append("AND Item.Item IN (" + ", ".join("?" for _ in list_items) + ") ")
+        params.extend(list_items)
     elif selection.syteline:
         fields.append("AND CatalogueItems.CatalogueId = ? ")
         params.append(selection.catalogue_id)

@@ -66,3 +66,13 @@ def test_invalid_scope_inputs_fail_before_sql_execution():
             site_id=1, catalogue_id=2, language_id=3, other_language_id=4,
             scope_mode="range", min_item="A",
         ))
+
+
+def test_list_scope_binds_stripped_item_codes_matching_validation():
+    query = build_item_selection_query(ItemSelection(
+        site_id=1, catalogue_id=2, language_id=3, other_language_id=4,
+        scope_mode="list", item_list=(" AB.1 ", "CD.2"), active_only=True,
+    ))
+    assert "Item.Item IN (?, ?)" in query.sql
+    assert "AB.1" in query.parameters and " AB.1 " not in query.parameters
+    assert query.sql.count("?") == len(query.parameters)

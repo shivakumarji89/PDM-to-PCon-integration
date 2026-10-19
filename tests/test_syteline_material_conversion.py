@@ -266,10 +266,25 @@ def test_legacy_length5_rule_only_changes_non_fabric_features():
         configured_length=4, maximum_order_code_length=4,
         is_fabric=True, length5_features=True,
     ) == 4
+    # Legacy ExportThread.cs stage 20 (lines ~4655-4676): a configured length of 2
+    # is first raised to the maximum order-code length (6), then the length-5
+    # rule caps any non-fabric length > 2 at 5. Without length-5 it stays 6.
     assert resolve_legacy_feature_length(
         configured_length=2, maximum_order_code_length=6,
         is_fabric=False, length5_features=True,
+    ) == 5
+    assert resolve_legacy_feature_length(
+        configured_length=2, maximum_order_code_length=6,
+        is_fabric=False, length5_features=False,
     ) == 6
+    assert resolve_legacy_feature_length(
+        configured_length=2, maximum_order_code_length=6,
+        is_fabric=True, length5_features=True,
+    ) == 6
+    assert resolve_legacy_feature_length(
+        configured_length=2, maximum_order_code_length=2,
+        is_fabric=False, length5_features=True,
+    ) == 2
 
 
 def test_legacy_feature_length_rejects_invalid_or_negative_lengths():
@@ -294,6 +309,26 @@ def test_legacy_increment_accumulation_sums_only_matching_parent_tokens():
         ["PARENT|1.25", "OTHER|9", "PARENT|2.5", "PREFIX-PARENT|4"],
         "PARENT",
     ) == 3.75
+
+
+def test_legacy_increment_accumulation_ignores_embedded_token_and_keeps_duplicates():
+    from services.syteline_export.material_conversion import sum_legacy_increment_entries
+
+    # Legacy used a substring match (and crashed on these); only entries that
+    # start with "<token>|" contribute. Duplicates are summed, order is irrelevant.
+    assert sum_legacy_increment_entries(
+        ["2PARENT|4", "PARENT|1", "PARENT|1", "PARENTX|7", "PARENT|0.5"], "PARENT"
+    ) == 2.5
+    assert sum_legacy_increment_entries([], "PARENT") == 0.0
+
+
+def test_legacy_increment_accumulation_rejects_nonfinite_matching_amounts():
+    import pytest
+    from services.syteline_export.material_conversion import sum_legacy_increment_entries
+
+    for bad in ("PARENT|nan", "PARENT|inf", "PARENT|"):
+        with pytest.raises(ValueError, match="Invalid legacy increment amount"):
+            sum_legacy_increment_entries([bad], "PARENT")
 
 
 def test_legacy_increment_accumulation_rejects_blank_token_and_bad_amount():
