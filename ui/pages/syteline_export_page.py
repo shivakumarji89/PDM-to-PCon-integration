@@ -484,7 +484,8 @@ class SyteLineExportPage(BasePage):
             ),
             superproducts_only=(
                 self.export_type.currentText() == "SuperProducts Only"
-                or self.checks["superproducts_only"].isChecked()
+                if self.tabs.currentIndex() == 0
+                else self.checks["superproducts_only"].isChecked()
             ),
             flatten_fabrics=self.checks["flatten_fab"].isChecked(),
             include_url=self.checks["include_url"].isChecked(),
@@ -499,8 +500,22 @@ class SyteLineExportPage(BasePage):
         if errors:
             self.status.setText("Setup validation failed: " + " ".join(errors))
             return
-        if self.site.currentData() is None or self.catalogue.currentData() is None:
-            self.status.setText("Setup validation failed: load live database site and catalogue choices first.")
+        required_choices = (
+            ("Site", self.site),
+            ("Language", self.language),
+            ("Other Language", self.other_language),
+            ("Catalogue", self.catalogue),
+            ("Currency", self.currency),
+        )
+        missing = [label for label, combo in required_choices if combo.currentData() is None]
+        if missing:
+            self.status.setText(
+                "Setup validation failed: load/select live database choices for "
+                + ", ".join(missing) + "."
+            )
+            return
+        if self.filter_product_code.isChecked() and self.product_line.currentData() is None:
+            self.status.setText("Setup validation failed: select a live product code or disable its filter.")
             return
         self.status.setText(
             "Setup is internally valid. Export is still disabled until item/material/BOM transformations "
