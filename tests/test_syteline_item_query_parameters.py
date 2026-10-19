@@ -60,3 +60,18 @@ def test_list_scope_rejects_empty_blank_and_duplicate_items():
     for item_list in ((), ("",), ("ITEM-1", "  "), ("ITEM-1", " ITEM-1 ")):
         with pytest.raises(ValueError, match="List scope"):
             build_item_selection_query(ItemSelection(**base, item_list=item_list))
+
+
+def test_range_scope_rejects_reversed_endpoints():
+    import pytest
+
+    with pytest.raises(ValueError, match="must not sort after"):
+        build_item_selection_query(ItemSelection(
+            site_id=1,
+            catalogue_id=2,
+            language_id=3,
+            other_language_id=4,
+            scope_mode="range",
+            min_item="Z",
+            max_item="A",
+        ))
