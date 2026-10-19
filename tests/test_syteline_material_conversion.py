@@ -222,5 +222,5 @@ def test_dependency_material_code_handles_superproduct_and_mrfn_rules():
         child_option_count=1,
     )
     assert build_legacy_dependency_material(**args) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
-    assert build_legacy_dependency_material(**{**args, "is_superproduct": True}) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
-    assert build_legacy_dependency_material(**{**args, "is_superproduct": True, "use_resolved_superproduct_parent": False}) == "9-CURRENT-ITEM-[opt2]-A_B-PARENT-OPT"
+    assert build_legacy_dependency_material(**{**args, "is_superproduct": True}) == "9-CURRENT-ITEM-[opt2]-A_B-PARENT-OPT"
+    assert build_legacy_dependency_material(**{**args, "is_superproduct": True, "use_resolved_superproduct_parent": True}) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
