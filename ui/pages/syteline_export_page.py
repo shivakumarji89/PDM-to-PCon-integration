@@ -31,6 +31,7 @@ class SyteLineExportPage(BasePage):
         self.metadata_service = SyteLineMetadataService(context)
         self._build_ui()
         self._load_settings()
+        self._apply_authenticated_user_defaults()
         self._connect_autosave()
         self._update_scope_controls()
 
@@ -54,9 +55,11 @@ class SyteLineExportPage(BasePage):
         self.scheduler.setToolTip("Scheduler integration awaits the legacy workflow port.")
         title_row.addWidget(self.scheduler)
         title_row.addWidget(QLabel("PDM User ID:"))
+        # User identity is supplied by the connected PDM session when available;
+        # manual entry remains a fallback for environments without auth context.
         self.pdm_user_id = QLineEdit()
         self.pdm_user_id.setMaximumWidth(90)
-        self.pdm_user_id.setPlaceholderText("Required")
+        self.pdm_user_id.setPlaceholderText("PDM User ID")
         title_row.addWidget(self.pdm_user_id)
         self.load_database_choices = QPushButton("Load DB Choices")
         self.load_database_choices.clicked.connect(self._load_database_choices)
@@ -470,6 +473,48 @@ class SyteLineExportPage(BasePage):
             "and full legacy output parity are implemented and verified."
         )
 
+    def _apply_authenticated_user_defaults(self) -> None:
+        """Use available application authentication context without guessing IDs."""
+        candidates = (
+            self._context,
+            getattr(self._context, "auth", None),
+            getattr(self._context, "user", None),
+            getattr(self._context, "session", None),
+        )
+        aliases = {
+            "pdm_user_id": ("user_id", "UserId", "pdm_user_id"),
+            "site_id": ("default_site_id", "DefaultSiteId", "site_id"),
+            "language_id": ("default_language_id", "DefaultLanguageId", "language_id"),
+            "currency_id": ("default_currency_id", "DefaultCurrencyId", "currency_id"),
+            "catalogue_id": ("default_catalogue_id", "DefaultCatalogueId", "catalogue_id"),
+        }
+        for target, names in aliases.items():
+            value = None
+            for obj in candidates:
+                if obj is None:
+                    continue
+                for name in names:
+                    if isinstance(obj, dict) and name in obj:
+                        value = obj[name]
+                    elif hasattr(obj, name):
+                        value = getattr(obj, name)
+                    if value not in (None, ""):
+                        break
+                if value not in (None, ""):
+                    break
+            if value in (None, ""):
+                continue
+            if target == "pdm_user_id":
+                self.pdm_user_id.setText(str(value))
+                continue
+            combo = {
+                "site_id": self.site,
+                "language_id": self.language,
+                "currency_id": self.currency,
+                "catalogue_id": self.catalogue,
+            }[target]
+            combo.setProperty("preferred_id", int(value))
+
     def _load_database_choices(self, *_args) -> None:
         """Load the same metadata families used by the legacy form, read-only."""
         self.load_database_choices.setEnabled(False)
@@ -478,10 +523,22 @@ class SyteLineExportPage(BasePage):
             sites = self.metadata_service.sites()
             languages = self.metadata_service.languages()
             currencies = self.metadata_service.currencies()
-            self._replace_choices(self.site, sites, self.settings.value(self.PREFIX + "site", "", type=str))
-            self._replace_choices(self.language, languages, self.settings.value(self.PREFIX + "language", "", type=str))
-            self._replace_choices(self.other_language, languages, self.settings.value(self.PREFIX + "other_language", "", type=str))
-            self._replace_choices(self.currency, currencies, self.settings.value(self.PREFIX + "currency", "", type=str))
+            self._replace_choices(
+                self.site, sites, self.settings.value(self.PREFIX + "site", "", type=str),
+                preferred_id=self.site.property("preferred_id"),
+            )
+            self._replace_choices(
+                self.language, languages, self.settings.value(self.PREFIX + "language", "", type=str),
+                preferred_id=self.language.property("preferred_id"),
+            )
+            self._replace_choices(
+                self.other_language, languages, self.settings.value(self.PREFIX + "other_language", "", type=str),
+                preferred_id=self.language.property("preferred_id"),
+            )
+            self._replace_choices(
+                self.currency, currencies, self.settings.value(self.PREFIX + "currency", "", type=str),
+                preferred_id=self.currency.property("preferred_id"),
+            )
             user_text = self.pdm_user_id.text().strip()
             if user_text:
                 try:
@@ -489,7 +546,10 @@ class SyteLineExportPage(BasePage):
                 except ValueError as error:
                     raise ValueError("PDM User ID must be a positive integer.") from error
                 catalogues = self.metadata_service.catalogues(user_id)
-                self._replace_choices(self.catalogue, catalogues, self.settings.value(self.PREFIX + "catalogue", "", type=str))
+                self._replace_choices(
+                    self.catalogue, catalogues, self.settings.value(self.PREFIX + "catalogue", "", type=str),
+                    preferred_id=self.catalogue.property("preferred_id"),
+                )
             else:
                 self.catalogue.clear()
                 self.product_line.clear()
@@ -506,19 +566,25 @@ class SyteLineExportPage(BasePage):
             self.load_database_choices.setEnabled(True)
 
     @staticmethod
-    def _replace_choices(combo: QComboBox, choices, preferred_text: str = "") -> None:
+    def _replace_choices(
+        combo: QComboBox, choices, preferred_text: str = "", preferred_id=None
+    ) -> None:
         current = combo.currentText() or preferred_text
+        current_id = combo.currentData()
         combo.blockSignals(True)
         try:
             combo.clear()
             for choice in choices:
                 combo.addItem(choice.label, userData=choice.id)
                 combo.setItemData(combo.count() - 1, getattr(choice, "code", ""), Qt.ItemDataRole.UserRole + 1)
-            if current:
+            index = combo.findData(preferred_id) if preferred_id not in (None, "") else -1
+            if index < 0 and current_id is not None:
+                index = combo.findData(current_id)
+            if index < 0 and current:
                 index = combo.findText(current)
-                if index >= 0:
-                    combo.setCurrentIndex(index)
-            if combo.count() and combo.currentIndex() < 0:
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            elif combo.count():
                 combo.setCurrentIndex(0)
         finally:
             combo.blockSignals(False)
