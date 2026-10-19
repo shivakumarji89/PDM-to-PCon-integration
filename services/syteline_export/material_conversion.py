@@ -203,3 +203,40 @@ class LegacyMaterialConversionRegistry:
         self._seen.add(normalized)
         self._records.append(record)
         return record
+
+
+def reconcile_legacy_option_child_ids(rows):
+    """Merge child IDs for duplicate legacy option identities, preserving order."""
+    result = []
+    groups = {}
+    identity_fields = (
+        "OptionValueId", "OptionId", "IsFabric", "OptDescId",
+        "optvalDescId", "OrderCodeValue2", "ParentOptValId", "OptChildCount",
+    )
+    for source in rows:
+        row = dict(source)
+        key = tuple(row.get(name) for name in identity_fields)
+        name = str(row.get("optval_name") or "").lower()
+        child = row.get("OptChildId")
+        if child is not None and str(child).strip():
+            try:
+                child_ids = [int(child)]
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid OptChildId in legacy option report: {child!r}") from exc
+        elif "customers own" in name:
+            child_ids = [8512]
+        else:
+            child_ids = [-2]
+        if key not in groups:
+            row["ResolvedChildOptionIds"] = tuple(child_ids)
+            groups[key] = row
+            result.append(row)
+            continue
+        merged = list(groups[key]["ResolvedChildOptionIds"])
+        for child_id in child_ids:
+            if child_id != -2 and -2 in merged:
+                merged.remove(-2)
+            if child_id not in merged:
+                merged.append(child_id)
+        groups[key]["ResolvedChildOptionIds"] = tuple(merged)
+    return result
