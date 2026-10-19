@@ -68,7 +68,9 @@ def make_page(monkeypatch):
     _APP = QApplication.instance() or QApplication([])
     monkeypatch.setattr(page_module, "QSettings", MemorySettings)
     monkeypatch.setattr(metadata_module, "SyteLineMetadataService", FakeMetadata)
-    return page_module.SyteLineExportPage(ApplicationContext(AppConfig()))
+    page = page_module.SyteLineExportPage(ApplicationContext(AppConfig()))
+    page._sync_metadata = True      # metadata is fetched inline here; production fetches off the UI thread
+    return page
 
 
 def test_scope_modes_are_mutually_exclusive_like_legacy(monkeypatch):

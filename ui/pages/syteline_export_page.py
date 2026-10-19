@@ -1,11 +1,15 @@
 """Legacy-shaped SyteLine export workspace.
 
-This phase mirrors the visible legacy PDM controls. Export execution remains guarded
-until SQL mappings and output parity can be verified.
+Mirrors the visible legacy PDM controls. The SyteLine tab can run the transliterated
+ExportThread pipeline (services/syteline_export/pipeline) on a worker thread after an explicit
+confirmation; the CSI, OFDA and Other tabs stay guarded because their legacy exporters
+(SytelineCSIExport, OFDAExport) are not ported.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QSettings, Qt
+import time
+
+from PySide6.QtCore import QDate, QSettings, Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
     QDateEdit, QFileDialog, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
@@ -22,11 +26,22 @@ class SyteLineExportPage(BasePage):
     def __init__(self, context: ApplicationContext, parent: QWidget | None = None) -> None:
         super().__init__(
             "Export PDM Data",
-            "Legacy SyteLine export configuration. Live export remains guarded pending parity verification.",
+            "Legacy SyteLine export. The SyteLine tab runs the ported exporter after confirmation; "
+            "other tabs are not ported yet.",
             parent, show_placeholder=False, content_stretch=True,
         )
         self._context = context
         self.settings = QSettings()
+        self._job = None            # running ExportJob, if any
+        self._sync_metadata = False  # tests set True; production fetches metadata off the UI thread
+        self._metadata_generation: dict[str, int] = {}
+        self._metadata_signals: set = set()
+        self._job_signals = None
+        self._job_config = None
+        self._export_started = time.monotonic()
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.setInterval(1000)
+        self._elapsed_timer.timeout.connect(self._tick_elapsed)
         from services.syteline_export.metadata_service import SyteLineMetadataService
         self.metadata_service = SyteLineMetadataService(context)
         self._build_ui()
@@ -35,6 +50,8 @@ class SyteLineExportPage(BasePage):
         self._connect_autosave()
         self._update_scope_controls()
         self._update_required_indicators()
+        self.tabs.currentChanged.connect(self._update_export_state)
+        self._update_export_state()
 
     @staticmethod
     def _combo(items: list[str], selected: str = "") -> QComboBox:
@@ -250,11 +267,15 @@ class SyteLineExportPage(BasePage):
         buttons.addStretch(1)
         self.queue = QPushButton("Queue")
         self.export = QPushButton("Export")
+        self.cancel_export = QPushButton("Cancel")
         self.queue.setEnabled(False)
-        self.export.setEnabled(False)
         self.queue.setToolTip("Queue execution is not yet ported.")
-        self.export.setToolTip("Live export is disabled pending legacy query and output parity tests.")
+        self.cancel_export.setEnabled(False)
+        self.cancel_export.setToolTip("Stop the running export. Nothing is published when an export is cancelled.")
+        self.export.clicked.connect(self._start_export)
+        self.cancel_export.clicked.connect(self._cancel_running_export)
         buttons.addWidget(self.queue)
+        buttons.addWidget(self.cancel_export)
         buttons.addWidget(self.export)
         root.addLayout(buttons)
 
@@ -424,13 +445,177 @@ class SyteLineExportPage(BasePage):
         if selected:
             self.output_directory.setText(selected)
 
-    def _validate_setup(self) -> None:
+    # ------------------------------------------------------------------ export execution
+    # Only the SyteLine tab maps to ExportThread (ExportSL8Data). The CSI tab runs SytelineCSIExport,
+    # the OFDA tab OFDAExport; neither is ported, so their Export stays disabled.
+    _EXPORT_TABS = (0,)
+    _UNSUPPORTED_TAB_TEXT = {
+        1: "The SyteLine CSI export (legacy SytelineCSIExport) is not ported yet.",
+        2: "The OFDA/CET export (legacy OFDAExport) is not ported yet.",
+        3: "The Other export modes are not ported yet.",
+    }
+
+    def _export_supported_on_current_tab(self) -> bool:
+        return self.tabs.currentIndex() in self._EXPORT_TABS
+
+    def _unsupported_tab_message(self) -> str:
+        return self._UNSUPPORTED_TAB_TEXT.get(self.tabs.currentIndex(), "Export is not available on this tab.")
+
+    def _update_export_state(self, *_args) -> None:
+        running = self._job is not None
+        supported = self._export_supported_on_current_tab()
+        self.export.setEnabled(supported and not running)
+        self.export.setToolTip(
+            "Run the legacy SyteLine export on a background thread (asks for confirmation first)."
+            if supported else self._unsupported_tab_message()
+        )
+        self.cancel_export.setEnabled(running)
+        self.validate_setup.setEnabled(not running)
+        self.load_database_choices.setEnabled(not running)
+
+    def _confirm_export(self, config) -> bool:
+        """Show exactly what an export will touch and require an explicit yes."""
+        cfg = self._context.config
+        scope = {"catalogue": "whole catalogue", "products": "product code filter",
+                 "range": f"item range {config.min_item} – {config.max_item}",
+                 "list": f"{len(config.item_list)} listed item(s)"}[config.scope_mode]
+        text = (
+            f"Database: {cfg.pdm_database} on {cfg.pdm_server}\n"
+            f"Site: {config.site}   Catalogue: {config.catalogue}   Currency: {config.currency}\n"
+            f"Scope: {scope}\n"
+            f"Output folder: {config.output_directory}\n\n"
+            "This will:\n"
+            "  • read item, option and price data from the database above;\n"
+            "  • set Site.ExtractUser for the site while the export runs (released afterwards);\n"
+            "  • write the export files to the output folder only if the run finishes.\n\n"
+            "The port has not been compared with genuine legacy export files yet, so review the "
+            "output before using it downstream."
+        )
+        answer = QMessageBox.question(
+            self, "Start SyteLine export?", text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _offer_take_over(self, holder: str) -> bool:
+        answer = QMessageBox.question(
+            self, "Site is locked",
+            f"{holder} is currently extracting data from this site (Site.ExtractUser).\n\n"
+            "Only one concurrent extract per site is permitted. Take over the lock only if that "
+            "extract is known to have stopped (for example after a crash).\n\nTake over and run?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _show_result_message(self, level: str, title: str, text: str) -> None:
+        box = {"info": QMessageBox.information, "warning": QMessageBox.warning,
+               "error": QMessageBox.critical}[level]
+        box(self, title, text)
+
+    def _start_export(self) -> None:
+        """Export button: validate, confirm, then run in the background. Never runs by itself."""
+        if self._job is not None:
+            return
+        if not self._export_supported_on_current_tab():
+            self.status.setText(self._unsupported_tab_message())
+            return
+        config = self._collect_config()
+        if config is None:
+            return
+        if not self._confirm_export(config):
+            self.status.setText("Export not started.")
+            return
+        self._launch_export(config, "refuse")
+
+    def _make_job(self, config, lock_policy: str, signals):
+        from services.syteline_export.export_db import build_pdm_export_db
+        from services.syteline_export.job import ExportJob
+        db = build_pdm_export_db(self._context, trade_net_database=config.send_tradenet)
+        return ExportJob(config, db, lock_policy=lock_policy, status_callback=signals.status.emit)
+
+    def _run_in_background(self, worker) -> None:
+        QThreadPool.globalInstance().start(worker)
+
+    def _launch_export(self, config, lock_policy: str) -> None:
+        from ui.pages.syteline_export_worker import ExportSignals, ExportWorker
+        signals = ExportSignals()
+        signals.status.connect(self._on_export_status)
+        signals.finished.connect(self._on_export_finished)
+        try:
+            job = self._make_job(config, lock_policy, signals)
+        except Exception as error:
+            self.status.setText(f"Export could not be started: {error}")
+            return
+        self._job, self._job_signals, self._job_config = job, signals, config
+        self._export_started = time.monotonic()
+        self.elapsed.setText("Time: 00:00:00")
+        self._elapsed_timer.start()
+        self.status.setText("Export started - connecting to the database...")
+        self._update_export_state()
+        self._run_in_background(ExportWorker(job, signals))
+
+    def _cancel_running_export(self) -> None:
+        if self._job is None:
+            return
+        self._job.cancel()
+        self.cancel_export.setEnabled(False)
+        self.status.setText("Cancelling - the export stops at its next check point; nothing will be published.")
+
+    def _tick_elapsed(self) -> None:
+        seconds = int(time.monotonic() - self._export_started)
+        self.elapsed.setText(f"Time: {seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}")
+
+    def _on_export_status(self, text: str) -> None:
+        if self._job is not None:
+            self.status.setText(f"Exporting - {text}")
+
+    def _on_export_finished(self, result) -> None:
+        config = self._job_config
+        self._elapsed_timer.stop()
+        self._tick_elapsed()
+        self._job = None
+        self._update_export_state()
+        if result.status == "blocked":
+            self.status.setText(result.message)
+            if self._offer_take_over(result.lock_holder):
+                self._launch_export(config, "take_over")
+            return
+        detail = ""
+        if result.errors:
+            shown = "\n".join(f"  • {e.splitlines()[0][:300]}" for e in result.errors[:5])
+            more = f"\n  … and {len(result.errors) - 5} more" if len(result.errors) > 5 else ""
+            detail = "\n\nProblems recorded:\n" + shown + more
+        if result.status == "success":
+            folder = config.output_directory
+            self.status.setText(f"Export completed: {len(result.files)} file(s) written to {folder}.")
+            self._show_result_message("info", "Export completed",
+                                      f"{result.message}\n\n{len(result.files)} file(s) written to:\n{folder}")
+        elif result.status == "completed_with_errors":
+            self.status.setText(f"Export completed WITH ERRORS ({len(result.errors)}): {len(result.files)} file(s) "
+                                f"written to {config.output_directory}. Review before use.")
+            self._show_result_message("warning", "Export completed with errors",
+                                      f"{result.message}{detail}\n\nFiles were written to:\n{config.output_directory}")
+        elif result.status == "cancelled":
+            self.status.setText("Export cancelled. No files were published and the site lock was released.")
+            self._show_result_message("info", "Export cancelled", result.message)
+        else:
+            stage = f" (stage {result.stage})" if result.stage else ""
+            self.status.setText(f"Export FAILED{stage}: {result.message}")
+            self._show_result_message("error", "Export failed", f"{result.message}{detail}")
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if self._job is not None:
+            self._job.cancel()
+        super().closeEvent(event)
+
+    def _collect_config(self):
+        """Build and validate the export configuration; sets the status text and returns None on failure."""
         from pathlib import Path
         from services.syteline_export.config import SyteLineExportConfig
 
         if not self.output_directory.text().strip():
             self.status.setText("Setup validation failed: choose an existing output folder.")
-            return
+            return None
         if self.list_check.isChecked():
             scope_mode = "list"
         elif self.range_check.isChecked():
@@ -508,7 +693,7 @@ class SyteLineExportPage(BasePage):
         errors = config.validate_for_execution()
         if errors:
             self.status.setText("Setup validation failed: " + " ".join(errors))
-            return
+            return None
         required_choices = (
             ("Site", self.site),
             ("Language", self.language),
@@ -522,20 +707,27 @@ class SyteLineExportPage(BasePage):
                 "Setup validation failed: load/select live database choices for "
                 + ", ".join(missing) + "."
             )
-            return
+            return None
         if self.filter_product_code.isChecked() and self.product_line.currentData() is None:
             self.status.setText("Setup validation failed: select a live product code or disable its filter.")
+            return None
+        return config
+
+    def _validate_setup(self) -> None:
+        config = self._collect_config()
+        if config is None:
             return
         self.status.setText(
-            "Setup is internally valid. Export is still disabled until item/material/BOM transformations "
-            "and full legacy output parity are implemented and verified."
+            "Setup is internally valid. "
+            + ("Export is available on the SyteLine tab." if self._export_supported_on_current_tab()
+               else self._unsupported_tab_message())
         )
 
     def _choose_multiple(self, kind: str, combo: QComboBox) -> None:
         """Show a checkable list for the legacy multi-site/language/currency controls."""
         if combo.count() == 0:
             self.status.setText("Load database choices before selecting multiple values.")
-            return
+            return None
         dialog = QDialog(self)
         dialog.setWindowTitle({"sites": "Select Sites", "languages": "Select Languages", "currencies": "Select Currencies"}[kind])
         layout = QVBoxLayout(dialog)
@@ -560,7 +752,7 @@ class SyteLineExportPage(BasePage):
         layout.addWidget(buttons)
         dialog.resize(300, 360)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+            return None
         self._multi_choices[kind] = [
             (int(listing.item(i).data(Qt.ItemDataRole.UserRole)), listing.item(i).text())
             for i in range(listing.count())
@@ -614,13 +806,63 @@ class SyteLineExportPage(BasePage):
             combo.setProperty("preferred_id", int(value))
 
     def _load_database_choices(self, *_args) -> None:
-        """Load the same metadata families used by the legacy form, read-only."""
+        """Load the same metadata families used by the legacy form, read-only and off the UI thread."""
+        user_text = self.pdm_user_id.text().strip()
+        user_id = None
+        if user_text:
+            try:
+                user_id = int(user_text)
+                if user_id < 1:
+                    raise ValueError
+            except ValueError:
+                self.status.setText("Database choices could not be loaded: PDM User ID must be a positive integer.")
+                return
         self.load_database_choices.setEnabled(False)
         self.status.setText("Loading site, language and currency choices from PDM...")
+        service = self.metadata_service
+
+        def fetch():
+            sites, languages, currencies = service.sites(), service.languages(), service.currencies()
+            catalogues = service.catalogues(user_id) if user_id is not None else None
+            return sites, languages, currencies, catalogues
+
+        self._run_metadata(
+            "choices", fetch,
+            lambda result: self._apply_database_choices(result, user_text), self._database_choices_failed,
+        )
+
+    def _database_choices_failed(self, error) -> None:
+        self.status.setText(f"Database choices could not be loaded: {error}")
+        self._update_export_state()
+
+    def _run_metadata(self, kind: str, fetch, on_ok, on_fail) -> None:
+        """Run a read-only fetch on a worker thread; only the newest request of each kind is applied."""
+        generation = self._metadata_generation[kind] = self._metadata_generation.get(kind, 0) + 1
+        if self._sync_metadata:           # tests / headless use
+            try:
+                result = fetch()
+            except Exception as error:
+                on_fail(error)
+                return
+            on_ok(result)
+            return
+        from ui.pages.syteline_export_worker import MetadataSignals, MetadataWorker
+        signals = MetadataSignals()
+        self._metadata_signals.add(signals)
+
+        def finish(handler):
+            def apply(payload):
+                self._metadata_signals.discard(signals)
+                if generation == self._metadata_generation.get(kind):   # drop stale results
+                    handler(payload)
+            return apply
+        signals.done.connect(finish(on_ok))
+        signals.failed.connect(finish(on_fail))
+        QThreadPool.globalInstance().start(MetadataWorker(fetch, signals))
+
+    def _apply_database_choices(self, result, user_text: str) -> None:
+        sites, languages, currencies, catalogues = result
         try:
-            sites = self.metadata_service.sites()
-            languages = self.metadata_service.languages()
-            currencies = self.metadata_service.currencies()
             self._replace_choices(
                 self.site, sites, self.settings.value(self.PREFIX + "site", "", type=str),
                 preferred_id=self.site.property("preferred_id"),
@@ -639,15 +881,7 @@ class SyteLineExportPage(BasePage):
                 self.currency, currencies, self.settings.value(self.PREFIX + "currency", "", type=str),
                 preferred_id=self.currency.property("preferred_id"),
             )
-            user_text = self.pdm_user_id.text().strip()
             if user_text:
-                try:
-                    user_id = int(user_text)
-                except ValueError as error:
-                    raise ValueError("PDM User ID must be a positive integer.") from error
-                if user_id < 1:
-                    raise ValueError("PDM User ID must be a positive integer.")
-                catalogues = self.metadata_service.catalogues(user_id)
                 self._replace_choices(
                     self.catalogue, catalogues, self.settings.value(self.PREFIX + "catalogue", "", type=str),
                     preferred_id=self.catalogue.property("preferred_id"),
@@ -686,7 +920,7 @@ class SyteLineExportPage(BasePage):
         except Exception as error:
             self.status.setText(f"Database choices could not be loaded: {error}")
         finally:
-            self.load_database_choices.setEnabled(True)
+            self._update_export_state()
 
     @staticmethod
     def _replace_choices(
@@ -717,8 +951,18 @@ class SyteLineExportPage(BasePage):
         catalogue_id = self.catalogue.currentData()
         if site_id is None or catalogue_id is None:
             return
+        service = self.metadata_service
+        self._run_metadata(
+            "product_codes", lambda: service.product_codes(int(site_id), int(catalogue_id)),
+            self._apply_product_codes, self._product_codes_failed,
+        )
+
+    def _product_codes_failed(self, error) -> None:
+        self.product_line.clear()
+        self.status.setText(f"Product-code choices could not be loaded: {error}")
+
+    def _apply_product_codes(self, choices) -> None:
         try:
-            choices = self.metadata_service.product_codes(int(site_id), int(catalogue_id))
             current_id = self.product_line.currentData()
             preferred_text = self.settings.value(self.PREFIX + "product_line", "", type=str)
             self.product_line.blockSignals(True)
@@ -739,8 +983,7 @@ class SyteLineExportPage(BasePage):
                 f"Loaded {len(choices)} product-code choices for the selected site and catalogue."
             )
         except Exception as error:
-            self.product_line.clear()
-            self.status.setText(f"Product-code choices could not be loaded: {error}")
+            self._product_codes_failed(error)
 
     def _load_settings(self) -> None:
         for key, widget in [

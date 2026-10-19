@@ -1,7 +1,10 @@
 # SyteLine Export module
 
 This is a separate top-level module in MK Product Workbench based on
-`Archive_demmy/PDMMaintenance/SytelineExport.cs` and its legacy export helpers.
+`PDMMaintenance/SytelineExport.cs` and its legacy export helpers. The verified local copy of the legacy
+source tree is `C:\Users\siaoca\Desktop\PDM\PDMMaintenance\`; the `Archive_demmy/` path cited by earlier
+revisions of this document does not exist. See `syteline_export_legacy_behavior_inventory.md` for the
+line-referenced behavior inventory.
 
 ## Implemented components
 
@@ -11,7 +14,7 @@ This is a separate top-level module in MK Product Workbench based on
   option tabs (SyteLine, SyteLine CSI, OFDA/CET and Other).
 - Local persistence for editable controls, output folder, PDM User ID and selected item lists using application settings.
 - Output-folder selection and setup preflight mapping controls to the legacy `ExportThread.initThread`
-  argument names. This is a mapping/validation boundary only; it does not start the legacy thread or enable export.
+  argument names; the SyteLine tab can start the ported export (see Execution status).
 - Local scope-control behavior: range endpoints are enabled only for range mode and item-list editing is
    enabled only for list mode.
 - Read-only metadata loading for site, language, currency, permitted catalogue and product-code choices, using
@@ -40,7 +43,7 @@ The supplied sample extraction contained three readable files and an empty item 
   (`Item`, `Super Description`, `Seq`, `Component`, `Quantity`, `Description`, `Num Features`,
   and `FP1` through `FP12`).
 
-Additional output headers were verified directly against `Archive_demmy/PDMMaintenance/ExportThread.cs`:
+Additional output headers were verified directly against `PDMMaintenance/ExportThread.cs`:
 - Material: 12 columns, beginning `Parent Item`, `Feature`, `Component`.
 - Price formula: 6 columns, `Site`, `CustPriceCode`, `ItemPriceCode`, `PriceFormula`, `PriceFactor`, `EffectiveDate`.
 - Product code: 5 declared header columns, `Site`, `ProductCode`, `Description`, `PriceCode`, `UnitCode`. The legacy row writer emits four values, so this header/row-width discrepancy remains a known legacy defect pending downstream verification.
@@ -57,26 +60,28 @@ connectivity requires a reachable configured server, appropriate read permission
 ODBC driver, and a PDM User ID permitted by `PDMUserCatalogues`. The authenticated user ID is entered explicitly
 because this application does not yet share the legacy PDM Maintenance authentication session.
 
-The exporter is not yet 100% functionally equivalent or production-ready. The option report can now be extracted,
-but legacy option/dependency traversal, fabric and feature transformations, material/super-product/BOM row generation,
-full base-price behavior, CSI-specific formatting, OFDA/CET generation and validation, queue/scheduler execution,
-and differential output verification remain unported. Live export remains disabled; query and row-formatting helpers
-are not a claim of end-to-end export parity.
+## Execution status (current)
+
+The SyteLine tab can now run the exporter. `services/syteline_export/pipeline/` is a literal transliteration of
+`ExportThread.execThread` and its helpers; `services/syteline_export/job.py` runs it safely (configuration
+validation, per-site extract lock check, staged output published only when the run finishes, one explicit
+status: success / completed_with_errors / cancelled / failed / blocked); the page starts it on a worker thread
+after a confirmation dialog, with Cancel, elapsed time and distinct result messages. Database metadata loading
+also runs off the UI thread. Nothing runs when the page opens.
+
+**Not production-certified.** The port has not been compared with genuine legacy output (none populated was
+available) and has not been run against a real database. The SyteLine CSI tab (`SytelineCSIExport`), OFDA/CET,
+the "Other" tab and the legacy queue/scheduler are not ported; their buttons stay disabled. Excel COM output is
+replaced by `.xlsx`. See `syteline_export_legacy_behavior_inventory.md` for the verification matrix, the
+deviation register and the remaining blockers.
 
 ## Remaining work before sign-off
 
-1. Finish a control-by-control inventory against the full legacy form and trace each control through handlers and
-   `initThread` arguments.
-2. Port the option report's transformation and dependency traversal, including legacy special cases and fabric handling.
-3. Implement material, super-product and BOM row generation and the associated output writers.
-4. Complete base-price and product-code/price-formula behavior and determine the actual downstream contract for
-   the product-code header/row discrepancy.
-5. Port CSI formatting and OFDA/CET generation/validation.
-6. Port queue/scheduler execution, cancellation and diagnostics.
-7. Obtain representative known-good legacy outputs for item, material, super-products, options, BOMs, pricing,
-   catalogues, ranges and explicit lists.
-8. Differential-test generated files against those outputs before enabling export behind preflight checks and
-   explicit confirmation.
+1. Produce known-good legacy outputs with the real PDM against a non-production database copy and add golden
+   comparison tests (the exporter writes `Site.ExtractUser`, so never against production).
+2. Read-only run of the pipeline against the PDM Test copy to validate the SQL and driver value types.
+3. Port `SytelineCSIExport` (CSI tab), `OFDAExport`, and the queue/scheduler if they are required.
+4. Decide the downstream `.xls` -> `.xlsx` change and the exclude-superproducts status rule.
 
 The legacy exporter creates separate item, material, super-product, description, planning, price-formula and
 product-code outputs, with additional CSI/OFDA/CET and optional downstream formats. Each output family needs an
