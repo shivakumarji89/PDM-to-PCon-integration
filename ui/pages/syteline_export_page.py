@@ -694,6 +694,22 @@ class SyteLineExportPage(BasePage):
         ]:
             widget.setChecked(self.settings.value(self.PREFIX + key, widget.isChecked(), type=bool))
         self.item_list.addItems(self.settings.value(self.PREFIX + "items", [], type=list))
+        for kind in ("sites", "languages", "currencies"):
+            saved = self.settings.value(self.PREFIX + "multi/" + kind, [], type=list)
+            normalized = []
+            for entry in saved:
+                try:
+                    normalized.append((int(entry[0]), str(entry[1])))
+                except (TypeError, ValueError, IndexError):
+                    continue
+            self._multi_choices[kind] = normalized
+            button = {
+                "sites": self.multi_sites,
+                "languages": self.multi_languages,
+                "currencies": self.multi_currencies,
+            }[kind]
+            if normalized:
+                button.setText(f"{kind.title()} ({len(normalized)})")
         if hasattr(self, "site_ref"):
             self.site_ref.setText(self.settings.value(self.PREFIX + "site_ref", "", type=str))
         if hasattr(self, "region"):
