@@ -349,3 +349,14 @@ def test_legacy_increment_parent_token_normalization_strips_dependency_prefix():
     from services.syteline_export.material_conversion import normalize_legacy_increment_parent_token
 
     assert normalize_legacy_increment_parent_token("9-SIMPLE", "ITEM", "PARENT") == "SIMPLE"
+
+
+
+def test_calculate_legacy_increment_total_normalizes_parent_before_matching():
+    from services.syteline_export.material_conversion import calculate_legacy_increment_total
+
+    assert calculate_legacy_increment_total(
+        ["ITEM-1|1.5", "OTHER|20", "ITEM-1|2.25"],
+        parent_material="9-ITEM-1-CHILD", item_code="ITEM-1",
+        full_parent_item="PARENT",
+    ) == 3.75
