@@ -1160,3 +1160,28 @@ class PriceMdbExportGlobalSurchargeBaseTests(unittest.TestCase):
                              texts=[{"com_TextID": 88, "com_TextName": "8"}])
         result = _export_strict(mdb, [_global("ITEM.1 8=AA")], _T)
         self.assertEqual((result["inserted_global_prices"], result["skipped_no_base_price"]), (1, 0))
+
+    def test_component_parent_condition_matches_and_updates_the_existing_target_row(self):
+        item = "RYMPSH.12SW"
+        condition = "3848=RYMPSH.12SW_OKG"
+        globals_ = [
+            {"com_GlobalPriceID": 9, "com_PackageID": 1, "com_PriceListID": 21,
+             "com_VariantCondition": item, "com_PriceLevelCode": "X",
+             "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 249.0, "com_TextID": 88},
+            {"com_GlobalPriceID": 10, "com_PackageID": 1, "com_PriceListID": 21,
+             "com_VariantCondition": condition, "com_PriceLevelCode": "X",
+             "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": 89},
+        ]
+        mdb = _OptimizedFake(_strict_lists(), globals_=globals_, linked=[21, 22],
+                             texts=[{"com_TextID": 88, "com_TextName": item},
+                                    {"com_TextID": 89, "com_TextName": "3848"}])
+        records = [
+            _global(item, 249.0),
+            _global(condition, 52.0, source_item=item, pdm_lookup_code=condition),
+        ]
+
+        result = _export_strict(mdb, records, _T)
+
+        self.assertEqual((result["updated_global_prices"], result["inserted_global_prices"]), (1, 0))
+        update = next(op for op in mdb.ops if op["op"] == "update" and op["table"] == "tCOMd_GlobalPrice")
+        self.assertEqual(update["where"], {"com_GlobalPriceID": 10})

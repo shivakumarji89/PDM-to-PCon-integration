@@ -4,14 +4,16 @@
 **Scope:** Article Price and Global Price only.
 **Data source:** the non-production `DBCHIP11V.PDMTEST` database, using the
 local PDM build `1.0.9686.24988` and its matching `PDMMaintenance` source.
-No production database, MDB, or export workflow was used.
+No production database or MDB was accessed, and no export workflow was run.
+The non-production Revive staging MDB mentioned below was inspected with
+read-only queries only.
 
 ## Result
 
 | Scenario | Status | What the evidence establishes |
 |---|---|---|
 | Article Price | **MATCH**, evidence B, tested fetches | 96 scenarios, 936 base/increment observations, all exact against source-equivalent SQL. No Article calculation change in this update. Physical duplicate ID selection and actual UI/MDB results remain **NOT VERIFIED**. |
-| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; direct-item target condition follows the source placeholder path; worker matching remains internally inconsistent for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. Direct-item `variant_condition` follows `AddMissingGlobalPricingRecords`; `pdm_lookup_code` separately preserves the update worker's lookup key. Component-parent mapping, existing-row selection and physical UI/MDB results remain **NOT VERIFIED**. |
+| Global Price | **MATCH**, evidence B, tested source fetch/calculation/lookup metadata; direct-item and observed component-parent target conditions covered; worker matching remains internally inconsistent for some programs | Dedicated catalogue-scoped source queries match 1,052 increment observations in 108 scenarios. Direct-item `variant_condition` follows `AddMissingGlobalPricingRecords`; component rows with the source's `OptionId=ITEM_suffix` shape retain that component-parent target key. Existing-row selection is covered by fake-target tests and an exact Revive staging-row fixture; physical UI/MDB results and arbitrary parent-option mapping remain **NOT VERIFIED**. |
 
 These are bounded results, not a claim of universal or full UI parity. The
 actual PDM UI was not run against a pCon MDB. The live evidence below comes
@@ -82,9 +84,15 @@ Substring-expanded items remain Global records. Direct-item stored conditions
 follow `AddMissingGlobalPricingRecords`: ordinary rows use
 `ITEM OptionId=Code`; `memo` uses `ITEMCode`. RYM/RYT worker lookup keys remain
 `OptionId=ITEM_CODE` metadata and are not substituted for the generated target
-condition. The source's component-specific placeholder path includes a
-parent-option prefix not available on `GlobalOptionPriceRow`, so that mapping
-is not claimed.
+condition for direct items. For component rows whose source key is the
+numeric-option-prefixed `OptionId=ITEM_suffix` form, the target condition now
+uses that key, matching the component-parent placeholder form. The non-production
+Revive staging MDB (package 240, price list 12) contains both `RYMPSH.12SW`
+and `3848=RYMPSH.12SW_OKG`; this is read-only target-row evidence, not a
+production or UI export. Regression tests cover condition generation,
+exact-key matching and export preparation. The general
+`FeaturePositionString`-to-component-option mapping and physical UI/MDB export
+remain unverified.
 Product-code attachment and surcharge/base classification use source-item
 metadata so these records do not accidentally become base records or update
 only the last duplicate.
@@ -224,15 +232,16 @@ across 14/14 scenarios. Its worker-parser diagnostic matched **20/318 (6.29%)**
 and had 298 field differences, no missing/extra rows. Those target-condition
 counts are historical and do not measure the current builder.
 
-Direct source inspection established two incompatible rules: the update
-worker compares plain source codes for `lf`/`av`/`embody` and
-`OptionId=ITEM_CODE` for RYM/RYT, while `AddMissingGlobalPricingRecords`
-creates item-qualified Global conditions for these same cases. The current
-tool follows the missing-record generator for `variant_condition` and retains
-worker keys separately. Regression tests cover both representations without
-claiming they are interchangeable. No read-only target Global rows/list/
-package context was available, so existing-row selection and physical MDB
-output remain **NOT VERIFIED**.
+Direct source inspection established incompatible paths: the update worker
+compares plain source codes for `lf`/`av`/`embody` and `OptionId=ITEM_CODE` for
+RYM/RYT, while `AddMissingGlobalPricingRecords` creates item-qualified
+conditions for direct items and parent-option-prefixed conditions for eligible
+components. The tool follows those separate shapes and retains worker keys as
+metadata. A read-only Revive staging MDB inspection found the exact
+`3848=RYMPSH.12SW_OKG` target condition alongside its base row in package 240;
+the synthetic export regression verifies exact-key row selection. This does
+not prove the general parent-option mapping or physical production behavior,
+which remain **NOT VERIFIED**.
 
 A fresh read-only PDMTEST run of the same five item inputs, restricted to
 GBP/16-Oct-2026, completed seven actual catalogue/program scenarios:

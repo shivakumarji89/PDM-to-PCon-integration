@@ -531,12 +531,22 @@ class PricingService(BaseService):
             code = str(getattr(row, "Code", getattr(row, "OrderCodeValue2", ""))).replace("#", "")
             if item in super_codes or isinstance(row, GlobalOptionPriceRow):
                 # PDM's missing-record path uses the raw suffix for memo.
-                condition = (
-                    f"{item}{code}"
-                    if isinstance(row, GlobalOptionPriceRow)
-                    and params.program_code == "memo"
-                    else f"{item} {row.OptionId}={code}"
+                lookup_code = str(getattr(row, "LookupCode", ""))
+                lookup_value = lookup_code.partition("=")[2]
+                component_parent_condition = (
+                    item in super_codes
+                    and lookup_code.partition("=")[0].isdigit()
+                    and lookup_value.startswith(f"{item}_")
                 )
+                if component_parent_condition:
+                    condition = lookup_code
+                elif (
+                    isinstance(row, GlobalOptionPriceRow)
+                    and params.program_code == "memo"
+                ):
+                    condition = f"{item}{code}"
+                else:
+                    condition = f"{item} {row.OptionId}={code}"
                 records.append(
                     PriceRecord(
                         is_global=True,

@@ -259,9 +259,26 @@ def test_global_direct_item_condition_matches_pdm_missing_record_shape(
         Decimal("21"), None, Decimal("52"),
     )
     records, _ = PricingService.build_records(
-        [], [row], {item}, {}, PriceParams(program_code=program)
+        [], [row], set(), {}, PriceParams(program_code=program)
     )
     assert records[0].variant_condition == condition
+    assert records[0].pdm_lookup_code == lookup
+
+
+def test_component_parent_global_condition_uses_the_parent_option_target_key():
+    item = "RYMPSH.12SW"
+    source_code = f"{item}_OKG"
+    lookup = f"3848={source_code}"
+    row = GlobalOptionPriceRow(
+        item, 1, 3848, "OKG", source_code, lookup,
+        Decimal("21"), None, Decimal("52"),
+    )
+
+    records, _ = PricingService.build_records(
+        [], [row], {item}, {}, PriceParams(program_code="revive")
+    )
+
+    assert records[0].variant_condition == lookup
     assert records[0].pdm_lookup_code == lookup
 
 

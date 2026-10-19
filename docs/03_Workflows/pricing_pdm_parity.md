@@ -71,14 +71,17 @@ schema read found three alternative base/increment fields and one component
 
 Source/raw lookup identity and stored target condition remain separate,
 backward-compatible snapshot metadata (`source_item`, `pdm_lookup_code`).
-Substring-expanded items stay Global. `variant_condition` now follows the
-direct-item target shape created by `AddMissingGlobalPricingRecords`: ordinary
-Global rows use `ITEM OptionId=Code`, while `memo` uses `ITEMCode`. In
-particular, RYM/RYT retain their separate worker lookup keys
-(`3848=RYMPSH.12SW_OKG`, for example) without treating those keys as stored
-target conditions. The component-specific placeholder branch adds a
-parent-option prefix not present in `GlobalOptionPriceRow`; that mapping
-remains unverified. Product-code attachment and export surcharge/base
+Substring-expanded items stay Global. Direct-item `variant_condition` follows
+the `AddMissingGlobalPricingRecords` shape: ordinary Global rows use
+`ITEM OptionId=Code`, while `memo` uses `ITEMCode`. For component rows where the
+source key is numeric-option-prefixed (`OptionId=ITEM_suffix`), the generated
+target condition uses that key, as in the source's component-parent placeholder
+branch. A read-only Revive staging MDB package 240 contains the exact
+`3848=RYMPSH.12SW_OKG` condition and its `RYMPSH.12SW` base in one list. Tests
+cover condition construction, exact existing-row selection and export
+preparation. This evidence does not verify the general
+`FeaturePositionString`-to-component-option mapping, physical UI behavior, or
+production MDB output. Product-code attachment and export surcharge/base
 classification preserve source identity even without a space. Fake-target
 tests cover duplicate surcharge updates and missing bases.
 
@@ -109,11 +112,12 @@ That sample predates the current AddMissing-shaped conditions and is not a
 measurement of the current builder. The source itself has conflicting paths:
 `UpdatePConItemIncrementalPrice` compares plain source codes for `lf`/`av`/
 `embody` and special `OptionId=ITEM_CODE` keys for RYM/RYT, while
-`AddMissingGlobalPricingRecords` creates item-qualified conditions for those
-rows. The current builder follows the latter for stored conditions and keeps
-worker keys in `pdm_lookup_code`; no physical target MDB is available to
-establish how existing rows are laid out. Fetch parity remains measured, but
-current target-row selection and physical MDB output remain **NOT VERIFIED**.
+`AddMissingGlobalPricingRecords` creates item-qualified conditions for direct
+rows and a parent-option-prefixed condition for eligible component rows. The
+builder keeps worker keys in `pdm_lookup_code` and uses the component key only
+when the component path is selected. Staging evidence resolves the RYM target
+condition shape for the observed row, but not arbitrary parent-option mapping.
+Physical UI output and current production-MDB behavior remain **NOT VERIFIED**.
 
 The procedure definition still returns null and `VIEW DEFINITION` permission
 is 0. An approved DBA definition/grant is required to inspect its internals,
