@@ -398,3 +398,33 @@ def resolve_legacy_feature_length(
     if not is_fabric and feature_length > 2 and length5_features:
         feature_length = 5
     return feature_length
+
+
+
+def sum_legacy_increment_entries(
+    increment_entries: Iterable[str],
+    parent_item_short: str,
+) -> float:
+    """Sum stage-16 increment rows matching the normalized parent token.
+
+    ExportThread searches each increment string for parent_item_short plus a
+    pipe, then adds the numeric remainder after replacing that token. The
+    caller must perform legacy parent-token normalization first.
+    """
+    token = str(parent_item_short or "")
+    if not token:
+        raise ValueError("A non-empty legacy parent-item token is required.")
+    total = 0.0
+    marker = token + "|"
+    for entry in increment_entries:
+        value = str(entry)
+        if marker not in value:
+            continue
+        remainder = value.replace(marker, "")
+        try:
+            total += float(remainder)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid legacy increment amount for parent {token!r}: {remainder!r}"
+            ) from exc
+    return total
