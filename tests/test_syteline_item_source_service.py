@@ -153,3 +153,36 @@ def test_legacy_feature_length_query_rejects_invalid_ids_before_connecting():
         service.fetch_legacy_option_feature_length_rows("bad", 30)
     with pytest.raises(ValueError, match="must be positive"):
         service.fetch_legacy_option_feature_length_rows(17, 0)
+
+
+
+def test_staged_option_features_require_allowlist_and_assign_positions_after_preparation():
+    import pytest
+
+    connection = FakeConnection()
+    columns = [
+        "Range2", "Product2", "DisplayOrder", "OrderCodeValue2", "DisplayOrdinal",
+        "OptionValueId", "OptionId", "IsFabric", "OptDescId", "optvalDescId",
+        "ParentOptValId", "OptChildCount", "OptChildId", "optval_name", "fsccompliant",
+    ]
+    connection.fake_cursor.description = [(name,) for name in columns]
+    connection.fake_cursor.fetchall = lambda: [
+        ("R", "P", 1, "OAK#", 1, 10, 2, 0, 3, 4, None, 1, 77, "Oak", 0),
+        ("R", "P", 2, "SKIP", 2, 11, 3, 0, 3, 4, None, 1, 78, "Skip", 0),
+    ]
+    service = SyteLineItemSourceService(connection_factory=lambda: connection)
+
+    with pytest.raises(ValueError, match="allowed option ID"):
+        service.fetch_staged_option_features("ITEM-42", allowed_option_ids=[])
+
+    # A fresh connection is used for the actual query because each call closes it.
+    connection2 = FakeConnection()
+    connection2.fake_cursor.description = [(name,) for name in columns]
+    connection2.fake_cursor.fetchall = connection.fake_cursor.fetchall
+    service = SyteLineItemSourceService(connection_factory=lambda: connection2)
+    rows = service.fetch_staged_option_features("ITEM-42", allowed_option_ids={2})
+
+    assert len(rows) == 1
+    assert rows[0]["FeaturePosition"] == "1|OAK"
+    assert rows[0]["ResolvedChildOptionIds"] == (77,)
+    assert connection2.closed
