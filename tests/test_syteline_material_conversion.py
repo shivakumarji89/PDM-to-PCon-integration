@@ -284,3 +284,23 @@ def test_legacy_feature_length_rejects_invalid_or_negative_lengths():
         resolve_legacy_feature_length(
             configured_length=-1, maximum_order_code_length=3, is_fabric=False
         )
+
+
+
+def test_legacy_increment_accumulation_sums_only_matching_parent_tokens():
+    from services.syteline_export.material_conversion import sum_legacy_increment_entries
+
+    assert sum_legacy_increment_entries(
+        ["PARENT|1.25", "OTHER|9", "PARENT|2.5", "PREFIX-PARENT|4"],
+        "PARENT",
+    ) == 3.75
+
+
+def test_legacy_increment_accumulation_rejects_blank_token_and_bad_amount():
+    import pytest
+    from services.syteline_export.material_conversion import sum_legacy_increment_entries
+
+    with pytest.raises(ValueError, match="non-empty"):
+        sum_legacy_increment_entries(["PARENT|1"], "")
+    with pytest.raises(ValueError, match="Invalid legacy increment amount"):
+        sum_legacy_increment_entries(["PARENT|not-a-price"], "PARENT")
