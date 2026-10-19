@@ -9,6 +9,11 @@ from services.syteline_export.item_selection_query import (
     ItemSelectionQuery,
     build_item_selection_query,
 )
+from services.syteline_export.material_conversion import (
+    normalize_legacy_option_report_rows,
+    order_legacy_option_report_rows,
+    reconcile_legacy_option_child_ids,
+)
 
 
 class SyteLineItemSourceService:
@@ -45,6 +50,25 @@ class SyteLineItemSourceService:
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
         finally:
             connection.close()
+
+    def fetch_prepared_option_report(
+        self,
+        long_item: str,
+        *,
+        flatten_fabrics: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Fetch and apply source-backed option normalization, ordering and child reconciliation.
+
+        This is a preparation layer for downstream feature/material assembly;
+        it does not claim to reproduce the full legacy traversal.
+        """
+        item = str(long_item).strip()
+        rows = self.fetch_option_report(item)
+        normalized = normalize_legacy_option_report_rows(
+            rows, flatten_fabrics=flatten_fabrics
+        )
+        ordered = order_legacy_option_report_rows(normalized, item_code=item)
+        return reconcile_legacy_option_child_ids(ordered)
 
     def fetch_option_report(self, long_item: str) -> list[dict[str, Any]]:
         """Read the option rows produced by the legacy PDMOptionDataReport procedure.
