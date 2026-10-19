@@ -197,3 +197,30 @@ def test_parent_material_substitution_rejects_invalid_parent_ids():
     import pytest
     with pytest.raises(ValueError, match="Invalid parent OptionValueId"):
         resolve_legacy_parent_material("LEG", 3, 10, [{"OptionValueId": "bad", "Material": "P"}])
+
+
+
+def test_dependency_material_code_obeys_legacy_dependency_guards_and_format():
+    from services.syteline_export.material_conversion import build_legacy_dependency_material
+
+    args = dict(
+        item_code="ITEM-1", parent_material="PARENT", feature_position="2|Oak Leg",
+        option_position=3, option_value_id=55, child_option_count=1,
+    )
+    assert build_legacy_dependency_material(**args) == "9-PARENT-[opt3]-Oak_Leg"
+    assert build_legacy_dependency_material(**{**args, "is_fabric": True}) is None
+    assert build_legacy_dependency_material(**{**args, "ignore_option_dependencies": True}) is None
+    assert build_legacy_dependency_material(**{**args, "child_option_count": 0}) is None
+
+
+def test_dependency_material_code_handles_superproduct_and_mrfn_rules():
+    from services.syteline_export.material_conversion import build_legacy_dependency_material
+
+    args = dict(
+        item_code="CURRENT-ITEM", parent_material="MRFN-PARENT", feature_position="4|A B",
+        option_position=2, option_value_id=300464, parent_option_code="PARENT-OPT",
+        child_option_count=1,
+    )
+    assert build_legacy_dependency_material(**args) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
+    assert build_legacy_dependency_material(**{**args, "is_superproduct": True}) == "9-MRFN-PARENT-[opt2]-A_B-PARENT-OPT"
+    assert build_legacy_dependency_material(**{**args, "is_superproduct": True, "use_resolved_superproduct_parent": False}) == "9-CURRENT-ITEM-[opt2]-A_B-PARENT-OPT"
