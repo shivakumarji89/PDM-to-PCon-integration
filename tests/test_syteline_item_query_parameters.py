@@ -31,3 +31,22 @@ def test_placeholder_count_matches_bound_parameters_for_supported_scopes():
     for selection in selections:
         query = build_item_selection_query(selection)
         assert query.sql.count("?") == len(query.parameters), selection
+
+
+def test_superproduct_exclusion_selects_parent_status_without_corrupting_where():
+    query = build_item_selection_query(ItemSelection(
+        site_id=1,
+        catalogue_id=2,
+        language_id=3,
+        other_language_id=4,
+        active_only=True,
+        exclude_superproducts=True,
+    ))
+
+    assert "INNER JOIN ItemComponents itco ON Item.ItemId = itco.SubItemId" in query.sql
+    assert "INNER JOIN Item sp_item ON itco.ItemId = sp_item.ItemId" in query.sql
+    assert "sp_item.Status AS Status" in query.sql
+    assert "AND Item.Status = 1" in query.sql
+    assert "AND sp_item.Status = 1" in query.sql
+    assert "0 AS Status = 1" not in query.sql
+    assert query.sql.count("?") == len(query.parameters)
