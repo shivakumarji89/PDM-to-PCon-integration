@@ -27,13 +27,16 @@ def fetch(repo, *, program="", item="GETH.1022FS4W", site=1):
     )
 
 
-@pytest.mark.parametrize("program,predicate", [
-    ("lf", "Product.Product NOT LIKE 'MRF7%'"),
-    ("av", "Product.Product NOT LIKE 'AS7%'"),
-    ("swoop", "Product.Product LIKE 'OAW1%'"),
-    ("revive", ""),
+@pytest.mark.parametrize("program,predicates", [
+    ("lf", ("Product.Product NOT LIKE 'MRF7%'",)),
+    ("av", ("Product.Product NOT LIKE 'AS7%'",)),
+    ("swoop", (
+        "Product.Product LIKE 'OAW1%'",
+        "Product.Product LIKE 'OAW2%'",
+    )),
+    ("revive", ()),
 ])
-def test_global_query_scope_and_parameters(program, predicate):
+def test_global_query_scope_and_parameters(program, predicates):
     query, params = PDMRepository._global_price_query(
         "GETH.1022FS4W", "EUR", "16-Oct-2026", 9, 660, program
     )
@@ -52,7 +55,8 @@ def test_global_query_scope_and_parameters(program, predicate):
     ]:
         assert query.count(clause) == 2
     assert query.count("SELECT ProductCodeIdOverride FROM Item i2") == 4
-    assert predicate in query
+    for predicate in predicates:
+        assert predicate in query
     assert query.endswith(" ORDER BY OrderCodeValue")
 
 

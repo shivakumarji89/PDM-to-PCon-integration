@@ -131,6 +131,30 @@ only to its separate raw-suffix branch. The builder keeps the worker key in
 insertion rule or arbitrary parent-option mapping.
 Physical UI output and current production-MDB behavior remain **NOT VERIFIED**.
 
+### Special selectors and component-condition evidence
+
+The original `PriceMaintenance.cs` is not present in this checkout or in the
+local staging tree; the investigation below uses the source-derived notes in
+this repository and the checked-in tests. The production MDB was not opened.
+Where those notes do not preserve the source expression or a fixture, no
+selector-to-condition mapping is inferred.
+
+| Case | Source rule supported by available evidence | Inputs | Expected stored condition / coverage |
+|---|---|---|---|
+| Ordinary option-procedure suffix | `AddMissingGlobalPricingRecords` forms `Item + suffix`. For the option-procedure suffix, the component rewrite is guarded by the candidate having no `=`; an `OptionId=Code` suffix therefore bypasses it. | Item (for a component, the component Item), procedure suffix containing the option id and value code | `ITEM OptionId=Code`; covered by `test_global_condition_matches_pdm_option_suffix_shape` for direct and component rows and by the component lookup/target test. |
+| `memo` option suffix | The checked-in source notes record the special no-separator form. The source-derived builder uses the raw option code rather than the normal `OptionId=Code` representation. | Item and option code | `ITEMCode` (e.g. the synthetic `MEMO123`/`AA` case stores `MEMO123AA`). Unit-test coverage exists, but no nonempty source/live memo fixture was found. |
+| Hardcoded raw selectors (`MYST`, `~W`, `~M`, and related branches) | The notes establish that these take a separate branch in `AddMissingGlobalPricingRecords`; they do not retain the branch predicates, transformations, or selector-specific output. | The raw selector, selected item, and whatever component metadata that branch reads are not fully recoverable from the checked-in evidence. | **Not established.** No expected stored condition is asserted and no generic option mapping is applied to these selectors. Recover the original source or capture a non-production PDM output before implementing. |
+| Parent-option to component-option mapping | `FeaturePositionString` is a pipe-delimited positional mapping on `ItemComponents`, as documented in the Super Product source notes. The notes establish its role but not the precise lookup/rewrite performed by the pricing branch. | Parent and component item IDs, `ItemComponents.FeaturePositionString`, and the option/selector data consumed by the pricing branch; exact field use is not preserved. | **Not established.** Do not derive component conditions from position or option names. Existing component tests exercise the option-procedure suffix rule only, not arbitrary parent-option mapping. |
+| Ratio Worksurfaces / Screens selectors | These are separate category-wide modes, not the measured Ratio accessories/default-category path. The exact selector inputs and branch conditions are absent from the checked-in source notes. | Category selector (ID/name) and the mode-specific item/option rows; exact values not preserved. | **Not established.** No usable nonempty Worksurfaces/Screens fixture was found. The `RZTA.` accessory fixture only supports its observed option-suffix condition (`RZTA. 6867=DB3`, likewise `DN2`/`DR1`). |
+| `swoop` | The checked-in fetch implementation transcribes a product filter for `OAW1%` or `OAW2%`; the source notes do not establish a special stored-condition rewrite for the selected-item worker path. | Selected item/program and product code; projected option-code row | **Stored condition not established.** Regression coverage checks both query predicates only. No usable nonempty `swoop` fixture was found. |
+
+The option-condition regressions intentionally stop at the rules supported by
+the source notes or observed rows: ordinary suffixes, component suffixes, the
+synthetic `memo` shape, and the observed Ratio accessories. They are not
+evidence for `MYST`/`~W`/`~M`, arbitrary `FeaturePositionString` mappings,
+Ratio Worksurfaces/Screens, or a nonempty `swoop`/`memo` source result. Those
+cases remain live-QA/source-recovery gaps.
+
 The procedure definition still returns null and `VIEW DEFINITION` permission
 is 0. An approved DBA definition/grant is required to inspect its internals,
 but it is no longer a dependency of Global source fetching.
