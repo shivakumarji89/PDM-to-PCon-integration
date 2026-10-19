@@ -95,3 +95,63 @@ class SyteLineItemSourceService:
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
         finally:
             connection.close()
+
+
+    def fetch_legacy_option_feature_length_rows(
+        self,
+        option_id: int,
+        catalogue_id: int,
+    ) -> list[dict[str, Any]]:
+        """Read catalogue-scoped feature-length candidates used by legacy stage 20.
+
+        The legacy query prefers a dependent fabric option's SLFeatureLength,
+        maximum order-code length and IsFabric flag when that dependent option
+        is a fabric option. Selection among candidate rows remains the caller's
+        responsibility; this method returns the database's grouped candidates.
+        """
+        try:
+            selected_option_id = int(option_id)
+            selected_catalogue_id = int(catalogue_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Option and catalogue IDs must be integers.") from exc
+        if selected_option_id <= 0 or selected_catalogue_id <= 0:
+            raise ValueError("Option and catalogue IDs must be positive.")
+
+        sql = """
+            SELECT
+                CASE WHEN fabric_opt.OptionId IS NULL
+                     THEN opt.SLFeatureLength ELSE fabric_opt.SLFeatureLength END
+                    AS SLFeatureLength,
+                CASE WHEN fabric_opt.OptionId IS NULL
+                     THEN MAX(LEN(REPLACE(optval.OrderCodeValue, '#', '')))
+                     ELSE MAX(LEN(REPLACE(fabric_optval.OrderCodeValue, '#', ''))) END
+                    AS max_length,
+                CASE WHEN fabric_opt.OptionId IS NULL
+                     THEN opt.IsFabric ELSE fabric_opt.IsFabric END AS IsFabric
+            FROM [Option] opt WITH (NOLOCK)
+            INNER JOIN OptionValue optval
+                ON opt.OptionId = optval.OptionId
+            INNER JOIN CatalogueOptionValues cov
+                ON optval.OptionValueId = cov.OptionValueId
+               AND cov.CatalogueId = ?
+            LEFT OUTER JOIN DependentOptionValues dov
+                ON optval.OptionValueId = dov.AdditionalOptionValueId
+            LEFT OUTER JOIN OptionValue fabric_optval
+                ON dov.OptionValueId = fabric_optval.OptionValueId
+            LEFT OUTER JOIN [Option] fabric_opt
+                ON fabric_optval.OptionId = fabric_opt.OptionId
+               AND fabric_opt.IsFabric = 1
+            GROUP BY opt.OptionId, opt.SLFeatureLength, opt.IsFabric,
+                     fabric_opt.OptionId, fabric_opt.SLFeatureLength,
+                     fabric_opt.IsFabric
+            HAVING opt.OptionId = ?
+        """
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            cursor.timeout = 600
+            cursor.execute(sql, selected_catalogue_id, selected_option_id)
+            columns = [column[0] for column in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        finally:
+            connection.close()
