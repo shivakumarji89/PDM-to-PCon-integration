@@ -281,7 +281,7 @@ def resolve_legacy_parent_material(
             (material.startswith("GHS") or material.startswith("GHG"))
             and wanted_option_id in {8, 9487}
         )
-        if material in parent_material or special_option or legacy_garment_case:
+        if (material and material in parent_material) or special_option or legacy_garment_case:
             material = parent_material
         return material, True
     return material, False
