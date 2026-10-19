@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import QDate, QSettings, Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
-    QDateEdit, QFileDialog, QLineEdit, QListWidget, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
+    QDateEdit, QFileDialog, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 from core.application_context import ApplicationContext
 from ui.pages.base_page import BasePage
@@ -94,9 +94,15 @@ class SyteLineExportPage(BasePage):
         self.multi_sites = QPushButton("Sites…")
         self.multi_languages = QPushButton("Languages…")
         self.multi_currencies = QPushButton("Currencies…")
+        self._multi_choices: dict[str, list[tuple[int, str]]] = {
+            "sites": [], "languages": [], "currencies": [],
+        }
+        self.multi_sites.clicked.connect(lambda: self._choose_multiple("sites", self.site))
+        self.multi_languages.clicked.connect(lambda: self._choose_multiple("languages", self.language))
+        self.multi_currencies.clicked.connect(lambda: self._choose_multiple("currencies", self.currency))
         for button in (self.multi_sites, self.multi_languages, self.multi_currencies):
             button.setEnabled(False)
-            button.setToolTip("Multi-selection depends on database-backed site, language and currency definitions.")
+            button.setToolTip("Load database choices before selecting multiple values.")
             multi_selectors.addWidget(button)
         multi_selectors.addStretch(1)
         root.addLayout(multi_selectors)
@@ -473,6 +479,46 @@ class SyteLineExportPage(BasePage):
             "and full legacy output parity are implemented and verified."
         )
 
+    def _choose_multiple(self, kind: str, combo: QComboBox) -> None:
+        """Show a checkable list for the legacy multi-site/language/currency controls."""
+        if combo.count() == 0:
+            self.status.setText("Load database choices before selecting multiple values.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle({"sites": "Select Sites", "languages": "Select Languages", "currencies": "Select Currencies"}[kind])
+        layout = QVBoxLayout(dialog)
+        listing = QListWidget(dialog)
+        listing.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        selected_ids = {item_id for item_id, _ in self._multi_choices[kind]}
+        for index in range(combo.count()):
+            item = QListWidgetItem(combo.itemText(index), listing)
+            item.setData(Qt.ItemDataRole.UserRole, combo.itemData(index))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(
+                Qt.CheckState.Checked if combo.itemData(index) in selected_ids
+                else Qt.CheckState.Unchecked
+            )
+        layout.addWidget(listing)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.resize(300, 360)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._multi_choices[kind] = [
+            (int(listing.item(i).data(Qt.ItemDataRole.UserRole)), listing.item(i).text())
+            for i in range(listing.count())
+            if listing.item(i).checkState() == Qt.CheckState.Checked
+            and listing.item(i).data(Qt.ItemDataRole.UserRole) is not None
+        ]
+        button = {"sites": self.multi_sites, "languages": self.multi_languages, "currencies": self.multi_currencies}[kind]
+        button.setText(f"{kind.title()} ({len(self._multi_choices[kind])})")
+        self._save_settings()
+
     def _apply_authenticated_user_defaults(self) -> None:
         """Use available application authentication context without guessing IDs."""
         candidates = (
@@ -553,6 +599,9 @@ class SyteLineExportPage(BasePage):
             else:
                 self.catalogue.clear()
                 self.product_line.clear()
+            for button in (self.multi_sites, self.multi_languages, self.multi_currencies):
+                button.setEnabled(True)
+                button.setToolTip("Choose multiple database-backed values.")
             if self.site.currentData() is not None and self.catalogue.currentData() is not None:
                 self._load_product_codes()
             self.status.setText(
@@ -706,6 +755,8 @@ class SyteLineExportPage(BasePage):
         self.settings.setValue(self.PREFIX + "items", [
             self.item_list.item(i).text() for i in range(self.item_list.count())
         ])
+        for kind, selected in self._multi_choices.items():
+            self.settings.setValue(self.PREFIX + "multi/" + kind, selected)
         if hasattr(self, "site_ref"):
             self.settings.setValue(self.PREFIX + "site_ref", self.site_ref.text())
         if hasattr(self, "region"):
