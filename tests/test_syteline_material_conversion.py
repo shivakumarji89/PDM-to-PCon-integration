@@ -3,6 +3,7 @@ from services.syteline_export.material_conversion import (
     normalize_legacy_option_report_rows,
     order_legacy_option_report_rows,
     reconcile_legacy_option_child_ids,
+    resolve_legacy_parent_material,
 )
 
 
@@ -172,3 +173,27 @@ def test_duplicate_option_rows_keep_distinct_real_child_ids():
     ]
     merged = reconcile_legacy_option_child_ids(rows)
     assert merged[0]["ResolvedChildOptionIds"] == (77, 78)
+
+
+def test_parent_material_substitution_uses_matching_parent_and_containment_rule():
+    parents = [
+        {"OptionValueId": 10, "Material": "PARENT-LEG-01"},
+        {"OptionValueId": 11, "Material": "OTHER"},
+    ]
+    assert resolve_legacy_parent_material("LEG", 3, 10, parents) == ("PARENT-LEG-01", True)
+    assert resolve_legacy_parent_material("LEG", 3, 11, parents) == ("LEG", True)
+    assert resolve_legacy_parent_material("LEG", 3, 99, parents) == ("LEG", False)
+
+
+def test_parent_material_substitution_preserves_legacy_special_option_cases():
+    parents = [{"OptionValueId": 10, "Material": "PARENT-MATERIAL"}]
+    assert resolve_legacy_parent_material("LEG", 9275, 10, parents) == ("PARENT-MATERIAL", True)
+    assert resolve_legacy_parent_material("GHS-OLD", 8, 10, parents) == ("PARENT-MATERIAL", True)
+    assert resolve_legacy_parent_material("GHG-OLD", 9487, 10, parents) == ("PARENT-MATERIAL", True)
+    assert resolve_legacy_parent_material("OTHER", 8, 10, parents) == ("OTHER", True)
+
+
+def test_parent_material_substitution_rejects_invalid_parent_ids():
+    import pytest
+    with pytest.raises(ValueError, match="Invalid parent OptionValueId"):
+        resolve_legacy_parent_material("LEG", 3, 10, [{"OptionValueId": "bad", "Material": "P"}])
