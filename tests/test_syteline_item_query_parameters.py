@@ -50,3 +50,13 @@ def test_superproduct_exclusion_selects_parent_status_without_corrupting_where()
     assert "AND sp_item.Status = 1" in query.sql
     assert "0 AS Status = 1" not in query.sql
     assert query.sql.count("?") == len(query.parameters)
+
+
+def test_list_scope_rejects_empty_blank_and_duplicate_items():
+    import pytest
+
+    base = dict(site_id=1, catalogue_id=2, language_id=3, other_language_id=4,
+                scope_mode="list")
+    for item_list in ((), ("",), ("ITEM-1", "  "), ("ITEM-1", " ITEM-1 ")):
+        with pytest.raises(ValueError, match="List scope"):
+            build_item_selection_query(ItemSelection(**base, item_list=item_list))
