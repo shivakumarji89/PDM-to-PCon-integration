@@ -188,6 +188,12 @@ def build_item_selection_query(selection: ItemSelection) -> ItemSelectionQuery:
             "pd.ShortDescription IS NULL THEN sp_item.Item",
             "pd.ShortDescription IS NULL THEN Item.Item",
         )
+        # Keep the component status predicate in WHERE, but expose the parent
+        # status in the selected Status field for the super-product branch.
+        # A global Item.Status replacement corrupts the WHERE clause.
+        alternate = alternate.replace(
+            "Item.Status,", "sp_item.Status AS Status,", 1
+        )
         sql += " UNION " + alternate + " AND sp_item.Status = 1"
         params.extend(params[:len(params)])
     sql += " ORDER BY Item.Item"
