@@ -2,6 +2,7 @@ from services.syteline_export.material_conversion import (
     LegacyMaterialConversionRegistry,
     normalize_legacy_option_report_rows,
     order_legacy_option_report_rows,
+    reconcile_legacy_option_child_ids,
 )
 
 
@@ -131,3 +132,43 @@ def test_of_item_option_order_uses_legacy_9b_length_adjustment():
     of_ordered = order_legacy_option_report_rows(rows, item_code="OF123")
     assert [row["DisplayOrdinal"] for row in ordinary] == [2, 1]
     assert [row["DisplayOrdinal"] for row in of_ordered] == [1, 2]
+
+
+
+def test_duplicate_option_rows_replace_missing_child_sentinel_with_real_child():
+    rows = [
+        {
+            "OptionValueId": 10, "OptionId": 2, "IsFabric": 0,
+            "OptDescId": 3, "optvalDescId": 4, "OrderCodeValue2": "LEG",
+            "ParentOptValId": None, "OptChildCount": 1, "OptChildId": None,
+            "optval_name": "Leg",
+        },
+        {
+            "OptionValueId": 10, "OptionId": 2, "IsFabric": 0,
+            "OptDescId": 3, "optvalDescId": 4, "OrderCodeValue2": "LEG",
+            "ParentOptValId": None, "OptChildCount": 1, "OptChildId": 77,
+            "optval_name": "Leg",
+        },
+    ]
+    merged = reconcile_legacy_option_child_ids(rows)
+    assert len(merged) == 1
+    assert merged[0]["ResolvedChildOptionIds"] == (77,)
+
+
+def test_duplicate_option_rows_keep_distinct_real_child_ids():
+    rows = [
+        {
+            "OptionValueId": 11, "OptionId": 2, "IsFabric": 0,
+            "OptDescId": 3, "optvalDescId": 4, "OrderCodeValue2": "LEG",
+            "ParentOptValId": None, "OptChildCount": 2, "OptChildId": 77,
+            "optval_name": "Leg",
+        },
+        {
+            "OptionValueId": 11, "OptionId": 2, "IsFabric": 0,
+            "OptDescId": 3, "optvalDescId": 4, "OrderCodeValue2": "LEG",
+            "ParentOptValId": None, "OptChildCount": 2, "OptChildId": 78,
+            "optval_name": "Leg",
+        },
+    ]
+    merged = reconcile_legacy_option_child_ids(rows)
+    assert merged[0]["ResolvedChildOptionIds"] == (77, 78)
