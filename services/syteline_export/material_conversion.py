@@ -89,6 +89,47 @@ def normalize_legacy_option_report_rows(
     return normalized_rows
 
 
+def order_legacy_option_report_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    item_code: str = "",
+) -> list[dict[str, Any]]:
+    """Apply ExportThread's option-report ORDER BY to already-fetched rows.
+
+    The legacy query orders by Range2, Product2, DisplayOrder, descending
+    OrderCodeValue2 length, then DisplayOrdinal. For OF-prefixed items it
+    measures length after replacing each '9B' with '9B__', preserving the
+    legacy tie-breaking behavior. This orders rows only; it does not perform
+    dependency traversal or feature grouping.
+    """
+    def nullable_text(value: Any) -> tuple[int, str]:
+        # SQL Server ASC sorts NULL before non-NULL; preserve that ordering.
+        return (0, "") if value is None else (1, str(value))
+
+    def number(value: Any, *, default: float = 0) -> float:
+        if value is None or str(value).strip() == "":
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid numeric option-report sort value: {value!r}") from exc
+
+    is_of_item = str(item_code).startswith("OF")
+
+    def sort_key(source: Mapping[str, Any]) -> tuple[Any, ...]:
+        order_value = "" if source.get("OrderCodeValue2") is None else str(source["OrderCodeValue2"])
+        measured = order_value.replace("9B", "9B__") if is_of_item else order_value
+        return (
+            nullable_text(source.get("Range2")),
+            nullable_text(source.get("Product2")),
+            number(source.get("DisplayOrder")),
+            -len(measured),
+            number(source.get("DisplayOrdinal")),
+        )
+
+    return [dict(row) for row in sorted(rows, key=sort_key)]
+
+
 class LegacyMaterialConversionRegistry:
     """Keep the parallel conversion metadata required by legacy material expansion."""
 
