@@ -289,6 +289,7 @@ class SyteLineExportPage(BasePage):
             row += 1
             self.load_contract = QPushButton("Load")
             self.load_contract.setEnabled(False)
+            self.load_contract.setToolTip("Contract choices require the legacy TradeNet contract lookup.")
             self.contract = self._combo([])
             self.contract.setEnabled(False)
             layout.addWidget(self.load_contract, row, 0)
@@ -315,8 +316,11 @@ class SyteLineExportPage(BasePage):
             row += 1
         if include_pbom:
             layout.addWidget(QLabel("PBOM Type:"), row, 0)
-            self.pbom_type = self._combo([])
-            self.pbom_type.setEnabled(False)
+            self.pbom_type = self._combo(
+                ["Item Price Extract", "PBOM Material Extract"],
+                "Item Price Extract",
+            )
+            self.pbom_type.setEnabled(True)
             layout.addWidget(self.pbom_type, row, 1, 1, 2)
             row += 1
         for key, label, default in definitions:
