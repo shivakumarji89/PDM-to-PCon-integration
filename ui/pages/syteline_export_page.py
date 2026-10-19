@@ -69,6 +69,17 @@ class SyteLineExportPage(BasePage):
         self.site = self._combo([])
         self.language = self._combo([])
         self.other_language = self._combo([])
+        # Match the fixed-width, non-editable selectors in the legacy WinForms
+        # dialog. Values still come from live PDM metadata, never hard-coded.
+        for widget in (self.site, self.language, self.other_language):
+            widget.setEditable(False)
+            widget.setMinimumWidth(105)
+            widget.setMaximumWidth(150)
+            widget.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            widget.setMinimumContentsLength(10)
+        selectors.setColumnStretch(0, 1)
+        selectors.setColumnStretch(1, 1)
+        selectors.setColumnStretch(2, 1)
         for col, (label, widget) in enumerate([
             ("Site:", self.site), ("Language:", self.language), ("Other Language:", self.other_language)
         ]):
@@ -95,6 +106,10 @@ class SyteLineExportPage(BasePage):
         catalogue_label.addStretch(1)
         root.addLayout(catalogue_label)
         self.catalogue = self._combo([])
+        self.catalogue.setEditable(False)
+        self.catalogue.setMinimumWidth(250)
+        self.catalogue.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.catalogue.setMinimumContentsLength(28)
         root.addWidget(self.catalogue)
 
         override_row = QHBoxLayout()
@@ -134,6 +149,10 @@ class SyteLineExportPage(BasePage):
         self.filter_product_code = QCheckBox("Filter by Product Code")
         root.addWidget(self.filter_product_code)
         self.product_line = self._combo([])
+        self.product_line.setEditable(False)
+        self.product_line.setMinimumWidth(250)
+        self.product_line.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.product_line.setMinimumContentsLength(28)
         root.addWidget(self.product_line)
 
         scope = QGridLayout()
@@ -154,6 +173,9 @@ class SyteLineExportPage(BasePage):
         scope.addWidget(self.max_item, 2, 1)
         scope.addWidget(QLabel("Currency:"), 3, 0)
         self.currency = self._combo([])
+        self.currency.setEditable(False)
+        self.currency.setMinimumWidth(85)
+        self.currency.setMaximumWidth(125)
         scope.addWidget(self.currency, 3, 1)
         list_buttons = QHBoxLayout()
         self.add_items = QPushButton("Add Item(s)")
