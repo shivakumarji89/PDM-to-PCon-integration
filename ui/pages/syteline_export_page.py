@@ -247,7 +247,13 @@ class SyteLineExportPage(BasePage):
         row = 0
         if include_export_type:
             layout.addWidget(QLabel("Export Type:"), row, 0)
-            self.export_type = self._combo(["Verbose Extract (full)"], "Verbose Extract (full)")
+            # These are the three export modes shown in the legacy PDM form.
+            # Keep the legacy ordering and default; execution routing is handled
+            # separately and remains guarded until output parity is verified.
+            self.export_type = self._combo(
+                ["Exclude SuperProduct", "SuperProducts Only", "Verbose Extract (full)"],
+                "Exclude SuperProduct",
+            )
             layout.addWidget(self.export_type, row, 1, 1, 2)
             row += 1
             self.load_contract = QPushButton("Load")
