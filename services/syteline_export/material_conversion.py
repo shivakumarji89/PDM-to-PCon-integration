@@ -461,3 +461,18 @@ def normalize_legacy_increment_parent_token(
                 if part:
                     token = token.replace(part.replace("-", "~"), part)
     return token
+
+
+
+def calculate_legacy_increment_total(
+    increment_entries: Iterable[str],
+    *,
+    parent_material: str,
+    item_code: str,
+    full_parent_item: str,
+) -> float:
+    """Normalize the stage-16 parent token and calculate its increment total."""
+    token = normalize_legacy_increment_parent_token(
+        parent_material, item_code, full_parent_item
+    )
+    return sum_legacy_increment_entries(increment_entries, token)
