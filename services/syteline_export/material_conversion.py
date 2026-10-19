@@ -285,3 +285,54 @@ def resolve_legacy_parent_material(
             material = parent_material
         return material, True
     return material, False
+
+
+_MRFN_PARENT_SUFFIX_OPTION_VALUE_IDS = {300464, 300563, 300564, 300565, 300566, 300567}
+
+
+def build_legacy_dependency_material(
+    *,
+    parent_material: str,
+    feature_position: str,
+    option_position: int,
+    option_value_id: int,
+    parent_option_code: str = "",
+    is_fabric: bool = False,
+    ignore_option_dependencies: bool = False,
+    child_option_count: int | str = 0,
+    is_superproduct: bool = False,
+    use_resolved_superproduct_parent: bool = False,
+) -> str | None:
+    """Build the dependency material code using ExportThread stage 16.6–16.7.
+
+    Returns None when the source conditions do not create a dependency. This
+    is only the code-construction step; sequencing, increments, and BOM output
+    remain separate legacy stages.
+    """
+    parent = str(parent_material or "")
+    feature = str(feature_position or "")
+    try:
+        value_id = int(option_value_id)
+        position = int(option_position)
+        child_count = int(child_option_count or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Option value, feature position, and child count must be valid numeric values.") from exc
+
+    if is_fabric or ignore_option_dependencies or child_count <= 0:
+        return None
+    parent_for_code = parent if (is_superproduct and not use_resolved_superproduct_parent) else parent
+    # The legacy chooses the item's own code for ordinary superproducts, but
+    # the resolved parent material for the alternate/special superproduct path.
+    # Callers signal that path by passing the resolved parent as parent_material.
+    if is_superproduct and not use_resolved_superproduct_parent:
+        parent_for_code = str(parent_material or "")
+
+    if not feature or "|" not in feature:
+        raise ValueError("feature_position must contain the legacy 'featureIndex|orderCode' format.")
+    feature_index, order_code = feature.split("|", 1)
+    if not feature_index:
+        raise ValueError("feature_position must include a feature index.")
+    code = f"9-{parent_for_code}-[opt{position}]-{order_code.replace(' ', '_')}"
+    if parent.startswith(("MRFN", "9-MRFN")) and value_id in _MRFN_PARENT_SUFFIX_OPTION_VALUE_IDS:
+        code += "-" + str(parent_option_code or "")
+    return code
