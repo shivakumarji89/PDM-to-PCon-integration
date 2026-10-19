@@ -188,3 +188,22 @@ def test_export_result_dialog_reports_actual_counts():
     assert "Price rows linked to text blocks: 2" in text
     assert "Failed text operations: 0" in text
     assert "Read-back verification failures: 0" in text
+
+
+
+def test_refresh_during_stream_preserves_accumulated_records():
+    stored = _rec(1.0, "EUR")
+    streamed = _rec(9.0, "EUR")
+    page = _page([stored])
+
+    # The worker streams into the page before the completed result is committed
+    # to snapshot.price_records. A page refresh must render the stream, not the
+    # stale snapshot.
+    page._records = [streamed]
+    page._pricing_running = True
+    page.refresh()
+
+    assert page._records == [streamed]
+    assert len(_rows(page)) == 1
+    assert page._context.active_snapshot.price_records == [stored]
+    assert page._summary.text().startswith("Computing prices...")
