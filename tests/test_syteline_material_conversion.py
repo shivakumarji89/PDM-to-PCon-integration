@@ -326,3 +326,26 @@ def test_legacy_feature_positions_reject_missing_numeric_identity():
 
     with pytest.raises(ValueError, match="numeric OptionValueId and OptionId"):
         assign_legacy_feature_positions([{"OptionValueId": 1, "OrderCodeValue2": "X"}])
+
+
+
+def test_legacy_increment_parent_token_normalization_matches_item_hyphen_rule():
+    from services.syteline_export.material_conversion import normalize_legacy_increment_parent_token
+
+    assert normalize_legacy_increment_parent_token(
+        "9-ITEM-1-CHILD", "ITEM-1", "PARENT"
+    ) == "ITEM-1"
+
+
+def test_legacy_increment_parent_token_normalization_uses_full_parent_segments():
+    from services.syteline_export.material_conversion import normalize_legacy_increment_parent_token
+
+    assert normalize_legacy_increment_parent_token(
+        "9-BASE-1-CHILD", "ITEM", "BASE-1|ALT-2"
+    ) == "BASE-1"
+
+
+def test_legacy_increment_parent_token_normalization_strips_dependency_prefix():
+    from services.syteline_export.material_conversion import normalize_legacy_increment_parent_token
+
+    assert normalize_legacy_increment_parent_token("9-SIMPLE", "ITEM", "PARENT") == "SIMPLE"
