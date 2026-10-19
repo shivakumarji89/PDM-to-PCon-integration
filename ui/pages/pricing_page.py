@@ -317,7 +317,19 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     # -- data --------------------------------------------------------------
     def refresh(self) -> None:
-        """Reload from the active snapshot's stored price records."""
+        """Reload stored records unless a streamed price computation is active.
+
+        During computation the snapshot is intentionally committed only when the
+        worker finishes. Re-reading it mid-run would replace the live accumulated
+        rows with the previous snapshot and make earlier streamed rows disappear.
+        Re-render the in-memory stream instead.
+        """
+        if getattr(self, "_pricing_running", False):
+            self._populate()
+            self._summary.setText(
+                f"Computing prices... {len(self._records)} records so far"
+            )
+            return
         if self._begin_refresh():
             return
         snapshot = self._context.active_snapshot
@@ -394,6 +406,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         ]
         # Stream: clear the table and append records as each batch arrives so the
         # operator sees progress instead of a frozen window until the end.
+        # Keep refresh()/showEvent from reloading the old snapshot during this run.
+        self._pricing_running = True
         self._records = []
         self._added_keys = set()
         self._changed = {}
