@@ -121,3 +121,35 @@ def test_prepared_option_report_normalizes_orders_and_reconciles_children():
     assert rows[0]["ResolvedChildOptionIds"] == (77,)
     assert rows[0]["OrderCodeValue2"] == "LEG"
     assert connection.closed
+
+
+
+def test_legacy_feature_length_query_binds_catalogue_and_option_ids_and_maps_rows():
+    connection = FakeConnection()
+    connection.fake_cursor.description = [
+        ("SLFeatureLength",), ("max_length",), ("IsFabric",),
+    ]
+    connection.fake_cursor.fetchall = lambda: [(2, 4, 0)]
+    service = SyteLineItemSourceService(connection_factory=lambda: connection)
+
+    rows = service.fetch_legacy_option_feature_length_rows(17, 30)
+
+    assert rows == [{"SLFeatureLength": 2, "max_length": 4, "IsFabric": 0}]
+    sql, params = connection.fake_cursor.executed
+    assert "cov.CatalogueId = ?" in sql
+    assert "HAVING opt.OptionId = ?" in sql
+    assert params == (30, 17)
+    assert connection.fake_cursor.timeout == 600
+    assert connection.closed
+
+
+def test_legacy_feature_length_query_rejects_invalid_ids_before_connecting():
+    import pytest
+
+    service = SyteLineItemSourceService(connection_factory=lambda: (_ for _ in ()).throw(
+        AssertionError("must not connect for invalid IDs")
+    ))
+    with pytest.raises(ValueError, match="must be integers"):
+        service.fetch_legacy_option_feature_length_rows("bad", 30)
+    with pytest.raises(ValueError, match="must be positive"):
+        service.fetch_legacy_option_feature_length_rows(17, 0)
