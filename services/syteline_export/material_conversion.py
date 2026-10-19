@@ -240,3 +240,48 @@ def reconcile_legacy_option_child_ids(rows):
                 merged.append(child_id)
         groups[key]["ResolvedChildOptionIds"] = tuple(merged)
     return result
+
+
+_PARENT_SUBSTITUTION_OPTION_IDS = {9275, 9313, 9279, 9325, 9283, 9327, 9287, 9329}
+
+
+def resolve_legacy_parent_material(
+    current_material: str,
+    option_id: int,
+    parent_option_value_id: int | str | None,
+    parent_options: Iterable[Mapping[str, Any]],
+) -> tuple[str, bool]:
+    """Apply ExportThread stage-16 parent-material substitution.
+
+    parent_options must follow the legacy parallel-array order and expose
+    OptionValueId and Material. The boolean reports whether the parent ID was
+    found. This helper does not implement later dependency/BOM assembly.
+    """
+    try:
+        wanted_parent_id = int(parent_option_value_id) if parent_option_value_id not in (None, "") else None
+        wanted_option_id = int(option_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Legacy parent and option IDs must be numeric when provided.") from exc
+
+    material = str(current_material or "")
+    for parent in parent_options:
+        raw_id = parent.get("OptionValueId")
+        if raw_id in (None, ""):
+            continue
+        try:
+            candidate_id = int(raw_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid parent OptionValueId: {raw_id!r}") from exc
+        if candidate_id != wanted_parent_id:
+            continue
+
+        parent_material = str(parent.get("Material") or "")
+        special_option = wanted_option_id in _PARENT_SUBSTITUTION_OPTION_IDS
+        legacy_garment_case = (
+            (material.startswith("GHS") or material.startswith("GHG"))
+            and wanted_option_id in {8, 9487}
+        )
+        if material in parent_material or special_option or legacy_garment_case:
+            material = parent_material
+        return material, True
+    return material, False
