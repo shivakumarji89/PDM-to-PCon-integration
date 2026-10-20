@@ -732,6 +732,7 @@ class ProductPage(BasePage):
                 self._context.mdb_import_snapshot,
             )
         self._update_repository_actions()
+        self._refresh_maintenance_source_table()
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
