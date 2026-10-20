@@ -42,3 +42,13 @@ def test_missing_template_returns_none(tmp_path, monkeypatch):
 
     assert export_module._template_for_kind("knoll") is None
     assert export_module._template_for_kind("unknown") is None
+
+
+def test_resolves_knoll_mdb_nested_inside_preserved_setup_tree(tmp_path, monkeypatch):
+    root = tmp_path / "resources" / "templates"
+    expected = root / "vendor_bundle" / "_TEMPLATE_KNOLL" / "setup" / "data" / "ocd.mdb"
+    expected.parent.mkdir(parents=True)
+    expected.write_bytes(b"test")
+    monkeypatch.setattr(export_module, "_TEMPLATE_ROOT", root)
+
+    assert export_module._template_for_kind("knoll") == expected
