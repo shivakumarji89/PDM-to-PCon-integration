@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPushButton,
     QProgressBar,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -63,14 +64,29 @@ class ReviewPage(BasePage):
         self._mdb_cards = {}
         self._preview_elapsed_timer = QTimer(self)
 
-        self.add_content(self._build_toolbar())
-        self.add_content(self._build_generation_summary())
+        toolbar = self._build_toolbar()
+        summary = self._build_generation_summary()
+        self.add_content(toolbar)
+        self.add_content(summary)
+        # Keep the controls at their natural height; only the summary should
+        # absorb the remaining workspace height. Without explicit stretch and
+        # size policies, Qt can expand the toolbar and push the summary offscreen.
+        self._content.setStretch(0, 0)
+        self._content.setStretch(1, 1)
+        summary.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self._preview_elapsed_timer.setInterval(1000)
         self._preview_elapsed_timer.timeout.connect(self._update_preview_progress)
         self.refresh()
 
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Review Controls", self)
+        # This is a compact toolbar, not a content panel. Prevent it from
+        # claiming the full vertical space when the Review page is resized.
+        box.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
         layout = QHBoxLayout(box)
         self._refresh_btn = QPushButton("Refresh Review", box)
         # Explicit user refresh includes the potentially expensive MDB/XOCD
