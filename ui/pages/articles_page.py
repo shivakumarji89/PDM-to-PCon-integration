@@ -120,6 +120,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._init_source_tabs(context)
         self._rows: list[tuple] = []
         self._validation = None
+        # Validation is expensive on large snapshots. Keep one result per source
+        # snapshot so a PDM <-> MDB tab switch does not re-run it unnecessarily.
+        self._validation_cache: dict[int, object] = {}
         self._populating = False
         self._families: list = []
         self._active_family_id: str | None = None  # None = all families
@@ -195,6 +198,14 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         )
         self._apply_len_btn.clicked.connect(self._on_apply_base_length)
         layout.addWidget(self._apply_len_btn)
+
+        self._dot_base_btn = QPushButton("Base to Dot (All)", box)
+        self._dot_base_btn.setToolTip(
+            "Set every article's base to the characters before its first dot. "
+            "Articles without a dot use their full code. Does not edit relations."
+        )
+        self._dot_base_btn.clicked.connect(self._on_base_to_dot_all)
+        layout.addWidget(self._dot_base_btn)
 
         self._copy_long_btn = QPushButton("Copy Text", box)
         self._copy_long_btn.setToolTip(
@@ -578,8 +589,22 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         ]
 
     def _validate_articles(self):
-        """Validate the articles of the snapshot this page is showing."""
-        return self._context.article_service.validate()
+        """Validate the active source once, then reuse it during tab redraws."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return self._context.article_service.validate()
+        key = id(snapshot)
+        validation = self._validation_cache.get(key)
+        if validation is None:
+            validation = self._context.article_service.validate()
+            self._validation_cache[key] = validation
+        return validation
+
+    def _invalidate_validation(self, snapshot=None) -> None:
+        """Discard cached validation after an operation changes article state."""
+        snapshot = snapshot or self._context.active_snapshot
+        if snapshot is not None:
+            self._validation_cache.pop(id(snapshot), None)
 
     def _collect_rows(self) -> list[tuple]:
         """Build (family, member, article) rows from the engineering hierarchy.
@@ -767,6 +792,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             member_service.set_reduced_article(member, base)
         if busy is not None:
             busy.update_status("Grouping articles...")
+        self._invalidate_validation(snapshot)
         if refresh:
             self._apply_filter()
 
@@ -1178,6 +1204,39 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
+    def _on_base_to_dot_all(self) -> None:
+        """Apply each article's pre-dot boundary to the entire active snapshot.
+
+        Only article reduction fields are changed; relation objects, properties,
+        property values, and Article Set membership are left untouched.
+        """
+        snapshot = self._context.active_snapshot
+        if snapshot is None or self.is_mdb_view():
+            return
+        member_service = self._context.engineering_member_service
+        changed = False
+        for _family, member, article in self._rows:
+            if article is None:
+                continue
+            code = str(getattr(article, "code", "") or "")
+            if not code:
+                continue
+            length = code.find(".") if "." in code else len(code)
+            base = code[:length]
+            member_id = str(getattr(member, "id", "") or "")
+            if member_id:
+                self._base_len_by_member[member_id] = length
+            snapshot.base_length_overrides[code] = length
+            if (getattr(member, "reduced_article", "") or "") != base:
+                member_service.set_reduced_article(member, base)
+                changed = True
+            # Preserve existing Relation Object and Code Scheme values exactly.
+        if changed or self._rows:
+            self._context.snapshot_manager.mark_modified()
+            self._invalidate_validation(snapshot)
+            self._auto_reduced_signature = object()
+            self._apply_filter()
+
     def _on_apply_base_length(self) -> None:
         """Apply the visible base-length edit to the currently filtered rows."""
         value = int(self._base_len_spin.value())
@@ -1221,8 +1280,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
         # Maintenance edits are persisted through the PDM snapshot's normal
         # dirty-state/save path. Keep Development's existing lifecycle unchanged.
-        if changed and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE:
-            self._context.snapshot_manager.mark_modified()
+        if changed:
+            self._invalidate_validation()
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE:
+                self._context.snapshot_manager.mark_modified()
 
     def _on_base_length_cell_changed(self, item: QTableWidgetItem) -> None:
         """Apply an edited base length to the current article or base group."""
