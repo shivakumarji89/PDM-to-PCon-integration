@@ -157,7 +157,8 @@ class OcdExportService(BaseService):
 
         ``dest`` may be the target ``.mdb`` file or a folder (the standard
         ``pcr_data_com_ocd.mdb`` is then written inside it). ``template_kind`` is
-        ``'seating'``/``'tables'``; when omitted it is inferred from the product.
+        ``'hm_seating'``, ``'hm_tables'`` or ``'knoll'`` (legacy ``'seating'`` and
+        ``'tables'`` are accepted); when omitted it is inferred from the product.
         """
         result = OcdExportResult()
         if snapshot.product is None:
