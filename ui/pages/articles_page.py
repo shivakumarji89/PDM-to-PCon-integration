@@ -526,7 +526,14 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         lengths. Resolution is the alignment service's (``resolve_released_base``);
         nothing is stored on either snapshot.
         """
-        if self._context.source != SOURCE_PDM:
+        # MDB-derived base lengths are a Maintenance-only overlay. The
+        # Article page is shared by Development and Maintenance, so a loaded
+        # MDB must never influence Development merely because its source tabs
+        # default to PDM there.
+        if (
+            getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE
+            or self._context.source != SOURCE_PDM
+        ):
             return None
         snapshot = self._context.active_snapshot
         mdb = self._context.real.mdb_import_snapshot
