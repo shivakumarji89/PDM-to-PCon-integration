@@ -725,3 +725,68 @@ def test_unmapped_articles_cleared_by_the_scope_are_restored_afterwards():
     assert reduced["ABC100LS"] == "ABC100" and reduced["ABC102LS"] == ""
     MaintenanceAlignmentService(ctx).restore_pdm_scope()
     assert set(_members(ctx).values()) == {"ABC"}
+
+
+
+def test_articles_switch_reuses_cached_validation_per_snapshot(monkeypatch):
+    ctx = _context()
+    page = _page(ArticlesPage, ctx)
+    calls = {"count": 0}
+    original = page._context.article_service.validate
+
+    def counted_validate():
+        calls["count"] += 1
+        return original()
+
+    monkeypatch.setattr(page._context.article_service, "validate", counted_validate)
+    page._source_tabs.set_source("mdb")
+    after_mdb = calls["count"]
+    assert after_mdb == 1
+    page._source_tabs.set_source("pdm")
+    assert calls["count"] == after_mdb
+    page._source_tabs.set_source("mdb")
+    assert calls["count"] == after_mdb
+
+
+def test_base_to_dot_applies_to_all_articles_and_preserves_relations():
+    ctx = _context(pdm_count=3, mdb_count=1)
+    codes = ["CHAIR.01.RED", "CHAIR.02.BLUE", "TABLE"]
+    for article, code in zip(ctx.pdm_snapshot.articles, codes):
+        article.code = code
+    for family in ctx.pdm_snapshot.engineering.families:
+        for member in family.members:
+            member.relation_object = f"REL_{member.article_id}"
+            member.code_scheme = f"SCHEME_{member.article_id}"
+    before_relations = {
+        member.article_id: (member.relation_object, member.code_scheme)
+        for family in ctx.pdm_snapshot.engineering.families
+        for member in family.members
+    }
+    before_sets = [
+        (tuple(aset.article_ids), tuple(getattr(aset, "properties", []) or []))
+        for aset in ctx.pdm_snapshot.article_sets
+    ]
+    page = _page(ArticlesPage, ctx)
+    page._search.setText("CHAIR.01")  # action must ignore the active filter
+    page._on_base_to_dot_all()
+
+    reduced = {
+        ctx.pdm_snapshot.article_by_id(member.article_id).code: member.reduced_article
+        for family in ctx.pdm_snapshot.engineering.families
+        for member in family.members
+    }
+    assert reduced == {
+        "CHAIR.01.RED": "CHAIR",
+        "CHAIR.02.BLUE": "CHAIR",
+        "TABLE": "TABLE",
+    }
+    after_relations = {
+        member.article_id: (member.relation_object, member.code_scheme)
+        for family in ctx.pdm_snapshot.engineering.families
+        for member in family.members
+    }
+    assert after_relations == before_relations
+    assert [
+        (tuple(aset.article_ids), tuple(getattr(aset, "properties", []) or []))
+        for aset in ctx.pdm_snapshot.article_sets
+    ] == before_sets
