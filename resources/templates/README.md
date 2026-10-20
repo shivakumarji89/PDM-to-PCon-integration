@@ -8,7 +8,7 @@ Supported template families:
 - HM tables: a folder named `Tables_Template`
 - KNOLL: the original folder named `_TEMPLATE_KNOLL`
 
-The resolver supports these folders directly under `resources/templates/`, under `resources/templates/1_WS_Templates/`, or under an extra wrapper directory. The MDB must be inside the matching template folder. The resolver accepts either `ocd.mdb` or `ocd.mdb`.
+The resolver supports these folders directly under `resources/templates/`, under `resources/templates/1_WS_Templates/`, or under an extra wrapper directory. The MDB must be inside the matching template folder. The resolver accepts either `ocd.mdb` or `pcr_data_com_ocd.mdb`.
 
 Expected examples:
 
