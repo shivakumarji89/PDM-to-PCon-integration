@@ -167,6 +167,21 @@ def test_development_articles_does_not_apply_maintenance_mdb_mapping():
     assert ctx.mdb_import_snapshot is not None
 
 
+def test_maintenance_article_field_edit_marks_pdm_snapshot_modified(monkeypatch):
+    ctx = _context()
+    page = ArticlesPage(ctx)
+    page._active_module = WorkbenchModule.MAINTENANCE
+    page.refresh()
+
+    calls = []
+    monkeypatch.setattr(ctx.snapshot_manager, "mark_modified", lambda: calls.append(1))
+    item = page._table.item(0, 6)  # Relation Object
+    assert item is not None
+    item.setText("PA_MAINTENANCE_TEST")
+
+    assert calls == [1]
+
+
 # -- Class Creation -----------------------------------------------------------
 def test_class_creation_reads_properties_of_the_selected_source():
     ctx = _context()
