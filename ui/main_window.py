@@ -1394,7 +1394,7 @@ class MainWindow(QMainWindow):
         snapshot's ``tCOMd_*`` rows. This is the alternative to the XOCD CSV
         publish - a finished COM database rather than an import package.
         """
-        from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         if self._active_module != WorkbenchModule.DEVELOPMENT:
             QMessageBox.information(
@@ -1410,13 +1410,10 @@ class MainWindow(QMainWindow):
         if not directory:
             return
 
-        choice, ok = QInputDialog.getItem(
-            self, "Export MDB", "Template:",
-            ["Auto", "Seating", "Tables"], 0, False,
-        )
-        if not ok:
-            return
-        kind = None if choice == "Auto" else choice.lower()
+        # Use the export service's automatic category detection. Templates are
+        # bundled with the application; normal export must not ask users to
+        # locate or choose external template files.
+        kind = None
 
         snapshot = self._context.active_snapshot
         # Standardise base article lengths to the registry (CAD) before export.
