@@ -144,6 +144,7 @@ def test_articles_mdb_stays_read_only():
     ctx = _context()
     page = _page(ArticlesPage, ctx)
     page._source_tabs.set_source("mdb")
+    assert not page._dot_base_btn.isEnabled()
     before = [(m.reduced_article, m.short_description)
               for f in ctx.mdb_import_snapshot.engineering.families for m in f.members]
     page._base_len_spin.setValue(3)
@@ -163,6 +164,7 @@ def test_development_articles_does_not_apply_maintenance_mdb_mapping():
     page.refresh()
 
     assert page._mdb_mapping is None
+    assert page._dot_base_btn.isHidden()  # Maintenance-only action
     assert ctx.pdm_snapshot is not None
     assert ctx.mdb_import_snapshot is not None
 
