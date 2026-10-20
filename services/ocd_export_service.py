@@ -180,8 +180,9 @@ class OcdExportService(BaseService):
         template = _template_for_kind(kind)
         if template is None or not template.is_file():
             result.error = (
-                f"Bundled '{kind}' MDB template is missing: {template}. "
-                "Restore the original template file under resources/templates/mdb."
+                f"Bundled '{kind}' MDB template is missing under {_TEMPLATE_ROOT}. "
+                "Restore the original template folder tree under resources/templates; "
+                f"the required file is {_MDB_NAME}."
             )
             return result
         result.template = kind
