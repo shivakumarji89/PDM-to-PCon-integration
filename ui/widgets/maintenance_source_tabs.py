@@ -227,6 +227,11 @@ class MaintenanceSourceMixin:
         self._keep_disabled = _KeepDisabled(self)
         self._locked_widgets: dict = {}
         self._mdb_render_key = None
+        # Cache the expensive PDM/MDB alignment by snapshot contents. Source
+        # toggles should not re-resolve every article against the repository.
+        self._pdm_scope_cache_key = None
+        self._maintenance_mapping_cache_key = None
+        self._maintenance_mapping_cache = None
         self.add_content(self._source_tabs)
 
     # -- source resolution -------------------------------------------------
@@ -297,7 +302,20 @@ class MaintenanceSourceMixin:
             return
         from services.maintenance_alignment_service import MaintenanceAlignmentService
 
+        cache_key = self._alignment_cache_key(pdm, mdb)
+        if cache_key == self._pdm_scope_cache_key:
+            return
         MaintenanceAlignmentService(real).ensure_pdm_scope(pdm, mdb)
+        self._pdm_scope_cache_key = cache_key
+
+    @staticmethod
+    def _alignment_cache_key(pdm, mdb):
+        """Cheap content signature; catches replaced or edited article codes."""
+        if pdm is None or mdb is None:
+            return None
+        pdm_codes = tuple((str(a.id), str(a.code or "").strip()) for a in pdm.articles)
+        mdb_codes = tuple((str(a.id), str(a.code or "").strip()) for a in mdb.articles)
+        return id(pdm), id(mdb), pdm_codes, mdb_codes
 
     def _begin_refresh(self) -> bool:
         """Sync source/lock state. Return True when the refresh can be skipped.
