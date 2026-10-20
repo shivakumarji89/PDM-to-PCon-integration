@@ -730,6 +730,37 @@ def test_unmapped_articles_cleared_by_the_scope_are_restored_afterwards():
 
 
 
+def test_articles_switch_reuses_maintenance_alignment_cache(monkeypatch):
+    from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+    ctx = _context()
+    calls = {"scope": 0, "mapping": 0}
+    original_scope = MaintenanceAlignmentService.ensure_pdm_scope
+    original_mapping = MaintenanceAlignmentService.derived_base_lengths
+
+    def counted_scope(self, pdm, mdb, *args, **kwargs):
+        calls["scope"] += 1
+        return original_scope(self, pdm, mdb, *args, **kwargs)
+
+    def counted_mapping(pdm, mdb):
+        calls["mapping"] += 1
+        return original_mapping(pdm, mdb)
+
+    monkeypatch.setattr(MaintenanceAlignmentService, "ensure_pdm_scope", counted_scope)
+    monkeypatch.setattr(
+        MaintenanceAlignmentService, "derived_base_lengths", staticmethod(counted_mapping)
+    )
+    page = _page(ArticlesPage, ctx)
+    initial = dict(calls)
+    assert initial["scope"] == 1
+    assert initial["mapping"] == 1
+
+    page._source_tabs.set_source("mdb")
+    page._source_tabs.set_source("pdm")
+
+    assert calls == initial
+
+
 def test_articles_switch_reuses_cached_validation_per_snapshot(monkeypatch):
     ctx = _context()
     page = _page(ArticlesPage, ctx)
