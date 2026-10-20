@@ -28,7 +28,7 @@ def test_resolves_hm_tables_from_direct_template_folder(tmp_path, monkeypatch):
 
 def test_resolves_knoll_template_with_extra_wrapper_folder(tmp_path, monkeypatch):
     root = tmp_path / "resources" / "templates"
-    expected = root / "1_WS_Templates" / "_TEMPLATE_KNOLL" / "pcr_data_com_ocd.mdb"
+    expected = root / "1_WS_Templates" / "_TEMPLATE_KNOLL" / "ocd.mdb"
     expected.parent.mkdir(parents=True)
     expected.write_bytes(b"test")
     monkeypatch.setattr(export_module, "_TEMPLATE_ROOT", root)
