@@ -155,6 +155,18 @@ def test_articles_mdb_stays_read_only():
     assert ctx.mdb_import_snapshot.status != SnapshotStatus.MODIFIED
 
 
+def test_development_articles_does_not_apply_maintenance_mdb_mapping():
+    ctx = _context()
+    page = ArticlesPage(ctx)
+    page._active_module = WorkbenchModule.DEVELOPMENT
+
+    page.refresh()
+
+    assert page._mdb_mapping is None
+    assert ctx.pdm_snapshot is not None
+    assert ctx.mdb_import_snapshot is not None
+
+
 # -- Class Creation -----------------------------------------------------------
 def test_class_creation_reads_properties_of_the_selected_source():
     ctx = _context()
