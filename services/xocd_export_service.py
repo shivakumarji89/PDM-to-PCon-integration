@@ -200,7 +200,9 @@ class XocdExportService(BaseService):
         program = ctx["program"]
         classes = self.context.engineering_class_service.get_classes(snapshot)
         entity_bindings: dict[str, Any] = {}
-        relobj_rows, relation_rows, value_relobj = self._relations(snapshot, ctx, entity_bindings)
+        relobj_rows, relation_rows, value_relobj, property_relobj = self._relations(
+            snapshot, ctx, entity_bindings
+        )
         scheme_rows, scheme_by_code = self._code_schemes(snapshot, ctx, classes)
         plan: list[tuple[Path, int, str, list[list[Any]]]] = [
             (out / "xocd_programs.csv", 0, program,
@@ -213,7 +215,8 @@ class XocdExportService(BaseService):
                 snapshot, ctx, scheme_by_code, entity_bindings.get("article"))),
             (out / "xocd_propertyclass.csv", 0, program, self._property_classes(
                 snapshot, ctx, classes, entity_bindings.get("article_class"))),
-            (out / "xocd_property.csv", 0, program, self._properties(snapshot, ctx, classes)),
+            (out / "xocd_property.csv", 0, program,
+             self._properties(snapshot, ctx, classes, property_relobj)),
             (out / "xocd_propertyvalue.csv", 0, program,
              self._property_values(snapshot, ctx, classes, value_relobj)),
             (out / "xocd_artbase.csv", 0, program, self._artbase(snapshot, ctx, classes)),
@@ -447,11 +450,13 @@ class XocdExportService(BaseService):
         return out
 
     def _properties(
-        self, snapshot: Snapshot, ctx: dict[str, Any], classes: list
+        self, snapshot: Snapshot, ctx: dict[str, Any], classes: list,
+        property_relobj: dict[str, int] | None = None,
     ) -> list[list[Any]]:
         """xocd_property rows. PropertyName is the normalized identifier (no
         spaces) so relations and the code scheme can reference it."""
         digits = self._value_lengths(snapshot)
+        property_relobj = property_relobj or {}
         rows: list[list[Any]] = []
         for cls in classes:
             for position, a in enumerate(cls.properties):
@@ -460,7 +465,9 @@ class XocdExportService(BaseService):
                 width = digits.get(a.property_id, 0) or len(prop_key)
                 rows.append([
                     ctx["program"], cls.name, prop_key, 100 + position * 10,
-                    a.text_block or prop_key, 0, (a.type or "C")[:1] or "C",
+                    a.text_block or prop_key,
+                    property_relobj.get(str(a.property_id), 0),
+                    (a.type or "C")[:1] or "C",
                     width, 0, False, False, False, False, scope, 0, "",
                 ])
         return rows
@@ -514,8 +521,8 @@ class XocdExportService(BaseService):
     def _relations(
         self, snapshot: Snapshot, ctx: dict[str, Any],
         entity_bindings: dict[str, Any] | None = None,
-    ) -> tuple[list[list[Any]], list[list[Any]], dict[str, int]]:
-        """xocd_relationobj + xocd_relation rows, plus ``{value_id: relobj_id}``.
+    ) -> tuple[list[list[Any]], list[list[Any]], dict[str, int], dict[str, int]]:
+        """xocd_relationobj + xocd_relation rows and entity-to-RelObjID maps.
 
         XOCD links a relation object to its knowledge by NAME (``RelName`` ==
         ``RelationName``); the body is split into ``BlockNr`` lines of <= 255
@@ -528,6 +535,7 @@ class XocdExportService(BaseService):
         obj_rows: list[list[Any]] = []
         rel_rows: list[list[Any]] = []
         value_relobj: dict[str, int] = {}
+        property_relobj: dict[str, int] = {}
         # Rows of one imported relation object (shared rel_obj_id) are one
         # container: they share a RelObjID, so an Article/ArticleClass bound to
         # the container references every relation in it (as the MDB export does).
@@ -562,6 +570,17 @@ class XocdExportService(BaseService):
             for bound_value_id in value_ids:
                 if bound_value_id:
                     value_relobj[str(bound_value_id)] = rel_id
+            # Match the direct-MDB exporter: a value-bound relation belongs on
+            # PropValue, while a property-bound action belongs on Property.
+            property_ids = [
+                str(value) for value in (getattr(rel, "property_ids", []) or [])
+                if str(value)
+            ]
+            property_id = str(getattr(rel, "property_id", "") or "")
+            if not value_ids and property_id and property_id not in property_ids:
+                property_ids.append(property_id)
+            for bound_property_id in property_ids:
+                property_relobj.setdefault(bound_property_id, rel_id)
         if entity_bindings is not None:
             articles, article_classes, conflicts = resolve_entity_bindings(relation_objects)
             entity_bindings["article"] = {
@@ -571,7 +590,7 @@ class XocdExportService(BaseService):
                 pair: ids_by_key[key] for pair, key in article_classes.items() if key in ids_by_key
             }
             entity_bindings["conflicts"] = conflicts
-        return obj_rows, rel_rows, value_relobj
+        return obj_rows, rel_rows, value_relobj, property_relobj
 
     def _code_schemes(
         self, snapshot: Snapshot, ctx: dict[str, Any], classes: list
