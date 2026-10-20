@@ -58,6 +58,13 @@ class ArticleReconciliation:
     columns: list[str] = field(default_factory=list)
     #: Roles (``metatypeid``, ``childparentid``, ``configid``) the schema does not declare.
     unavailable_fields: list[str] = field(default_factory=list)
+    #: role -> declared column of the article table: literal names, or the verified positional aliases
+    #: (id / prm_key / chprm_key, see ``ARTICLE_COLUMN_ALIASES`` in the article service).
+    roles: dict[str, str] = field(default_factory=dict)
+    #: Identifier sets read from the loaded tables, used only to *report* dangling references:
+    #: ``metatype_ids`` (go_types.id), ``config_keys`` (go_properties.key), ``child_keys`` (go_childprops.key).
+    #: A key is absent when its table could not be read, so "unknown" is never mistaken for "dangling".
+    references: dict[str, frozenset[str]] = field(default_factory=dict)
     article_table: str = ""
     mapping_tables: list[str] = field(default_factory=list)
     rows: list[ArticleRow] = field(default_factory=list)

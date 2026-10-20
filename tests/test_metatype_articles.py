@@ -6,6 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import Qt
 
 from core.application_context import ApplicationContext
 from core.config import AppConfig
@@ -231,26 +232,30 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def test_page_shows_empty_state_then_read_only_table_after_load(context, root, qapp, monkeypatch):
+def test_page_shows_empty_state_then_work_table_after_load(context, root, qapp, monkeypatch):
     from PySide6.QtWidgets import QAbstractItemView, QMessageBox
     from ui.pages.metatype_creation_page import MetatypeCreationPage
 
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
     make_series(root, {"go_articles.csv": "MT;m;p;A1;C1;P1\n;m;p;A2;C2;\n"}, EXAMPLE)
     page = MetatypeCreationPage(context)
-    assert "No articles loaded" in page.articles_load_status.text() and page.articles_table.rowCount() == 0
+    model = page.articles_model
+    assert "No articles loaded" in page.articles_load_status.text() and model.rowCount() == 0
     assert page.articles_table.objectName() == "metatypeArticlesTable"
     assert page.articles_edit.objectName() == "metatypeSwitchArticles"
     assert context.metatype_article_service.last_result is None          # nothing loaded before Load Series
 
     page.load_series()
     table = page.articles_table
-    assert [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())] == EXAMPLE_COLUMNS + ["status"]
-    assert table.rowCount() == 2
-    assert [table.item(r, table.columnCount() - 1).text() for r in range(2)] == ["Mapped", "Needs assignment"]
-    assert table.editTriggers() == QAbstractItemView.EditTrigger.NoEditTriggers
-    assert not table.item(0, 0).flags() & table.item(0, 0).flags().ItemIsEditable
+    headers = [model.headerData(i, Qt.Orientation.Horizontal) for i in range(model.columnCount())]
+    assert headers == EXAMPLE_COLUMNS + ["Mapping Status", "Validation"]
+    assert model.rowCount() == 2
+    status_col = len(EXAMPLE_COLUMNS)
+    assert [model.index(r, status_col).data() for r in range(2)] == ["Mapped", "Needs assignment"]
     assert table.selectionBehavior() == QAbstractItemView.SelectionBehavior.SelectRows
+    assert table.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
+    editable = {headers[c] for c in range(model.columnCount()) if model.flags(model.index(0, c)) & Qt.ItemFlag.ItemIsEditable}
+    assert editable == {"metatypeid", "childparentid"}      # manufacturer/program/article/configid/status read-only
     assert page.articles_load_status.text().startswith("Load complete")
     assert page.workspace_stack.widget(0).isAncestorOf(table) and page.workspace_stack.widget(0).isAncestorOf(page.articles_edit)
 

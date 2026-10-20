@@ -571,7 +571,9 @@ invocation.
    but the *operational* pattern ("value filter" per article + the specific bug class where a
    `go_propvalues` filter conflicts with a `go_actions` enable/default gate, making the default
    value unreachable) is pure MillerKnoll project knowledge, not in the EasternGraphics spec.
-3. **`go_articles.configid` (gap)** — `Verus_Metatype_Prompt_TEST.md` states "configid = plain
+3. **`go_articles.configid` (gap) — RESOLVED 2026-10-20, see `Metatype_Write_Contract_Decisions.md` D7:** `[configid]` is
+   the header-comment label of column 5 (`prm_key`, a key into `go_properties`); `[metatypeid]` labels `id` and
+   `[childparentid]` labels `chprm_key`. The original gap note follows. — `Verus_Metatype_Prompt_TEST.md` states "configid = plain
    article number (not `MT_VERUS__PIA1Z`)" for `go_articles.csv`, but the manual's documented
    `go_articles` schema has no `configid` column (`id, manufacturer, program, article_nr,
    prm_set, chprm_set`). **UNKNOWN** whether this is an OAP/MillerKnoll-tooling-specific column,

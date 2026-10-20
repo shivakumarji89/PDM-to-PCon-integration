@@ -1,5 +1,10 @@
 # Metatype Step 6 (writing half) — Requirements and Dependencies
 
+> **Update 2026-10-20:** partly superseded by `Metatype_Write_Contract_Decisions.md`. Notably, MetatypeID / ConfigID /
+> ChildParentID are *not* another model: they are header-comment labels of the real `go_articles.csv` columns `id` /
+> `prm_key` / `chprm_key` (§2 "go_articles.csv" and "configid" rows below are corrected there), and the owner Metatype is
+> derivable from the Step 4 articles. Owner decisions are renumbered D1-D10 there.
+
 **Status: preparation only (2026-10-15). Nothing here is implemented.** No writer service exists, no file in the
 HMX repository was touched, no build tool was run. This document records what the authoritative template says
 about writing, what the confirmed specification can supply, what is unknown, and what must be decided before

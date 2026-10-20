@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-    QPushButton, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QStackedWidget, QTableView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -17,9 +17,22 @@ from models.metatype_creation import (
     BranchResult, IdentityResult, PolymorphicStageStatus, SpecificationResult, StepState, SwitchScope, TranslationKind, TranslationResult,
     TranslationRow, ValidityResult, ValueValidityRow,
 )
+from models.metatype_articles import ArticleReconciliation, ReconciliationStatus
+from services.metatype.article_edit_session import ArticleEditSession
+from pathlib import Path
+
+from services.metatype.article_write_plan import plan_article_edits
+from services.metatype.owner_selection import OwnerSelection, OwnerState, build_owner_choice
+from services.metatype.staged_writer import apply_plan, load_authorization, plan_fingerprint, review_text as staged_review
+from ui.pages.metatype_owner_dialog import OwnerSelectionDialog
+from services.metatype.property_creation_plan import CreationInputs, CreationPlan, plan_property_creation
+from services.metatype.property_rules import ArticleValueTable, ModePolicy, config_ids_for
+from services.metatype.text_encoding import Encoding
+from ui.pages.metatype_value_table import ArticleValueModel, ArticleValueProxy
 from services.metatype.value_validity import ALL_MARKER, parse_validity_cell
 from ui.components._styles import primary_button_qss, secondary_button_qss
 from ui.pages.base_page import BasePage
+from ui.pages.metatype_article_table import KEY_ROLE, ArticleFilterProxy, ArticleWorkTableModel
 from services.metatype.metatype_template_service import MetatypeTemplateService
 
 
@@ -283,69 +296,466 @@ class MetatypeCreationPage(BasePage):
         self.add_content(panel)
         self.refresh()
 
-    # -- articles reconciliation (read-only) -------------------------------------------------------------------
+    # -- articles work table ------------------------------------------------------------------------------------
     def _build_articles_table(self, panel: QWidget) -> None:
-        group = QGroupBox("Articles in the series (read-only)", panel)
+        group = QGroupBox("Articles in the series", panel)
         box = QVBoxLayout(group)
+        self.articles_session = ArticleEditSession()
+        self.articles_model = ArticleWorkTableModel(self.articles_session, group)
+        self.articles_proxy = ArticleFilterProxy(group)
+        self.articles_proxy.setSourceModel(self.articles_model)
+        self.articles_model.edited.connect(self._articles_edited)
+
+        def button(text: str, name: str, slot, primary: bool = False, tip: str = "") -> QPushButton:
+            widget = QPushButton(text, group)
+            widget.setObjectName(name)
+            widget.setStyleSheet((primary_button_qss if primary else secondary_button_qss)(name))
+            widget.clicked.connect(slot)
+            if tip:
+                widget.setToolTip(tip)
+            return widget
+
+        self.articles_refresh_button = button(
+            "Refresh", "metatypeArticlesRefreshButton", self.refresh_articles,
+            tip="Reload the series from the repository; pending edits are kept.")
+        self.articles_search = QLineEdit(group)
+        self.articles_search.setObjectName("metatypeArticlesSearch")
+        self.articles_search.setPlaceholderText("Search articles...")
+        self.articles_search.setClearButtonEnabled(True)
+        self.articles_search.textChanged.connect(self.articles_proxy.set_text)
+        self.articles_filter = QComboBox(group)
+        self.articles_filter.setObjectName("metatypeArticlesFilter")
+        self.articles_filter.addItems(ArticleFilterProxy.FILTERS)
+        self.articles_filter.currentTextChanged.connect(self.articles_proxy.set_mode)
+        self.articles_validate_button = button("Validate", "metatypeArticlesValidateButton", self.validate_articles)
+        self.articles_review_button = button("Review changes", "metatypeArticlesReviewButton", self.review_articles)
+        self.articles_discard_button = button("Discard edits", "metatypeArticlesDiscardButton",
+                                              self.discard_article_edits)
+        self.articles_owner_button = button(
+            "Choose owner Metatype...", "metatypeArticlesOwnerButton", self.choose_owner,
+            tip="Resolve which Metatype owns the new property from the listed articles; asks when ambiguous.")
+        self.articles_apply_button = button(
+            "Apply to staging...", "metatypeArticlesApplyButton", self.apply_to_staging,
+            tip="Writes only to an authorised staging working copy after review and confirmation.")
+        self.articles_create_button = button(
+            "Create Metatype", "metatypeArticlesCreateButton", self.create_from_articles, primary=True,
+            tip="Creates the property in the authorised staging copy after review and confirmation; "
+                "when a prerequisite is missing, click to see why.")
+        bar = QHBoxLayout()
+        for widget in (self.articles_refresh_button, self.articles_search, self.articles_filter,
+                       self.articles_validate_button, self.articles_review_button, self.articles_discard_button,
+                       self.articles_owner_button, self.articles_apply_button, self.articles_create_button):
+            bar.addWidget(widget, 1 if widget is self.articles_search else 0)
+
         self.articles_load_status = QLabel("", group)
         self.articles_load_status.setObjectName("metatypeArticlesLoadStatus")
         self.articles_load_status.setWordWrap(True)
-        self.articles_table = QTableWidget(0, 0, group)
+        self.articles_owner_label = QLabel("Owner Metatype: not resolved yet.", group)
+        self.articles_owner_label.setObjectName("metatypeArticlesOwnerLabel")
+        self.articles_owner_label.setWordWrap(True)
+        self.owner_selection: OwnerSelection | None = None
+        self.articles_counts = QLabel("", group)
+        self.articles_counts.setObjectName("metatypeArticlesCounts")
+
+        self.articles_table = QTableView(group)
         self.articles_table.setObjectName("metatypeArticlesTable")
-        self.articles_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.articles_table.setModel(self.articles_proxy)
+        self.articles_table.setSortingEnabled(True)
+        self.articles_table.setAlternatingRowColors(True)
         self.articles_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.articles_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.articles_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.articles_table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked
+                                            | QAbstractItemView.EditTrigger.EditKeyPressed
+                                            | QAbstractItemView.EditTrigger.AnyKeyPressed)
         self.articles_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.articles_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.articles_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.articles_table.setMinimumHeight(200)
+        self.articles_table.horizontalHeader().setStretchLastSection(True)
+        self.articles_table.setMinimumHeight(240)
         self.articles_diagnostics = QPlainTextEdit(group)
         self.articles_diagnostics.setObjectName("metatypeArticlesDiagnostics")
         self.articles_diagnostics.setReadOnly(True)
         self.articles_diagnostics.setMaximumHeight(120)
+        self.articles_table.selectionModel().selectionChanged.connect(self._show_selected_row_diagnostics)
+        box.addLayout(bar)
         box.addWidget(self.articles_load_status)
+        box.addWidget(self.articles_owner_label)
+        box.addWidget(self.articles_counts)
         box.addWidget(self.articles_table, 1)
         box.addWidget(self.articles_diagnostics)
         self._workspace_layouts["articles"].addWidget(group, 1)
+        self._build_creation_group(panel)
         self._show_articles()
 
     def _load_articles(self, series: str) -> None:
         """Reconcile the loaded series' articles (read-only, in memory) and show the result."""
+        self.articles_session.discard()           # a newly loaded series starts without carried-over edits
+        self._reconcile_articles(series)
+        self._show_articles()
+
+    def _reconcile_articles(self, series: str):
         inspection = self._service.inspection
         target = inspection.target if inspection is not None else None
-        self._context.metatype_article_service.reconcile(
+        return self._context.metatype_article_service.reconcile(
             series, root=inspection.repository_root if inspection is not None else None,
             directory=(target.directory or None) if target is not None else None)
+
+    def refresh_articles(self) -> None:
+        """Reload from the repository, keeping pending edits by article identity and reporting conflicts."""
+        series = self._service.series
+        if not series or self._service.inspection is None:
+            return
+        self._reconcile_articles(series)
         self._show_articles()
+        report = self.articles_session.last_refresh
+        notes = []
+        if report is not None and report.conflicted:
+            notes.append(f"{len(report.conflicted)} pending edit(s) now differ from a changed source value; "
+                         "they were kept - review them before creating.")
+        if report is not None and report.dropped:
+            notes.append(f"{len(report.dropped)} pending edit(s) could not be kept (article gone or not editable): "
+                         + "; ".join(f"{' / '.join(map(str, c.key))} {c.column}={c.new!r}" for c in report.dropped))
+        if notes:
+            self.articles_diagnostics.appendPlainText("\n" + "\n".join(notes))
+
+    def validate_articles(self) -> None:
+        problems = self.articles_session.validate_all()
+        lines = [f"{i.severity.upper()} [{i.code}] {' / '.join(map(str, key))}: {i.message}"
+                 for key, issues in problems.items() for i in issues]
+        self.articles_diagnostics.setPlainText("\n".join(lines) if lines else "Validation found no problems.")
+        self.articles_model.refresh_rows()
+
+    def review_articles(self) -> str:
+        plan = plan_article_edits(self.articles_session)
+        text = self.articles_session.review_text()
+        if self.articles_session.pending_count:
+            text = text.replace("\nBlockers:", "\n" + plan.review_text() + "\n\nBlockers:", 1)
+        self.articles_diagnostics.setPlainText(text)
+        return text
+
+    def discard_article_edits(self) -> None:
+        if not self.articles_session.pending_count:
+            return
+        answer = QMessageBox.question(
+            self, "Discard edits", f"Discard {self.articles_session.pending_count} pending edit(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.articles_session.discard()
+            self.articles_model.refresh_rows()
+
+    # -- property creation (values, plan, gating) -------------------------------------------------------------
+    def _build_creation_group(self, panel: QWidget) -> None:
+        group = QGroupBox("Create the polymorphic property (staging only)", panel)
+        box = QVBoxLayout(group)
+        form = QFormLayout()
+
+        def text_edit(name: str, hint: str, height: int = 56) -> QPlainTextEdit:
+            widget = QPlainTextEdit(group)
+            widget.setObjectName(name)
+            widget.setPlaceholderText(hint)
+            widget.setMaximumHeight(height)
+            return widget
+
+        self.creation_values_edit = text_edit("metatypeCreationValues", "Property values, one per line")
+        self.creation_default_edit = QLineEdit(group)
+        self.creation_default_edit.setObjectName("metatypeCreationDefault")
+        self.creation_default_edit.setPlaceholderText("Default value (must be chosen; one of the values)")
+        self.creation_filter_edit = QLineEdit(group)
+        self.creation_filter_edit.setObjectName("metatypeCreationFilter")
+        self.creation_filter_edit.setPlaceholderText("Filter: parent property names, comma separated (optional)")
+        self.creation_order_edit = text_edit(
+            "metatypeCreationOrder", "Optional sort order, one 'value;number' per line (1-255)")
+        self.creation_conditions_edit = text_edit(
+            "metatypeCreationConditions",
+            "go_propvalues conditions, one 'value;condition' per line (needed when Step 4a has exceptions)")
+        for label, widget in (("Values:", self.creation_values_edit), ("Default:", self.creation_default_edit),
+                              ("Filter:", self.creation_filter_edit), ("Sort order:", self.creation_order_edit),
+                              ("Conditions:", self.creation_conditions_edit)):
+            form.addRow(label, widget)
+        box.addLayout(form)
+        self.value_model = ArticleValueModel(ArticleValueTable([], []), group)
+        self.value_proxy = ArticleValueProxy(group)
+        self.value_proxy.setSourceModel(self.value_model)
+        self.value_table = QTableView(group)
+        self.value_table.setObjectName("metatypeArticleValueTable")
+        self.value_table.setModel(self.value_proxy)
+        self.value_table.setSortingEnabled(True)
+        self.value_table.setMinimumHeight(140)
+        self.value_table.horizontalHeader().setStretchLastSection(True)
+        self.value_table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked
+                                         | QAbstractItemView.EditTrigger.EditKeyPressed)
+        self.value_problem_filter = QComboBox(group)
+        self.value_problem_filter.setObjectName("metatypeArticleValueFilter")
+        self.value_problem_filter.addItems(["All articles", "Problems only"])
+        self.value_problem_filter.currentIndexChanged.connect(lambda i: self.value_proxy.set_problems_only(bool(i)))
+        self.creation_status = QLabel("Creation is disabled until every prerequisite is met.", group)
+        self.creation_status.setObjectName("metatypeCreationStatus")
+        self.creation_status.setWordWrap(True)
+        self.creation_plan_button = QPushButton("Plan creation", group)
+        self.creation_plan_button.setObjectName("metatypeCreationPlanButton")
+        self.creation_plan_button.clicked.connect(self.plan_creation)
+        self.creation_values_edit.textChanged.connect(self._sync_value_table)
+        self.value_model.edited.connect(self._update_creation_state)
+        self.creation_default_edit.textChanged.connect(self._update_creation_state)
+        self.creation_filter_edit.textChanged.connect(self._update_creation_state)
+        self.creation_order_edit.textChanged.connect(self._update_creation_state)
+        self.creation_conditions_edit.textChanged.connect(self._update_creation_state)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Per-article values (every article needs its own explicit value):", group), 1)
+        row.addWidget(self.value_problem_filter)
+        box.addLayout(row)
+        box.addWidget(self.value_table)
+        box.addWidget(self.creation_status)
+        box.addWidget(self.creation_plan_button)
+        self._workspace_layouts["articles"].addWidget(group)
+        self.last_creation_plan: CreationPlan | None = None
+        self.last_write_result = None
+
+    @staticmethod
+    def _lines(widget: QPlainTextEdit) -> list[str]:
+        return [line.strip(" \t") for line in widget.toPlainText().splitlines() if line.strip(" \t")]
+
+    def _pairs(self, widget: QPlainTextEdit) -> tuple[dict[str, str], list[str]]:
+        pairs: dict[str, str] = {}
+        problems: list[str] = []
+        for line in self._lines(widget):
+            key, sep, rest = line.partition(";")
+            if not sep or not key.strip() or not rest.strip():
+                problems.append(f"'{line}' is not 'value;text'.")
+            elif key.strip() in pairs:
+                problems.append(f"'{key.strip()}' is listed twice.")
+            else:
+                pairs[key.strip()] = rest.strip()
+        return pairs, problems
+
+    def _sync_value_table(self, *_args) -> None:
+        """Rebuild the per-article table for the Step 4 articles and current values; entered values are kept."""
+        articles = list(dict.fromkeys(self._owner_articles()))
+        values = list(dict.fromkeys(self._lines(self.creation_values_edit)))
+        self.value_model.beginResetModel()
+        self.value_model.table.rebuild(articles, values, config_ids_for(self.articles_session.result, articles))
+        self.value_model.endResetModel()
+        self._update_creation_state()
+
+    def _current_owner(self) -> str | None:
+        if self.owner_selection is not None and self.owner_selection.owner:
+            return self.owner_selection.owner
+        choice = build_owner_choice(self.articles_session.result, self._owner_articles())
+        return choice.resolution.metatype_id if choice.state is OwnerState.UNIQUE else None
+
+    def creation_inputs(self) -> tuple[CreationInputs, list[str]]:
+        config = self._context.config
+        identity, validity = self._service.identity, self._service.validity
+        order, order_problems = self._pairs(self.creation_order_edit)
+        conditions, condition_problems = self._pairs(self.creation_conditions_edit)
+        numbers = {value: int(number) if number.isdigit() else -1 for value, number in order.items()}
+        values = list(dict.fromkeys(self._lines(self.creation_values_edit)))
+        wanted = config.metatype_text_fallback_encoding.strip().lower()
+        fallback = {"cp1252": Encoding.CP1252, "utf-8": Encoding.UTF8}.get(wanted)
+        inputs = CreationInputs(
+            owner=self._current_owner(), property_name=identity.name if identity else "", values=values,
+            default=self.creation_default_edit.text(), filter_names=self.creation_filter_edit.text(),
+            article_values=self.value_model.table,
+            mode_policy=ModePolicy(confirmed=config.metatype_mode_policy_confirmed),
+            order=numbers, conditions=conditions,
+            exceptions_recorded=bool(validity is not None and not validity.accepts_full_value_set),
+            translations=self._service.translations, text_fallback_encoding=fallback)
+        return inputs, order_problems + condition_problems
+
+    def plan_creation(self) -> CreationPlan:
+        inputs, input_problems = self.creation_inputs()
+        plan = plan_property_creation(self.articles_session.result, inputs)
+        plan.blockers.extend(input_problems)
+        self.last_creation_plan = plan
+        auth, _problems = self.staging_authorization()
+        text = plan.review_text()
+        if auth is not None and plan.ok:
+            text = staged_review(plan.plan, auth)
+        self.articles_diagnostics.setPlainText(text)
+        self._update_creation_state()
+        return plan
+
+    def creation_blockers(self) -> list[str]:
+        """Every reason creation is disabled (empty only when all prerequisites hold)."""
+        inputs, input_problems = self.creation_inputs()
+        plan = plan_property_creation(self.articles_session.result, inputs)
+        reasons = list(plan.blockers) + input_problems + list(plan.plan.problems)
+        if not reasons and not plan.plan.ok:
+            reasons.append("The creation plan is not verified.")
+        auth, auth_problems = self.staging_authorization()
+        if auth is None:
+            reasons.extend(auth_problems)
+        return reasons
+
+    def can_create(self) -> bool:
+        return not self.creation_blockers()
+
+    def _update_creation_state(self, *_args) -> None:
+        if not hasattr(self, "creation_status"):
+            return
+        result = self.articles_session.result
+        blockers = self.creation_blockers() if result is not None and result.series else ["No series is loaded."]
+        self.articles_create_button.setEnabled(bool(result is not None and result.series))
+        self.creation_status.setText(
+            "Ready: review and confirm to write to staging." if not blockers else
+            f"Creation disabled ({len(blockers)} reason(s)): " + " | ".join(blockers[:3])
+            + (" ..." if len(blockers) > 3 else ""))
+
+    # -- owner Metatype ---------------------------------------------------------------------------------------
+    def _owner_articles(self) -> list[str]:
+        branch = self._service.branch
+        if branch is not None and branch.articles:
+            return list(branch.articles)
+        keys = [i.data(KEY_ROLE) for i in self.articles_table.selectionModel().selectedRows()]
+        return [k[2] for k in keys if len(k) == 3 and k[0] != "<line>"]
+
+    def choose_owner(self, dialog_factory=OwnerSelectionDialog) -> OwnerSelection:
+        """Resolve the owner; ask the user only when it is ambiguous. Cancelling keeps everything as it was."""
+        identity = self._service.identity
+        choice = build_owner_choice(self.articles_session.result, self._owner_articles(),
+                                    identity.name if identity is not None else "")
+        selection = OwnerSelection(choice, identity.name if identity is not None else "")
+        previous = self.owner_selection
+        if choice.state is not OwnerState.UNIQUE:
+            dialog = dialog_factory(choice, self)
+            if dialog.exec() and dialog.selected_id:
+                selection.select(dialog.selected_id)
+            elif previous is not None and previous.choice.candidates == choice.candidates:
+                selection = previous                      # cancelled: keep the earlier explicit choice
+        self.owner_selection = selection
+        self._show_owner()
+        return selection
+
+    def _show_owner(self) -> None:
+        selection = self.owner_selection
+        if selection is None:
+            self.articles_owner_label.setText("Owner Metatype: not resolved yet.")
+            return
+        state = selection.choice.state
+        if state is OwnerState.UNIQUE:
+            text = f"Owner Metatype: {selection.owner} (unique - every listed article belongs to it)."
+        elif state is OwnerState.NONE:
+            text = f"Owner Metatype: NO valid candidate. {selection.choice.explanation}"
+        elif selection.owner:
+            text = f"Owner Metatype: {selection.owner} (explicitly selected from {len(selection.choice.candidates)} candidates)."
+        else:
+            text = (f"Owner Metatype: {len(selection.choice.candidates)} candidates, none selected - "
+                    f"{selection.choice.explanation}")
+        self.articles_owner_label.setText(text)
+
+    # -- staged persistence -----------------------------------------------------------------------------------
+    def staging_authorization(self):
+        config = self._context.config
+        return load_authorization(config.metatype_staging_root, config.metatype_repository_root,
+                                  config.metatype_staging_authorised_by)
+
+    def apply_to_staging(self, confirm=None, backup_root: Path | None = None):
+        """Review, confirm and write the verified article edits to the authorised staging copy (never production)."""
+        plan = plan_article_edits(self.articles_session)
+        result = self._apply_plan(plan, confirm, backup_root, "Apply to staging")
+        if result is not None:
+            if result.success:
+                done = self.articles_session.mark_applied(plan, result)
+                self.articles_model.refresh_rows()
+                self.articles_diagnostics.appendPlainText(
+                    f"\n{done} edit(s) are now shown as written (verified in staging). The loaded source snapshot is "
+                    "unchanged; Refresh reloads it.")
+            else:
+                self.articles_session.mark_failed(plan, "; ".join(result.problems))
+                self.articles_model.refresh_rows()
+        return result
+
+    def _apply_plan(self, plan, confirm, backup_root, title):
+        auth, problems = self.staging_authorization()
+        if auth is None:
+            self.articles_diagnostics.setPlainText(
+                "Writing is disabled. " + " ".join(problems) + "\n\n" + (plan.review_text() if plan.files else ""))
+            return None
+        text = staged_review(plan, auth)
+        self.articles_diagnostics.setPlainText(text)
+        if not plan.ok:
+            return None
+        ask = confirm or (lambda review: QMessageBox.question(
+            self, title, review + "\n\nWrite exactly these changes to the staging copy?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel) == QMessageBox.StandardButton.Yes)
+        if not ask(text):
+            return None                                   # cancelled: nothing written, pending edits stay as they are
+        result = apply_plan(plan, auth, plan_fingerprint(plan, auth),
+                            backup_root or Path(__file__).resolve().parents[2] / "workspace" / "metatype_backups")
+        self.last_write_result = result
+        self.articles_diagnostics.setPlainText(result.summary())
+        return result
+
+    def create_property(self, confirm=None, backup_root: Path | None = None):
+        """Create the polymorphic property in the authorised staging copy; blocked unless every prerequisite holds."""
+        blockers = self.creation_blockers()
+        if blockers:
+            self.articles_diagnostics.setPlainText(
+                "Creation is disabled:\n" + "\n".join(f"  - {b}" for b in blockers))
+            return None
+        plan = self.plan_creation()
+        result = self._apply_plan(plan.plan, confirm, backup_root, "Create property in staging")
+        self._update_creation_state()
+        return result
+
+    def create_from_articles(self) -> None:
+        """Create when every prerequisite holds (after review and confirmation); otherwise show exactly why."""
+        if self.can_create():
+            self.create_property()
+            return
+        self.articles_diagnostics.setPlainText(
+            "\n".join(self.articles_session.creation_blockers()) + "\n\nCreation prerequisites not met:\n"
+            + "\n".join(f"  - {b}" for b in self.creation_blockers()))
+
+    def has_pending_article_edits(self) -> bool:
+        return self.articles_session.pending_count > 0
+
+    def _articles_edited(self) -> None:
+        self._update_article_actions()
+
+    def _show_selected_row_diagnostics(self, *_args) -> None:
+        rows = self.articles_table.selectionModel().selectedRows()
+        if len(rows) != 1:
+            return
+        key = rows[0].data(KEY_ROLE)
+        issues = self.articles_session.issues(key)
+        self.articles_diagnostics.setPlainText(" / ".join(map(str, key)) + "\n" + (
+            "\n".join(f"{i.severity.upper()} [{i.code}] {i.message}" for i in issues) or "No findings."))
+
+    def _update_article_actions(self) -> None:
+        session = self.articles_session
+        loaded = session.result is not None and bool(session.result.series) and session.result.series == self._service.series
+        pending = session.pending_count
+        counts = session.counts()
+        self.articles_counts.setText(
+            f"{counts['total']} article(s): {counts['mapped']} mapped, {counts['unmapped']} unmapped | "
+            f"{counts['valid']} valid, {counts['warnings']} warning, {counts['invalid']} invalid"
+            + (f", {counts['unavailable']} unavailable" if counts['unavailable'] else "") + " | "
+            f"{pending} pending change(s)")
+        self.articles_refresh_button.setEnabled(loaded)
+        self.articles_validate_button.setEnabled(loaded)
+        self.articles_review_button.setEnabled(pending > 0)
+        self.articles_discard_button.setEnabled(pending > 0)
+        self.articles_owner_button.setEnabled(loaded)
+        self.articles_apply_button.setEnabled(pending > 0)
+        self.articles_create_button.setEnabled(loaded)   # clickable to inspect blockers
+        self._sync_value_table()
 
     def _show_articles(self) -> None:
         result = self._context.metatype_article_service.last_result
-        table = self.articles_table
         if result is None or result.series != self._service.series:
-            table.setRowCount(0)
-            table.setColumnCount(0)
+            self.articles_session.refresh(ArticleReconciliation("", ReconciliationStatus.FAILED))
+            self.articles_model.reload()
             self.articles_load_status.setText(
                 "No articles loaded. Select a series and choose Load Series to read its article list.")
             self.articles_diagnostics.clear()
+            self._update_article_actions()
             return
-        headers = result.headers
-        table.clear()
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
-        table.setRowCount(len(result.rows))
-        for r, row in enumerate(result.rows):
-            tip = f"{row.source_file}, line {row.source_line}" + "".join(
-                f"\nmapping: {s.table} line {s.line} {s.values}" for s in row.mapping_sources)
-            for c, name in enumerate(result.columns):
-                item = QTableWidgetItem(row.values.get(name, ""))
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setToolTip(tip)
-                table.setItem(r, c, item)
-            item = QTableWidgetItem(row.status)
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setToolTip(tip)
-            table.setItem(r, len(result.columns), item)
-        table.resizeColumnsToContents()
+        if self.articles_session.result is not result:
+            self.articles_session.refresh(result)
+        self.articles_model.reload()
+        self.articles_table.resizeColumnsToContents()
         verdict = {
             "complete": "Load complete",
             "partial": "PARTIAL load - this is not a complete reconciliation",
@@ -355,11 +765,14 @@ class MetatypeCreationPage(BasePage):
         text = f"{verdict}: {len(result.rows)} article(s), {unmapped} needing assignment."
         if result.unavailable_fields:
             text += " Fields not declared by this schema: " + ", ".join(result.unavailable_fields) + "."
+            if {"metatypeid", "childparentid"} & set(result.unavailable_fields):
+                text += " Undeclared mapping columns cannot be edited."
         self.articles_load_status.setText(text)
         lines = [f"{d.severity.upper()} [{d.code}] {d.message}"
                  + (f" ({d.file}" + (f":{d.line}" if d.line else "") + ")" if d.file else "")
                  for d in result.diagnostics]
         self.articles_diagnostics.setPlainText("\n".join(lines) if lines else "No source problems found.")
+        self._update_article_actions()
 
     # -- stage readiness --------------------------------------------------------------------------------------
     def is_ready_for_step(self, step) -> bool:
@@ -504,6 +917,18 @@ class MetatypeCreationPage(BasePage):
         switching = bool(self._service.series and self._service.series != series
                          and self._service.inspection is not None)
         reloading = bool(self._service.series == series and self._service.inspection is not None)
+        if (switching or reloading) and self.articles_session.pending_count:
+            answer = QMessageBox.question(
+                self, "Unsaved article edits",
+                f"{self.articles_session.pending_count} pending article edit(s) will be discarded. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                index = self.series_combo.findData(self._service.series)
+                if index >= 0:
+                    self.series_combo.setCurrentIndex(index)
+                return self._service.stage_status()
         if switching:
             answer = QMessageBox.question(
                 self, "Switch Metatype series",

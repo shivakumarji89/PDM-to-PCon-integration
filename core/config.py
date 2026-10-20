@@ -54,6 +54,15 @@ class AppConfig:
     # Metatype module. Override per machine; scans also accept an explicit root.
     metatype_repository_root: str = r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\_repository\hmx"
 
+    # Metatype staged writing is OFF unless BOTH are set: a staging working copy distinct from the repository
+    # above, and the name of whoever authorised writing to it. ebmkdb.exe is authorised separately.
+    metatype_staging_root: str = ""
+    metatype_staging_authorised_by: str = ""
+    metatype_build_authorised: bool = False
+    # Owner decisions that keep property creation blocked until set explicitly (see the Metatype decision document):
+    metatype_mode_policy_confirmed: bool = False      # D4: confirm mode 3 (+128 sort order, +8192 validity)
+    metatype_text_fallback_encoding: str = ""         # D5: "cp1252" or "utf-8" for non-ASCII text in an empty/ASCII go_texts
+
     def pdm_connection_string(self) -> str:
         """Assemble the pyodbc connection string for the PDM database."""
         parts = [

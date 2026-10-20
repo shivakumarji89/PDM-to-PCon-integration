@@ -33,6 +33,13 @@ ARTICLE_TABLE = "go_articles"
 _SESSION_KEY = "metatype.article_reconciliation"
 _ASSIGNMENT_ROLES = ("metatypeid", "childparentid")
 _ALL_MAPPING_ROLES = ("metatypeid", "childparentid", "configid")
+#: The manual's go_articles layout (MT 1.18.0 section go_articles), in declared order. When a series declares
+#: exactly this layout, its columns carry the three Metatype roles under their schema names. Verified
+#: 2026-10-20 against the real repository: the header comment of 39/39 populated go_articles.csv files labels
+#: the positions [metatypeid] [manufacturer] [program] [article] [configid|propertyid] [childparentid];
+#: column 1 is a go_types.id in 822/822 rows. See docs/02_Domain/Engineering/Metatype_Write_Contract_Decisions.md.
+ARTICLE_LAYOUT = ("id", "manufacturer", "program", "article_nr", "prm_key", "chprm_key")
+ARTICLE_COLUMN_ALIASES = {"metatypeid": "id", "configid": "prm_key", "childparentid": "chprm_key"}
 _RESERVED_ID = "_native_"   # reserved go_articles row (also skipped by MetatypeCreationService)
 _NO_ROWS = (TableLoadState.MISSING, TableLoadState.DECODE_ERROR, TableLoadState.UNREADABLE)
 _CLEAN = (TableLoadState.VALID, TableLoadState.EMPTY, TableLoadState.NO_DATA)
@@ -43,12 +50,33 @@ def _by_role(columns: list[str]) -> dict[str, str]:
     return {name.casefold(): name for name in columns}
 
 
+def _article_roles(columns: list[str]) -> dict[str, str]:
+    """Role -> declared column. Literal ``metatypeid``/``configid``/``childparentid`` names win; the manual's
+    six-column layout (``ARTICLE_LAYOUT``) is aliased positionally. Any other layout gets no alias."""
+    roles = _by_role(columns)
+    if tuple(name.casefold() for name in columns) == ARTICLE_LAYOUT:
+        for role, name in ARTICLE_COLUMN_ALIASES.items():
+            roles.setdefault(role, columns[ARTICLE_LAYOUT.index(name)])
+    return roles
+
+
 def _identity_columns(columns: list[str]) -> tuple[str, str, str] | None:
     lookup = _by_role(columns)
     article = lookup.get("article") or lookup.get("article_nr")
     if "manufacturer" in lookup and "program" in lookup and article:
         return lookup["manufacturer"], lookup["program"], article
     return None
+
+
+def _column_values(table: LoadedTable | None, column: str) -> frozenset[str] | None:
+    """Trimmed values of ``column`` when the table was read and declares it; ``None`` when unknown."""
+    if table is None or table.state not in _CLEAN:
+        return None
+    lookup = _by_role(table.columns)
+    if column not in lookup:
+        return None
+    index = table.columns.index(lookup[column])
+    return frozenset(row.values[index].strip(" 	") for row in table.rows) - {""}
 
 
 class MetatypeArticleService(BaseService):
@@ -65,6 +93,13 @@ class MetatypeArticleService(BaseService):
         result = self.build(series, loaded)
         self.context.workflow_session(_SESSION_KEY)["result"] = result
         return result
+
+    @staticmethod
+    def _references(loaded: MetatypeFamilyTables) -> dict[str, frozenset[str]]:
+        found = {"metatype_ids": _column_values(loaded.table("go_types"), "id"),
+                 "config_keys": _column_values(loaded.table("go_properties"), "key"),
+                 "child_keys": _column_values(loaded.table("go_childprops"), "key")}
+        return {name: values for name, values in found.items() if values is not None}
 
     # -- reconciliation ---------------------------------------------------------------------------------
     @staticmethod
@@ -115,7 +150,8 @@ class MetatypeArticleService(BaseService):
                 if name.casefold() in _ASSIGNMENT_ROLES and name.casefold() not in _by_role(columns):
                     columns.append(name)
         rec.columns = columns
-        roles = _by_role(columns)
+        roles = {**_by_role(columns), **_article_roles(articles.columns)}
+        rec.roles = dict(roles)
         rec.unavailable_fields = [role for role in _ALL_MAPPING_ROLES if role not in roles]
 
         # -- diagnostics of the sources actually used ---------------------------------------------------
@@ -144,7 +180,7 @@ class MetatypeArticleService(BaseService):
 
         # -- article rows ---------------------------------------------------------------------------------
         article_roles = _by_role(articles.columns)
-        embedded = [article_roles[r] for r in _ASSIGNMENT_ROLES if r in article_roles]
+        embedded = [r for r in (_article_roles(articles.columns).get(role) for role in _ASSIGNMENT_ROLES) if r]
         id_column = article_roles.get("id")
         rows: list[ArticleRow] = []
         for source in articles.rows:
@@ -246,6 +282,7 @@ class MetatypeArticleService(BaseService):
             else:
                 row.status = MAPPED if row.values[roles["metatypeid"]].strip(" \t") else NEEDS_ASSIGNMENT
         rec.rows = rows
+        rec.references = MetatypeArticleService._references(loaded)
 
         incomplete = (schema_problem or "metatypeid" not in roles or bool(rec.errors())
                       or any(t.state not in _CLEAN for t in loaded.tables if t.table in used))
