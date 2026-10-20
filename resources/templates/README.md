@@ -1,6 +1,6 @@
 # Bundled MDB template setup
 
-Keep the original template package and its entire folder tree under this directory. Do not flatten, rename, or remove sibling files/folders; the current direct MDB exporter reads only the MDB file (`ocd.mdb` or `ocd.mdb`).
+Keep the original template package and its entire folder tree under this directory. Do not flatten, rename, or remove sibling files/folders; the current direct MDB exporter reads only the MDB file (`ocd.mdb` or `pcr_data_com_ocd.mdb`).
 
 Supported template families:
 
