@@ -559,7 +559,13 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return None
         from services.maintenance_alignment_service import MaintenanceAlignmentService
 
-        return MaintenanceAlignmentService.derived_base_lengths(snapshot, mdb)
+        cache_key = self._alignment_cache_key(snapshot, mdb)
+        if cache_key == self._maintenance_mapping_cache_key:
+            return self._maintenance_mapping_cache
+        mapping = MaintenanceAlignmentService.derived_base_lengths(snapshot, mdb)
+        self._maintenance_mapping_cache_key = cache_key
+        self._maintenance_mapping_cache = mapping
+        return mapping
 
     def _mapping_signature(self):
         if self._mdb_mapping is None:
