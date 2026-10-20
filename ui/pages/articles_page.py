@@ -491,6 +491,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
+        # This bulk boundary action belongs to Maintenance; Development's
+        # Class Creation workflow and toolbar remain unchanged.
+        if hasattr(self, "_dot_base_btn"):
+            self._dot_base_btn.setVisible(module == WorkbenchModule.MAINTENANCE)
         if module != self._last_module:
             # Article workflow defaults to the grouped Base Article view
             # in every module. The user can switch to line items explicitly.
