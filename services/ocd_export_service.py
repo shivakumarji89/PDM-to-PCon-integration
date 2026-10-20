@@ -36,8 +36,9 @@ _DATE_MAX = "99991231"
 _MATERIAL_MANUFACTURER = "hmx"
 _MATERIAL_PACKAGE = "basics"
 
-#: Category templates (the "copy, wipe, hand-enter" starting points).
-_TEMPLATE_ROOT = Path(r"C:\HermanMillerOFMLSVN\Staging\HermanMiller_old\WS\1_WS_Templates")
+#: Bundled category templates. Keep the original MDB files inside the
+#: application repository so export never depends on a developer's SVN checkout.
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "resources" / "templates" / "mdb"
 _TEMPLATES = {
     "seating": _TEMPLATE_ROOT / "Seating_Template" / "pcr_data_com_ocd.mdb",
     "tables": _TEMPLATE_ROOT / "Tables_Template" / "pcr_data_com_ocd.mdb",
@@ -133,7 +134,10 @@ class OcdExportService(BaseService):
         kind = (template_kind or snapshot.generation_template or self._infer_template(snapshot.product)).strip().lower()
         template = _TEMPLATES.get(kind)
         if template is None or not template.is_file():
-            result.error = f"Template not found for '{kind}': {template}"
+            result.error = (
+                f"Bundled '{kind}' MDB template is missing: {template}. "
+                "Restore the original template file under resources/templates/mdb."
+            )
             return result
         result.template = kind
 
