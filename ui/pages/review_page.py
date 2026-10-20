@@ -515,16 +515,43 @@ class ReviewPage(BasePage):
         dialog = QDialog(self)
         dialog.setWindowTitle("Edit Generation Information")
         form = QFormLayout(dialog)
+        manufacturer_choice = QComboBox(dialog)
+        manufacturer_choice.addItem("HM", "hm")
+        manufacturer_choice.addItem("KNOLL", "knoll")
+
         template = QComboBox(dialog)
-        template.addItems(("seating", "tables"))
-        current_template = snapshot.generation_template or (
+
+        def populate_template_options(manufacturer: str, preferred: str = "") -> None:
+            template.blockSignals(True)
+            template.clear()
+            if manufacturer == "hm":
+                template.addItem("Seating", "hm_seating")
+                template.addItem("Tables", "hm_tables")
+            else:
+                template.addItem("KNOLL Template", "knoll")
+            index = template.findData(preferred)
+            template.setCurrentIndex(index if index >= 0 else 0)
+            template.blockSignals(False)
+
+        current_template = (snapshot.generation_template or (
             self._mdb_preview_result.template if self._mdb_preview_result else ""
-        )
-        if not current_template:
-            current_template = self._context.ocd_export_service._infer_template(
-                snapshot.product
+        )).strip().lower()
+        if current_template in ("knoll", "_template_knoll", "template_knoll"):
+            current_manufacturer = "knoll"
+            preferred_template = "knoll"
+        elif current_template in ("hm_tables", "tables"):
+            current_manufacturer = "hm"
+            preferred_template = "hm_tables"
+        else:
+            current_manufacturer = "hm"
+            preferred_template = "hm_seating" if current_template in ("seating", "hm_seating") else ""
+        manufacturer_choice.setCurrentIndex(manufacturer_choice.findData(current_manufacturer))
+        populate_template_options(current_manufacturer, preferred_template)
+        manufacturer_choice.currentIndexChanged.connect(
+            lambda _index: populate_template_options(
+                str(manufacturer_choice.currentData() or "hm")
             )
-        template.setCurrentText(current_template)
+        )
 
         derived_program = self._safe_xocd_value("program_key", snapshot.product) or ""
         derived_series = self._safe_xocd_value("series_id", snapshot.product) or ""
@@ -538,6 +565,7 @@ class ReviewPage(BasePage):
             "a Review generation override."
         )
 
+        form.addRow("Manufacturer family:", manufacturer_choice)
         form.addRow("Template:", template)
         form.addRow("Program:", program)
         form.addRow("Series:", series)
@@ -562,7 +590,7 @@ class ReviewPage(BasePage):
             series_value = series.text().strip()
             if not program_value or not series_value:
                 return
-            snapshot.generation_template = template.currentText().strip().lower()
+            snapshot.generation_template = str(template.currentData() or "hm_seating").strip().lower()
             snapshot.generation_program = program_value
             snapshot.generation_series = series_value
             self.refresh(include_preview=True)
