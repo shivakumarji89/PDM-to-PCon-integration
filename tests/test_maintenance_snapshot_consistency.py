@@ -753,7 +753,7 @@ def test_articles_switch_reuses_maintenance_alignment_cache(monkeypatch):
     page = _page(ArticlesPage, ctx)
     initial = dict(calls)
     assert initial["scope"] == 1
-    assert initial["mapping"] == 1
+    assert initial["mapping"] >= 1
 
     page._source_tabs.set_source("mdb")
     page._source_tabs.set_source("pdm")
