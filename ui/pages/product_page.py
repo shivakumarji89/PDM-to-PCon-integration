@@ -577,6 +577,45 @@ class ProductPage(BasePage):
 
         layout.addWidget(self._repository_workspace)
 
+        # Maintenance compares the two independently loaded sources visually.
+        # This is informational only: it does not validate either snapshot or
+        # block the workflow when tables are empty or absent.
+        source_section = QGroupBox("Loaded Source Tables", page)
+        self._maintenance_source_section = source_section
+        source_section.setVisible(False)
+        source_layout = QVBoxLayout(source_section)
+        source_layout.setContentsMargins(8, 6, 8, 8)
+        self._maintenance_source_table = QTableWidget(source_section)
+        self._maintenance_source_table.setObjectName("maintenanceSourceTableSummary")
+        self._maintenance_source_table.setColumnCount(3)
+        self._maintenance_source_table.setHorizontalHeaderLabels(
+            ["Table / Data", "PDM Snapshot", "MDB Snapshot"]
+        )
+        self._maintenance_source_table.setRowCount(len(self._STATUS_ROWS))
+        self._maintenance_source_table.verticalHeader().setVisible(False)
+        self._maintenance_source_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._maintenance_source_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection
+        )
+        self._maintenance_source_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self._maintenance_source_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self._maintenance_source_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        for row, (label, _attr) in enumerate(self._STATUS_ROWS):
+            self._maintenance_source_table.setItem(row, 0, QTableWidgetItem(label))
+            self._maintenance_source_table.setItem(row, 1, QTableWidgetItem("Not loaded"))
+            self._maintenance_source_table.setItem(row, 2, QTableWidgetItem("Not loaded"))
+        source_layout.addWidget(self._maintenance_source_table)
+        layout.addWidget(source_section)
+        self._refresh_maintenance_source_table()
+
         link_section = QGroupBox("Product Link", page)
         link_layout = QHBoxLayout(link_section)
         self._establish_repository_btn = QPushButton("Establish Link", link_section)
@@ -591,6 +630,7 @@ class ProductPage(BasePage):
 
     def _on_shared_repository_loaded(self, snapshot) -> None:
         self._update_repository_actions()
+        self._refresh_maintenance_source_table()
         if self._context_module == WorkbenchModule.MAINTENANCE:
             message = (
                 "MDB repository loaded. Ready to establish PDM ↔ MDB link."
@@ -603,6 +643,7 @@ class ProductPage(BasePage):
     def _on_shared_repository_cleared(self) -> None:
         self._context.register_maintenance_snapshot(None)
         self._update_repository_actions()
+        self._refresh_maintenance_source_table()
         self.snapshot_changed.emit()
 
     def _on_establish_repository(self) -> None:
@@ -674,6 +715,10 @@ class ProductPage(BasePage):
         )
         self._context.activate_snapshot_source(snapshot_source_for_module(module))
         self._context_stack.setCurrentIndex(1 if repository_context else 0)
+        if hasattr(self, "_maintenance_source_section"):
+            self._maintenance_source_section.setVisible(
+                module == WorkbenchModule.MAINTENANCE
+            )
         if repository_context:
             self._repository_workspace.refresh()
         if (
@@ -687,6 +732,7 @@ class ProductPage(BasePage):
                 self._context.mdb_import_snapshot,
             )
         self._update_repository_actions()
+        self._refresh_maintenance_source_table()
 
     # -- search ------------------------------------------------------------
     def _on_search_text_changed(self, text: str) -> None:
@@ -1618,6 +1664,34 @@ class ProductPage(BasePage):
 
         ready, _reason = self._compute_readiness(snapshot)
         self._readiness.setText("READY" if ready else "INCOMPLETE")
+        self._refresh_maintenance_source_table()
+
+    def _refresh_maintenance_source_table(self) -> None:
+        """Display PDM and MDB table counts independently for Maintenance."""
+        table = getattr(self, "_maintenance_source_table", None)
+        if table is None:
+            return
+        snapshots = (self._context.pdm_snapshot, self._context.mdb_import_snapshot)
+        for row, (label, attr) in enumerate(self._STATUS_ROWS):
+            for column, snapshot in enumerate(snapshots, start=1):
+                if snapshot is None:
+                    value = "Not loaded"
+                elif label == "Product":
+                    value = "Loaded" if snapshot.product is not None else "Empty"
+                elif label == "Metadata":
+                    value = (
+                        "Loaded"
+                        if snapshot.metadata and snapshot.metadata.source
+                        else "Empty"
+                    )
+                else:
+                    count = len(getattr(snapshot, attr, []) or [])
+                    value = f"Loaded ({count})" if count else "Empty (0)"
+                item = table.item(row, column)
+                if item is None:
+                    item = QTableWidgetItem()
+                    table.setItem(row, column, item)
+                item.setText(value)
 
     def _compute_readiness(self, snapshot) -> tuple[bool, str]:
         if snapshot is None or snapshot.product is None:
