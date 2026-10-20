@@ -87,7 +87,15 @@ def _template_for_kind(kind: str) -> Path | None:
         wanted = {name.casefold() for name in folder_names}
         for mdb_name in _MDB_NAMES:
             for candidate in _TEMPLATE_ROOT.rglob(mdb_name):
-                if candidate.parent.name.casefold() in wanted:
+                # Accept the MDB at any depth inside the matching template
+                # folder. Some vendor bundles contain nested setup directories.
+                try:
+                    relative_parts = {
+                        part.casefold() for part in candidate.relative_to(_TEMPLATE_ROOT).parts[:-1]
+                    }
+                except ValueError:
+                    continue
+                if wanted.intersection(relative_parts):
                     return candidate
     return None
 #: Keywords in a product's category/range/name that select the Tables template.
