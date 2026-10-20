@@ -254,8 +254,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         top_layout = QHBoxLayout(top_row)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.addWidget(self._build_family_panel(), 1)
-        top_layout.addWidget(self._build_sets_panel(), 1)
-        top_layout.addWidget(self._build_status_group(), 1)
+        self._sets_box = self._build_sets_panel()
+        top_layout.addWidget(self._sets_box, 1)
+        self._status_box = self._build_status_group()
+        top_layout.addWidget(self._status_box, 1)
         top_layout.addWidget(self._build_details_panel(), 1)
 
         layout.addWidget(top_row, 0)
@@ -498,7 +500,18 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # Class Creation workflow and toolbar remain unchanged.
         if hasattr(self, "_dot_base_btn"):
             self._dot_base_btn.setVisible(module == WorkbenchModule.MAINTENANCE)
+        # Article Sets and Workspace Status are Development-only panels.
+        # Keep their data/reduction logic intact, but remove them from the
+        # Maintenance layout so the article workspace stays focused.
+        maintenance = module == WorkbenchModule.MAINTENANCE
+        if hasattr(self, "_sets_box"):
+            self._sets_box.setVisible(not maintenance)
+        if hasattr(self, "_status_box"):
+            self._status_box.setVisible(not maintenance)
         if module != self._last_module:
+            # Do not retain a specific set selection when entering Maintenance.
+            if maintenance:
+                self._active_set_ids = None
             # Article workflow defaults to the grouped Base Article view
             # in every module. The user can switch to line items explicitly.
             self._group_by_base = True
