@@ -581,6 +581,8 @@ class ProductPage(BasePage):
         # This is informational only: it does not validate either snapshot or
         # block the workflow when tables are empty or absent.
         source_section = QGroupBox("Loaded Source Tables", page)
+        self._maintenance_source_section = source_section
+        source_section.setVisible(False)
         source_layout = QVBoxLayout(source_section)
         source_layout.setContentsMargins(8, 6, 8, 8)
         self._maintenance_source_table = QTableWidget(source_section)
@@ -713,6 +715,10 @@ class ProductPage(BasePage):
         )
         self._context.activate_snapshot_source(snapshot_source_for_module(module))
         self._context_stack.setCurrentIndex(1 if repository_context else 0)
+        if hasattr(self, "_maintenance_source_section"):
+            self._maintenance_source_section.setVisible(
+                module == WorkbenchModule.MAINTENANCE
+            )
         if repository_context:
             self._repository_workspace.refresh()
         if (
