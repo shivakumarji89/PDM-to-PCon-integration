@@ -116,7 +116,7 @@ class ArticleRelationBindingTests(unittest.TestCase):
                            article_classes=[("NOALE18", "Chair")]),
         ])
         bindings = {}
-        obj_rows, rel_rows, _ = xocd._relations(snapshot, {"program": "PRG"}, bindings)
+        obj_rows, rel_rows, _, _ = xocd._relations(snapshot, {"program": "PRG"}, bindings)
 
         # One RelObjID per container; container rows keep their own relation name.
         self.assertEqual(
@@ -142,7 +142,7 @@ class ArticleRelationBindingTests(unittest.TestCase):
         a = _pricing()
         b = [replace(r, name="P_PRICING_CHAIR", rel_obj_id="11936", article_codes=["NOALE1"])
              for r in a]
-        _, rel_rows, _ = XocdExportService(_Context())._relations(
+        _, rel_rows, _, _ = XocdExportService(_Context())._relations(
             Snapshot(relation_objects=a + b), {"program": "PRG"}
         )
         self.assertEqual(Counter(row[1] for row in rel_rows)["BA_CHAIR_FABRIC"], 1)
