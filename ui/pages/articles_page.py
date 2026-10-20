@@ -1208,15 +1208,21 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         service = self._context.engineering_member_service
         # Grouped base row edits apply to every line item under the base.
         members = list(record[2]) if record[0] == "__base__" else [record[1]]
+        changed = False
         for member in members:
             if column == _COL_SHORT:
-                service.set_short_description(member, text)
+                changed = service.set_short_description(member, text) or changed
             elif column == _COL_LONG:
-                service.set_long_description(member, text)
+                changed = service.set_long_description(member, text) or changed
             elif column == _COL_RELATION:
-                service.set_relation_object(member, text)
+                changed = service.set_relation_object(member, text) or changed
             else:
-                service.set_code_scheme(member, text)
+                changed = service.set_code_scheme(member, text) or changed
+
+        # Maintenance edits are persisted through the PDM snapshot's normal
+        # dirty-state/save path. Keep Development's existing lifecycle unchanged.
+        if changed and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE:
+            self._context.snapshot_manager.mark_modified()
 
     def _on_base_length_cell_changed(self, item: QTableWidgetItem) -> None:
         """Apply an edited base length to the current article or base group."""
