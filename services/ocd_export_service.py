@@ -36,13 +36,57 @@ _DATE_MAX = "99991231"
 _MATERIAL_MANUFACTURER = "hmx"
 _MATERIAL_PACKAGE = "basics"
 
-#: Bundled category templates. Keep the original MDB files inside the
-#: application repository so export never depends on a developer's SVN checkout.
-_TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "resources" / "templates" / "mdb"
-_TEMPLATES = {
-    "seating": _TEMPLATE_ROOT / "Seating_Template" / "pcr_data_com_ocd.mdb",
-    "tables": _TEMPLATE_ROOT / "Tables_Template" / "pcr_data_com_ocd.mdb",
+#: Templates are bundled as complete directory trees under resources/templates.
+#: The application reads only pcr_data_com_ocd.mdb for export; every sibling file
+#: and subfolder remains packaged unchanged for future setup-copy workflows.
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "resources" / "templates"
+_MDB_NAME = "pcr_data_com_ocd.mdb"
+_TEMPLATE_DIRS = {
+    "hm_seating": ("Seating_Template",),
+    "hm_tables": ("Tables_Template",),
+    "knoll": ("_TEMPLATE_KNOLL", "TEMPLATE_KNOLL", "KNOLL_Template", "Knoll_Template"),
 }
+_TEMPLATE_ALIASES = {
+    "seating": "hm_seating",
+    "tables": "hm_tables",
+    "hm": "hm_seating",
+    "hmx": "hm_seating",
+    "hm_seating": "hm_seating",
+    "hm_tables": "hm_tables",
+    "knoll": "knoll",
+    "_template_knoll": "knoll",
+    "template_knoll": "knoll",
+}
+
+def _template_for_kind(kind: str) -> Path | None:
+    """Resolve a bundled MDB while allowing the complete source folder tree to be preserved.
+
+    Supported layouts include resources/templates/<folder>, resources/templates/
+    1_WS_Templates/<folder>, and the earlier resources/templates/mdb layout.
+    For KNOLL, the folder is identified by its original _TEMPLATE_KNOLL name
+    (with common casing/prefix variants accepted).
+    """
+    key = _TEMPLATE_ALIASES.get(str(kind or "").strip().lower(), str(kind or "").strip().lower())
+    folder_names = _TEMPLATE_DIRS.get(key)
+    if not folder_names:
+        return None
+    for folder_name in folder_names:
+        candidates = (
+            _TEMPLATE_ROOT / folder_name / _MDB_NAME,
+            _TEMPLATE_ROOT / "1_WS_Templates" / folder_name / _MDB_NAME,
+            _TEMPLATE_ROOT / "mdb" / folder_name / _MDB_NAME,
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+    # Fall back to recursive discovery so an extra wrapper directory can be
+    # preserved exactly as received instead of requiring a flattened layout.
+    if _TEMPLATE_ROOT.is_dir():
+        wanted = {name.casefold() for name in folder_names}
+        for candidate in _TEMPLATE_ROOT.rglob(_MDB_NAME):
+            if candidate.parent.name.casefold() in wanted:
+                return candidate
+    return None
 #: Keywords in a product's category/range/name that select the Tables template.
 _TABLES_KEYWORDS = ("desk", "table", "bench", "worksurface", "credenza", "storage")
 
@@ -132,7 +176,8 @@ class OcdExportService(BaseService):
             return result
 
         kind = (template_kind or snapshot.generation_template or self._infer_template(snapshot.product)).strip().lower()
-        template = _TEMPLATES.get(kind)
+        kind = _TEMPLATE_ALIASES.get(kind, kind)
+        template = _template_for_kind(kind)
         if template is None or not template.is_file():
             result.error = (
                 f"Bundled '{kind}' MDB template is missing: {template}. "
@@ -244,9 +289,14 @@ class OcdExportService(BaseService):
             return result
 
         kind = (template_kind or snapshot.generation_template or self._infer_template(snapshot.product)).strip().lower()
-        template = _TEMPLATES.get(kind)
+        kind = _TEMPLATE_ALIASES.get(kind, kind)
+        template = _template_for_kind(kind)
         if template is None or not template.is_file():
-            result.error = f"Template not found for '{kind}': {template}"
+            result.error = (
+                f"Bundled '{kind}' MDB template is missing under {_TEMPLATE_ROOT}. "
+                "Keep the original template folder tree under resources/templates; "
+                f"the required file is {_MDB_NAME}."
+            )
             return result
 
         # Match the actual Export MDB pre-processing without mutating the live
