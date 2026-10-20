@@ -18,7 +18,7 @@ The OCD commercial database (`pcr_data_com_ocd.mdb`) holds all `tCOMd_*` tables.
 | `tCOMd_PropValue` | Property values | `com_PropValueID` | Engineering source |
 | `tCOMd_Text` | Localized text (labels/descriptions); shared lookup referenced by most other tables | `com_TextID` | Packaging (display) |
 | `tCOMd_CodeScheme` | Variant-code/final-article-number grammar per article | `com_CodeSchemeID` | Engineering source |
-| `tCOMd_RelObj` / `tCOMd_Relation` / `tCOMd_RelObjRel` | Relation objects/bodies and their join; only the `PropValue→RelObj` binding is ever populated by the current generator | `com_RelObjID` / `com_RelationID` / `com_RelObjRelID` | Engineering source |
+| `tCOMd_RelObj` / `tCOMd_Relation` / `tCOMd_RelObjRel` | Relation objects/bodies and their join; property-level Actions bind through `Property→RelObj`, and value-level Preconditions bind through `PropValue→RelObj` | `com_RelObjID` / `com_RelationID` / `com_RelObjRelID` | Engineering source |
 | `tCOMd_Package2Mat` / `tCOMd_Article2Mat` | Package/article material-selection links | `com_Package2MatID` / `com_Article2MatID` | Packaging |
 | `tCOMd_Table` / `tCOMd_TableColumn` / `tCOMd_TableLine` | Value-combination tables; name-joined to package, not surrogate-key-joined to Property/PropValue | `com_TableID` / `com_TableColumnID` / `com_TableLineID` | Engineering source |
 | `tCOMd_Price` / `tCOMd_GlobalPrice` | Article / package-level prices | `com_PriceID` / `com_GlobalPriceID` | Item-level (Price stage) |
