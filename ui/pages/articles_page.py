@@ -986,8 +986,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             filtered.append((family, member, article))
 
         self._filtered = filtered
-        self._populate(filtered)
-        self._update_status()
+        # QTableWidget item insertion can otherwise repaint once per cell.
+        # A source switch often replaces hundreds/thousands of cells, so batch
+        # the rebuild and repaint the viewport once when the new source is ready.
+        self._table.setUpdatesEnabled(False)
+        try:
+            self._populate(filtered)
+            self._update_status()
+        finally:
+            self._table.setUpdatesEnabled(True)
+            self._table.viewport().update()
 
     @staticmethod
     def _set_readonly(item: QTableWidgetItem) -> None:
