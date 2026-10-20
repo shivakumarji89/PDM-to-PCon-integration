@@ -167,6 +167,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._context.engineering_reduction_service.materialize_class_creation_article_sets(
                 snapshot
             )
+        # Returning from another workflow may mean the snapshot's article state
+        # changed while this page was hidden; only tab toggles reuse validation.
+        self._invalidate_validation(snapshot)
         self.refresh()
 
     # -- construction ------------------------------------------------------
@@ -941,6 +944,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         with BusyPopup("Applying exclusions", self):
             self._context.pdm_service.set_excluded_ranges(snapshot, chosen)
+        self._invalidate_validation(snapshot)
         # Force the reduced view to rebuild for the new active set.
         self._auto_reduced_signature = object()
         self.refresh()
