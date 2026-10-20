@@ -770,8 +770,9 @@ def test_base_to_dot_applies_to_all_articles_and_preserves_relations():
     page._search.setText("CHAIR.01")  # action must ignore the active filter
     page._on_base_to_dot_all()
 
+    code_by_id = {str(article.id): article.code for article in ctx.pdm_snapshot.articles}
     reduced = {
-        ctx.pdm_snapshot.article_by_id(member.article_id).code: member.reduced_article
+        code_by_id[str(member.article_id)]: member.reduced_article
         for family in ctx.pdm_snapshot.engineering.families
         for member in family.members
     }
