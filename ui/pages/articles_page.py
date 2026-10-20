@@ -583,8 +583,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         return [
             getattr(self, name, None)
             for name in (
-                "_apply_len_btn", "_copy_long_btn", "_components_btn",
-                "_clear_btn", "_base_len_spin", "_table",
+                "_apply_len_btn", "_dot_base_btn", "_copy_long_btn",
+                "_components_btn", "_clear_btn", "_base_len_spin", "_table",
             )
         ]
 
@@ -838,6 +838,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 self._base_len_by_member.pop(getattr(member, "id", ""), None)
                 if article is not None and str(article.id) in lengths:
                     article_service.set_selected(article, True)
+            self._invalidate_validation(snapshot)
             return
         # In Development the Class Creation materializer already wrote
         # each member's reduced_article. Do not replace that transformed base
