@@ -40,7 +40,7 @@ _MATERIAL_PACKAGE = "basics"
 #: The application reads only pcr_data_com_ocd.mdb for export; every sibling file
 #: and subfolder remains packaged unchanged for future setup-copy workflows.
 _TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "resources" / "templates"
-_MDB_NAME = "pcr_data_com_ocd.mdb"
+_MDB_NAMES = ("ocd.mdb", "pcr_data_com_ocd.mdb")
 _TEMPLATE_DIRS = {
     "hm_seating": ("Seating_Template",),
     "hm_tables": ("Tables_Template",),
@@ -72,9 +72,11 @@ def _template_for_kind(kind: str) -> Path | None:
         return None
     for folder_name in folder_names:
         candidates = (
-            _TEMPLATE_ROOT / folder_name / _MDB_NAME,
-            _TEMPLATE_ROOT / "1_WS_Templates" / folder_name / _MDB_NAME,
-            _TEMPLATE_ROOT / "mdb" / folder_name / _MDB_NAME,
+            *(
+                base / folder_name / mdb_name
+                for base in (_TEMPLATE_ROOT, _TEMPLATE_ROOT / "1_WS_Templates", _TEMPLATE_ROOT / "mdb")
+                for mdb_name in _MDB_NAMES
+            ),
         )
         for candidate in candidates:
             if candidate.is_file():
@@ -83,9 +85,10 @@ def _template_for_kind(kind: str) -> Path | None:
     # preserved exactly as received instead of requiring a flattened layout.
     if _TEMPLATE_ROOT.is_dir():
         wanted = {name.casefold() for name in folder_names}
-        for candidate in _TEMPLATE_ROOT.rglob(_MDB_NAME):
-            if candidate.parent.name.casefold() in wanted:
-                return candidate
+        for mdb_name in _MDB_NAMES:
+            for candidate in _TEMPLATE_ROOT.rglob(mdb_name):
+                if candidate.parent.name.casefold() in wanted:
+                    return candidate
     return None
 #: Keywords in a product's category/range/name that select the Tables template.
 _TABLES_KEYWORDS = ("desk", "table", "bench", "worksurface", "credenza", "storage")
@@ -183,7 +186,7 @@ class OcdExportService(BaseService):
             result.error = (
                 f"Bundled '{kind}' MDB template is missing under {_TEMPLATE_ROOT}. "
                 "Restore the original template folder tree under resources/templates; "
-                f"the required file is {_MDB_NAME}."
+                f"the required MDB is one of {_MDB_NAMES}."
             )
             return result
         result.template = kind
@@ -297,7 +300,7 @@ class OcdExportService(BaseService):
             result.error = (
                 f"Bundled '{kind}' MDB template is missing under {_TEMPLATE_ROOT}. "
                 "Keep the original template folder tree under resources/templates; "
-                f"the required file is {_MDB_NAME}."
+                f"the required MDB is one of {_MDB_NAMES}."
             )
             return result
 
