@@ -243,6 +243,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._group_check.toggled.connect(self._on_group_toggled)
         layout.addWidget(self._group_check)
 
+        self._maintenance_export_component = "Articles"
+        self._export_mdb_btn = QPushButton("Export to MDB", box)
+        self._export_mdb_btn.setToolTip(
+            "Export article data to the selected MDB. Component field mapping is being connected."
+        )
+        self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
+        layout.addWidget(self._export_mdb_btn)
+        self._sync_export_mdb_button()
+
         return box
 
     def _build_body(self) -> QWidget:
