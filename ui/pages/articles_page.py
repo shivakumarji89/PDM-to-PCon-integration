@@ -246,7 +246,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._maintenance_export_component = "Articles"
         self._export_mdb_btn = QPushButton("Export to MDB", box)
         self._export_mdb_btn.setToolTip(
-            "Export article data to the selected MDB. Component field mapping is being connected."
+            "Preview and export Maintenance Base Articles to an existing MDB. "
+            "Existing IDs and unrelated records are preserved; missing text links "
+            "are completed by the Text workflow."
         )
         self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
         layout.addWidget(self._export_mdb_btn)
