@@ -250,7 +250,33 @@ class MaintenanceSourceMixin:
         return self._context.active_snapshot
 
     def _on_source_changed(self, _source: str) -> None:
+        self._sync_export_mdb_button()
         self.refresh()
+
+    def _sync_export_mdb_button(self) -> None:
+        button = getattr(self, "_export_mdb_btn", None)
+        if button is None:
+            return
+        maintenance = self.is_maintenance_module()
+        button.setVisible(maintenance)
+        button.setEnabled(
+            maintenance and not self.is_mdb_view()
+            and self._context.active_snapshot is not None
+        )
+
+    def _on_export_component_mdb(self) -> None:
+        """Temporary UI entry point; component-specific MDB mapping is next."""
+        if not self.is_maintenance_module() or self.is_mdb_view():
+            return
+        from PySide6.QtWidgets import QMessageBox
+
+        component = getattr(self, "_maintenance_export_component", "workflow data")
+        QMessageBox.information(
+            self,
+            "Export to MDB",
+            f"The {component} export button is in place. Its component-to-MDB "
+            "field mapping will be connected next; no database has been changed.",
+        )
 
     def _sync_source(self) -> None:
         """Align the page-local source with the active module."""
@@ -266,6 +292,7 @@ class MaintenanceSourceMixin:
                 tabs.blockSignals(False)
             self._context.source = None
         self._update_indicator()
+        self._sync_export_mdb_button()
 
     def _resync_on_show(self) -> bool:
         """Re-sync the source when the page is shown; True if the source changed."""
