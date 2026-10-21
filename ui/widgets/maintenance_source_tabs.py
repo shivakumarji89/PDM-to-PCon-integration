@@ -265,18 +265,73 @@ class MaintenanceSourceMixin:
         )
 
     def _on_export_component_mdb(self) -> None:
-        """Temporary UI entry point; component-specific MDB mapping is next."""
+        """Run a component-specific, non-destructive Maintenance MDB export."""
         if not self.is_maintenance_module() or self.is_mdb_view():
             return
-        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         component = getattr(self, "_maintenance_export_component", "workflow data")
-        QMessageBox.information(
+        if component != "Articles":
+            QMessageBox.information(
+                self,
+                "Export to MDB",
+                f"{component} export mapping is not connected yet. No database was changed.",
+            )
+            return
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            QMessageBox.warning(self, "Export Articles", "Load the PDM product first.")
+            return
+        mdb_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Export to MDB",
-            f"The {component} export button is in place. Its component-to-MDB "
-            "field mapping will be connected next; no database has been changed.",
+            "Select destination OCD MDB",
+            "",
+            "Microsoft Access database (*.mdb *.accdb)",
         )
+        if not mdb_path:
+            return
+        from services.article_mdb_export_service import ArticleMdbExportService
+
+        service = ArticleMdbExportService(self._context)
+        preview = service.export(snapshot, mdb_path, dry_run=True)
+        if not preview.get("ok"):
+            QMessageBox.warning(self, "Export Articles", preview.get("error", "Preview failed."))
+            return
+        summary = (
+            f"Destination: {mdb_path}\n\n"
+            f"Base articles to insert: {preview.get('inserted', 0)}\n"
+            f"Existing articles to update: {preview.get('updated', 0)}\n"
+            f"Unchanged: {preview.get('unchanged', 0)}\n"
+            f"Ambiguous rows skipped: {preview.get('skipped_ambiguous', 0)}\n\n"
+            "Existing article IDs and unrelated MDB records will be preserved. "
+            "Missing text records will not be created by this step; the Text export owns them."
+        )
+        if preview.get("warnings"):
+            summary += "\n\nWarnings:\n" + "\n".join(
+                f"• {message}" for message in preview["warnings"][:8]
+            )
+        if QMessageBox.question(
+            self, "Confirm Article Export", summary,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        result = service.export(snapshot, mdb_path)
+        if not result.get("ok"):
+            QMessageBox.critical(self, "Export Articles", result.get("error", "Export failed."))
+            return
+        details = (
+            f"Article export completed.\n\n"
+            f"Inserted: {result.get('inserted', 0)}\n"
+            f"Updated: {result.get('updated', 0)}\n"
+            f"Unchanged: {result.get('unchanged', 0)}\n"
+            f"Read-back verified: {result.get('verified', 0)}"
+        )
+        if result.get("warnings"):
+            details += "\n\nWarnings:\n" + "\n".join(
+                f"• {message}" for message in result["warnings"][:8]
+            )
+        QMessageBox.information(self, "Export Articles", details)
 
     def _sync_source(self) -> None:
         """Align the page-local source with the active module."""
