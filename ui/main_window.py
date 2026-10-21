@@ -624,6 +624,12 @@ class MainWindow(QMainWindow):
         mdb_action = QAction("Export MDB (Direct)...", self)
         mdb_action.triggered.connect(self._on_export_mdb)
         generate_menu.addAction(mdb_action)
+        excel_action = QAction("Export Snapshot to Excel...", self)
+        excel_action.setToolTip(
+            "Export all loaded snapshot data to a workbook with separate worksheets for review."
+        )
+        excel_action.triggered.connect(self._on_export_snapshot_excel)
+        generate_menu.addAction(excel_action)
 
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._make_action("About"))
@@ -1437,6 +1443,47 @@ class MainWindow(QMainWindow):
             f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
             + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
                if standardised else ""),
+        )
+
+    def _on_export_snapshot_excel(self) -> None:
+        """Export the loaded snapshot to a multi-sheet Excel review workbook."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from services.snapshot_excel_export_service import SnapshotExcelExportService
+
+        if self._active_module == WorkbenchModule.MAINTENANCE:
+            snapshot = self._context.pdm_snapshot
+        else:
+            snapshot = self._context.active_snapshot
+
+        if snapshot is None:
+            QMessageBox.information(
+                self, "Export Snapshot to Excel", "Load a product first."
+            )
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Snapshot to Excel",
+            "snapshot_review.xlsx",
+            "Excel Workbook (*.xlsx)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+
+        try:
+            saved = SnapshotExcelExportService().export(snapshot, path)
+        except Exception as error:  # noqa: BLE001 - report export failures to user
+            QMessageBox.warning(
+                self, "Export Snapshot to Excel",
+                f"Excel export failed:\\n{error}",
+            )
+            return
+
+        QMessageBox.information(
+            self, "Export Snapshot to Excel",
+            f"Exported all snapshot data to:\\n{saved}",
         )
 
     def _show_text_result(
