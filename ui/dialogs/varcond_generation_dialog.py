@@ -10,8 +10,9 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QPlainTextEdit,
-    QFileDialog, QVBoxLayout, QWidget, QSpinBox,
+    QListWidgetItem, QPushButton, QPlainTextEdit, QFileDialog,
+    QVBoxLayout, QWidget, QSpinBox, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView,
 )
 
 from services.varcond_service import VarCondService
@@ -60,18 +61,21 @@ class VarCondGenerationDialog(QDialog):
         self._prefix = QLineEdit(self)
         self._prefix.setPlaceholderText("Optional property-class prefix")
         self._exclusions = QLineEdit(self)
-        self._exclusions.setPlaceholderText("Property exclusions")
+        self._exclusions.setPlaceholderText("Selected exclusions (managed by button)")
+        self._exclusions.setReadOnly(True)
         self._substitutions = QLineEdit(self)
-        self._substitutions.setPlaceholderText("Old=New substitutions")
-        for label, widget in (
-            ("Prefix", self._prefix),
-            ("Exclusions", self._exclusions),
-            ("Substitutions", self._substitutions),
-        ):
-            column = QVBoxLayout()
-            column.addWidget(QLabel(label))
-            column.addWidget(widget)
-            options.addLayout(column, 1)
+        self._substitutions.setPlaceholderText("Substitutions (managed by button)")
+        self._substitutions.setReadOnly(True)
+        column = QVBoxLayout()
+        column.addWidget(QLabel("Prefix"))
+        column.addWidget(self._prefix)
+        options.addLayout(column, 1)
+        self._exclusion_button = QPushButton("Exclusion…", self)
+        self._exclusion_button.clicked.connect(self._edit_exclusions)
+        options.addWidget(self._exclusion_button)
+        self._substitution_button = QPushButton("Substitution…", self)
+        self._substitution_button.clicked.connect(self._edit_substitutions)
+        options.addWidget(self._substitution_button)
         right.addLayout(options)
         self._summary = QLabel("Select a relation to preview its generated body.", self)
         right.addWidget(self._summary)
@@ -99,6 +103,8 @@ class VarCondGenerationDialog(QDialog):
         root.addLayout(buttons)
 
         self._article_rows: list[tuple[str, str, str]] = []
+        self._selected_exclusions: set[str] = set()
+        self._property_substitutions: dict[str, str] = {}
         articles = self._snapshot.articles if self._snapshot else []
         code_by_id = {
             str(article.id): (article.code or "")
@@ -168,6 +174,7 @@ class VarCondGenerationDialog(QDialog):
             code for code, _label, _article_id in self._article_rows
             if code.startswith(relation_prefix)
         ]
+        self._current_parent_codes = parent_codes
         if not parent_codes:
             self._output.clear()
             self._summary.setText(f"{relation_name}: no matching parent articles.")
@@ -188,6 +195,119 @@ class VarCondGenerationDialog(QDialog):
             + (f" | {len(result.warnings)} warning(s)" if result.warnings else "")
         )
         self._summary.setToolTip("\n".join(result.warnings))
+
+
+    def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
+        """Single shared extractor for the selected relation's normalized properties."""
+        if not self._snapshot:
+            return []
+        service = VarCondService(self._context)
+        id_by_code: dict[str, str] = {}
+        for article in self._snapshot.articles:
+            if article.id is not None:
+                id_by_code.setdefault(article.code or "", str(article.id))
+        terms_by_article = self._snapshot.article_varcond_terms or {}
+        names: set[str] = set()
+        for code in parent_codes:
+            article_id = id_by_code.get(code)
+            if article_id is None:
+                continue
+            for term in terms_by_article.get(article_id, []):
+                hdo = int(term.get("has_dependent_options", 0) or 0)
+                if not str(term.get("order_code", "") or "") and hdo == 0:
+                    continue
+                name = service._pcon_property_name(str(term.get("name", "") or ""), code)
+                if name:
+                    names.add(name)
+        return sorted(names, key=str.casefold)
+
+    def _edit_exclusions(self) -> None:
+        properties = self._extract_relation_properties(getattr(self, "_current_parent_codes", []))
+        if not properties:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Exclusions", "No properties were found for this relation.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Properties to Exclude")
+        dialog.resize(480, 560)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Select the properties that should be excluded:"))
+        search = QLineEdit(dialog)
+        search.setPlaceholderText("Search properties")
+        layout.addWidget(search)
+        listing = QListWidget(dialog)
+        layout.addWidget(listing, 1)
+        rows: dict[str, QListWidgetItem] = {}
+        for name in properties:
+            row = QListWidgetItem(name)
+            row.setFlags(row.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            row.setCheckState(Qt.CheckState.Checked if name in self._selected_exclusions else Qt.CheckState.Unchecked)
+            listing.addItem(row)
+            rows[name] = row
+        search.textChanged.connect(lambda value: [
+            row.setHidden(bool(value.strip()) and value.casefold() not in row.text().casefold())
+            for row in rows.values()
+        ])
+        actions = QHBoxLayout()
+        select_all, clear_all = QPushButton("Select visible", dialog), QPushButton("Clear visible", dialog)
+        apply_btn, cancel_btn = QPushButton("Apply", dialog), QPushButton("Cancel", dialog)
+        actions.addWidget(select_all); actions.addWidget(clear_all); actions.addStretch(1)
+        actions.addWidget(apply_btn); actions.addWidget(cancel_btn); layout.addLayout(actions)
+        select_all.clicked.connect(lambda: [row.setCheckState(Qt.CheckState.Checked) for row in rows.values() if not row.isHidden()])
+        clear_all.clicked.connect(lambda: [row.setCheckState(Qt.CheckState.Unchecked) for row in rows.values() if not row.isHidden()])
+        apply_btn.clicked.connect(dialog.accept); cancel_btn.clicked.connect(dialog.reject)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._selected_exclusions = {name for name, row in rows.items() if row.checkState() == Qt.CheckState.Checked}
+            self._exclusions.setText(",".join(sorted(self._selected_exclusions, key=str.casefold)))
+            self._generate_selected()
+
+    def _edit_substitutions(self) -> None:
+        properties = self._extract_relation_properties(getattr(self, "_current_parent_codes", []))
+        if not properties:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Substitutions", "No properties were found for this relation.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Substitute Property Names")
+        dialog.resize(680, 560)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Enter a replacement beside a property. Leave it blank or unchanged to keep the original name."))
+        search = QLineEdit(dialog)
+        search.setPlaceholderText("Search properties")
+        layout.addWidget(search)
+        table = QTableWidget(len(properties), 2, dialog)
+        table.setHorizontalHeaderLabels(["Existing property", "Replacement property"])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed | QAbstractItemView.EditTrigger.AnyKeyPressed)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for i, name in enumerate(properties):
+            original = QTableWidgetItem(name)
+            original.setFlags(original.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            table.setItem(i, 0, original)
+            table.setItem(i, 1, QTableWidgetItem(self._property_substitutions.get(name, "")))
+        layout.addWidget(table, 1)
+        search.textChanged.connect(lambda value: [
+            table.setRowHidden(i, bool(value.strip()) and value.casefold() not in properties[i].casefold())
+            for i in range(len(properties))
+        ])
+        actions = QHBoxLayout()
+        apply_btn, cancel_btn = QPushButton("Apply", dialog), QPushButton("Cancel", dialog)
+        actions.addStretch(1); actions.addWidget(apply_btn); actions.addWidget(cancel_btn); layout.addLayout(actions)
+        apply_btn.clicked.connect(dialog.accept); cancel_btn.clicked.connect(dialog.reject)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            updated: dict[str, str] = {}
+            for i, name in enumerate(properties):
+                item = table.item(i, 1)
+                replacement = item.text().strip() if item else ""
+                if replacement and replacement != name:
+                    updated[name] = replacement
+            self._property_substitutions = updated
+            self._substitutions.setText(",".join(
+                f"{old}={new}" for old, new in sorted(updated.items(), key=lambda pair: pair[0].casefold())
+            ))
+            self._generate_selected()
 
     def _copy(self) -> None:
         from PySide6.QtWidgets import QApplication
