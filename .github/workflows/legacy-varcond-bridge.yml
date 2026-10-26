@@ -1,0 +1,35 @@
+name: Legacy VARCOND Bridge Build
+
+on:
+  pull_request:
+    paths:
+      - "tools/legacy_varcond_bridge/**"
+      - ".github/workflows/legacy-varcond-bridge.yml"
+  push:
+    branches:
+      - main
+      - "poc/legacy-price-relation-bridge"
+    paths:
+      - "tools/legacy_varcond_bridge/**"
+      - ".github/workflows/legacy-varcond-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-x86-net48:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Build legacy bridge
+        run: msbuild .\tools\legacy_varcond_bridge\LegacyVarCondBridge.csproj /m /p:Configuration=Release /p:PlatformTarget=x86
+      - name: Verify executable exists
+        shell: pwsh
+        run: |
+          $exe = ".\tools\legacy_varcond_bridge\bin\Release\net48\LegacyVarCondBridge.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Expected bridge executable was not produced: $exe"
+          }
