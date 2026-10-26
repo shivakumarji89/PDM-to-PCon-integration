@@ -8,7 +8,6 @@ legacy application's existing connection policy and the current Windows user.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +56,15 @@ def generate_with_legacy(request: LegacyVarCondRequest) -> LegacyVarCondResponse
         )
     if request.category_id < 0:
         raise LegacyVarCondError("A valid non-negative legacy category ID is required.")
+    if not request.server.strip() or not request.database.strip():
+        raise LegacyVarCondError(
+            "Explicit test SQL server and database are required; legacy production defaults are blocked."
+        )
+    safe_markers = ("test", "dev", "uat", "prototype", "sandbox")
+    if not any(marker in request.database.casefold() for marker in safe_markers):
+        raise LegacyVarCondError(
+            "Database name must clearly identify a test/dev/UAT/prototype/sandbox database."
+        )
 
     payload = {
         "legacyAssemblyPath": str(assembly.resolve()),
