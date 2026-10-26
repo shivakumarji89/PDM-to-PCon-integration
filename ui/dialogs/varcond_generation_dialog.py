@@ -9,7 +9,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QPlainTextEdit,
-    QFileDialog, QVBoxLayout, QWidget,
+    QFileDialog, QVBoxLayout, QWidget, QSpinBox,
 )
 
 from services.varcond_service import VarCondService
@@ -32,6 +32,15 @@ class VarCondGenerationDialog(QDialog):
         self._filter.setPlaceholderText("Type part of an article code or name")
         self._filter.textChanged.connect(self._apply_filter)
         filter_row.addWidget(self._filter, 1)
+        self._relation_length = QSpinBox(self)
+        self._relation_length.setRange(1, 30)
+        self._relation_length.setValue(9)
+        self._relation_length.setPrefix("Relation prefix length: ")
+        self._relation_length.setToolTip(
+            "Group selected parent articles by this many leading characters."
+        )
+        self._relation_length.valueChanged.connect(self._on_selection_changed)
+        filter_row.addWidget(self._relation_length)
         root.addLayout(filter_row)
 
         split = QHBoxLayout()
@@ -141,18 +150,35 @@ class VarCondGenerationDialog(QDialog):
                 self, "Generate VARCOND", "Select at least one article from the list."
             )
             return
-        result = VarCondService(self._context).generate(
-            prefix=self._prefix.text(),
-            property_exclusions=self._exclusions.text(),
-            property_substitutions=self._substitutions.text(),
-            legacy_exact=True,
-            article_codes=selected_codes,
-        )
-        self._output.setPlainText(result.text or "(nothing generated)")
-        warnings = result.warnings
+        length = self._relation_length.value()
+        groups: dict[str, list[str]] = {}
+        for code in selected_codes:
+            group_key = code[:length] if len(code) >= length else code
+            groups.setdefault(group_key, []).append(code)
+
+        service = VarCondService(self._context)
+        blocks: list[str] = []
+        warnings: list[str] = []
+        definition_count = 0
+        for group_key, codes in groups.items():
+            result = service.generate(
+                prefix=self._prefix.text(),
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
+                legacy_exact=True,
+                article_codes=codes,
+            )
+            definition_count += len(result.rules)
+            warnings.extend(result.warnings)
+            blocks.append(
+                f"* Relation group {group_key} ({len(codes)} article(s))\\r\\n"
+                + result.text.rstrip("\\r\\n")
+            )
+        output = "\\r\\n\\r\\n".join(blocks)
+        self._output.setPlainText(output or "(nothing generated)")
         self._summary.setText(
-            f"{len(selected_codes)} selected article(s) | "
-            f"{len(result.rules)} definitions | {len(result.text)} characters"
+            f"{len(selected_codes)} selected article(s) | {len(groups)} relation group(s) | "
+            f"{definition_count} definitions | {len(output)} characters"
             + (f" | {len(warnings)} warning(s)" if warnings else "")
         )
         if warnings:
