@@ -123,6 +123,28 @@
       ]
     },
     {
+      "name": "ry3vnn_hw_and_ry2u_suffix_property_names",
+      "difference": "Compiled IL maps RY3VNN*...HW suffixes to Screen_Finish and RY2U* suffixes to Hardware_Pack_Finish; both use the ordinary '<component> <optionId>=' form.",
+      "fixture": {
+        "name": "ry3vnn_hw_and_ry2u_suffix_property_names", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "PARENT1"}],
+        "article_varcond_terms": {"p": []},
+        "article_components": {"p": [
+          {"sub_item": "RY3VNN123HW", "quantity": 1, "sequence": "1"},
+          {"sub_item": "RY2U123.", "quantity": 1, "sequence": "2"}]},
+        "option_increments": {
+          "RY3VNN123HW": [{"option_id": 700, "option_name": "fabric type"}],
+          "RY2U123.": [{"option_id": 703, "option_name": "hardware pack finish"}]},
+        "request": {"article_codes": ["PARENT1"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'RY3VNN123HW' IF",
+        "$VARCOND = 'RY3VNN123HW 700=' + Screen_Finish IF",
+        "$VARCOND = 'RY2U123.' IF",
+        "$VARCOND = 'RY2U123. 703=' + Hardware_Pack_Finish IF"
+      ]
+    },
+    {
       "name": "suffix_substitution_is_plain_replace",
       "difference": "Legacy applies substitutions to suffix names with a plain IndexOf/Replace (no 'already equals new' guard).",
       "fixture": {

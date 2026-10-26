@@ -20,24 +20,28 @@ file. ``--python`` accepts a ``run_python.py`` result or a raw text file.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import re
 import sys
 from collections import Counter
 from pathlib import Path
 
-RULE_SEPARATOR = ",\r\n"
 _FACTOR = re.compile(r"^\$SET_PRICING_FACTOR\((?P<target>.*), (?P<qty>-?\d+)\) (?P<body>IF.*)$")
+_OPTION_SUFFIX = re.compile(
+    r"""['"][^'"]+\s+\d+=['"]\s*\+|['"]\d+=[^'"]+_['"]\s*\+"""
+)
+_SENSITIVE_INPUT = re.compile(r"password|secret|token|credential|connection.?string", re.I)
 
 
 def split_rules(text: str) -> list[str]:
-    """Split generated text into rule strings (legacy joins with ``,\\r\\n`` and
-    ends with ``\\r\\n``). Content is not altered."""
-    if text == "":
-        return []
-    if text.endswith("\r\n"):
-        text = text[:-2]
-    return text.split(RULE_SEPARATOR)
+    """Split generated text on line endings, removing only a final rule comma."""
+    rules = []
+    for line in re.split(r"\r\n|\r|\n", text):
+        if not line.strip():
+            continue
+        rules.append(line[:-1] if line.endswith(",") else line)
+    return rules
 
 
 def normalise_rule(rule: str) -> str:
@@ -92,20 +96,31 @@ def compare_inputs(legacy: dict | None, python: dict | None) -> dict:
         return {"status": "unverified", "detail": "legacy and/or python input manifest missing", "differences": []}
     differences: list[dict] = []
 
+    def safe_value(path: str, value):
+        return "<redacted>" if _SENSITIVE_INPUT.search(path) else value
+
     def walk(path: str, a, b) -> None:
         if isinstance(a, dict) and isinstance(b, dict):
             for key in sorted(set(a) | set(b)):
                 if key not in a:
-                    differences.append({"path": f"{path}/{key}", "legacy": None, "python": b[key], "kind": "only_python"})
+                    child_path = f"{path}/{key}"
+                    differences.append({"path": child_path, "legacy": None, "python": safe_value(child_path, b[key]), "kind": "only_python"})
                 elif key not in b:
-                    differences.append({"path": f"{path}/{key}", "legacy": a[key], "python": None, "kind": "only_legacy"})
+                    child_path = f"{path}/{key}"
+                    differences.append({"path": child_path, "legacy": safe_value(child_path, a[key]), "python": None, "kind": "only_legacy"})
                 else:
                     walk(f"{path}/{key}", a[key], b[key])
-        elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
-            for i, (x, y) in enumerate(zip(a, b)):
-                walk(f"{path}[{i}]", x, y)
-        elif a != b:
-            differences.append({"path": path, "legacy": a, "python": b, "kind": "changed"})
+        elif isinstance(a, list) and isinstance(b, list):
+            for i in range(max(len(a), len(b))):
+                child_path = f"{path}[{i}]"
+                if i >= len(a):
+                    differences.append({"path": child_path, "legacy": None, "python": safe_value(child_path, b[i]), "kind": "only_python"})
+                elif i >= len(b):
+                    differences.append({"path": child_path, "legacy": safe_value(child_path, a[i]), "python": None, "kind": "only_legacy"})
+                else:
+                    walk(child_path, a[i], b[i])
+        elif type(a) is not type(b) or a != b:
+            differences.append({"path": path, "legacy": safe_value(path, a), "python": safe_value(path, b), "kind": "changed"})
 
     walk("", legacy, python)
     return {"status": "identical" if not differences else "differ", "differences": differences}
@@ -126,6 +141,10 @@ def compare(
     missing, extra = _multiset_diff(legacy_rules, python_rules)
     missing_norm, extra_norm = _multiset_diff(legacy_norm, python_norm)
     same_multiset = not missing and not extra
+    missing_suffix, extra_suffix = _multiset_diff(
+        [r for r in legacy_rules if _OPTION_SUFFIX.search(r)],
+        [r for r in python_rules if _OPTION_SUFFIX.search(r)],
+    )
     legacy_factors, python_factors = _factors(legacy_rules), _factors(python_rules)
     factor_diffs = []
     for key in sorted(set(legacy_factors) | set(python_factors)):
@@ -136,6 +155,51 @@ def compare(
     legacy_dupes = {r: n for r, n in Counter(legacy_rules).items() if n > 1}
     python_dupes = {r: n for r, n in Counter(python_rules).items() if n > 1}
     inputs = compare_inputs(legacy_inputs, python_inputs)
+
+    def newline_style(text: str) -> str:
+        without_crlf = text.replace("\r\n", "")
+        has_crlf = "\r\n" in text
+        has_lf = "\n" in without_crlf
+        has_cr = "\r" in without_crlf
+        if (has_crlf and (has_lf or has_cr)) or (has_lf and has_cr):
+            return "mixed"
+        if has_crlf:
+            return "CRLF"
+        if has_lf:
+            return "LF"
+        if has_cr:
+            return "CR"
+        return "none"
+
+    formatting_differences = []
+    legacy_newlines, python_newlines = newline_style(legacy_text), newline_style(python_text)
+    if legacy_newlines != python_newlines:
+        formatting_differences.append(f"line endings differ ({legacy_newlines} vs {python_newlines})")
+    if legacy_text.endswith(("\r", "\n")) != python_text.endswith(("\r", "\n")):
+        formatting_differences.append("trailing newline differs")
+    if normalised_equal and legacy_rules != python_rules:
+        formatting_differences.append("rule whitespace differs")
+
+    def comma_delimiters(text: str) -> list[bool]:
+        return [
+            line.endswith(",")
+            for line in re.split(r"\r\n|\r|\n", text)
+            if line.strip()
+        ]
+
+    if comma_delimiters(legacy_text) != comma_delimiters(python_text):
+        formatting_differences.append("rule comma delimiters differ")
+
+    exact_text_diff = ""
+    if not exact_equal:
+        exact_text_diff = "".join(
+            difflib.unified_diff(
+                legacy_text.splitlines(keepends=True),
+                python_text.splitlines(keepends=True),
+                fromfile="legacy",
+                tofile="python",
+            )
+        )
 
     if exact_equal:
         verdict = "exact_match"
@@ -169,8 +233,12 @@ def compare(
         "extra_rules": extra,                          # python has, legacy lacks
         "missing_rules_normalised": missing_norm,
         "extra_rules_normalised": extra_norm,
+        "missing_option_suffix_rules": missing_suffix,
+        "extra_option_suffix_rules": extra_suffix,
         "duplicate_rules": {"legacy": legacy_dupes, "python": python_dupes},
         "ordering_changed": same_multiset and legacy_rules != python_rules,
+        "formatting_differences": formatting_differences,
+        "exact_text_diff": exact_text_diff,
         "pricing_factor_differences": factor_diffs,
         "inputs": inputs,
     }
@@ -194,10 +262,20 @@ def render_text(report: dict) -> str:
             lines.extend(f"  x{n}: {rule}" for rule, n in report["duplicate_rules"][side].items())
     if report["ordering_changed"]:
         lines.append("ordering changed (same rules, different order)")
+    for title, key in (("missing option suffix rules", "missing_option_suffix_rules"),
+                       ("extra option suffix rules", "extra_option_suffix_rules")):
+        if report[key]:
+            lines.append(f"{title}:")
+            lines.extend(f"  {rule}" for rule in report[key])
+    for difference in report["formatting_differences"]:
+        lines.append(f"formatting: {difference}")
     for diff in report["pricing_factor_differences"]:
         lines.append(f"pricing factor: {diff['rule']} legacy={diff['legacy_quantities']} python={diff['python_quantities']}")
     for diff in report["inputs"].get("differences", []):
         lines.append(f"input {diff['kind']}: {diff['path']} legacy={diff['legacy']!r} python={diff['python']!r}")
+    if report["exact_text_diff"]:
+        lines.append("exact text diff:")
+        lines.extend(report["exact_text_diff"].rstrip().splitlines())
     return "\n".join(lines)
 
 

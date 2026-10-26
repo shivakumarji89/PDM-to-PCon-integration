@@ -19,7 +19,9 @@ import pytest
 from models.article import Article
 from models.snapshot import Snapshot
 from scripts.varcond_parity import compare as cmp
+from scripts.varcond_parity import run_python
 from scripts.varcond_parity.run_python import run
+from services.snapshot_serialization import snapshot_to_dict
 from services.varcond_service import VarCondService
 
 FIXTURES = Path(__file__).resolve().parents[1] / "scripts" / "varcond_parity" / "fixtures"
@@ -70,6 +72,17 @@ def test_legacy_exact_case_matches_il_derived_expectation(case) -> None:
     assert out["rules"] == case["expected_legacy_exact_rules"]
     # legacy joins with ",\r\n" and terminates with "\r\n"
     assert out["text"] == ",\r\n".join(case["expected_legacy_exact_rules"]) + "\r\n"
+
+
+def test_ry3vnn_hw_case_keeps_suffix_source_warning_and_manifest_prefixes() -> None:
+    case = next(c for c in CASES if c["name"] == "ry3vnn_hw_and_ry2u_suffix_property_names")
+    out = run(case["fixture"], "legacy_exact")
+
+    assert any("PDMOptionDataReportWithIncBase" in warning for warning in out["warnings"])
+    assert out["inputs"]["option_increments"] == {
+        "RY2U123.": [{"option_id": 703, "option_name": "hardware pack finish"}],
+        "RY3VNN123HW": [{"option_id": 700, "option_name": "fabric type"}],
+    }
 
 
 @pytest.mark.parametrize("case", [c for c in CASES if "expected_default_rules" in c], ids=lambda c: c["name"])
@@ -143,8 +156,13 @@ def test_compare_separates_formatting_only_from_rule_differences() -> None:
     report = cmp.compare(legacy, python)
     assert report["verdict"] == "formatting_only_difference"
     assert not report["exact_equal"] and report["normalised_equal"]
-    assert report["missing_rules"] and report["extra_rules"]       # still visible in exact view
+    assert report["missing_rules"] and report["extra_rules"]
     assert not report["missing_rules_normalised"] and not report["extra_rules_normalised"]
+    assert report["formatting_differences"] == [
+        "line endings differ (CRLF vs LF)",
+        "rule whitespace differs",
+    ]
+    assert report["exact_text_diff"]
 
 
 def test_compare_reports_missing_extra_duplicates_and_order() -> None:
@@ -165,6 +183,39 @@ def test_compare_reports_pricing_factor_quantity_changes() -> None:
     report = cmp.compare(legacy, python)
     assert report["pricing_factor_differences"] == [
         {"rule": "'A' IF X = '1'", "legacy_quantities": [2], "python_quantities": [3]}
+    ]
+
+
+def test_compare_reports_option_suffix_differences_and_multiline_formatting() -> None:
+    legacy = "$VARCOND = 'PART.1 700=' + Fabric_Type IF Width = '20',\r\n"
+    python = "$VARCOND = 'PART.1 701=' + Fabric_Type IF Width = '20'\n"
+
+    report = cmp.compare(legacy, python)
+
+    assert report["missing_option_suffix_rules"] == [
+        "$VARCOND = 'PART.1 700=' + Fabric_Type IF Width = '20'"
+    ]
+    assert report["extra_option_suffix_rules"] == [
+        "$VARCOND = 'PART.1 701=' + Fabric_Type IF Width = '20'"
+    ]
+    assert report["formatting_differences"] == [
+        "line endings differ (CRLF vs LF)",
+        "rule comma delimiters differ",
+    ]
+    assert report["exact_text_diff"]
+
+
+def test_compare_recognises_alternate_family_suffix_rules() -> None:
+    legacy = "$VARCOND = '3848=RYMPSH.12SW_' + Panel_Finish IF Leg = 'C'\r\n"
+    python = "$VARCOND = '3849=RYMPSH.12SW_' + Panel_Finish IF Leg = 'C'\r\n"
+
+    report = cmp.compare(legacy, python)
+
+    assert report["missing_option_suffix_rules"] == [
+        "$VARCOND = '3848=RYMPSH.12SW_' + Panel_Finish IF Leg = 'C'"
+    ]
+    assert report["extra_option_suffix_rules"] == [
+        "$VARCOND = '3849=RYMPSH.12SW_' + Panel_Finish IF Leg = 'C'"
     ]
 
 
@@ -217,7 +268,53 @@ def test_compare_cli_reads_bridge_response_and_run_output(tmp_path: Path) -> Non
     assert report["attribution"] == "match (inputs not proven identical)"
 
 
+def test_snapshot_capture_keeps_order_and_option_increment_inputs(tmp_path: Path) -> None:
+    snapshot = Snapshot(
+        articles=[
+            Article(id="a", code="PARENT.A"),
+            Article(id="b", code="PARENT.B"),
+        ],
+        article_components={
+            "a": [{"sub_item": "PART.A", "quantity": 1, "sequence": "1"}],
+            "b": [{"sub_item": "PART.B", "quantity": 2, "sequence": "2"}],
+        },
+        article_varcond_terms={"a": [], "b": []},
+        article_prefix_length={"a": 6, "b": 6},
+        option_increments={"PART.": [{"option_id": 7, "option_name": "finish"}]},
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot_to_dict(snapshot)), encoding="utf-8")
+    output_path = tmp_path / "python.json"
+    assert run_python.main([
+        "--snapshot", str(snapshot_path),
+        "--category-id", "42",
+        "--article-code", "PARENT.B",
+        "--article-code", "PARENT.A",
+        "--mode", "default",
+        "--out", str(output_path),
+    ]) == 0
+    artifact = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert artifact["inputs"]["request"] == {
+        "article_codes": ["PARENT.B", "PARENT.A"],
+        "category_id": 42,
+        "prefix": "",
+        "property_exclusions": "",
+        "property_substitutions": "",
+    }
+    assert [parent["code"] for parent in artifact["inputs"]["parents"]] == [
+        "PARENT.A",
+        "PARENT.B",
+    ]
+    assert artifact["inputs"]["option_increments"] == {
+        "PART.": [{"option_id": 7, "option_name": "finish"}]
+    }
+    assert artifact["text"].startswith("$VARCOND = 'PART.A' IF")
+    assert "$VARCOND = 'PART.B' IF" in artifact["text"]
+
+
 def test_split_rules_handles_empty_and_unterminated_text() -> None:
     assert cmp.split_rules("") == []
     assert cmp.split_rules("A") == ["A"]
     assert cmp.split_rules("A,\r\nB\r\n") == ["A", "B"]
+    assert cmp.split_rules("A,\nB\n") == ["A", "B"]

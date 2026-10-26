@@ -24,8 +24,10 @@ substring semantics. Order codes have dots stripped. Rules are joined with
 Option-increment price-suffix rules (``$VARCOND = '<sub> <optionId>=' + Name``)
 are emitted per option that carries an ``ItemOptionValues.IncrementalPrice`` for
 the sub-item (general path of ``getOptionIncrementSuffixes``); option names use
-the ``SIFImport.camelCase`` port. Product-specific suffix special-cases
-(RYMPSH/RY3VNN/RYT/RY2U hardcoded option ids) are not yet ported.
+the ``SIFImport.camelCase`` port. Compiled-IL-derived property renames for
+HZ13/HZ14, RYMPSH, RY3VNN...HW, RYT, and RY2U, plus the RYT/RYMPSH alternate
+suffix format, are implemented in the opt-in legacy mode. The snapshot's
+option-increment rows have not been proven equivalent to the legacy live query.
 """
 from __future__ import annotations
 
@@ -241,7 +243,11 @@ class VarCondService(BaseService):
         legacy_exact: bool = False,
         article_codes: Sequence[str] | None = None,
     ) -> VarCondResult:
-        """Build super-product VARCOND rules offline, matching PDM exactly.
+        """Build super-product VARCOND rules offline from the active snapshot.
+
+        The default mode retains Workbench behavior. ``legacy_exact`` is a
+        source-shaped port based on compiled legacy IL; runtime parity against
+        the generator and equivalent SQL inputs is not yet verified.
 
         Parameters mirror PDM's ``SuperProductVarCondRelation`` form:
 
@@ -551,16 +557,6 @@ class VarCondService(BaseService):
                 "the legacy PDMOptionDataReportWithIncBase output; suffix parity "
                 "is unverified."
             )
-        if any(
-            sub.startswith(("RY3VNN", "RY2U"))
-            and increments_by_prefix.get(self._item_prefix(sub))
-            for sub, _body, _qty in targets
-        ):
-            result.warnings.append(
-                "Legacy family-specific option suffix behavior for RY3VNN...HW "
-                "and RY2U is not ported; compare this result with the real "
-                "VarCondThread output before using it."
-            )
         if result.rules:
             result.text = ",\r\n".join(r.rule for r in result.rules) + "\r\n"
         return result
@@ -639,8 +635,8 @@ class VarCondService(BaseService):
         self, sub: str, increments_by_prefix: dict, property_substitutions: str
     ) -> list[tuple[int, str]]:
         """Suffix (option id, property name) pairs for one target, with the
-        legacy name de-duplication, HZ13/HZ14 fabric renames and plain-replace
-        substitutions."""
+        legacy name de-duplication, product-family property renames and
+        plain-replace substitutions."""
         entries: list[tuple[int, str]] = []
         names: list[str] = []
         seen_options: set = set()
@@ -655,6 +651,14 @@ class VarCondService(BaseService):
                     "Upper_Front_Fabric_Type" if sub.startswith("HZ13")
                     else "Lower_Front_Fabric_Type"
                 )
+            elif sub.startswith("RYMPSH"):
+                name = "Panel_Finish"
+            elif sub.startswith("RY3VNN") and sub.endswith("HW"):
+                name = "Screen_Finish"
+            elif sub.startswith("RYT"):
+                name = "Worktop_Finish"
+            elif sub.startswith("RY2U"):
+                name = "Hardware_Pack_Finish"
             if name in names:                         # V_68.Contains(name)
                 continue
             names.append(name)
