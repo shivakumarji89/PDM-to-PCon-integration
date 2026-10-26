@@ -12,6 +12,7 @@ namespace LegacyVarCondBridge
     {
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
 
+        [STAThread]
         private static int Main()
         {
             var response = new Dictionary<string, object>();
@@ -24,6 +25,16 @@ namespace LegacyVarCondBridge
                 string assemblyPath = RequiredString(request, "legacyAssemblyPath");
                 if (!File.Exists(assemblyPath))
                     throw new FileNotFoundException("Legacy PDMMaintenance assembly was not found.", assemblyPath);
+
+                // dryRun never configures legacy statics, never creates the worker and never
+                // connects: it only proves the reflection contract against the real assembly.
+                if (OptionalBool(request, "dryRun"))
+                {
+                    response["ok"] = true;
+                    response["dryRun"] = VerifyBinding(assemblyPath);
+                    Console.Out.WriteLine(Json.Serialize(response));
+                    return 0;
+                }
 
                 var items = GetStringList(request, "itemCodes");
                 if (items.Count == 0) throw new ArgumentException("itemCodes must contain at least one article.");
@@ -38,6 +49,12 @@ namespace LegacyVarCondBridge
                       databaseLower.Contains("uat") || databaseLower.Contains("prototype") ||
                       databaseLower.Contains("sandbox")))
                     throw new ArgumentException("Database name must clearly identify a test/dev/UAT/prototype/sandbox database.");
+                if (databaseLower.Contains("live") || databaseLower.Contains("prod"))
+                    throw new ArgumentException("Database name looks like a live/production database.");
+                // A name check is only a tripwire. The operator must separately attest that the
+                // server/database pair was verified as non-production.
+                if (!OptionalBool(request, "confirmNonProduction"))
+                    throw new ArgumentException("confirmNonProduction must be true: the operator has to attest the server/database is a verified non-production target.");
 
                 Assembly legacy = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
                 ConfigureLegacy(legacy, request);
@@ -46,6 +63,8 @@ namespace LegacyVarCondBridge
                 object worker = Activator.CreateInstance(workerType);
                 var statuses = new List<string>();
                 var generated = new StringBuilder();
+                response["statuses"] = statuses;
+                response["legacyAssemblyVersion"] = legacy.GetName().Version.ToString();
 
                 EventInfo statusEvent = workerType.GetEvent("UpdateStatus");
                 if (statusEvent == null) throw new MissingMemberException(workerType.FullName, "UpdateStatus");
@@ -76,9 +95,15 @@ namespace LegacyVarCondBridge
                     _activeGenerated = null;
                 }
 
+                // execThread swallows its own exceptions (modal MsgBox + status), so a normal return
+                // does not mean success. Treat an abort or an absent result as failure.
+                if (statuses.Contains("GENERATE_VARCOND_ABORTED"))
+                    throw new InvalidOperationException("Legacy worker reported GENERATE_VARCOND_ABORTED; its output is not valid.");
+                if (!statuses.Exists(s => s.StartsWith("VARCOND:", StringComparison.Ordinal)))
+                    throw new InvalidOperationException("Legacy worker produced no VARCOND output.");
+
                 response["ok"] = true;
                 response["generatedText"] = generated.ToString();
-                response["statuses"] = statuses;
             }
             catch (TargetInvocationException ex)
             {
@@ -95,6 +120,56 @@ namespace LegacyVarCondBridge
             return response.ContainsKey("ok") && (bool)response["ok"] ? 0 : 1;
         }
 
+        private static Dictionary<string, object> VerifyBinding(string assemblyPath)
+        {
+            Assembly legacy = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
+            Type worker = legacy.GetType("PDMMaintenance.VarCondThread", true);
+            EventInfo statusEvent = worker.GetEvent("UpdateStatus");
+            if (statusEvent == null) throw new MissingMemberException(worker.FullName, "UpdateStatus");
+            MethodInfo handlerMethod = typeof(Program).GetMethod("OnLegacyStatus", BindingFlags.Static | BindingFlags.NonPublic);
+            Delegate.CreateDelegate(statusEvent.EventHandlerType, handlerMethod); // throws if the signature differs
+
+            MethodInfo init = worker.GetMethod("initThread", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo execute = worker.GetMethod("execThread", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (init == null || execute == null)
+                throw new MissingMethodException("Legacy worker initThread/execThread methods were not found.");
+            Type[] expected = { typeof(ArrayList), typeof(int), typeof(string), typeof(string), typeof(string), typeof(string) };
+            ParameterInfo[] actual = init.GetParameters();
+            if (actual.Length != expected.Length) throw new MissingMethodException("initThread has an unexpected parameter count.");
+            var parameterNames = new List<string>();
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (actual[i].ParameterType != expected[i])
+                    throw new MissingMethodException("initThread parameter " + i + " is " + actual[i].ParameterType + ", expected " + expected[i] + ".");
+                parameterNames.Add(actual[i].ParameterType.Name + " " + actual[i].Name);
+            }
+            if (execute.GetParameters().Length != 0) throw new MissingMethodException("execThread must take no parameters.");
+
+            var info = new Dictionary<string, object>();
+            info["assemblyVersion"] = legacy.GetName().Version.ToString();
+            info["processIs64Bit"] = Environment.Is64BitProcess;
+            info["initThreadParameters"] = parameterNames;
+            info["statusEventHandlerType"] = statusEvent.EventHandlerType.FullName;
+            info["globalHasConnectedServer"] = HasStaticString(legacy, "PDMMaintenance.Global", "connectedServer");
+            info["globalHasConnectedDB"] = HasStaticString(legacy, "PDMMaintenance.Global", "connectedDB");
+            info["cadHasPConPath"] = HasStaticString(legacy, "PDMMaintenance.CADMaintenance", "pConPath");
+            return info;
+        }
+
+        private static bool HasStaticString(Assembly legacy, string typeName, string field)
+        {
+            Type type = legacy.GetType(typeName, false);
+            if (type == null) return false;
+            FieldInfo f = type.GetField(field, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            return f != null && f.FieldType == typeof(string);
+        }
+
+        private static bool OptionalBool(IDictionary<string, object> values, string key)
+        {
+            object value;
+            return values.TryGetValue(key, out value) && value is bool && (bool)value;
+        }
+
         private static List<string> _activeStatuses;
         private static StringBuilder _activeGenerated;
 
@@ -108,23 +183,26 @@ namespace LegacyVarCondBridge
 
         private static void ConfigureLegacy(Assembly legacy, IDictionary<string, object> request)
         {
-            Type global = legacy.GetType("PDMMaintenance.Global", false);
-            if (global != null)
-            {
-                SetStaticField(global, "connectedServer", OptionalString(request, "server"));
-                SetStaticField(global, "connectedDB", OptionalString(request, "database"));
-            }
+            Type global = legacy.GetType("PDMMaintenance.Global", true);
+            SetRequiredStaticField(global, "connectedServer", RequiredString(request, "server"));
+            SetRequiredStaticField(global, "connectedDB", RequiredString(request, "database"));
 
-            Type cad = legacy.GetType("PDMMaintenance.CADMaintenance", false);
-            if (cad != null)
-                SetStaticField(cad, "pConPath", OptionalString(request, "pConPath"));
+            string pConPath = OptionalString(request, "pConPath");
+            if (!String.IsNullOrWhiteSpace(pConPath))
+            {
+                Type cad = legacy.GetType("PDMMaintenance.CADMaintenance", true);
+                SetRequiredStaticField(cad, "pConPath", pConPath);
+            }
         }
 
-        private static void SetStaticField(Type type, string name, string value)
+        private static void SetRequiredStaticField(Type type, string name, string value)
         {
-            if (String.IsNullOrWhiteSpace(value)) return;
             FieldInfo field = type.GetField(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (field != null && field.FieldType == typeof(string)) field.SetValue(null, value);
+            if (field == null)
+                throw new MissingFieldException(type.FullName, name);
+            if (field.FieldType != typeof(string))
+                throw new InvalidOperationException(type.FullName + "." + name + " is not a string field.");
+            field.SetValue(null, value);
         }
 
         private static string RequiredString(IDictionary<string, object> values, string key)

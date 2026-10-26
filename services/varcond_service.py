@@ -30,6 +30,7 @@ the ``SIFImport.camelCase`` port. Product-specific suffix special-cases
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Sequence
 
 from models.snapshot import Snapshot
 from services.base_service import BaseService
@@ -128,6 +129,27 @@ class VarCondService(BaseService):
         return name.replace(" ", "_")
 
     @staticmethod
+    def _parse_pcon_property_name(name: str) -> str:
+        """Port of ``CADMaintenance.ParsePConPropertyName``: parentheses are
+        dropped, each space becomes ``_`` and the next kept character is
+        upper-cased. Verified against the real helper by
+        ``scripts/varcond_parity/run_legacy_helpers.ps1``."""
+        out = ""
+        capitalise = False
+        for ch in name:
+            if ch in "()":
+                continue
+            if capitalise:
+                out += ch.upper()
+                capitalise = False
+            elif ch == " ":
+                out += "_"
+                capitalise = True
+            else:
+                out += ch
+        return out
+
+    @staticmethod
     def _apply_substitutions(prop: str, subs: str) -> str:
         """Exact port of PDM's substitution pass (comma list of ``old=new``).
 
@@ -215,6 +237,9 @@ class VarCondService(BaseService):
         property_exclusions: str = "",
         property_substitutions: str = "",
         snapshot: Snapshot | None = None,
+        *,
+        legacy_exact: bool = False,
+        article_codes: Sequence[str] | None = None,
     ) -> VarCondResult:
         """Build super-product VARCOND rules offline, matching PDM exactly.
 
@@ -224,12 +249,24 @@ class VarCondService(BaseService):
         * ``property_exclusions``    - string; a property is dropped when its
           parsed name is a substring of this text (PDM ``IndexOf`` semantics).
         * ``property_substitutions`` - comma list of ``old=new`` renames.
+
+        ``legacy_exact`` (opt-in) follows the compiled ``VarCondThread.execThread``
+        literally instead of the Workbench refinements below (per-component IF
+        filtering, identical-rule de-duplication, automatic exclusion of
+        unresolved parametric codes). ``article_codes`` is the ordered parent
+        list the legacy worker receives; it is only honoured in that mode.
+        See ``tools/legacy_varcond_bridge/PARITY_REVIEW.md``.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = VarCondResult()
         if snapshot is None:
             result.warnings.append("No active snapshot.")
             return result
+        if legacy_exact:
+            return self._generate_legacy_exact(
+                snapshot, prefix, property_exclusions, property_substitutions,
+                article_codes,
+            )
 
         text6 = (prefix.strip() + ".") if prefix.strip() else ""
         components = snapshot.article_components or {}
@@ -385,3 +422,252 @@ class VarCondService(BaseService):
                 + ", ".join(result.excluded)
             )
         return result
+
+    # -- legacy-exact mode ---------------------------------------------------
+
+    #: ``VarCondThread`` family prefixes whose suffix rules use the
+    #: ``'<optionId>=<target>_' + Name`` form (IL: the RYT / RYMPSH flag).
+    _LEGACY_ALT_SUFFIX_PREFIXES = ("RYT", "RYMPSH")
+
+    def _generate_legacy_exact(
+        self,
+        snapshot: Snapshot,
+        prefix: str,
+        property_exclusions: str,
+        property_substitutions: str,
+        article_codes: Sequence[str] | None,
+    ) -> VarCondResult:
+        """Literal port of ``VarCondThread.execThread`` (assembly 1.0.9686.24988).
+
+        Derived from the compiled IL, not from runtime output of the generator
+        itself: pass one collects ``(target, IF text, quantity)`` for every BOM
+        row of every parent in list order; pass two emits ``$VARCOND`` /
+        ``$SET_PRICING_FACTOR`` text per target plus option-increment suffix
+        rules. There is no de-duplication, no per-component IF filtering and no
+        automatic exclusion of unresolved parametric codes.
+
+        Known input gaps (reported as warnings, never hidden): legacy reads
+        suffixes from ``PDMOptionDataReportWithIncBase`` while the snapshot only
+        carries ``ItemOptionValues``; non-BOM parents need the Product name,
+        which the snapshot does not carry.
+        """
+        result = VarCondResult()
+        # IL: text6 is built only when the *untrimmed* prefix is non-empty, so a
+        # whitespace-only prefix yields "." (unlike the default mode).
+        text6 = (prefix.strip() + ".") if prefix != "" else ""
+        components = snapshot.article_components or {}
+        terms_by_article = snapshot.article_varcond_terms or {}
+        prefix_len_by_article = snapshot.article_prefix_length or {}
+        increments_by_prefix = snapshot.option_increments or {}
+        code_by_id = {
+            str(a.id): (a.code or "") for a in snapshot.articles if a.id is not None
+        }
+        id_by_code: dict[str, str] = {}
+        for art in snapshot.articles:
+            if art.id is not None:
+                id_by_code.setdefault(art.code or "", str(art.id))
+
+        if article_codes is None:
+            parents = [(code_by_id.get(str(aid), ""), str(aid)) for aid in components]
+        else:
+            parents = []
+            for code in article_codes:
+                aid = id_by_code.get(code)
+                if aid is None:
+                    result.warnings.append(
+                        f"{code}: not in the snapshot; legacy would query it by "
+                        "name, so its rows cannot be reproduced."
+                    )
+                    continue
+                parents.append((code, aid))
+
+        if not parents:
+            result.warnings.append(
+                "No super-product BOM loaded (ItemComponents) - nothing to generate."
+            )
+
+        targets: list[tuple[str, str, int]] = []      # (sub item, IF text, qty)
+        for item_name, article_id in parents:
+            prefix_length = prefix_len_by_article.get(article_id, 0) or 0
+            if prefix_length == 0:
+                result.warnings.append(
+                    f"{item_name}: article prefix length undefined; legacy shows a "
+                    "modal 'Article Prefix Length Undefined' Yes/No dialog "
+                    "(No aborts the whole run). Assumed Yes."
+                )
+            body, accepted = self._legacy_if_body(
+                item_name, terms_by_article.get(article_id, []), prefix_length,
+                text6, property_exclusions, property_substitutions, result,
+            )
+            comps = self._legacy_component_order(components.get(article_id, []))
+            if comps:
+                for comp in comps:
+                    targets.append(
+                        (str(comp.get("sub_item") or ""), body,
+                         self._legacy_quantity(comp.get("quantity")))
+                    )
+            elif accepted:
+                result.warnings.append(
+                    f"{item_name}: no BOM components. Legacy emits one rule "
+                    "targeting the article code with its Product name removed; "
+                    "the snapshot has no Product name, so that rule is not "
+                    "reproduced."
+                )
+
+        suffix_inputs_seen = False
+        for index, (sub, body, qty) in enumerate(targets):
+            result.rules.append(
+                VarCondRule(article=sub, body=body, rule=f"$VARCOND = '{sub}' {body}")
+            )
+            if qty > 1:
+                result.rules.append(
+                    VarCondRule(
+                        article=sub, body=body,
+                        rule=f"$SET_PRICING_FACTOR('{sub}', {qty}) {body}",
+                    )
+                )
+            for option_id, name in self._legacy_suffix_entries(
+                sub, increments_by_prefix, property_substitutions
+            ):
+                suffix_inputs_seen = True
+                if sub.startswith(self._LEGACY_ALT_SUFFIX_PREFIXES):
+                    suffix = f"'{option_id}={sub}_' + {name}"
+                else:
+                    suffix = f"'{sub} {option_id}=' + {name}"
+                result.rules.append(
+                    VarCondRule(article=sub, body=body, rule=f"$VARCOND = {suffix} {body}")
+                )
+                if qty > 1:
+                    result.rules.append(
+                        VarCondRule(
+                            article=sub, body=body,
+                            rule=f"$SET_PRICING_FACTOR({suffix}, {qty}) {body}",
+                        )
+                    )
+
+        if suffix_inputs_seen:
+            result.warnings.append(
+                "Option-increment suffix rules use snapshot ItemOptionValues, not "
+                "the legacy PDMOptionDataReportWithIncBase output; suffix parity "
+                "is unverified."
+            )
+        if any(
+            sub.startswith(("RY3VNN", "RY2U"))
+            and increments_by_prefix.get(self._item_prefix(sub))
+            for sub, _body, _qty in targets
+        ):
+            result.warnings.append(
+                "Legacy family-specific option suffix behavior for RY3VNN...HW "
+                "and RY2U is not ported; compare this result with the real "
+                "VarCondThread output before using it."
+            )
+        if result.rules:
+            result.text = ",\r\n".join(r.rule for r in result.rules) + "\r\n"
+        return result
+
+    def _legacy_if_body(
+        self,
+        item_name: str,
+        terms: list[dict],
+        prefix_length: int,
+        text6: str,
+        property_exclusions: str,
+        property_substitutions: str,
+        result: VarCondResult,
+    ) -> tuple[str, bool]:
+        """Port of the attribute query + IF builder; returns ``(IF text,
+        whether any term was accepted)``."""
+        ordered = sorted(terms, key=lambda t: int(t.get("order", 0) or 0))
+
+        def qualifies(term: dict) -> bool:
+            # SQL: OrderCodeValue IS NOT NULL OR ABS(HasDependentOptions) <> 0.
+            # The snapshot stores NULL as "", so "" is treated as NULL.
+            return bool(term.get("order_code")) or int(term.get("has_dependent_options", 0) or 0) != 0
+
+        parts: list[str] = []
+        seen_rows: set[tuple[str, int, str]] = set()
+        for term in ordered:
+            if not qualifies(term):
+                continue
+            order = int(term.get("order", 0) or 0)
+            hdo = abs(int(term.get("has_dependent_options", 0) or 0))
+            if hdo > 0:
+                # SUBSTRING(Item, prefixLen + 1 + <sum of ABS(HDO) of qualifying
+                # terms with a strictly lower DisplayOrder>, ABS(HDO))
+                offset = sum(
+                    abs(int(o.get("has_dependent_options", 0) or 0))
+                    for o in ordered
+                    if qualifies(o) and int(o.get("order", 0) or 0) < order
+                )
+                start = prefix_length + offset
+                code = item_name[start : start + hdo]
+            else:
+                code = str(term.get("order_code") or "")
+            sql_name = self._capitalise_second_word(str(term.get("name") or ""))
+            row_key = (sql_name, order, code)
+            if row_key in seen_rows:                  # SELECT DISTINCT
+                continue
+            seen_rows.add(row_key)
+
+            prop = self._parse_attr_as_pcon(sql_name, item_name).replace(" ", "_")
+            if prop in property_exclusions:           # IndexOf(prop) > -1, no empty guard
+                if prop not in result.excluded:
+                    result.excluded.append(prop)
+                continue
+            prop = self._apply_substitutions(prop, property_substitutions)
+            parts.append(f"{text6}{prop} = '{code.replace('.', '')}'")
+        body = ("IF " + " AND ".join(parts)) if parts else "IF"
+        return body, bool(parts)
+
+    @staticmethod
+    def _legacy_component_order(comps: list[dict]) -> list[dict]:
+        """``ORDER BY CONVERT(INT, ComponentSequence)`` (stable)."""
+        def key(comp: dict) -> int:
+            try:
+                return int(str(comp.get("sequence", "")).strip())
+            except ValueError:
+                return 0
+        return sorted(comps, key=key)
+
+    @staticmethod
+    def _legacy_quantity(value) -> int:
+        """Legacy default 1; replaced only by an all-digit quantity text."""
+        text = "" if value is None else str(value)
+        return int(text) if text.isascii() and text.isdigit() else 1
+
+    def _legacy_suffix_entries(
+        self, sub: str, increments_by_prefix: dict, property_substitutions: str
+    ) -> list[tuple[int, str]]:
+        """Suffix (option id, property name) pairs for one target, with the
+        legacy name de-duplication, HZ13/HZ14 fabric renames and plain-replace
+        substitutions."""
+        entries: list[tuple[int, str]] = []
+        names: list[str] = []
+        seen_options: set = set()
+        for inc in increments_by_prefix.get(self._item_prefix(sub), []):
+            option_id = inc.get("option_id")
+            if option_id is None or option_id in seen_options:
+                continue
+            seen_options.add(option_id)
+            name = self._pcon_option_name(inc.get("option_name", ""))
+            if "fabric" in name.lower() and sub.startswith(("HZ13", "HZ14")):
+                name = (
+                    "Upper_Front_Fabric_Type" if sub.startswith("HZ13")
+                    else "Lower_Front_Fabric_Type"
+                )
+            if name in names:                         # V_68.Contains(name)
+                continue
+            names.append(name)
+            entries.append((int(option_id), name))
+        if property_substitutions:
+            for token in property_substitutions.split(","):
+                if not token or "=" not in token:
+                    continue
+                old, new = token.split("=", 1)
+                if old == "":
+                    continue                          # legacy would throw here
+                entries = [
+                    (oid, name.replace(old, new) if old in name else name)
+                    for oid, name in entries
+                ]
+        return entries

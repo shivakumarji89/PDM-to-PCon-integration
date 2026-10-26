@@ -1,0 +1,17 @@
+{
+  "_comment": "Synthetic, non-customer vectors for the pure static legacy helpers. Results are produced by run_legacy_helpers.ps1 against the real PDMMaintenance.exe.",
+  "parseAttributeNameAsPConProperty": {
+    "names": ["Width", "Height", "Depth", "Material Type", "Material type", "material type",
+              "Castors and Glides", "Glides / Castors", "Castors", "Hinge / closure", "Power Entry cord",
+              "Upper tiles", "upper_tile_front", "Upper Tile Back", "Lower tiles", "Lower_Tile_Front",
+              "Lower tile back", "Board material type", "Foot", "Colour (A)", "Colour (B)", "Colour (C)",
+              "Top Material (Front)", "Fabric Type", "Base type", "Screen Colour", ""],
+    "contexts": ["RYSCRM1", "RYSCR2", "RYSCRL9", "RYWX1", "HZ13", "HZ14", "RY3X5", "ABC.123", "AHZ1", "RYSCRMX", ""]
+  },
+  "camelCase": ["worktop finish", "BASE/TRIM colour", "herman miller", "Herman miller", "Logitech g", "LOGITECHG",
+                "fr", "abc fr", "ABC FR", "POSTUREFIT SL", "posturefit sl", "y-tower x", "uk model", "emea france",
+                "8z pel", "A", "", "x[1]y Z", "UPPER front fabric TYPE", " leading space", "double  space",
+                "germany italy spain", "singapore india", "europe"],
+  "ParsePConPropertyName": ["Upper tiles", "Fabric (Front)", "Fabric(Front)", "a  b", "(x) y", "Panel Finish", "", "abc", " lead", "trail ", "a b c d", "x ( y ) z"],
+  "isInteger": ["", "-", "0", "12", "2.00", "2.5", "-3", "+4", "1e3", " 5", "007"]
+}

@@ -1,0 +1,179 @@
+{
+  "_comment": "Synthetic regression cases (no customer data). expected_legacy_exact_rules are derived by hand from the compiled VarCondThread.execThread IL (assembly 1.0.9686.24988); they are source-level expectations, NOT captured runtime output of the legacy generator.",
+  "cases": [
+    {
+      "name": "shared_if_no_component_filtering",
+      "difference": "Legacy reuses the parent's whole IF text for every BOM row; default mode filters it by component_head_attrs.",
+      "fixture": {
+        "name": "shared_if_no_component_filtering", "provenance": "synthetic",
+        "articles": [{"id": "p1", "code": "1580TA1W"}],
+        "article_prefix_length": {"p1": 4},
+        "article_varcond_terms": {"p1": [
+          {"name": "Base type", "order": 5, "has_dependent_options": 1, "order_code": ""},
+          {"name": "Top material", "order": 6, "has_dependent_options": 1, "order_code": ""}]},
+        "article_components": {"p1": [
+          {"sub_item": "FKCKITLEG1", "quantity": 1, "sequence": "1"},
+          {"sub_item": "FKCTOP1580W", "quantity": 1, "sequence": "2"}]},
+        "component_head_attrs": {"FKCKITLEG1": ["Base type"], "FKCTOP1580W": ["Top material"]},
+        "request": {"article_codes": ["1580TA1W"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'FKCKITLEG1' IF Base_Type = 'T' AND Top_Material = 'A'",
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'T' AND Top_Material = 'A'"
+      ],
+      "expected_default_rules": [
+        "$VARCOND = 'FKCKITLEG1' IF Base_Type = 'T'",
+        "$VARCOND = 'FKCTOP1580W' IF Top_Material = 'A'"
+      ]
+    },
+    {
+      "name": "duplicates_kept_and_list_order_followed",
+      "difference": "Legacy emits one rule per BOM row of every listed parent (no de-duplication) in the caller's list order.",
+      "fixture": {
+        "name": "duplicates_kept_and_list_order_followed", "provenance": "synthetic",
+        "articles": [{"id": "p1", "code": "1580TA1W"}, {"id": "p2", "code": "1580TA2W"}, {"id": "p3", "code": "1580SB1W"}],
+        "article_prefix_length": {"p1": 4, "p2": 4, "p3": 4},
+        "article_varcond_terms": {
+          "p1": [{"name": "Base type", "order": 5, "has_dependent_options": 1, "order_code": ""}, {"name": "Top material", "order": 6, "has_dependent_options": 1, "order_code": ""}],
+          "p2": [{"name": "Base type", "order": 5, "has_dependent_options": 1, "order_code": ""}, {"name": "Top material", "order": 6, "has_dependent_options": 1, "order_code": ""}],
+          "p3": [{"name": "Base type", "order": 5, "has_dependent_options": 1, "order_code": ""}, {"name": "Top material", "order": 6, "has_dependent_options": 1, "order_code": ""}]},
+        "article_components": {
+          "p1": [{"sub_item": "FKCTOP1580W", "quantity": 1, "sequence": "1"}],
+          "p2": [{"sub_item": "FKCTOP1580W", "quantity": 1, "sequence": "1"}],
+          "p3": [{"sub_item": "FKCTOP1580W", "quantity": 1, "sequence": "1"}]},
+        "request": {"article_codes": ["1580SB1W", "1580TA1W", "1580TA2W"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'S' AND Top_Material = 'B'",
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'T' AND Top_Material = 'A'",
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'T' AND Top_Material = 'A'"
+      ],
+      "expected_default_rules": [
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'T' AND Top_Material = 'A'",
+        "$VARCOND = 'FKCTOP1580W' IF Base_Type = 'S' AND Top_Material = 'B'"
+      ]
+    },
+    {
+      "name": "unresolved_parametric_code_is_kept",
+      "difference": "Legacy has no automatic exclusion: a parametric code that slices to '' is emitted as Prop = ''.",
+      "fixture": {
+        "name": "unresolved_parametric_code_is_kept", "provenance": "synthetic",
+        "articles": [{"id": "s", "code": "ABC12"}],
+        "article_prefix_length": {"s": 3},
+        "article_varcond_terms": {"s": [
+          {"name": "Size", "order": 1, "has_dependent_options": 2, "order_code": ""},
+          {"name": "Extra", "order": 2, "has_dependent_options": 2, "order_code": ""},
+          {"name": "Leg", "order": 3, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"s": [{"sub_item": "SUB.", "quantity": 1, "sequence": "1"}]},
+        "request": {"article_codes": ["ABC12"]}
+      },
+      "expected_legacy_exact_rules": ["$VARCOND = 'SUB.' IF Size = '12' AND Extra = '' AND Leg = 'C'"],
+      "expected_default_rules": ["$VARCOND = 'SUB.' IF Size = '12' AND Leg = 'C'"]
+    },
+    {
+      "name": "suffix_format_quantity_and_family_prefixes",
+      "difference": "RYT*/RYMPSH* targets use '<optionId>=<target>_' + Name; quantity > 1 adds a factor to the target and to its suffix rule.",
+      "fixture": {
+        "name": "suffix_format_quantity_and_family_prefixes", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "PARENT1"}],
+        "article_prefix_length": {"p": 3},
+        "article_varcond_terms": {"p": [{"name": "Leg", "order": 1, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"p": [
+          {"sub_item": "RYTRFA.0812SW", "quantity": 1, "sequence": "1"},
+          {"sub_item": "GETH.1022FS4W", "quantity": 2, "sequence": "2"},
+          {"sub_item": "RYMPSH.12SW", "quantity": 1, "sequence": "3"}]},
+        "option_increments": {
+          "RYTRFA.": [{"option_id": 6027, "option_name": "worktop finish"}],
+          "GETH.": [{"option_id": 9168, "option_name": "colour"}],
+          "RYMPSH.": [{"option_id": 3848, "option_name": "panel finish"}]},
+        "request": {"article_codes": ["PARENT1"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'RYTRFA.0812SW' IF Leg = 'C'",
+        "$VARCOND = '6027=RYTRFA.0812SW_' + Worktop_Finish IF Leg = 'C'",
+        "$VARCOND = 'GETH.1022FS4W' IF Leg = 'C'",
+        "$SET_PRICING_FACTOR('GETH.1022FS4W', 2) IF Leg = 'C'",
+        "$VARCOND = 'GETH.1022FS4W 9168=' + Colour IF Leg = 'C'",
+        "$SET_PRICING_FACTOR('GETH.1022FS4W 9168=' + Colour, 2) IF Leg = 'C'",
+        "$VARCOND = 'RYMPSH.12SW' IF Leg = 'C'",
+        "$VARCOND = '3848=RYMPSH.12SW_' + Panel_Finish IF Leg = 'C'"
+      ]
+    },
+    {
+      "name": "hz13_hz14_fabric_rename",
+      "difference": "Legacy renames option properties containing 'fabric' for HZ13*/HZ14* targets.",
+      "fixture": {
+        "name": "hz13_hz14_fabric_rename", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "HZPAR1"}],
+        "article_prefix_length": {"p": 2},
+        "article_varcond_terms": {"p": [{"name": "Leg", "order": 1, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"p": [
+          {"sub_item": "HZ13X.1", "quantity": 1, "sequence": "1"},
+          {"sub_item": "HZ14X.1", "quantity": 1, "sequence": "2"}]},
+        "option_increments": {
+          "HZ13X.": [{"option_id": 101, "option_name": "front fabric type"}],
+          "HZ14X.": [{"option_id": 102, "option_name": "front fabric type"}]},
+        "request": {"article_codes": ["HZPAR1"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'HZ13X.1' IF Leg = 'C'",
+        "$VARCOND = 'HZ13X.1 101=' + Upper_Front_Fabric_Type IF Leg = 'C'",
+        "$VARCOND = 'HZ14X.1' IF Leg = 'C'",
+        "$VARCOND = 'HZ14X.1 102=' + Lower_Front_Fabric_Type IF Leg = 'C'"
+      ]
+    },
+    {
+      "name": "suffix_substitution_is_plain_replace",
+      "difference": "Legacy applies substitutions to suffix names with a plain IndexOf/Replace (no 'already equals new' guard).",
+      "fixture": {
+        "name": "suffix_substitution_is_plain_replace", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "PAR1"}],
+        "article_prefix_length": {"p": 3},
+        "article_varcond_terms": {"p": [{"name": "Leg", "order": 1, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"p": [{"sub_item": "XTOP.1", "quantity": 1, "sequence": "1"}]},
+        "option_increments": {"XTOP.": [{"option_id": 7, "option_name": "top finish"}]},
+        "request": {"article_codes": ["PAR1"], "property_substitutions": "Top=Top_Finish"}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'XTOP.1' IF Leg = 'C'",
+        "$VARCOND = 'XTOP.1 7=' + Top_Finish_Finish IF Leg = 'C'"
+      ],
+      "expected_default_rules": [
+        "$VARCOND = 'XTOP.1' IF Leg = 'C'",
+        "$VARCOND = 'XTOP.1 7=' + Top_Finish IF Leg = 'C'"
+      ]
+    },
+    {
+      "name": "whitespace_prefix_quirk",
+      "difference": "Legacy builds the property prefix whenever the untrimmed prefix is non-empty, so '  ' becomes '.'.",
+      "fixture": {
+        "name": "whitespace_prefix_quirk", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "PAR1"}],
+        "article_prefix_length": {"p": 3},
+        "article_varcond_terms": {"p": [{"name": "Leg", "order": 1, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"p": [{"sub_item": "S.1", "quantity": 1, "sequence": "1"}]},
+        "request": {"article_codes": ["PAR1"], "prefix": "  "}
+      },
+      "expected_legacy_exact_rules": ["$VARCOND = 'S.1' IF .Leg = 'C'"],
+      "expected_default_rules": ["$VARCOND = 'S.1' IF Leg = 'C'"]
+    },
+    {
+      "name": "component_order_follows_integer_sequence",
+      "difference": "Legacy orders BOM rows by CONVERT(INT, ComponentSequence), not by text or load order.",
+      "fixture": {
+        "name": "component_order_follows_integer_sequence", "provenance": "synthetic",
+        "articles": [{"id": "p", "code": "PAR1"}],
+        "article_prefix_length": {"p": 3},
+        "article_varcond_terms": {"p": [{"name": "Leg", "order": 1, "has_dependent_options": 0, "order_code": "C"}]},
+        "article_components": {"p": [
+          {"sub_item": "S.B", "quantity": 1, "sequence": "10"},
+          {"sub_item": "S.A", "quantity": 1, "sequence": "2"}]},
+        "request": {"article_codes": ["PAR1"]}
+      },
+      "expected_legacy_exact_rules": [
+        "$VARCOND = 'S.A' IF Leg = 'C'",
+        "$VARCOND = 'S.B' IF Leg = 'C'"
+      ]
+    }
+  ]
+}

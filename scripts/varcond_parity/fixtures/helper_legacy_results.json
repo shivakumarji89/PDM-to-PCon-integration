@@ -1,0 +1,1751 @@
+﻿{
+    "assemblyVersion":  "1.0.9686.24988",
+    "assemblySha256":  "494CC99E4C99AAD96D370267A3AF4E5F091DDB7D987E54DFAD04D3E3128D8804",
+    "parseAttributeNameAsPConProperty":  [
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Panel_Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Panel_Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Panel_Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Panel_material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RYSCRM1",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen_Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen_Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen_Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen_Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen_material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RYSCR2",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RYSCR2",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen_Width_FS"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen_Height_FS"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Depth_FS"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen_Material Type_FS"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen_Material type_FS"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen_material type_FS"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Castors Glides_FS"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Castors Glides_FS"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Castors_FS"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Hinge_FS"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Power Entry_FS"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Upper tiles_FS"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "upper_tile_front_FS"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Upper Tile Back_FS"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Lower tiles_FS"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Lower_Tile_Front_FS"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Lower tile back_FS"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Board material type_FS"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Foot_FS"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Fabric Type_FS"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Base type_FS"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "Screen Colour_FS"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RYSCRL9",
+                                                 "result":  "_FS"
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Wire_Management_Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RYWX1",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RYWX1",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RYWX1",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "HZ13",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "HZ13",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "HZ13",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "HZ13",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "HZ13",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "HZ13",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "HZ13",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "HZ13",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "HZ13",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "HZ13",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "HZ13",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "HZ13",
+                                                 "result":  "Upper_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "HZ13",
+                                                 "result":  "Upper_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "HZ13",
+                                                 "result":  "Upper_Tile_Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "HZ13",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "HZ13",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "HZ13",
+                                                 "result":  "Lower_Tile_Back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "HZ13",
+                                                 "result":  "Board_Material_Type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "HZ13",
+                                                 "result":  "Glides_Castors"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "HZ13",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "HZ13",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "HZ13",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "HZ13",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "HZ13",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "HZ13",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "HZ13",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "HZ13",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "HZ14",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "HZ14",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "HZ14",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "HZ14",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "HZ14",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "HZ14",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "HZ14",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "HZ14",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "HZ14",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "HZ14",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "HZ14",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "HZ14",
+                                                 "result":  "Upper_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "HZ14",
+                                                 "result":  "Upper_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "HZ14",
+                                                 "result":  "Upper_Tile_Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "HZ14",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "HZ14",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "HZ14",
+                                                 "result":  "Lower_Tile_Back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "HZ14",
+                                                 "result":  "Board_Material_Type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "HZ14",
+                                                 "result":  "Glides_Castors"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "HZ14",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "HZ14",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "HZ14",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "HZ14",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "HZ14",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "HZ14",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "HZ14",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "HZ14",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RY3X5",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Colour_A"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Colour_B"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RY3X5",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RY3X5",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "ABC.123",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "ABC.123",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "ABC.123",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "AHZ1",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "AHZ1",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "AHZ1",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Panel_Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Panel_Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Panel_Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Panel_material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "RYSCRMX",
+                                                 "result":  ""
+                                             },
+                                             {
+                                                 "name":  "Width",
+                                                 "context":  "",
+                                                 "result":  "Width"
+                                             },
+                                             {
+                                                 "name":  "Height",
+                                                 "context":  "",
+                                                 "result":  "Height"
+                                             },
+                                             {
+                                                 "name":  "Depth",
+                                                 "context":  "",
+                                                 "result":  "Depth"
+                                             },
+                                             {
+                                                 "name":  "Material Type",
+                                                 "context":  "",
+                                                 "result":  "Material Type"
+                                             },
+                                             {
+                                                 "name":  "Material type",
+                                                 "context":  "",
+                                                 "result":  "Material type"
+                                             },
+                                             {
+                                                 "name":  "material type",
+                                                 "context":  "",
+                                                 "result":  "material type"
+                                             },
+                                             {
+                                                 "name":  "Castors and Glides",
+                                                 "context":  "",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Glides / Castors",
+                                                 "context":  "",
+                                                 "result":  "Castors Glides"
+                                             },
+                                             {
+                                                 "name":  "Castors",
+                                                 "context":  "",
+                                                 "result":  "Castors"
+                                             },
+                                             {
+                                                 "name":  "Hinge / closure",
+                                                 "context":  "",
+                                                 "result":  "Hinge"
+                                             },
+                                             {
+                                                 "name":  "Power Entry cord",
+                                                 "context":  "",
+                                                 "result":  "Power Entry"
+                                             },
+                                             {
+                                                 "name":  "Upper tiles",
+                                                 "context":  "",
+                                                 "result":  "Upper tiles"
+                                             },
+                                             {
+                                                 "name":  "upper_tile_front",
+                                                 "context":  "",
+                                                 "result":  "upper_tile_front"
+                                             },
+                                             {
+                                                 "name":  "Upper Tile Back",
+                                                 "context":  "",
+                                                 "result":  "Upper Tile Back"
+                                             },
+                                             {
+                                                 "name":  "Lower tiles",
+                                                 "context":  "",
+                                                 "result":  "Lower tiles"
+                                             },
+                                             {
+                                                 "name":  "Lower_Tile_Front",
+                                                 "context":  "",
+                                                 "result":  "Lower_Tile_Front"
+                                             },
+                                             {
+                                                 "name":  "Lower tile back",
+                                                 "context":  "",
+                                                 "result":  "Lower tile back"
+                                             },
+                                             {
+                                                 "name":  "Board material type",
+                                                 "context":  "",
+                                                 "result":  "Board material type"
+                                             },
+                                             {
+                                                 "name":  "Foot",
+                                                 "context":  "",
+                                                 "result":  "Foot"
+                                             },
+                                             {
+                                                 "name":  "Colour (A)",
+                                                 "context":  "",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (B)",
+                                                 "context":  "",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Colour (C)",
+                                                 "context":  "",
+                                                 "result":  "Colour"
+                                             },
+                                             {
+                                                 "name":  "Top Material (Front)",
+                                                 "context":  "",
+                                                 "result":  "Top Material"
+                                             },
+                                             {
+                                                 "name":  "Fabric Type",
+                                                 "context":  "",
+                                                 "result":  "Fabric Type"
+                                             },
+                                             {
+                                                 "name":  "Base type",
+                                                 "context":  "",
+                                                 "result":  "Base type"
+                                             },
+                                             {
+                                                 "name":  "Screen Colour",
+                                                 "context":  "",
+                                                 "result":  "Screen Colour"
+                                             },
+                                             {
+                                                 "name":  "",
+                                                 "context":  "",
+                                                 "result":  ""
+                                             }
+                                         ],
+    "camelCase":  [
+                      {
+                          "input":  "worktop finish",
+                          "result":  "Worktop Finish"
+                      },
+                      {
+                          "input":  "BASE/TRIM colour",
+                          "result":  "Base/trim Colour"
+                      },
+                      {
+                          "input":  "herman miller",
+                          "result":  "Herman Miller"
+                      },
+                      {
+                          "input":  "Herman miller",
+                          "result":  "Herman Miller"
+                      },
+                      {
+                          "input":  "Logitech g",
+                          "result":  "Logitech g"
+                      },
+                      {
+                          "input":  "LOGITECHG",
+                          "result":  "LogitechG"
+                      },
+                      {
+                          "input":  "fr",
+                          "result":  "Fr"
+                      },
+                      {
+                          "input":  "abc fr",
+                          "result":  "Abc Fr"
+                      },
+                      {
+                          "input":  "ABC FR",
+                          "result":  "Abc Fr"
+                      },
+                      {
+                          "input":  "POSTUREFIT SL",
+                          "result":  "Posturefit Sl"
+                      },
+                      {
+                          "input":  "posturefit sl",
+                          "result":  "Posturefit Sl"
+                      },
+                      {
+                          "input":  "y-tower x",
+                          "result":  "Y-tower x"
+                      },
+                      {
+                          "input":  "uk model",
+                          "result":  "Uk Model"
+                      },
+                      {
+                          "input":  "emea france",
+                          "result":  "Emea France"
+                      },
+                      {
+                          "input":  "8z pel",
+                          "result":  "8z Pel"
+                      },
+                      {
+                          "input":  "A",
+                          "result":  "A"
+                      },
+                      {
+                          "input":  "",
+                          "result":  ""
+                      },
+                      {
+                          "input":  "x[1]y Z",
+                          "result":  "X[1]y Z"
+                      },
+                      {
+                          "input":  "UPPER front fabric TYPE",
+                          "result":  "Upper Front Fabric Type"
+                      },
+                      {
+                          "input":  " leading space",
+                          "result":  "Leading Space"
+                      },
+                      {
+                          "input":  "double  space",
+                          "result":  "Double Space"
+                      },
+                      {
+                          "input":  "germany italy spain",
+                          "result":  "Germany Italy Spain"
+                      },
+                      {
+                          "input":  "singapore india",
+                          "result":  "Singapore India"
+                      },
+                      {
+                          "input":  "europe",
+                          "result":  "Europe"
+                      }
+                  ],
+    "ParsePConPropertyName":  [
+                                  {
+                                      "input":  "Upper tiles",
+                                      "result":  "Upper_Tiles"
+                                  },
+                                  {
+                                      "input":  "Fabric (Front)",
+                                      "result":  "Fabric_Front"
+                                  },
+                                  {
+                                      "input":  "Fabric(Front)",
+                                      "result":  "FabricFront"
+                                  },
+                                  {
+                                      "input":  "a  b",
+                                      "result":  "a_ b"
+                                  },
+                                  {
+                                      "input":  "(x) y",
+                                      "result":  "x_Y"
+                                  },
+                                  {
+                                      "input":  "Panel Finish",
+                                      "result":  "Panel_Finish"
+                                  },
+                                  {
+                                      "input":  "",
+                                      "result":  ""
+                                  },
+                                  {
+                                      "input":  "abc",
+                                      "result":  "abc"
+                                  },
+                                  {
+                                      "input":  " lead",
+                                      "result":  "_Lead"
+                                  },
+                                  {
+                                      "input":  "trail ",
+                                      "result":  "trail_"
+                                  },
+                                  {
+                                      "input":  "a b c d",
+                                      "result":  "a_B_C_D"
+                                  },
+                                  {
+                                      "input":  "x ( y ) z",
+                                      "result":  "x_ y_ z"
+                                  }
+                              ],
+    "isInteger":  [
+                      {
+                          "input":  "",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "-",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "-",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "0",
+                          "allowNegative":  false,
+                          "result":  true
+                      },
+                      {
+                          "input":  "0",
+                          "allowNegative":  true,
+                          "result":  true
+                      },
+                      {
+                          "input":  "12",
+                          "allowNegative":  false,
+                          "result":  true
+                      },
+                      {
+                          "input":  "12",
+                          "allowNegative":  true,
+                          "result":  true
+                      },
+                      {
+                          "input":  "2.00",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "2.00",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "2.5",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "2.5",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "-3",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "-3",
+                          "allowNegative":  true,
+                          "result":  true
+                      },
+                      {
+                          "input":  "+4",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "+4",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "1e3",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  "1e3",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  " 5",
+                          "allowNegative":  false,
+                          "result":  false
+                      },
+                      {
+                          "input":  " 5",
+                          "allowNegative":  true,
+                          "result":  false
+                      },
+                      {
+                          "input":  "007",
+                          "allowNegative":  false,
+                          "result":  true
+                      },
+                      {
+                          "input":  "007",
+                          "allowNegative":  true,
+                          "result":  true
+                      }
+                  ]
+}
