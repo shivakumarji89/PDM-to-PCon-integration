@@ -63,7 +63,7 @@ namespace LegacyVarCondBridge
                         throw new MissingMethodException("Legacy worker initThread/execThread methods were not found.");
 
                     init.Invoke(worker, new object[] {
-                        items, categoryId, filter, OptionalString(request, "prefix"),
+                        new ArrayList(items), categoryId, filter, OptionalString(request, "prefix"),
                         OptionalString(request, "propertySubstitutions"),
                         OptionalString(request, "propertyExclusions")
                     });
