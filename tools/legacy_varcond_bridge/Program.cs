@@ -31,6 +31,13 @@ namespace LegacyVarCondBridge
                 if (String.IsNullOrWhiteSpace(filter))
                     throw new ArgumentException("filter must be non-empty to prevent the legacy all-items confirmation dialog.");
                 int categoryId = RequiredInt(request, "categoryId");
+                string server = RequiredString(request, "server");
+                string database = RequiredString(request, "database");
+                string databaseLower = database.ToLowerInvariant();
+                if (!(databaseLower.Contains("test") || databaseLower.Contains("dev") ||
+                      databaseLower.Contains("uat") || databaseLower.Contains("prototype") ||
+                      databaseLower.Contains("sandbox")))
+                    throw new ArgumentException("Database name must clearly identify a test/dev/UAT/prototype/sandbox database.");
 
                 Assembly legacy = Assembly.LoadFrom(Path.GetFullPath(assemblyPath));
                 ConfigureLegacy(legacy, request);
