@@ -29,11 +29,12 @@ The helper accepts one JSON object on stdin. Required fields:
 - `legacyAssemblyPath`: absolute path to `PDMMaintenance.exe`
 - `itemCodes`: non-empty array of article codes
 - `categoryId`: legacy PDM category ID
+- `server` and `database`: explicit SQL target; database name must contain `test`, `dev`, `uat`, `prototype`, or `sandbox`
 - `filter`: non-empty group filter. An empty filter triggers a legacy confirmation dialog, so the bridge rejects it.
 
 Optional fields: `server`, `database`, `pConPath`, `prefix`, `propertySubstitutions`, `propertyExclusions`.
 
-The response is JSON containing `ok`, `generatedText`, `statuses`, or `error`.
+The response is JSON containing `ok`, `generatedText`, `statuses`, or `error`. The helper refuses to run if the database name does not clearly identify a non-production database; this is a guardrail, not a substitute for verifying the actual server and permissions.
 
 ## Important limitations before UI integration
 
