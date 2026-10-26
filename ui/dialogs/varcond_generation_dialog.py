@@ -18,15 +18,14 @@ from PySide6.QtWidgets import (
 from services.varcond_service import VarCondService
 
 
-class VarCondGenerationDialog(QDialog):
+class VarCondGenerationPanel(QWidget):
     """PDM-style relation list on the left and selected relation body on right."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._context = context
         self._snapshot = context.active_snapshot
-        self.setWindowTitle("Generate VARCOND Relations")
-        self.resize(1180, 760)
+        self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
         filter_row = QHBoxLayout()
@@ -97,9 +96,6 @@ class VarCondGenerationDialog(QDialog):
         save_btn.clicked.connect(self._save)
         buttons.addWidget(save_btn)
         buttons.addStretch(1)
-        close_btn = QPushButton("Close", self)
-        close_btn.clicked.connect(self.accept)
-        buttons.addWidget(close_btn)
         root.addLayout(buttons)
 
         self._article_rows: list[tuple[str, str, str]] = []
