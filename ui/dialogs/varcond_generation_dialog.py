@@ -1,13 +1,14 @@
-"""Article-filtered VARCOND generation dialog.
+"""PDM-style VARCOND relation browser and generator.
 
-This first-pass UI mirrors the basic legacy PDM workflow: filter the available
-super-product articles, select one or more parents, and generate their relation
-text in the selected order. Advanced legacy export controls can be added later.
+Legacy PDM builds a list of unique PA_<article-prefix> relations. Selecting a
+relation generates one body from every parent article whose code starts with
+that prefix. Relation Prefix Length controls the relation name/grouping; it
+does not rewrite component target codes inside the VARCOND rules.
 """
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, Qt,
     QListWidgetItem, QMessageBox, QPushButton, QPlainTextEdit,
     QFileDialog, QVBoxLayout, QWidget, QSpinBox,
 )
@@ -16,45 +17,49 @@ from services.varcond_service import VarCondService
 
 
 class VarCondGenerationDialog(QDialog):
-    """Filter/select parent articles and generate legacy-shaped VARCOND text."""
+    """PDM-style relation list on the left and selected relation body on right."""
 
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._context = context
         self._snapshot = context.active_snapshot
-        self.setWindowTitle("Generate VARCOND")
+        self.setWindowTitle("Generate VARCOND Relations")
         self.resize(1180, 760)
 
         root = QVBoxLayout(self)
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Article filter:"))
+        filter_row.addWidget(QLabel("Relation / Article Filter:"))
         self._filter = QLineEdit(self)
-        self._filter.setPlaceholderText("Type part of an article code or name")
-        self._filter.textChanged.connect(self._apply_filter)
+        self._filter.setPlaceholderText("Filter article codes (starts with)")
+        self._filter.textChanged.connect(self._refresh_relations)
         filter_row.addWidget(self._filter, 1)
         self._relation_length = QSpinBox(self)
         self._relation_length.setRange(1, 30)
-        self._relation_length.setPrefix("Relation prefix length: ")
+        self._relation_length.setPrefix("Relation Prefix Length: ")
         self._relation_length.setToolTip(
-            "Defaults to the full parent article-code length. Reduce it to group "
-            "articles sharing the same leading characters under one relation group."
+            "Unique relation names are built from the first N characters of each "
+            "parent article. Articles sharing that prefix are generated together."
         )
+        self._relation_length.valueChanged.connect(self._refresh_relations)
         filter_row.addWidget(self._relation_length)
         root.addLayout(filter_row)
 
         split = QHBoxLayout()
-        self._articles = QListWidget(self)
-        self._articles.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        self._articles.setMinimumWidth(300)
-        self._articles.itemSelectionChanged.connect(self._on_selection_changed)
-        split.addWidget(self._articles, 1)
+        left = QVBoxLayout()
+        self._relations = QListWidget(self)
+        self._relations.setMinimumWidth(300)
+        self._relations.currentItemChanged.connect(self._on_relation_changed)
+        left.addWidget(self._relations, 1)
+        self._relation_count = QLabel("", self)
+        left.addWidget(self._relation_count)
+        split.addLayout(left, 1)
 
         right = QVBoxLayout()
         options = QHBoxLayout()
         self._prefix = QLineEdit(self)
         self._prefix.setPlaceholderText("Optional property-class prefix")
         self._exclusions = QLineEdit(self)
-        self._exclusions.setPlaceholderText("Property exclusions (comma/text)")
+        self._exclusions.setPlaceholderText("Property exclusions")
         self._substitutions = QLineEdit(self)
         self._substitutions.setPlaceholderText("Old=New substitutions")
         for label, widget in (
@@ -67,19 +72,18 @@ class VarCondGenerationDialog(QDialog):
             column.addWidget(widget)
             options.addLayout(column, 1)
         right.addLayout(options)
-
-        self._summary = QLabel("Select articles and click Generate.", self)
+        self._summary = QLabel("Select a relation to preview its generated body.", self)
         right.addWidget(self._summary)
         self._output = QPlainTextEdit(self)
         self._output.setReadOnly(True)
-        self._output.setPlaceholderText("Generated VARCOND relations appear here.")
+        self._output.setPlaceholderText("Selected PA_<prefix> relation body.")
         right.addWidget(self._output, 1)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
 
         buttons = QHBoxLayout()
-        generate = QPushButton("Generate", self)
-        generate.clicked.connect(self._generate)
+        generate = QPushButton("Generate / Refresh", self)
+        generate.clicked.connect(self._generate_selected)
         buttons.addWidget(generate)
         copy_btn = QPushButton("Copy", self)
         copy_btn.clicked.connect(self._copy)
@@ -94,106 +98,106 @@ class VarCondGenerationDialog(QDialog):
         root.addLayout(buttons)
 
         self._article_rows: list[tuple[str, str, str]] = []
+        articles = self._snapshot.articles if self._snapshot else []
         code_by_id = {
-            str(article.id): article.code
-            for article in (self._snapshot.articles if self._snapshot else [])
-            if article.id is not None
+            str(article.id): (article.code or "")
+            for article in articles if article.id is not None
         }
-        # Only parent articles with a BOM can produce component VARCOND rules.
-        for article_id, components in (self._snapshot.article_components or {}).items():
+        article_by_id = {
+            str(article.id): article for article in articles if article.id is not None
+        }
+        for article_id in (self._snapshot.article_components or {} if self._snapshot else {}):
             code = code_by_id.get(str(article_id), "")
-            article = next(
-                (a for a in self._snapshot.articles
-                 if a.id is not None and str(a.id) == str(article_id)),
-                None,
-            )
             if not code:
                 continue
+            article = article_by_id.get(str(article_id))
             label = code + (f" — {article.name}" if article and article.name else "")
             self._article_rows.append((code, label, str(article_id)))
         self._article_rows.sort(key=lambda row: row[0].casefold())
-        max_article_length = max((len(row[0]) for row in self._article_rows), default=1)
-        self._relation_length.setRange(1, max_article_length)
-        self._relation_length.setValue(max_article_length)
-        self._relation_length.valueChanged.connect(self._on_selection_changed)
-        for code, label, _article_id in self._article_rows:
-            item = QListWidgetItem(label)
-            item.setData(256, code)
-            self._articles.addItem(item)
+
+        max_length = max((len(row[0]) for row in self._article_rows), default=1)
+        self._relation_length.setRange(1, max_length)
+        self._relation_length.setValue(max_length)
+        self._refresh_relations()
         self._summary.setText(
             f"{len(self._article_rows)} parent articles with BOM loaded. "
-            "Filter, select one or more, then Generate."
+            "Select a PA_<prefix> relation to preview its rules."
         )
 
-    def _apply_filter(self, text: str) -> None:
-        needle = text.strip().casefold()
-        for index in range(self._articles.count()):
-            item = self._articles.item(index)
-            item.setHidden(needle not in item.text().casefold())
+    def _refresh_relations(self, *_args) -> None:
+        """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
+        current = self._relations.currentItem().text() if self._relations.currentItem() else ""
+        needle = self._filter.text().strip().casefold()
+        length = self._relation_length.value()
+        relation_names: set[str] = set()
+        for code, _label, _article_id in self._article_rows:
+            if needle and not code.casefold().startswith(needle):
+                continue
+            relation_names.add("PA_" + (code[:length] if len(code) > length else code)
 
-    def _on_selection_changed(self) -> None:
-        """Refresh the relation preview as the article selection changes."""
-        if any(
-            self._articles.item(index).isSelected()
-            for index in range(self._articles.count())
-        ):
-            self._generate()
+            )
+        self._relations.blockSignals(True)
+        self._relations.clear()
+        for name in sorted(relation_names, key=str.casefold):
+            self._relations.addItem(QListWidgetItem(name))
+        match = self._relations.findItems(current, Qt.MatchFlag.MatchExactly) if current else []
+        if match:
+            self._relations.setCurrentItem(match[0])
+        elif self._relations.count():
+            self._relations.setCurrentRow(0)
+        self._relations.blockSignals(False)
+        self._relation_count.setText(f"{self._relations.count()} Price Relation(s)")
+        self._generate_selected()
+
+    def _on_relation_changed(self, current, _previous) -> None:
+        if current is not None:
+            self._generate_selected()
         else:
             self._output.clear()
-            self._summary.setText("Select an article to preview its relations.")
+            self._summary.setText("No relation selected.")
 
-    def _generate(self) -> None:
-        selected_codes = [
-            self._articles.item(index).data(256)
-            for index in range(self._articles.count())
-            if self._articles.item(index).isSelected()
-        ]
-        if not selected_codes:
-            QMessageBox.information(
-                self, "Generate VARCOND", "Select at least one article from the list."
-            )
+    def _generate_selected(self) -> None:
+        item = self._relations.currentItem()
+        if item is None:
+            self._output.clear()
+            self._summary.setText("No matching relations.")
             return
-        length = self._relation_length.value()
-        groups: dict[str, list[str]] = {}
-        for code in selected_codes:
-            group_key = code[:length] if len(code) >= length else code
-            groups.setdefault(group_key, []).append(code)
+        relation_name = item.text()
+        relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
+        parent_codes = [
+            code for code, _label, _article_id in self._article_rows
+            if code.startswith(relation_prefix)
+        ]
+        if not parent_codes:
+            self._output.clear()
+            self._summary.setText(f"{relation_name}: no matching parent articles.")
+            return
 
         service = VarCondService(self._context)
-        blocks: list[str] = []
-        warnings: list[str] = []
-        definition_count = 0
-        for group_key, codes in groups.items():
-            result = service.generate(
-                prefix=self._prefix.text(),
-                property_exclusions=self._exclusions.text(),
-                property_substitutions=self._substitutions.text(),
-                legacy_exact=True,
-                article_codes=codes,
-            )
-            definition_count += len(result.rules)
-            warnings.extend(result.warnings)
-            blocks.append(
-                f"* Relation group {group_key} ({len(codes)} article(s))\\r\\n"
-                + result.text.rstrip("\\r\\n")
-            )
-        output = "\\r\\n\\r\\n".join(blocks)
-        self._output.setPlainText(output or "(nothing generated)")
-        self._summary.setText(
-            f"{len(selected_codes)} selected article(s) | {len(groups)} relation group(s) | "
-            f"{definition_count} definitions | {len(output)} characters"
-            + (f" | {len(warnings)} warning(s)" if warnings else "")
+        result = service.generate(
+            prefix=self._prefix.text(),
+            property_exclusions=self._exclusions.text(),
+            property_substitutions=self._substitutions.text(),
+            legacy_exact=True,
+            article_codes=parent_codes,
         )
-        if warnings:
-            self._summary.setToolTip("\\n".join(warnings))
+        self._output.setPlainText(result.text or "(nothing generated)")
+        self._summary.setText(
+            f"{relation_name} | {len(parent_codes)} parent article(s) | "
+            f"{len(result.rules)} definitions | {len(result.text)} characters"
+            + (f" | {len(result.warnings)} warning(s)" if result.warnings else "")
+        )
+        self._summary.setToolTip("\n".join(result.warnings))
 
     def _copy(self) -> None:
         from PySide6.QtWidgets import QApplication
         QApplication.clipboard().setText(self._output.toPlainText())
 
     def _save(self) -> None:
+        item = self._relations.currentItem()
+        default_name = (item.text() if item else "varcond") + ".txt"
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save VARCOND output", "varcond.txt", "Text files (*.txt)"
+            self, "Save VARCOND relation", default_name, "Text files (*.txt)"
         )
         if path:
             with open(path, "w", encoding="utf-8", newline="") as handle:
