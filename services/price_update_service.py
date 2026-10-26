@@ -23,11 +23,14 @@ from __future__ import annotations
 import csv
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
+from core.cancellation import OperationCancelled, checkpoint, commit
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 
@@ -60,6 +63,91 @@ _NONPRODUCT_DIR = re.compile(r"^(#|\d+[_-])|backup|template|training|translation
 #: Items pulled from PDM per warm query. Small enough that the running count
 #: advances visibly during the slow scalar-UDF pricing, not just at the end.
 _WARM_CHUNK = 100
+
+
+def _copy_cancellable(source: Path, target: Path) -> None:
+    with source.open("rb") as src, target.open("xb") as dst:
+        while True:
+            checkpoint()
+            chunk = src.read(1024 * 1024)
+            if not chunk:
+                break
+            dst.write(chunk)
+    checkpoint()
+
+
+@contextmanager
+def _staged_file(path: Path):
+    """Keep bridge transactions off the published MDB until they succeed."""
+    staged = path.with_name(f".{path.stem}.{uuid4().hex}.stage{path.suffix}")
+    try:
+        _copy_cancellable(path, staged)
+        yield staged
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+def _read_table(service, *args, **kwargs):
+    checkpoint()
+    rows = service.read_table(*args, **kwargs)
+    checkpoint()
+    return rows
+
+
+def _execute_batch(service, *args, **kwargs):
+    checkpoint()
+    result = service.execute_batch(*args, **kwargs)
+    checkpoint()
+    return result
+
+
+def _write_mdb(service, path: Path, ops):
+    """Cancellation discards the staged transaction, leaving the final intact."""
+    with _staged_file(path) as staged:
+        result = _execute_batch(service, staged, ops, transaction=True)
+        if result.ok:
+            checkpoint()
+            os.replace(staged, path)
+        return result
+
+
+def _publish_staged(staged) -> None:
+    """Publish a package without cancellation between its atomic replacements."""
+    backups = {}
+    published = []
+    retained = set()
+    try:
+        for path in staged:
+            if path.exists():
+                backup = path.with_name(f".{path.name}.{uuid4().hex}.backup")
+                backups[path] = backup
+                _copy_cancellable(path, backup)
+        checkpoint()
+        try:
+            for path, stage in staged.items():
+                os.replace(stage, path)
+                published.append(path)
+        except OSError as error:
+            recovery_errors = []
+            for path in reversed(published):
+                try:
+                    if path in backups:
+                        os.replace(backups[path], path)
+                    else:
+                        path.unlink(missing_ok=True)
+                except OSError as recovery_error:
+                    if path in backups:
+                        retained.add(backups[path])
+                    recovery_errors.append(str(recovery_error))
+            if recovery_errors:
+                raise OSError(
+                    f"{error}; rollback failed: {'; '.join(recovery_errors)}. "
+                    f"Recovery copies retained: {', '.join(map(str, retained))}") from error
+            raise
+    finally:
+        for scratch in backups.values():
+            if scratch not in retained:
+                scratch.unlink(missing_ok=True)
 
 
 def _as_roots(repository) -> list[Path]:
@@ -180,11 +268,13 @@ class PriceUpdateService(BaseService):
         return self._open_lists_mdb(Path(package)) if is_mdb else self._open_lists_xocd(Path(package))
 
     def _open_lists_xocd(self, folder: Path) -> list[OpenList]:
+        checkpoint()
         path = folder / "xocd_price.csv"
         by_list: dict[str, dict[str, Any]] = {}
         if path.is_file():
             with path.open("r", encoding=_ENCODING, newline="") as fh:
                 for row in csv.reader(fh, delimiter=_DELIM):
+                    checkpoint()
                     if len(row) <= _PX_DATE_TO:
                         continue
                     rec = by_list.setdefault(
@@ -196,11 +286,12 @@ class PriceUpdateService(BaseService):
                 if v["open"] and self._is_dated_list(lid)]
 
     def _open_lists_mdb(self, mdb: Path) -> list[OpenList]:
-        rows = self.context.mdb_service.read_table(
+        rows = _read_table(self.context.mdb_service,
             mdb, "SELECT com_PriceListLabel, sys_ISOCurrencyCode, com_PriceValidTo "
                  "FROM tCOMd_PriceList2")
         out: list[OpenList] = []
         for r in rows:
+            checkpoint()
             label = str(r.get("com_PriceListLabel") or "")
             if not self._is_open_ymd(r.get("com_PriceValidTo")) or not self._is_dated_list(label):
                 continue
@@ -275,11 +366,13 @@ class PriceUpdateService(BaseService):
         used to rebuild the full item comes from the base price rows. Articles
         with no base price keep an empty varcond. Falls back to the price rows
         when no article file is present."""
+        checkpoint()
         arts: set[tuple[str, str]] = set()
         apath = folder / "xocd_article.csv"
         if apath.is_file():
             with apath.open("r", encoding=_ENCODING, newline="") as fh:
                 for row in csv.reader(fh, delimiter=_DELIM):
+                    checkpoint()
                     if len(row) > 2 and row[2]:              # Program, _, ArticleID
                         arts.add((row[0], row[2]))
         varconds: dict[tuple[str, str], set[str]] = {}
@@ -287,6 +380,7 @@ class PriceUpdateService(BaseService):
         if ppath.is_file():
             with ppath.open("r", encoding=_ENCODING, newline="") as fh:
                 for row in csv.reader(fh, delimiter=_DELIM):
+                    checkpoint()
                     if len(row) <= _PX_LEVEL or row[_PX_ARTICLE] == "*":
                         continue
                     if "=" in row[_PX_VARCOND] or (row[_PX_LEVEL] or "B") != "B":
@@ -297,6 +391,7 @@ class PriceUpdateService(BaseService):
             arts = set(varconds)
         out: set[tuple[str, str, str]] = set()
         for key in arts:
+            checkpoint()
             for vc in (varconds.get(key) or {""}):
                 out.add((key[0], key[1], vc))
         return sorted(out)
@@ -306,7 +401,7 @@ class PriceUpdateService(BaseService):
         authoritative ``tCOMd_Article`` table; the varcond comes from the base
         ``tCOMd_Price`` rows. All three reads run in ONE bridge call so a large
         workspace of MDBs stays fast."""
-        batch = self.context.mdb_service.execute_batch(mdb, [
+        batch = _execute_batch(self.context.mdb_service, mdb, [
             {"op": "query", "sql": "SELECT TOP 1 reg_ProgramCode FROM tCOMd_Package"},
             {"op": "query", "sql": "SELECT com_ArticleCode FROM tCOMd_Article"},
             {"op": "query", "sql": "SELECT a.com_ArticleCode, p.com_VariantCondition "
@@ -319,10 +414,14 @@ class PriceUpdateService(BaseService):
             return []
         prog_rows, art_rows, price_rows = res[0].rows, res[1].rows, res[2].rows
         program = str(prog_rows[0].get("reg_ProgramCode") or "") if prog_rows else ""
-        arts = {(program, str(r.get("com_ArticleCode") or ""))
-                for r in art_rows if r.get("com_ArticleCode")}
+        arts = set()
+        for r in art_rows:
+            checkpoint()
+            if r.get("com_ArticleCode"):
+                arts.add((program, str(r["com_ArticleCode"])))
         varconds: dict[tuple[str, str], set[str]] = {}
         for r in price_rows:
+            checkpoint()
             varconds.setdefault(
                 (program, str(r.get("com_ArticleCode") or "")), set()).add(
                     str(r.get("com_VariantCondition") or ""))
@@ -330,6 +429,7 @@ class PriceUpdateService(BaseService):
             arts = set(varconds)
         out: set[tuple[str, str, str]] = set()
         for key in arts:
+            checkpoint()
             for vc in (varconds.get(key) or {""}):
                 out.add((key[0], key[1], vc))
         return sorted(out)
@@ -339,15 +439,26 @@ class PriceUpdateService(BaseService):
         if not items:
             return {}
         try:
+            checkpoint()
             from repositories.pdm_repository import PDMRepository
             repo = PDMRepository(self.context)
             conn = repo.get_connection()
             try:
-                rows = repo.fetch_item_notes(items, conn)
+                notes = {}
+                for start in range(0, len(items), _WARM_CHUNK):
+                    checkpoint()
+                    rows = repo.fetch_item_notes(items[start:start + _WARM_CHUNK], conn)
+                    checkpoint()
+                    for r in rows:
+                        checkpoint()
+                        notes[str(r.Item)] = getattr(r, "Notes", "") or ""
             finally:
                 conn.close()
-            return {str(r.Item): (getattr(r, "Notes", "") or "") for r in rows}
+            return notes
+        except OperationCancelled:
+            raise
         except Exception:
+            checkpoint()
             return {}
 
     def compare_base_lengths(
@@ -364,6 +475,7 @@ class PriceUpdateService(BaseService):
             pairs = (self._base_pairs_mdb(Path(package)) if is_mdb
                      else self._base_pairs_xocd(Path(package)))
         except OSError as exc:
+            checkpoint()
             report.error = str(exc)
             return report
         if notes_by_item is None:
@@ -378,10 +490,12 @@ class PriceUpdateService(BaseService):
         report = BaseLengthReport(package=str(package))
         full: dict[tuple[str, str], str] = {}  # (program, full item) -> stored base
         for program, base, varcond in pairs:
+            checkpoint()
             item = (base + varcond).strip()
             if item:
                 full.setdefault((program, item), base)
         for (program, item), base in sorted(full.items()):
+            checkpoint()
             notes = notes_by_item.get(item, "")
             plen = self._prefix_len_from_notes(notes)
             expected = item[:plen] if plen else ""
@@ -404,11 +518,13 @@ class PriceUpdateService(BaseService):
         pairs_by_pkg: dict[Path, object] = {}
         all_items: set[str] = set()
         for i, pkg in enumerate(packages, 1):
+            checkpoint()
             if progress:
                 progress(i, total, (pkg.parent.name if is_mdb else pkg.name))
             try:
                 pairs = self._base_pairs_mdb(pkg) if is_mdb else self._base_pairs_xocd(pkg)
             except OSError as exc:
+                checkpoint()
                 pairs_by_pkg[pkg] = exc
                 continue
             pairs_by_pkg[pkg] = pairs
@@ -416,8 +532,10 @@ class PriceUpdateService(BaseService):
         if progress:
             progress(total, total, "Fetching CAD lengths from PDM...")
         notes = self._fetch_notes(sorted(all_items))
+        checkpoint()
         reports: list[BaseLengthReport] = []
         for pkg in packages:
+            checkpoint()
             got = pairs_by_pkg[pkg]
             if isinstance(got, OSError):
                 reports.append(BaseLengthReport(package=str(pkg), error=str(got)))
@@ -439,7 +557,9 @@ class PriceUpdateService(BaseService):
         articles actually published, not all of PDM."""
         rows: list[dict[str, str]] = []
         for report in self.check_base_lengths(repository, is_mdb, progress):
+            checkpoint()
             for e in report.entries:
+                checkpoint()
                 status = "OK" if e.match else ("NO_CAD" if not e.pdm_len else "MISMATCH")
                 rows.append({
                     "Program": e.program, "Item": e.full_item,
@@ -447,6 +567,7 @@ class PriceUpdateService(BaseService):
                     "Expected_Base": e.expected_base, "Override_Length": "",
                     "Status": status,
                 })
+        checkpoint()
         return rows
 
     def write_base_length_registry(
@@ -455,21 +576,30 @@ class PriceUpdateService(BaseService):
         """Write/refresh the central registry. It ACCUMULATES: rows for series not
         in this run are kept. When ``preserve_edits`` (a re-check), an existing
         ``Override_Length`` is kept over a blank new one; when False (an explicit
-        Save) the provided rows win, so an override can also be cleared."""
+        Save) the provided rows win, so an override can also be cleared.
+        Staging is cancellable; final replacement commits the check workflow."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         merged = self._read_registry_all(path)   # (Program, Item) -> row
         for r in rows:
+            checkpoint()
             key = (r["Program"], r["Item"])
             prev = merged.get(key)
             if preserve_edits and prev and (prev.get("Override_Length") or "").strip():
                 r = {**r, "Override_Length": prev["Override_Length"]}
             merged[key] = r
-        with path.open("w", encoding="utf-8-sig", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=_REGISTRY_COLUMNS, delimiter=";")
-            writer.writeheader()
-            for key in sorted(merged):
-                writer.writerow({c: merged[key].get(c, "") for c in _REGISTRY_COLUMNS})
+        staged = path.with_name(f".{path.name}.{uuid4().hex}.stage")
+        try:
+            with staged.open("x", encoding="utf-8-sig", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=_REGISTRY_COLUMNS, delimiter=";")
+                writer.writeheader()
+                for key in sorted(merged):
+                    checkpoint()
+                    writer.writerow({c: merged[key].get(c, "") for c in _REGISTRY_COLUMNS})
+            commit()
+            os.replace(staged, path)
+        finally:
+            staged.unlink(missing_ok=True)
         return str(path)
 
     def _read_registry_all(self, path: str | Path) -> dict[tuple[str, str], dict[str, str]]:
@@ -480,6 +610,7 @@ class PriceUpdateService(BaseService):
             return out
         with path.open("r", encoding="utf-8-sig", newline="") as fh:
             for r in csv.DictReader(fh, delimiter=";"):
+                checkpoint()
                 out[(r.get("Program", ""), r.get("Item", ""))] = dict(r)
         return out
 
@@ -531,7 +662,9 @@ class PriceUpdateService(BaseService):
         pattern = "pcr_data_com_ocd.mdb" if is_mdb else "xocd_price.csv"
         found: list[Path] = []
         for base in _as_roots(root):
+            checkpoint()
             for hit in base.rglob(pattern):
+                checkpoint()
                 if any(_NONPRODUCT_DIR.search(part) for part in hit.relative_to(base).parts):
                     continue
                 found.append(hit if is_mdb else hit.parent)
@@ -565,16 +698,22 @@ class PriceUpdateService(BaseService):
             packages = [Path(p) for p in packages]
 
         roll = self.roll_over_package_mdb if is_mdb else self.roll_over_package_xocd
-        for i, pkg in enumerate(packages, 1):
-            name = pkg.parent.name if is_mdb else pkg.name
-            if stage:
-                stage(f"Package {i}/{len(packages)}: {name}")
-            result.packages.append(roll(pkg, effective_ymd, token, price_lookup, apply,
-                                         stage=stage, special_map=special_map))
-            # Advance one step AFTER the package is done, so a single package
-            # doesn't jump straight to 100% before any work has happened.
-            if progress:
-                progress(i, len(packages), name)
+        try:
+            for i, pkg in enumerate(packages, 1):
+                checkpoint()
+                name = pkg.parent.name if is_mdb else pkg.name
+                if stage:
+                    stage(f"Package {i}/{len(packages)}: {name}")
+                result.packages.append(roll(pkg, effective_ymd, token, price_lookup, apply,
+                                             stage=stage, special_map=special_map))
+                if progress:
+                    progress(i, len(packages), name)
+            checkpoint()
+        except OperationCancelled as exc:
+            completed = sum(p.applied and p.error is None for p in result.packages)
+            raise OperationCancelled(
+                f"Cancelled. {completed} package(s) committed; "
+                f"{len(result.packages)} package(s) completed.") from exc
         result.logs.append(
             f"{'Applied' if apply else 'Scanned'} {len(packages)} package(s)."
         )
@@ -601,6 +740,7 @@ class PriceUpdateService(BaseService):
         # Split the open lists into already-done (target == itself) and pending.
         pending: dict[str, tuple[str, str]] = {}   # old_list -> (currency, target)
         for ol in self._open_lists_xocd(folder):
+            checkpoint()
             target = self.new_list_name(ol.list_id, token)
             if target == ol.list_id:
                 result.lists.append(ListRoll(
@@ -616,11 +756,12 @@ class PriceUpdateService(BaseService):
         tally: dict[str, ListRoll] = {}
         try:
             with path.open("r", encoding=_ENCODING, newline="") as fh:
-                rows = [r for r in csv.reader(fh, delimiter=_DELIM) if r]
+                rows = self._read_rows(fh)
             kept: list[list[str]] = []
             new_rows: list[list[str]] = []
             partial = False
             for row in rows:
+                checkpoint()
                 if len(row) <= _PX_DATE_TO:
                     kept.append(row)
                     continue
@@ -642,6 +783,7 @@ class PriceUpdateService(BaseService):
                 fresh = (price_lookup(currency, is_global, row[_PX_ARTICLE],
                                       row[_PX_VARCOND], row[_PX_LEVEL])
                          if price_lookup else None)
+                checkpoint()
                 value = old_val if fresh is None else float(fresh)
                 lr.rows += 1
                 if fresh is None:
@@ -661,9 +803,15 @@ class PriceUpdateService(BaseService):
             for lr in tally.values():
                 lr.status = "done" if apply else ("partial" if partial else "pending")
             if apply:
-                self._write_rows_atomic(path, kept + new_rows)
-                for target in targets:
-                    self._register_xocd_list(folder, target, target)
+                list_path = folder / "xocd_pricelists.csv"
+                list_rows = []
+                if list_path.is_file():
+                    with list_path.open("r", encoding=_ENCODING, newline="") as fh:
+                        list_rows = self._read_rows(fh)
+                registered = {r[0] for r in list_rows}
+                list_rows.extend([target, target] for target in sorted(targets)
+                                 if target not in registered)
+                self._publish_rows([(list_path, list_rows), (path, kept + new_rows)])
                 result.applied = True
             result.lists.extend(tally.values())
         except OSError as exc:
@@ -714,17 +862,24 @@ class PriceUpdateService(BaseService):
         state: dict[str, Any] = {"conn": None, "dead": False}
 
         def _conn():
+            checkpoint()
             if state["conn"] is None:
                 state["conn"] = repo.get_connection()
+            checkpoint()
             return state["conn"]
 
         def _base(currency, item):
             key = (currency, item)
             if key not in base_cache:
                 try:
+                    checkpoint()
                     got = repo.fetch_item_base_prices([item], currency, mydate, _conn())
+                    checkpoint()
                     base_cache[key] = float(got[0].price) if got and got[0].price is not None else None
+                except OperationCancelled:
+                    raise
                 except Exception:
+                    checkpoint()
                     state["dead"] = True
                     base_cache[key] = None
             return base_cache[key]
@@ -734,16 +889,23 @@ class PriceUpdateService(BaseService):
             if key not in inc_cache:
                 found: dict[tuple, float] = {}
                 try:
+                    checkpoint()
                     for r in repo.fetch_item_option_increment_prices(
                             [item], currency, mydate, site_id, _conn()):
+                        checkpoint()
                         if getattr(r, "IncPrice", None) is not None:
                             found[(str(r.OptionId), str(r.Code).replace("#", ""))] = float(r.IncPrice)
+                    checkpoint()
+                except OperationCancelled:
+                    raise
                 except Exception:
+                    checkpoint()
                     state["dead"] = True
                 inc_cache[key] = found
             return inc_cache[key]
 
         def lookup(currency, is_global, article, varcond, level):
+            checkpoint()
             if state["dead"]:
                 return None
             item, option_id, code = self._lookup_key(is_global, article, varcond, special_map)
@@ -760,11 +922,16 @@ class PriceUpdateService(BaseService):
             show a running count while the slow PDM pricing is in flight."""
             todo = sorted({it for it in items if it and (currency, it) not in base_cache})
             for start in range(0, len(todo), _WARM_CHUNK):
+                checkpoint()
                 chunk = todo[start:start + _WARM_CHUNK]
                 try:
                     got = repo.fetch_item_base_prices(chunk, currency, mydate, _conn())
+                    checkpoint()
                     found = {str(r.Item): (float(r.price) if r.price is not None else None) for r in got}
+                except OperationCancelled:
+                    raise
                 except Exception:
+                    checkpoint()
                     state["dead"] = True
                     return
                 for it in chunk:
@@ -777,15 +944,21 @@ class PriceUpdateService(BaseService):
             queries, keyed back per item. ``progress(n)`` reports each chunk."""
             todo = sorted({it for it in items if it and (currency, it) not in inc_cache})
             for start in range(0, len(todo), _WARM_CHUNK):
+                checkpoint()
                 chunk = todo[start:start + _WARM_CHUNK]
                 by_item: dict[str, dict[tuple, float]] = {}
                 try:
                     for r in repo.fetch_item_option_increment_prices(
                             chunk, currency, mydate, site_id, _conn()):
+                        checkpoint()
                         if getattr(r, "IncPrice", None) is not None:
                             by_item.setdefault(str(r.Item), {})[
                                 (str(r.OptionId), str(r.Code).replace("#", ""))] = float(r.IncPrice)
+                    checkpoint()
+                except OperationCancelled:
+                    raise
                 except Exception:
+                    checkpoint()
                     state["dead"] = True
                     return
                 for it in chunk:
@@ -795,6 +968,13 @@ class PriceUpdateService(BaseService):
 
         lookup.warm_base = warm_base
         lookup.warm_increments = warm_increments
+
+        def close():
+            if state["conn"] is not None:
+                state["conn"].close()
+                state["conn"] = None
+
+        lookup.close = close
         return lookup
 
     # -- special-case (underscore) article mapping ----------------------
@@ -809,6 +989,7 @@ class PriceUpdateService(BaseService):
         if path.is_file():
             with path.open("r", encoding=_ENCODING, newline="") as fh:
                 for row in csv.reader(fh):
+                    checkpoint()
                     if len(row) >= 2 and row[0] and row[0] != "Article":
                         out[row[0]] = row[1]
         return out
@@ -819,11 +1000,18 @@ class PriceUpdateService(BaseService):
         merged.update({k: v for k, v in mapping.items() if v})
         path = self._special_map_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding=_ENCODING, newline="") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(["Article", "BaseItem"])
-            for key in sorted(merged):
-                writer.writerow([key, merged[key]])
+        staged = path.with_name(f".{path.name}.{uuid4().hex}.stage")
+        try:
+            with staged.open("x", encoding=_ENCODING, newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["Article", "BaseItem"])
+                for key in sorted(merged):
+                    checkpoint()
+                    writer.writerow([key, merged[key]])
+            checkpoint()
+            os.replace(staged, path)
+        finally:
+            staged.unlink(missing_ok=True)
 
     def scan_special_articles(
         self, packages, mydate: str, site_id: int, currencies=("EUR", "GBP")
@@ -837,30 +1025,48 @@ class PriceUpdateService(BaseService):
         suggested, known}`` (``known`` = already in the saved map)."""
         from repositories.pdm_repository import PDMRepository
 
+        checkpoint()
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
+        try:
+            checkpoint()
+            return self._scan_special_articles(repo, conn, packages, mydate, site_id, currencies)
+        finally:
+            conn.close()
+
+    def _scan_special_articles(self, repo, conn, packages, mydate, site_id, currencies):
         known = self.load_special_map()
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
 
         def price(item, cur):
             try:
+                checkpoint()
                 r = repo._execute(
                     "SELECT dbo.fnGetListPriceByItem(?, ?, ?, ?, NULL) AS p",
                     (item, cur, mydate, site_id), connection=conn)
+                checkpoint()
                 return float(r[0].p) if r and r[0].p is not None else None
+            except OperationCancelled:
+                raise
             except Exception:
+                checkpoint()
                 return None
 
         for pkg in packages:
+            checkpoint()
             mdb = Path(pkg)
             try:
-                arts = self.context.mdb_service.read_table(
+                arts = _read_table(self.context.mdb_service,
                     mdb, "SELECT DISTINCT com_ArticleCode FROM tCOMd_Article "
                          "WHERE com_ArticleCode LIKE '%[_]%'")
+            except OperationCancelled:
+                raise
             except Exception:
+                checkpoint()
                 continue
             for a in arts:
+                checkpoint()
                 code = str(a.get("com_ArticleCode") or "")
                 if not code or "_" not in code or code in seen:
                     continue
@@ -874,6 +1080,7 @@ class PriceUpdateService(BaseService):
                     "base_prices": base_prices,
                     "suggested": any(v is not None for v in base_prices.values()),
                     "known": code in known})
+        checkpoint()
         return out
 
     def apply_special_articles(
@@ -893,9 +1100,15 @@ class PriceUpdateService(BaseService):
         if not articles:
             return 0, None
         lookup = self.make_pdm_lookup(mydate, site_id, special_map=base_map)
+        try:
+            return self._apply_special_rows(mdb, svc, articles, lookup, stage)
+        finally:
+            lookup.close()
+
+    def _apply_special_rows(self, mdb, svc, articles, lookup, stage):
         open_lists = {
             r["com_PriceListID"]: str(r.get("sys_ISOCurrencyCode") or "")
-            for r in svc.read_table(
+            for r in _read_table(svc,
                 mdb, "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
                      "com_PriceValidTo FROM tCOMd_PriceList2")
             if self._is_open_ymd(r.get("com_PriceValidTo"))
@@ -903,16 +1116,19 @@ class PriceUpdateService(BaseService):
         codes_sql = ",".join("'" + a.replace("'", "''") + "'" for a in articles)
         ops: list[dict[str, Any]] = []
         for list_id, currency in open_lists.items():
-            rows = svc.read_table(
+            checkpoint()
+            rows = _read_table(svc,
                 mdb, "SELECT p.com_PriceID, a.com_ArticleCode, p.com_VariantCondition, "
                      "p.com_PriceLevelCode, p.com_PriceValue FROM tCOMd_Price p "
                      "INNER JOIN tCOMd_Article a ON p.com_ArticleID = a.com_ArticleID "
                      f"WHERE p.com_PriceListID = {list_id} AND a.com_ArticleCode IN ({codes_sql})")
             for r in rows:
+                checkpoint()
                 old_val = float(r.get("com_PriceValue") or 0)
                 fresh = lookup(currency, False, str(r.get("com_ArticleCode") or ""),
                                str(r.get("com_VariantCondition") or ""),
                                str(r.get("com_PriceLevelCode") or "B"))
+                checkpoint()
                 if fresh is not None and float(fresh) != old_val:
                     ops.append({"op": "update", "table": "tCOMd_Price",
                                 "set": {"com_PriceValue": float(fresh)},
@@ -921,7 +1137,7 @@ class PriceUpdateService(BaseService):
                 stage(f"{mdb.parent.name} [{currency}]: {len(ops)} special update(s)")
         if not ops:
             return 0, None
-        batch = svc.execute_batch(mdb, ops, transaction=True)
+        batch = _write_mdb(svc, mdb, ops)
         return (len(ops) if batch.ok else 0), (None if batch.ok else batch.first_error())
 
     def roll_over_package_mdb(
@@ -939,7 +1155,7 @@ class PriceUpdateService(BaseService):
             return result
         svc = self.context.mdb_service
         old_end = self.context.price_list_service._day_before(effective_ymd)
-        lists = svc.read_table(
+        lists = _read_table(svc,
             mdb, "SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, "
                  "com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2")
         # Group the open, dated lists by currency. Real packages sometimes carry a
@@ -948,6 +1164,7 @@ class PriceUpdateService(BaseService):
         # with a single open list per currency and never a duplicate target.
         groups: dict[str, dict[str, Any]] = {}
         for r in lists:
+            checkpoint()
             label = str(r.get("com_PriceListLabel") or "")
             if not self._is_open_ymd(r.get("com_PriceValidTo")) or not self._is_dated_list(label):
                 continue
@@ -962,6 +1179,7 @@ class PriceUpdateService(BaseService):
 
         pending: list[tuple[str, dict, str, list]] = []
         for ccy, grp in groups.items():
+            checkpoint()
             target = self.new_list_name(str(grp["newest"].get("com_PriceListLabel") or ""), token)
             if grp["done"]:
                 result.lists.append(ListRoll(
@@ -989,10 +1207,10 @@ class PriceUpdateService(BaseService):
         # and no stale link keeps claiming the current/default list.
         valid_list_ids = {
             r.get("com_PriceListID")
-            for r in svc.read_table(mdb, "SELECT com_PriceListID FROM tCOMd_PriceList2")}
+            for r in _read_table(svc, mdb, "SELECT com_PriceListID FROM tCOMd_PriceList2")}
         orphan_ids = {
             link.get("com_PriceListID")
-            for link in svc.read_table(
+            for link in _read_table(svc,
                 mdb, "SELECT com_PriceListID FROM tCOMd_DistributionRegionPriceList")
             if link.get("com_PriceListID") not in valid_list_ids}
 
@@ -1002,6 +1220,7 @@ class PriceUpdateService(BaseService):
             ops.append({"op": "delete", "table": "tCOMd_DistributionRegionPriceList",
                         "where": {"com_PriceListID": pl}})
         for currency, src, new_label, open_pks in pending:
+            checkpoint()
             old_pk = src["com_PriceListID"]
             label = str(src.get("com_PriceListLabel") or "")
             next_list += 1
@@ -1017,10 +1236,11 @@ class PriceUpdateService(BaseService):
             # Assign the new list to the SAME distribution regions as its source
             # and mark every assignment as the default (current) list; the old
             # open lists we just end-dated are cleared below so the new one wins.
-            src_links = list(svc.read_table(
+            src_links = list(_read_table(svc,
                 mdb, "SELECT com_DistributionRegionID "
                      f"FROM tCOMd_DistributionRegionPriceList WHERE com_PriceListID = {old_pk}"))
             for rl in src_links:
+                checkpoint()
                 ops.append({"op": "insert", "table": "tCOMd_DistributionRegionPriceList", "rows": [{
                     "com_DistributionRegionPriceListID": next_drpl,
                     "com_DistributionRegionID": rl.get("com_DistributionRegionID"),
@@ -1036,23 +1256,26 @@ class PriceUpdateService(BaseService):
             # Read the source list's rows once, then bulk-warm PDM prices for all
             # their items in a couple of queries (instead of one round-trip per
             # row - which made a big package look frozen for minutes).
-            price_src = list(svc.read_table(
+            price_src = list(_read_table(svc,
                 mdb, "SELECT p.com_ArticleID, a.com_ArticleCode, p.com_VariantCondition, "
                      "p.com_PriceLevelCode, p.com_PriceValue, p.com_TextID FROM tCOMd_Price p "
                      "INNER JOIN tCOMd_Article a ON p.com_ArticleID = a.com_ArticleID "
                      f"WHERE p.com_PriceListID = {old_pk}"))
-            global_src = list(svc.read_table(
+            global_src = list(_read_table(svc,
                 mdb, "SELECT com_PackageID, com_VariantCondition, com_PriceValue, com_TextID "
                      f"FROM tCOMd_GlobalPrice WHERE com_PriceListID = {old_pk}"))
             if price_lookup is not None and hasattr(price_lookup, "warm_base"):
                 base_items: set[str] = set()
                 inc_items: set[str] = set()
                 for r in price_src:
+                    checkpoint()
+                    checkpoint()
                     item, oid, _ = self._lookup_key(
                         False, str(r.get("com_ArticleCode") or ""),
                         str(r.get("com_VariantCondition") or ""), special_map)
                     (inc_items if oid else base_items).add(item)
                 for r in global_src:
+                    checkpoint()
                     item, oid, _ = self._lookup_key(
                         True, "", str(r.get("com_VariantCondition") or ""), special_map)
                     (inc_items if oid else base_items).add(item)
@@ -1078,6 +1301,7 @@ class PriceUpdateService(BaseService):
                 level = str(r.get("com_PriceLevelCode") or "B")
                 fresh = (price_lookup(currency, False, str(r.get("com_ArticleCode") or ""),
                                       varcond, level) if price_lookup else None)
+                checkpoint()
                 value = old_val if fresh is None else float(fresh)
                 lr.rows += 1
                 lr.carried += fresh is None
@@ -1097,10 +1321,12 @@ class PriceUpdateService(BaseService):
                         "com_PriceValidTo": _mdb_date_literal("99991231")}]})
                     next_price += 1
             for r in global_src:
+                checkpoint()
                 old_val = float(r.get("com_PriceValue") or 0)
                 varcond = str(r.get("com_VariantCondition") or "")
                 fresh = (price_lookup(currency, True, "", varcond, "")
                          if price_lookup else None)
+                checkpoint()
                 value = old_val if fresh is None else float(fresh)
                 lr.rows += 1
                 lr.carried += fresh is None
@@ -1122,7 +1348,7 @@ class PriceUpdateService(BaseService):
                 stage(f"{mdb.parent.name}: writing {len(ops)} change(s)...")
             # One transaction per package: all-or-nothing, so an interrupted run
             # never leaves a package half-rolled (a re-run then skips or redoes it).
-            batch = svc.execute_batch(mdb, ops, transaction=True)
+            batch = _write_mdb(svc, mdb, ops)
             result.applied = batch.ok
             result.error = batch.first_error()
             for lr in result.lists:
@@ -1139,11 +1365,21 @@ class PriceUpdateService(BaseService):
         rows: list[list[str]] = []
         if path.is_file():
             with path.open("r", encoding=_ENCODING, newline="") as fh:
-                rows = [r for r in csv.reader(fh, delimiter=_DELIM) if r]
+                rows = self._read_rows(fh)
         if any(r and r[0] == list_id for r in rows):
             return
         rows.append([list_id, label])
         self._write_rows(path, rows)
+
+    @staticmethod
+    def _read_rows(fh) -> list[list[str]]:
+        rows = []
+        for row in csv.reader(fh, delimiter=_DELIM):
+            checkpoint()
+            if row:
+                rows.append(row)
+        checkpoint()
+        return rows
 
     @staticmethod
     def _num(value: Any) -> str:
@@ -1155,16 +1391,33 @@ class PriceUpdateService(BaseService):
     @staticmethod
     def _write_rows(path: Path, rows: list[list[str]]) -> None:
         with path.open("w", encoding=_ENCODING, newline="") as fh:
-            csv.writer(fh, delimiter=_DELIM, lineterminator=_LINEEND).writerows(rows)
+            writer = csv.writer(fh, delimiter=_DELIM, lineterminator=_LINEEND)
+            for row in rows:
+                checkpoint()
+                writer.writerow(row)
 
     @staticmethod
     def _write_rows_atomic(path: Path, rows: list[list[str]]) -> None:
-        """Write via a temp file + atomic replace so an interrupted run never
-        leaves a half-written package."""
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        with tmp.open("w", encoding=_ENCODING, newline="") as fh:
-            csv.writer(fh, delimiter=_DELIM, lineterminator=_LINEEND).writerows(rows)
-        os.replace(tmp, path)
+        PriceUpdateService._publish_rows([(path, rows)])
+
+    @staticmethod
+    def _publish_rows(files) -> None:
+        """Stage the whole package, then publish without cancellation between files.
+
+        Each replace is atomic, not the group. Ordinary replacement failures are
+        rolled back; a process/power failure between replacements is not atomic.
+        """
+        staged = {}
+        try:
+            for path, rows in files:
+                checkpoint()
+                stage = path.with_name(f".{path.name}.{uuid4().hex}.stage")
+                staged[path] = stage
+                PriceUpdateService._write_rows(stage, rows)
+            _publish_staged(staged)
+        finally:
+            for scratch in staged.values():
+                scratch.unlink(missing_ok=True)
 
     # -- MDB helpers (shared by the roll-over) --------------------------
 
@@ -1174,9 +1427,9 @@ class PriceUpdateService(BaseService):
         """A boilerplate row from the table (scoped to a list where given), minus
         its autonumber PK, to seed NOT-NULL columns on new rows."""
         where = f" WHERE com_PriceListID = {list_pk}" if list_pk is not None else ""
-        rows = self.context.mdb_service.read_table(mdb, f"SELECT TOP 1 * FROM [{table}]{where}")
+        rows = _read_table(self.context.mdb_service, mdb, f"SELECT TOP 1 * FROM [{table}]{where}")
         if not rows:
-            rows = self.context.mdb_service.read_table(mdb, f"SELECT TOP 1 * FROM [{table}]")
+            rows = _read_table(self.context.mdb_service, mdb, f"SELECT TOP 1 * FROM [{table}]")
         if not rows:
             return {}
         proto = dict(rows[0])
@@ -1195,7 +1448,7 @@ class PriceUpdateService(BaseService):
 
     def _mdb_next_id(self, mdb: Path, table: str, pk: str) -> int:
         """Next free integer PK for a table."""
-        rows = self.context.mdb_service.read_table(mdb, f"SELECT MAX([{pk}]) AS m FROM [{table}]")
+        rows = _read_table(self.context.mdb_service, mdb, f"SELECT MAX([{pk}]) AS m FROM [{table}]")
         top = rows[0].get("m") if rows else None
         return int(top) + 1 if top is not None else 1
 
@@ -1210,7 +1463,7 @@ class PriceUpdateService(BaseService):
         top = 0
         for table in ("tCOMd_PriceList2", "tCOMd_Price", "tCOMd_GlobalPrice",
                       "tCOMd_DistributionRegionPriceList"):
-            rows = self.context.mdb_service.read_table(
+            rows = _read_table(self.context.mdb_service,
                 mdb, f"SELECT MAX(com_PriceListID) AS m FROM [{table}]")
             m = rows[0].get("m") if rows else None
             if m is not None:

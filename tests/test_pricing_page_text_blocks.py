@@ -1,17 +1,25 @@
 """Text Block columns of the Pricing table, and their link to the export results."""
 from __future__ import annotations
 
+from dataclasses import replace
+from types import SimpleNamespace
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
 from core.application_context import ApplicationContext
 from core.modules import WorkbenchModule
 from models.price_record import PriceRecord
+from models.option import Option
+from models.product import Product
 from models.snapshot import Snapshot
 from models.text_block import TextBlock
 from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog, summary_lines
 from ui.pages import pricing_page as pp
 from ui.pages.pricing_page import PricingPage
+from repositories.pdm_repository import PDMRepository
+from services.pricing_service import PricingService, pricing_requires_recompute
+from services.snapshot_serialization import snapshot_from_dict, snapshot_to_dict
 
 from tests.test_price_mdb_export_service import (
     _OptimizedFake, _eur_gbp_lists, _export, _export_dry, _global, _rec,
@@ -94,6 +102,184 @@ def test_table_shows_the_same_ids_the_export_wrote(monkeypatch):
     assert {k: int(v) for k, v in shown.items()} == written
     new_text = next(op for op in mdb.ops if op["table"] == "tCOMd_Text")["rows"][0]
     assert shown["NEW.1|EUR"] == str(new_text["com_TextID"])
+
+
+def test_colour_family_preview_displays_preserved_ids_for_computed_conditions():
+    from tests.test_pricing_fabric_targets import records, target_mdb
+
+    computed = records()
+    page = _page(computed)
+    preview = _export_dry(target_mdb(computed), computed)
+    page._apply_text_results(preview)
+    shown = _rows(page)
+    assert [r[1] for r in shown] == [r.variant_condition for r in computed]
+    assert [r[4] for r in shown] == [str(1101 + i * 2) for i in range(4)]
+    assert all(r[5].startswith("28=") and "(proposed)" not in r[5] for r in shown)
+
+
+def test_new_colour_family_preview_and_result_show_option_label_and_real_generated_id():
+    from tests.test_pricing_fabric_targets import records, new_target_mdb
+
+    computed = records()
+    mdb = new_target_mdb()
+    preview = _export_dry(mdb, computed)
+    page = _page(computed)
+    page._apply_text_results(preview)
+    assert {r[4] for r in _rows(page)} == {"New (not written)"}
+    assert all("Surcharge 28" in r[5] for r in _rows(page))
+    dialog = PriceExportPreviewDialog(preview, allow_export=True)
+    assert dialog.export_button.isEnabled()
+    for i in range(4):
+        assert dialog.table.item(i, 5).text() == "insert"
+        assert dialog.table.item(i, 7).text() == "New (not written)"
+        assert "Surcharge 28" in dialog.table.item(i, 8).text()
+    result = _export(mdb, computed)
+    page._apply_text_results(result)
+    assert {r[4] for r in _rows(page)} == {"501"}
+    assert all("Surcharge 28" in r[5] for r in _rows(page))
+
+
+def _old_fabric_page():
+    from tests.test_pricing_fabric_targets import ITEM, records
+
+    old = [replace(r, variant_condition=r.variant_condition.replace(" 28=", " 8="),
+                   pricing_revision=0) for r in records()]
+    page = _page(old)
+    snap = page._context.active_snapshot
+    snap.options = [Option(id="8", name="Fabric type", is_fabric=True)]
+    snap.product = Product(catalogue_id="658")
+    snap.article_components = {"parent": [{"sub_item": ITEM}]}
+    # Exercise an old saved snapshot with no revision or generation-program settings.
+    serialized = snapshot_to_dict(snap)
+    for row in serialized["price_records"]:
+        row.pop("pricing_revision")
+    restored = snapshot_from_dict(serialized)
+    page._context.register_pdm_snapshot(restored)
+    page.refresh()
+    return page
+
+
+def test_old_fabric_snapshot_is_explicitly_stale_and_cannot_open_export(monkeypatch):
+    from tests.test_pricing_fabric_targets import ITEM, FAMILIES
+
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    assert pricing_requires_recompute(snap)
+    assert "outdated" in page._summary.text()
+    assert not page._preview_btn.isEnabled() and not page._export_btn.isEnabled()
+    assert [r[1] for r in _rows(page)] == [f"{ITEM} 8={f[0]}" for f in FAMILIES]
+    warnings = []
+    monkeypatch.setattr(pp.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    monkeypatch.setattr(pp.QFileDialog, "getOpenFileName",
+                        lambda *a: pytest.fail("stale prices must not open MDB selection"))
+    page._on_preview_export()
+    page._on_export_prices()
+    assert len(warnings) == 2
+    assert snap.price_records[0].pricing_revision == 0  # no historical migration
+
+
+@pytest.mark.parametrize("mapped", [True, False])
+def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditions(monkeypatch, mapped):
+    from tests.test_pricing_fabric_targets import ITEM, FAMILIES, relation, source_rows
+    from tests.test_pricing_export_workflow import _Sync
+
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    assert snap.generation_program == ""
+    rows = source_rows()
+    monkeypatch.setattr(pp.QThreadPool, "globalInstance", staticmethod(lambda: _Sync()))
+    monkeypatch.setattr(PDMRepository, "get_connection",
+                        lambda self: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(PDMRepository, "fetch_item_base_prices", lambda *a, **kw: [])
+    monkeypatch.setattr(PricingService, "_attach_product_codes", lambda *a: None)
+
+    def execute(self, query, params, connection=None):
+        if "AS TargetOptionId" in query:
+            return [relation(vid, colour) for _, vid, colour, _, _ in FAMILIES] if mapped else []
+        if "AS NewPrice" in query:
+            return [SimpleNamespace(Item=ITEM, NewPrice=next(r.IncPrice for r in rows
+                                                            if r.OptionValueId == params[6]))]
+        return [SimpleNamespace(Item=r.Item, OptionId=r.OptionId, OptionValueId=r.OptionValueId,
+                                OrderCodeValue=r.SourceCode, RawIncrement=r.RawIncrement,
+                                PriceBand=None) for r in rows]
+
+    monkeypatch.setattr(PDMRepository, "_execute", execute)
+    batches = []
+    append = page._append_batch
+
+    def append_and_refresh(batch):
+        append(batch)
+        page.refresh()  # navigation must not restore old stored records mid-stream
+        batches.extend(batch)
+        assert [r[1] for r in _rows(page)] == [r.variant_condition for r in batches]
+
+    monkeypatch.setattr(page, "_append_batch", append_and_refresh)
+    page._on_compute()
+    assert not page._pricing_running
+    option = 28 if mapped else 8
+    expected = [f"{ITEM} {option}={f[0]}" for _ in ("EUR", "GBP") for f in FAMILIES]
+    assert [r[1] for r in _rows(page)] == expected
+    assert [r.value for r in snap.price_records] == [89, 44, 133, 89] * 2
+    assert [r.pdm_lookup_code for r in snap.price_records] == [
+        f"{ITEM} 8={f[0]}#" for _ in ("EUR", "GBP") for f in FAMILIES
+    ]
+    assert page._preview_btn.isEnabled() and page._export_btn.isEnabled()
+    restored = snapshot_from_dict(snapshot_to_dict(snap))
+    assert restored.price_records == snap.price_records
+    assert not pricing_requires_recompute(restored)
+    page._context.register_pdm_snapshot(restored)
+    page.refresh()
+    assert [r[1] for r in _rows(page)] == expected
+    assert "outdated" not in page._summary.text()
+
+
+def test_failed_recompute_restores_historical_rows_without_enabling_export(monkeypatch):
+    page = _old_fabric_page()
+    old = _rows(page)
+    page._pricing_running = True
+    page._records = []
+    monkeypatch.setattr(pp.QMessageBox, "critical", lambda *args: None)
+    page._on_pricing_failed("PDM unavailable")
+    assert _rows(page) == old
+    assert not page._preview_btn.isEnabled() and not page._export_btn.isEnabled()
+    assert "outdated" in page._summary.text()
+
+
+def test_pricing_staleness_does_not_rewrite_mdb_or_other_program_records():
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.generation_program = "embody"
+    assert not pricing_requires_recompute(snap)
+    snap.generation_program = ""
+    snap.metadata.source = "MDB"
+    assert not pricing_requires_recompute(snap)
+    assert all(r.pricing_revision == 0 for r in snap.price_records)
+
+
+def test_previously_resolved_snapshots_do_not_require_recomputation():
+    from tests.test_pricing_fabric_targets import records
+
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.price_records = [replace(r, pricing_revision=0) for r in records()]
+    assert not pricing_requires_recompute(snap)
+    page.refresh()
+    assert page._preview_btn.isEnabled() and page._export_btn.isEnabled()
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_export_service_rejects_stale_fabric_prices_before_accessing_mdb(tmp_path, dry_run):
+    from services.price_mdb_export_service import PriceMdbExportService
+
+    page = _old_fabric_page()
+    mdb_path = tmp_path / "existing.mdb"
+    mdb_path.touch()
+    # No MDB service exists: rejection must happen before even opening a connection.
+    result = PriceMdbExportService(SimpleNamespace()).export(
+        page._context.active_snapshot, mdb_path, dry_run=dry_run,
+    )
+    assert not result["ok"] and "Compute prices again" in result["error"]
+    assert mdb_path.read_bytes() == b""
 
 
 def test_unverified_text_is_never_shown_as_an_id():

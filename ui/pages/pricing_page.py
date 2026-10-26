@@ -9,7 +9,8 @@ the stored baseline so only changed cells stand out.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer
+import shiboken6
+from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -36,7 +37,7 @@ from core.engines.filtering import text_match
 from core.activity.models import ActivityType, LogLevel
 from core.progress import ProgressReporter
 from models.price_record import PriceRecord
-from services.pricing_service import PriceParams, PricingService
+from services.pricing_service import PriceParams, PricingService, pricing_requires_recompute
 from services.price_mdb_export_service import PriceMdbExportService
 from services.price_text_blocks import (
     ISSUE_STATUSES, STATUS_CREATED, STATUS_NEW, STATUS_NA, record_result_key,
@@ -64,7 +65,130 @@ _ACT_LEVEL = {
 }
 
 
-from ui.workers.background_task import BackgroundTask
+from ui.workers.background_task import BackgroundTask, task_host
+
+
+class _PricingRun(QObject):
+    """One Compute Prices run: owns its reporter, worker signals and Activity.
+
+    Parented to the background-task host rather than the page, so everything
+    the worker thread uses outlives a page that is closed or destroyed mid-run.
+    All slots run on the GUI thread (worker emissions are queued here). The page
+    is only called back while it is alive and this is still its current run,
+    and each run reports its outcome exactly once.
+    """
+
+    def __init__(self, page: QWidget, activity) -> None:
+        super().__init__(task_host())
+        self._page: QWidget | None = page
+        self._activity = activity
+        self.active = False
+        self._failed_outcome = False
+        self.reporter = ProgressReporter(self)
+        # ActivityHandle uses __slots__ (no __weakref__), so it cannot be a
+        # receiver itself; bridge through this GUI-thread object instead.
+        self.reporter.step_changed.connect(self._on_step)
+        self.reporter.activity.connect(self._on_activity)
+        self.reporter.finished.connect(self._on_reporter_finished)
+        page.destroyed.connect(self._on_page_destroyed)
+
+    def start(self, task: BackgroundTask) -> None:
+        self.active = True
+        signals = task.signals
+        signals.progress.connect(self._on_batch)
+        signals.finished.connect(self._on_finished)
+        signals.failed.connect(self._on_failed)
+        signals.cancelled.connect(self._on_cancelled)
+        QThreadPool.globalInstance().start(task)
+
+    # -- page access -------------------------------------------------------
+    def _live_page(self):
+        page = self._page
+        if page is None or not shiboken6.isValid(page):
+            return None
+        return page
+
+    def _current_page(self):
+        page = self._live_page()
+        if page is None or getattr(page, "_price_run", None) is not self:
+            return None
+        return page
+
+    def _on_page_destroyed(self, *_args) -> None:
+        # Nothing is left to render the results; the worker keeps its objects
+        # (owned by this run) until it finishes, and the request is advisory.
+        self._page = None
+        self.reporter.request_cancel()
+
+    # -- Activity bridge ---------------------------------------------------
+    def _on_step(self, text: str) -> None:
+        self._activity.update_step(text)
+
+    def _on_activity(self, kind: str, message: str) -> None:
+        self._activity.add_log(message, _ACT_LEVEL.get(kind, LogLevel.INFO))
+
+    def _on_reporter_finished(self, ok: bool, message: str) -> None:
+        if ok:
+            self._activity.complete(message)
+        elif self.reporter.is_cancelled() and not self._failed_outcome:
+            self._activity.cancel(message)
+        else:
+            self._activity.fail(message)
+
+    # -- worker outcome ----------------------------------------------------
+    def _on_batch(self, records) -> None:
+        if self.reporter.is_cancelled():
+            return
+        page = self._current_page()
+        if page is not None:
+            page._append_batch(records)
+
+    def _on_finished(self, result) -> None:
+        self.reporter.finish(True, "Pricing completed")
+        page = self._end_run()
+        try:
+            if page is not None:
+                page._on_pricing_finished(result)
+        finally:
+            self._release()
+
+    def _on_failed(self, message: str) -> None:
+        # Close the reporter (progress popup + Activity) before the page reports
+        # the error. finish() is idempotent and runs here on the GUI thread.
+        self._failed_outcome = True
+        self.reporter.finish(False, message)
+        page = self._end_run()
+        try:
+            if page is not None:
+                page._on_pricing_failed(message)
+        finally:
+            self._release()
+
+    def _on_cancelled(self, message: str) -> None:
+        self.reporter.finish(False, message)
+        page = self._end_run()
+        try:
+            if page is not None:
+                page._on_pricing_cancelled(message)
+        finally:
+            self._release()
+
+    def _end_run(self):
+        """Mark the run finished and detach it from the page (returns the page)."""
+        page = self._current_page()
+        self.active = False
+        if page is not None:
+            page._price_run = None
+        return page
+
+    def _release(self) -> None:
+        page = self._live_page()
+        monitor = getattr(page, "_monitor", None) if page is not None else None
+        if monitor is not None:
+            monitor.unbind_reporter(self.reporter)
+        self._page = None
+        # Deletes the reporter (and its timer) with this run, on the GUI thread.
+        self.deleteLater()
 
 
 _COL_ARTICLE = 0
@@ -118,6 +242,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._price_texts: dict[str, str] = {}
         self._last_mdb_path = ""
         self._wf: dict = {}  # state of the running export workflow
+        self._price_run: _PricingRun | None = None  # the active Compute Prices run
 
         # Debounce search typing so the table repopulates once the user pauses.
         self._filter_timer = QTimer(self)
@@ -344,8 +469,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         } if snapshot else {}
         self._populate()
         self._update_summary(unresolved=0)
-        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
-        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._restore_export_buttons()
         if self.is_mdb_view() and snapshot is not None:
             self._summary.setText(
                 f"Imported MDB: {len(self._records):,} price record(s), "
@@ -387,6 +511,14 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         )
 
     def _on_compute(self) -> None:
+        if self._pricing_in_progress():
+            # One computation at a time: a second run would interleave batches
+            # into the same table and commit over the first run's records.
+            monitor = getattr(self, "_monitor", None)
+            if monitor is not None:
+                monitor.show()
+                monitor.raise_()
+            return
         snapshot = self._context.active_snapshot
         if snapshot is None:
             QMessageBox.information(self, "Compute Prices", "Load a product first.")
@@ -420,52 +552,45 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._preview_btn.setEnabled(False)
 
         self._price_params = params
-        reporter = ProgressReporter(self)
-        self._price_reporter = reporter
-        monitor = self._progress_monitor()
-        monitor.bind(reporter)
-        monitor.show()
-        monitor.raise_()
+        self._pricing_snapshot = snapshot
         # Also record the run in the Activity timeline so it lands in the log.
         activity = self._context.activity_service.start_activity(
             "Computing Prices", ActivityType.GENERIC,
             context={"Currency": params.currency, "Date": params.mydate},
         )
-        self._price_activity = activity  # keep referenced for the run
-        # Wrap in lambdas: ActivityHandle uses __slots__ (no __weakref__), so a
-        # signal cannot connect directly to its bound methods.
-        reporter.step_changed.connect(lambda text: activity.update_step(text))
-        reporter.activity.connect(
-            lambda kind, msg: activity.add_log(msg, _ACT_LEVEL.get(kind, LogLevel.INFO))
-        )
-        reporter.finished.connect(
-            lambda ok, msg: activity.complete(msg) if ok else activity.fail(msg)
-        )
+        # The run (not the page) owns the reporter, the worker signals and the
+        # Activity bridge, so they stay alive until the worker has finished even
+        # if the page is closed or destroyed mid-run.
+        run = _PricingRun(self, activity)
+        self._price_run = run
+        monitor = self._progress_monitor()
+        monitor.bind(run.reporter)
+        monitor.show()
+        monitor.raise_()
+        reporter = run.reporter
+        context = self._context
 
         # Compute off the UI thread so the popup animates instead of freezing.
+        # The worker only calls the reporter (whose signals are queued to the GUI
+        # thread) and the batch callback; it never touches widgets or the page.
         def work(emit):
-            try:
-                return PricingService(self._context).compute_streaming(
-                    params,
-                    snapshot,
-                    on_batch=emit,
-                    reporter=reporter,
-                )
-            except Exception as error:
-                # Preserve the existing reporter lifecycle before the generic
-                # runner routes the failure back to the GUI.
-                reporter.finish(False, str(error))
-                raise
+            return PricingService(context).compute_streaming(
+                params,
+                snapshot,
+                on_batch=emit,
+                reporter=reporter,
+            )
 
-        task = BackgroundTask(work)
-        signals = task.signals
-        signals.progress.connect(self._append_batch)
-        signals.finished.connect(self._on_pricing_finished)
-        signals.failed.connect(self._on_pricing_failed)
-        self._price_signals = signals
-        QThreadPool.globalInstance().start(task)
+        run.start(BackgroundTask(work, cancellation_token=reporter.cancellation_token))
+
+    def _pricing_in_progress(self) -> bool:
+        run = getattr(self, "_price_run", None)
+        return run is not None and run.active
 
     def _on_pricing_finished(self, result) -> None:
+        if self._context.active_snapshot is not getattr(self, "_pricing_snapshot", self._context.active_snapshot):
+            self._on_pricing_cancelled("Pricing finished for the previous snapshot; current snapshot unchanged.")
+            return
         run_currencies = set(self._pricing_currencies)
         self._pricing_running = False
         self._pricing_currencies = set()
@@ -487,8 +612,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             unresolved=len(result.unresolved), diff=diff, params=self._price_params
         )
         self._compute_btn.setEnabled(True)
-        self._export_btn.setEnabled(bool(result.records) and not self.is_mdb_view())
-        self._preview_btn.setEnabled(bool(result.records) and not self.is_mdb_view())
+        self._restore_export_buttons()
         if result.warnings:
             QMessageBox.information(
                 self, "Compute Prices", "\n".join(result.warnings)
@@ -499,11 +623,19 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._pricing_currencies = set()
         self._pricing_baseline = []
         self._compute_btn.setEnabled(True)
-        self._export_btn.setEnabled(bool(self._context.active_snapshot and self._context.active_snapshot.price_records) and not self.is_mdb_view())
-        self._preview_btn.setEnabled(bool(self._context.active_snapshot and self._context.active_snapshot.price_records) and not self.is_mdb_view())
+        self.refresh()
         QMessageBox.critical(
             self, "Compute Prices", f"Price computation failed:\n\n{message}"
         )
+
+    def _on_pricing_cancelled(self, message: str) -> None:
+        self._pricing_running = False
+        self._pricing_currencies = set()
+        self._pricing_baseline = []
+        self._compute_btn.setEnabled(True)
+        self.refresh()
+        self._summary.setText(message)
+        self._restore_export_buttons()
 
 
     def _on_export_prices(self) -> None:
@@ -515,7 +647,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._start_export_workflow(write=False)
 
     def _restore_export_buttons(self) -> None:
-        enabled = bool(self._records) and not self.is_mdb_view()
+        enabled = (
+            bool(self._records) and not self.is_mdb_view()
+            and not getattr(self, "_pricing_running", False)
+            and not pricing_requires_recompute(self._context.active_snapshot)
+        )
         self._export_btn.setEnabled(enabled)
         self._preview_btn.setEnabled(enabled)
 
@@ -523,6 +659,14 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         snapshot = self._context.active_snapshot
         if snapshot is None or not snapshot.price_records:
             QMessageBox.information(self, "Export Prices", "Compute prices before exporting.")
+            self._restore_export_buttons()
+            return
+        if pricing_requires_recompute(snapshot):
+            QMessageBox.warning(
+                self, "Export Prices",
+                "Stored fabric pricing requires recomputation. Click Compute Prices "
+                "to resolve the PDM colour relationships before previewing or exporting.",
+            )
             self._restore_export_buttons()
             return
         if not computation_date(snapshot.price_records):
@@ -620,8 +764,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     def _on_price_export_finished(self, result: dict, mdb_path: str) -> None:
         """Handle background export completion on the GUI thread."""
-        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
-        self._preview_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._restore_export_buttons()
         self._last_mdb_path = mdb_path
         if result.get("text_rows"):
             self._apply_text_results(result)
@@ -658,7 +801,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     def _on_price_export_failed(self, error: str) -> None:
         """Handle an unexpected background export exception."""
-        self._export_btn.setEnabled(bool(self._records) and not self.is_mdb_view())
+        self._restore_export_buttons()
         self._summary.setText("Price export failed.")
         QMessageBox.critical(self, "Export Prices", error or "Price export failed.")
 
@@ -792,6 +935,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         if params is not None:
             cur = params.currency or "All"
             parts.insert(0, f"[{cur} @ {params.mydate}, site {params.site_id}]")
+        if pricing_requires_recompute(self._context.active_snapshot):
+            parts.insert(0, "Stored fabric pricing is outdated - Compute Prices to resolve colour conditions.")
         self._summary.setText("   ".join(parts))
 
 

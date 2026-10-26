@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QRunnable, QThreadPool, Signal
+from core.cancellation import OperationCancelled, checkpoint
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,53 +28,10 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components import DialogTemplate
+from ui.workers.background_task import ReportedTask
 
 #: PDM SiteId for the UK region - the only region we operate.
 _UK_SITE_ID = 1
-
-
-class _RollSignals(QObject):
-    finished = Signal(object)   # BatchResult
-    failed = Signal(str)
-
-
-class _RollWorker(QRunnable):
-    """Runs the roll-over off the UI thread (it re-prices from PDM and writes
-    every package), driving a ProgressReporter so the popup stays live."""
-
-    def __init__(self, svc, repo, is_mdb, effective, token, lookup, apply, packages,
-                 reporter, signals, special_map=None):
-        super().__init__()
-        self._svc, self._repo, self._is_mdb = svc, repo, is_mdb
-        self._effective, self._token, self._lookup = effective, token, lookup
-        self._apply, self._packages = apply, packages
-        self._reporter, self._signals = reporter, signals
-        self._special_map = special_map
-
-    def run(self) -> None:
-        try:
-            packages = self._packages
-            if packages is None:
-                packages = [str(p) for p in self._svc._discover_packages(self._repo, self._is_mdb)]
-            first = self._repo.split(";")[0].strip()
-            # One step per package; sub-stages and the live "priced N/M" count
-            # update the text only (via note), so the bar creeps smoothly through
-            # each package instead of lurching on every chunk.
-            self._reporter.begin(max(len(packages), 1),
-                                 title="Apply Roll-over" if self._apply else "Scan Roll-over",
-                                 subject=Path(first).name if first else "")
-            result = self._svc.run_batch(
-                self._repo, self._is_mdb, self._effective, self._token, self._lookup,
-                apply=self._apply, packages=packages,
-                progress=lambda done, total, text: self._reporter.advance(text),
-                stage=lambda text: self._reporter.note(text),
-                special_map=self._special_map)
-        except Exception as exc:  # never crash the worker thread
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(result.packages)} package(s)")
-            self._signals.finished.emit(result)
 
 
 class PriceRolloverDialog(DialogTemplate):
@@ -238,6 +196,8 @@ class PriceRolloverDialog(DialogTemplate):
     # -- actions --------------------------------------------------------
 
     def _on_apply(self) -> None:
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
         error = self._inputs_ok()
         if error:
             QMessageBox.information(self, "Price Update", error)
@@ -254,30 +214,55 @@ class PriceRolloverDialog(DialogTemplate):
             self._run(apply=True)
 
     def _run(self, apply: bool) -> None:
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
         error = self._inputs_ok()
         if error:
             QMessageBox.information(self, "Price Update", error)
             return
-        from core.progress import ProgressReporter
-
         svc = self._context.price_update_service
         # Apply KNOWN special-case mappings inline; NEW ones are collected during
         # the roll and confirmed at the END, then updated in place (only those).
         special_map = svc.load_special_map() if self._compute.isChecked() else None
 
-        reporter = ProgressReporter(self)
+        run = self._run_task = ReportedTask(self)
+        reporter = run.reporter
         monitor = self._progress_monitor()
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
-        signals = _RollSignals()
-        signals.finished.connect(lambda result: self._on_result(result, apply))
-        signals.failed.connect(self._on_failed)
-        self._signals = signals  # keep a reference alive
-        QThreadPool.globalInstance().start(_RollWorker(
-            self._context.price_update_service, self._repo.text().strip(), self._is_mdb(),
-            self._effective_ymd(), self._token.text().strip(), self._lookup(special_map),
-            apply, self._selected_packages, reporter, signals, special_map))
+        repo, is_mdb = self._repo.text().strip(), self._is_mdb()
+        effective, token = self._effective_ymd(), self._token.text().strip()
+        lookup = self._lookup(special_map)
+        selected = list(self._selected_packages) if self._selected_packages is not None else None
+
+        def work(_emit):
+            packages = selected
+            if packages is None:
+                packages = svc._discover_packages(repo, is_mdb)
+            reporter.begin(max(len(packages), 1),
+                           title="Apply Roll-over" if apply else "Scan Roll-over",
+                           subject=Path(repo.split(";")[0].strip()).name)
+            try:
+                return svc.run_batch(
+                    repo, is_mdb, effective, token, lookup, apply=apply, packages=packages,
+                    progress=lambda done, total, text: reporter.advance(text),
+                    stage=reporter.note, special_map=special_map)
+            finally:
+                if lookup is not None and hasattr(lookup, "close"):
+                    lookup.close()
+
+        run.start(work, finished=lambda result: self._on_result(result, apply),
+                  failed=self._on_failed, cancelled=self._on_cancelled)
+
+    def _on_cancelled(self, message: str) -> None:
+        self._summary.setPlainText(message)
+
+    def done(self, result: int) -> None:
+        run = getattr(self, "_run_task", None)
+        if run is not None and run.active:
+            run.reporter.request_cancel()
+        super().done(result)
 
     def _progress_monitor(self):
         monitor = getattr(self, "_monitor", None)
@@ -314,29 +299,80 @@ class PriceRolloverDialog(DialogTemplate):
         if not carried:
             return False
         mydate = self._effective.date().toString("dd-MMM-yyyy")
-        try:
-            records = svc.scan_special_articles(list(carried.keys()), mydate, _UK_SITE_ID)
-        except Exception:
-            records = []
+
+        def work(reporter):
+            reporter.begin(max(len(carried), 1), title="Check Special Articles", subject="")
+            return svc.scan_special_articles(list(carried), mydate, _UK_SITE_ID)
+
+        self._start_special(
+            work, lambda records: self._on_special_scanned(records, result, carried, mydate),
+            len(result.packages))
+        return True
+
+    def _start_special(self, work, finished, rolled: int) -> None:
+        run = self._run_task = ReportedTask(self)
+        reporter = run.reporter
+        monitor = self._progress_monitor()
+        monitor.bind(reporter)
+        monitor.show()
+        monitor.raise_()
+
+        def execute(_emit):
+            try:
+                return work(reporter)
+            except OperationCancelled as exc:
+                raise OperationCancelled(
+                    f"{rolled} package(s) already rolled over. Special-article step: {exc}") from exc
+
+        run.start(execute, finished=finished, failed=self._on_failed,
+                  cancelled=self._on_cancelled)
+
+    def _on_special_scanned(self, records, result, carried, mydate) -> None:
         if not records:
-            return False
+            QMessageBox.information(
+                self, "Price Update", f"Rolled over {len(result.packages)} package(s). "
+                "Commit the repository to publish.")
+            return
         from ui.dialogs.special_article_dialog import SpecialArticleDialog
         dialog = SpecialArticleDialog(records, self)
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.mapping:
-            return False
-        svc.save_special_map(dialog.mapping)
-        updated = 0
-        for pkg_path, codes in carried.items():
-            pkg_map = {c: dialog.mapping[c] for c in codes if c in dialog.mapping}
-            if pkg_map:
-                count, err = svc.apply_special_articles(pkg_path, pkg_map, mydate, _UK_SITE_ID)
-                updated += count
-        QMessageBox.information(
-            self, "Price Update",
-            f"Rolled over {len(result.packages)} package(s).\n"
-            f"Updated {updated} special-case price row(s) in place. "
-            "Commit the repository to publish.")
-        return True
+            return
+        svc, mapping = self._context.price_update_service, dict(dialog.mapping)
+
+        def work(reporter):
+            reporter.begin(max(len(carried), 1), title="Update Special Articles", subject="")
+            svc.save_special_map(mapping)
+            updated, completed = 0, 0
+            errors = []
+            try:
+                for pkg_path, codes in carried.items():
+                    checkpoint()
+                    pkg_map = {c: mapping[c] for c in codes if c in mapping}
+                    if pkg_map:
+                        count, err = svc.apply_special_articles(
+                            pkg_path, pkg_map, mydate, _UK_SITE_ID, stage=reporter.note)
+                        updated += count
+                        if err:
+                            errors.append(f"{Path(pkg_path).parent.name}: {err}")
+                    completed += 1
+                    reporter.advance(Path(pkg_path).parent.name)
+                checkpoint()
+            except OperationCancelled as exc:
+                raise OperationCancelled(
+                    f"Cancelled after {completed} special-article package(s) completed; "
+                    f"{updated} price row(s) committed.") from exc
+            return updated, errors
+
+        def finished(outcome):
+            updated, errors = outcome
+            message = (f"Rolled over {len(result.packages)} package(s).\n"
+                       f"Updated {updated} special-case price row(s) in place. "
+                       "Commit the repository to publish.")
+            if errors:
+                message += "\n\nErrors:\n" + "\n".join(errors)
+            QMessageBox.information(self, "Price Update", message)
+
+        self._start_special(work, finished, len(result.packages))
 
     @staticmethod
     def _render(result, applied: bool) -> str:

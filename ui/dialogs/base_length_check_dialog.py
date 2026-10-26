@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QSettings, QThreadPool, Signal
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -25,37 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components import DialogTemplate
-
-
-class _Signals(QObject):
-    finished = Signal(list)   # registry rows
-    failed = Signal(str)
-
-
-class _BaseLengthWorker(QRunnable):
-    """Runs the base-length check off the UI thread (reads every package MDB and
-    queries PDM), driving a ProgressReporter so the popup stays live."""
-
-    def __init__(self, svc, repo, is_mdb, reporter, signals):
-        super().__init__()
-        self._svc, self._repo, self._is_mdb = svc, repo, is_mdb
-        self._reporter, self._signals = reporter, signals
-
-    def run(self) -> None:
-        try:
-            packages = self._svc._discover_packages(self._repo, self._is_mdb)
-            first = self._repo.split(";")[0].strip()
-            self._reporter.begin(len(packages) + 1, title="Check Base Lengths",
-                                 subject=Path(first).name if first else "")
-            rows = self._svc.build_base_length_registry(
-                self._repo, self._is_mdb,
-                progress=lambda done, total, text: self._reporter.advance(text))
-        except Exception as exc:  # never crash the worker thread
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(rows)} article(s) checked")
-            self._signals.finished.emit(rows)
+from ui.workers.background_task import ReportedTask
 
 
 class BaseLengthCheckDialog(DialogTemplate):
@@ -135,29 +105,52 @@ class BaseLengthCheckDialog(DialogTemplate):
     # -- actions --------------------------------------------------------
 
     def _on_check(self) -> None:
-        from core.progress import ProgressReporter
-
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
         repo = self._repo.text().strip()
         if not repo:
             QMessageBox.information(self, "Base Length Check", "Choose the repository root.")
             return
-        reporter = ProgressReporter(self)
+        run = self._run_task = ReportedTask(self)
+        reporter = run.reporter
         monitor = self._progress_monitor()
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
-        signals = _Signals()
-        signals.finished.connect(self._on_ready)
-        signals.failed.connect(self._on_failed)
-        self._signals = signals  # keep a reference alive
-        QThreadPool.globalInstance().start(
-            _BaseLengthWorker(self._context.price_update_service, repo, self._is_mdb(),
-                              reporter, signals))
+        svc, is_mdb = self._context.price_update_service, self._is_mdb()
+        reg_dir = QSettings().value("baseLengthRegistryDir", "", type=str)
+        target = svc.registry_path(reg_dir or None)
+
+        def work(_emit):
+            packages = svc._discover_packages(repo, is_mdb)
+            reporter.begin(len(packages) + 1, title="Check Base Lengths",
+                           subject=Path(repo.split(";")[0].strip()).name)
+            rows = svc.build_base_length_registry(
+                repo, is_mdb, progress=lambda done, total, text: reporter.advance(text))
+            if not rows:
+                return rows, None, ""
+            try:
+                path = svc.write_base_length_registry(target, rows)
+            except OSError as exc:
+                return rows, None, str(exc)
+            return rows, path, ""
+
+        run.start(work, finished=lambda outcome: self._on_ready(*outcome), failed=self._on_failed,
+                  cancelled=self._on_cancelled)
+
+    def _on_cancelled(self, message: str) -> None:
+        self._summary.setPlainText(message + "\nRegistry unchanged.")
+
+    def done(self, result: int) -> None:
+        run = getattr(self, "_run_task", None)
+        if run is not None and run.active:
+            run.reporter.request_cancel()
+        super().done(result)
 
     def _on_failed(self, message: str) -> None:
         QMessageBox.warning(self, "Base Length Check", f"Check failed:\n{message}")
 
-    def _on_ready(self, rows) -> None:
+    def _on_ready(self, rows, path=None, error="") -> None:
         """Write the registry, then open the filterable results table."""
         from ui.dialogs.base_length_dialog import BaseLengthDialog
 
@@ -174,30 +167,37 @@ class BaseLengthCheckDialog(DialogTemplate):
         settings = QSettings()
         reg_dir = settings.value("baseLengthRegistryDir", "", type=str)
         svc = self._context.price_update_service
-        path = self._write_registry(svc, svc.registry_path(reg_dir or None), rows, settings)
         if path is None:
+            self._write_registry(svc, svc.registry_path(reg_dir or None), rows, settings, error)
             return
         self._summary.setPlainText(self._render_registry(rows, path))
         BaseLengthDialog(rows, path, svc, self).exec()
 
-    def _write_registry(self, svc, target, rows, settings):
-        """Write the registry; if the location is not writable, ask for one and
-        remember it. Returns the written path, or None if cancelled/failed."""
-        try:
-            return svc.write_base_length_registry(target, rows)
-        except OSError as exc:
-            chosen, _ = QFileDialog.getSaveFileName(
-                self, f"Cannot write to {target} ({exc}). Choose a location:",
-                str(target), "CSV (*.csv)")
-            if not chosen:
-                return None
-            try:
-                written = svc.write_base_length_registry(chosen, rows)
-            except OSError as exc2:
-                QMessageBox.warning(self, "Base Length Check", f"Could not write registry:\n{exc2}")
-                return None
+    def _write_registry(self, svc, target, rows, settings, error=""):
+        """Choose a writable location and retry using a fresh cancellable run."""
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, f"Cannot write to {target} ({error}). Choose a location:",
+            str(target), "CSV (*.csv)")
+        if not chosen:
+            return
+        run = self._run_task = ReportedTask(self)
+        reporter = run.reporter
+        monitor = self._progress_monitor()
+        monitor.bind(reporter)
+        monitor.show()
+        monitor.raise_()
+
+        def work(_emit):
+            reporter.begin(1, title="Write Base Length Registry", subject=Path(chosen).name)
+            return svc.write_base_length_registry(chosen, rows)
+
+        def finished(path):
             settings.setValue("baseLengthRegistryDir", str(Path(chosen).parent))
-            return written
+            self._on_ready(rows, path)
+
+        run.start(work, finished=finished, failed=self._on_failed, cancelled=self._on_cancelled)
 
     @staticmethod
     def _render_registry(rows, path) -> str:

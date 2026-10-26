@@ -33,7 +33,8 @@ def list_lines(result: dict) -> list[str]:
     for p in result.get("list_plan") or []:
         what = ("reuse existing" if p["action"] == "reuse" else
                 "create new" if p["action"] == "create" else "BLOCKED")
-        lid = f"id {p['list_id']}" if p.get("list_id") is not None else "id assigned on write"
+        lid = (f"id {p['list_id']}" if p.get("list_id") is not None
+               and not str(p["list_id"]).startswith("new:") else "id assigned on write")
         lines.append(
             f"{p['currency']} -> {p.get('label') or p['name']} ({what}, {lid}, valid "
             f"{p['date_from'] or '?'} to {p['date_to'] or '?'}"
@@ -116,6 +117,7 @@ class PriceExportPreviewDialog(QDialog):
                 entry.get("article_code", ""), entry.get("variant_condition", ""),
                 entry.get("currency", ""),
                 f"{entry.get('list', '')} (id {entry['list_id']})" if entry.get("list_id") is not None
+                and not str(entry["list_id"]).startswith("new:")
                 else entry.get("list", ""), operation,
                 ACTION_LABELS.get(entry.get("action"), ""),
             ]

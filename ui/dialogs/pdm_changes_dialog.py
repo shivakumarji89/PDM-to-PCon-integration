@@ -12,7 +12,8 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThreadPool
+from ui.workers.background_task import BackgroundTask
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -55,57 +56,51 @@ def _save_watermarks(preset: str, watermarks: dict[str, int]) -> None:
 _STATUS_LABEL = {1: "Active", 2: "Discontinued", 0: "Inactive", -1: "Legacy", 3: "Superseded"}
 
 
-class _Worker(QThread):
-    finished = Signal(dict)
-    error = Signal(str)
-
+class _Worker(BackgroundTask):
     def __init__(self, context: "ApplicationContext", old_marks: dict[str, int]) -> None:
-        super().__init__()
         self._context = context
         self._old = old_marks
+        super().__init__(lambda emit: self._collect())
 
-    def run(self) -> None:
-        try:
-            repo = self._context.pdm_service.repository
-            new_marks = repo.fetch_watermarks()
-            is_first_run = all(
-                self._old.get(k, 0) == 0
-                for k in ("OptionValueId", "ProductId", "ItemId")
-            )
-            result: dict[str, Any] = {
-                "new_options":    [],
-                "new_products":   [],
-                "new_items":      [],
-                "new_prices":     [],
-                "status_changes": [],
-                "watermarks":     new_marks,
-                "is_first_run":   is_first_run,
-            }
-            if not is_first_run:
-                if new_marks.get("OptionValueId", 0) > self._old.get("OptionValueId", 0):
-                    result["new_options"] = repo.fetch_new_option_values(
-                        self._old["OptionValueId"]
-                    )
-                if new_marks.get("ProductId", 0) > self._old.get("ProductId", 0):
-                    result["new_products"] = repo.fetch_new_products(
-                        self._old["ProductId"]
-                    )
-                if new_marks.get("ItemId", 0) > self._old.get("ItemId", 0):
-                    result["new_items"] = repo.fetch_new_items(
-                        self._old["ItemId"]
-                    )
-                if new_marks.get("PriceFormulaId", 0) > self._old.get("PriceFormulaId", 0):
-                    result["new_prices"] = repo.fetch_new_price_formulas(
-                        self._old["PriceFormulaId"]
-                    )
-                last_run = self._old.get("last_run")
-                if last_run:
-                    result["status_changes"] = repo.fetch_changed_option_value_statuses(
-                        last_run
-                    )
-            self.finished.emit(result)
-        except Exception as exc:
-            self.error.emit(str(exc))
+    def _collect(self) -> dict[str, Any]:
+        repo = self._context.pdm_service.repository
+        new_marks = repo.fetch_watermarks()
+        is_first_run = all(
+            self._old.get(k, 0) == 0
+            for k in ("OptionValueId", "ProductId", "ItemId")
+        )
+        result: dict[str, Any] = {
+            "new_options":    [],
+            "new_products":   [],
+            "new_items":      [],
+            "new_prices":     [],
+            "status_changes": [],
+            "watermarks":     new_marks,
+            "is_first_run":   is_first_run,
+        }
+        if not is_first_run:
+            if new_marks.get("OptionValueId", 0) > self._old.get("OptionValueId", 0):
+                result["new_options"] = repo.fetch_new_option_values(
+                    self._old["OptionValueId"]
+                )
+            if new_marks.get("ProductId", 0) > self._old.get("ProductId", 0):
+                result["new_products"] = repo.fetch_new_products(
+                    self._old["ProductId"]
+                )
+            if new_marks.get("ItemId", 0) > self._old.get("ItemId", 0):
+                result["new_items"] = repo.fetch_new_items(
+                    self._old["ItemId"]
+                )
+            if new_marks.get("PriceFormulaId", 0) > self._old.get("PriceFormulaId", 0):
+                result["new_prices"] = repo.fetch_new_price_formulas(
+                    self._old["PriceFormulaId"]
+                )
+            last_run = self._old.get("last_run")
+            if last_run:
+                result["status_changes"] = repo.fetch_changed_option_value_statuses(
+                    last_run
+                )
+        return result
 
 
 class PdmChangesDialog(DialogTemplate):
@@ -154,9 +149,9 @@ class PdmChangesDialog(DialogTemplate):
 
         self._old_marks = _load_watermarks(self._preset)
         self._worker = _Worker(context, self._old_marks)
-        self._worker.finished.connect(self._on_finished)
-        self._worker.error.connect(self._on_error)
-        self._worker.start()
+        self._worker.signals.finished.connect(self._on_finished)
+        self._worker.signals.failed.connect(self._on_error)
+        QThreadPool.globalInstance().start(self._worker)
 
     # -- slots -------------------------------------------------------------
 

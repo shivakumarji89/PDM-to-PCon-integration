@@ -103,7 +103,7 @@ ISSUE_STATUSES = (STATUS_MISSING, STATUS_BLOCKED, STATUS_UNVERIFIED)
 def row_result_key(entry: dict) -> tuple:
     """``PriceRecord.key()`` of the record a row-level text result belongs to."""
     return (entry.get("table") == "tCOMd_GlobalPrice", entry.get("article_code", ""),
-            entry.get("variant_condition", ""), entry.get("level", ""),
+            entry.get("computed_variant_condition", entry.get("variant_condition", "")), entry.get("level", ""),
             str(entry.get("currency", "")).upper())
 
 
@@ -129,11 +129,12 @@ def text_block_cells(record, result: dict | None = None, from_mdb: bool = False,
         if action in (ACTION_REUSE, ACTION_PRESERVE):
             return str(text_id), _describe(result.get("text_name") or name, result.get("text_content")), STATUS_EXISTING
         if action in (ACTION_CREATE, ACTION_LINK_NEW):
+            text_name = result.get("text_name") or name
             if text_id is not None and result.get("text_status") == STATUS_CREATED:
-                return str(text_id), _describe(name, label), STATUS_CREATED
+                return str(text_id), _describe(text_name, label), STATUS_CREATED
             if result.get("text_status") == STATUS_UNVERIFIED:
-                return "Unverified", _describe(name, label), STATUS_UNVERIFIED
-            return "New (not written)", _describe(name, display), STATUS_NEW
+                return "Unverified", _describe(text_name, label), STATUS_UNVERIFIED
+            return "New (not written)", _describe(text_name, result.get("text_content") or display), STATUS_NEW
         if action == ACTION_UNLINKED:
             return "Missing", "no text reference on the existing row", STATUS_MISSING
         if action == ACTION_SKIP:

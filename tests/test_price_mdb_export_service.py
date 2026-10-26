@@ -17,6 +17,31 @@ _TEXT_COLS = ["com_TextID", "com_PackageID", "com_TextTypeCode", "com_TextName",
 _TEXT_PROTO = [{c: None for c in _TEXT_COLS}]
 
 
+def _generated_batch(ops, seeds=None):
+    """Model AutoNumber allocation and same-transaction foreign-key resolution."""
+    seeds = seeds or {"tCOMd_Text": 501, "tCOMd_PriceList2": 1001,
+                      "tCOMd_Price": 101, "tCOMd_GlobalPrice": 101}
+    identities, resolved, generated = {}, [], []
+    for op in ops:
+        ids = {}
+        if op["op"] == "insert" and "identity" in op:
+            pk = op["identity"]
+            rows = []
+            for row in op["rows"]:
+                token = row[pk]
+                assert isinstance(token, str) and token.startswith("new:")
+                assert token not in identities
+                value = seeds[op["table"]] + len(ids) * 7
+                identities[token] = ids[token] = value
+                rows.append({col: (value if col == pk else identities[v["$ref"]]
+                                   if isinstance(v, dict) and "$ref" in v else v)
+                             for col, v in row.items()})
+            op = {**op, "rows": rows}
+        resolved.append(op)
+        generated.append(ids)
+    return resolved, generated
+
+
 class _FakeMDB:
     def __init__(self):
         self.ops = []
@@ -41,6 +66,7 @@ class _FakeMDB:
         return True
 
     def read_table(self, _mdb, sql):
+        sql = sql.replace(", com_TextID FROM tCOMd_GlobalPrice", " FROM tCOMd_GlobalPrice")
         if sql.startswith("SELECT TOP 1 * FROM [tCOMd_Text]"):
             return _TEXT_PROTO
         if sql.startswith("SELECT MAX(com_TextID)"):
@@ -50,9 +76,13 @@ class _FakeMDB:
         return self.rows.get(sql, [])
 
     def execute_batch(self, _mdb, ops, transaction=False):
-        self.ops = ops
+        self.submitted_ops = ops
+        self.ops, generated = _generated_batch(ops)
         self.transaction = transaction
-        return SimpleNamespace(ok=True, first_error=lambda: None)
+        return SimpleNamespace(ok=True, first_error=lambda: None, results=[
+            SimpleNamespace(generated_ids=ids, inserted=len(op.get("rows", [])), updated=1)
+            for op, ids in zip(self.ops, generated)
+        ])
 
 
 class PriceMdbExportServiceTests(unittest.TestCase):
@@ -180,15 +210,17 @@ class _RecordingMDB(_FakeMDB):
         self.no_match = no_match
 
     def execute_batch(self, _mdb, ops, transaction=False):
-        self.ops = ops
+        self.submitted_ops = ops
+        self.ops, generated = _generated_batch(ops, getattr(self, "identity_seeds", None))
         self.transaction = transaction
         results = [
             SimpleNamespace(
                 ok=self.batch_ok, error=None,
                 inserted=len(op["rows"]) if op["op"] == "insert" else 0,
                 updated=0 if self.no_match else (1 if op["op"] == "update" else 0),
+                generated_ids=ids,
             )
-            for op in ops
+            for op, ids in zip(self.ops, generated)
         ]
         return SimpleNamespace(
             ok=self.batch_ok, results=results,
@@ -222,6 +254,23 @@ def _rec(value, ccy, **kw):
 
 class PriceMdbExportRealWorldRegressionTests(unittest.TestCase):
     """Behaviours verified against the real OCD MDB (see commit message)."""
+
+    def test_multiple_new_lists_in_one_currency_have_distinct_generated_identities(self):
+        mdb = _OptimizedFake(_eur_gbp_lists(), linked=[21, 22])
+        lists = [
+            PriceList(id=f"EURO_{year}", label=f"EURO_{year}", currency="EUR",
+                      date_from=f"{year}0101", date_to=f"{year}1231")
+            for year in (2027, 2028)
+        ]
+        records = [
+            PriceRecord(article_code="A1", currency="EUR", value=year,
+                        valid_from=f"{year}-06-01") for year in (2027, 2028)
+        ]
+        result = _export(mdb, records, lists)
+        assert result["ok"] and result["verified"], result
+        assert result["inserted_price_lists"] == 2 and result["inserted_prices"] == 2
+        rows = next(op["rows"] for op in mdb.ops if op["table"] == "tCOMd_Price")
+        assert {r["com_PriceListID"] for r in rows} == {1001, 1008}
 
     def test_snapshot_label_with_space_maps_to_existing_linked_list_not_a_new_one(self):
         # "EURO 2026_2" (space) used to miss "EURO_2026_2" and create an orphan list.
@@ -547,7 +596,8 @@ class _OptimizedFake(_RecordingMDB):
                 continue
             if op["op"] == "update":
                 rows.append({"id": op["where"][pk], "com_PriceValue": op["set"]["com_PriceValue"],
-                             "com_PriceListID": None, "com_VariantCondition": None})
+                             "com_PriceListID": None,
+                             "com_VariantCondition": op["set"].get("com_VariantCondition")})
             elif op["op"] == "insert":
                 rows += [{"id": r[pk], "com_PriceValue": r["com_PriceValue"],
                           "com_PriceListID": r["com_PriceListID"],
@@ -960,7 +1010,7 @@ class PriceMdbExportListTargetTests(unittest.TestCase):
         ids = {r["com_PriceListID"] for r in created}
         prices = next(op for op in mdb.ops if op["table"] == "tCOMd_Price")["rows"]
         self.assertEqual({r["com_PriceListID"] for r in prices}, ids)       # rows use the new ids
-        self.assertEqual(sorted(ids), [23, 24])
+        self.assertEqual(sorted(ids), [1001, 1008])  # generated by the MDB, not MAX+1
 
     def test_existing_lists_are_reused_not_duplicated_for_a_spelling_variant(self):
         mdb = _OptimizedFake(_strict_lists(), linked=[21, 22])

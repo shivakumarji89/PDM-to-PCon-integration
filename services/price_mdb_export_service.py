@@ -1,9 +1,10 @@
 """Non-destructive export of computed prices into an existing OCD MDB.
 
-Unlike the full OCD exporter, this service never deletes destination rows. A
-computed price whose identity already exists has only its ``com_PriceValue``
-corrected; a price with no matching row is inserted. Computed prices are mapped
-onto the destination's *existing* price lists (matched by currency and a
+Unlike the full OCD exporter, this service never deletes destination rows. An
+existing computed price normally has only its ``com_PriceValue`` corrected;
+legacy fabric-family conditions are also normalized to the computed condition.
+A price with no matching row is inserted. Computed prices are mapped onto the
+destination's *existing* price lists (matched by currency and a
 separator/case-insensitive label), preferring the list that is linked to a
 distribution region - the only lists pCon actually reads. A new list is created
 only when none matches, and is reported because it is unreachable until linked.
@@ -16,6 +17,7 @@ import json
 import re
 from typing import Any
 
+from models.price_record import PriceRecord
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.ocd_export_service import OcdExportService, _DATE_MAX, _DATE_MIN
@@ -23,6 +25,7 @@ from services.price_update_service import _mdb_date_literal
 from services.price_list_targets import (
     computation_date, normalize_mdb_date, resolve_targets,
 )
+from services.pricing_service import pricing_requires_recompute
 from services.price_text_blocks import (
     ACTION_CREATE, ACTION_LINK_NEW, ACTION_NONE, ACTION_PRESERVE, ACTION_REUSE,
     ACTION_SKIP, ACTION_UNLINKED, language_columns, name_key, price_text_labels,
@@ -32,12 +35,34 @@ from services.price_text_blocks import (
 #: Level of every new global price row: PDM's AddMissingGlobalPricingRecords
 #: hardcodes 'X', and every vendor/rolled-over ``tCOMd_GlobalPrice`` row is 'X'.
 _GLOBAL_LEVEL = "X"
+_IDENTITY_COLUMNS = {
+    "tCOMd_Text": "com_TextID", "tCOMd_PriceList2": "com_PriceListID",
+    "tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID",
+}
 
 
 def _label_key(label: Any) -> str:
     """Label identity that ignores case and space/underscore/hyphen differences
     (``EURO 2026_2`` and ``EURO_2026_2`` are the same price list)."""
     return re.sub(r"[\s_\-]+", "_", str(label or "").strip().upper())
+
+
+def _legacy_fabric_family_keys(record: PriceRecord) -> tuple[str, str] | None:
+    """Return legacy MDB target/source keys for a canonical fabric-family record."""
+    if not record.is_global or not record.source_item:
+        return None
+    prefix = record.source_item + " "
+    source, target = record.pdm_lookup_code, record.variant_condition
+    if not source.startswith(prefix) or not target.startswith(prefix):
+        return None
+    source_option, sep, source_code = source[len(prefix):].partition("=")
+    target_option, target_sep, target_code = target[len(prefix):].partition("=")
+    if (sep and target_sep and source_option.isdigit() and target_option.isdigit()
+            and source_option != target_option and target_code
+            and source_code.replace("#", "") == target_code):
+        return (f"{target_option}={record.source_item}_{target_code}",
+                f"{source_option}={record.source_item}_{source_code}")
+    return None
 
 
 class PriceMdbExportService(BaseService):
@@ -94,6 +119,11 @@ class PriceMdbExportService(BaseService):
             return {"ok": False, "error": "Select an existing OCD MDB file."}
         if not snapshot.price_records:
             return {"ok": False, "error": "Compute prices before exporting."}
+        if pricing_requires_recompute(snapshot):
+            return {"ok": False, "error": (
+                "Stored fabric pricing predates colour-relationship resolution. "
+                "Compute prices again before previewing or exporting; historical records are unchanged."
+            )}
 
         mdb_service = self.context.mdb_service
         if not mdb_service.is_available():
@@ -159,7 +189,7 @@ class PriceMdbExportService(BaseService):
                 )
                 existing_globals = mdb_service.read_table(
                     mdb, "SELECT com_GlobalPriceID, com_PackageID, com_PriceListID, "
-                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue "
+                         "com_VariantCondition, com_PriceLevelCode, sys_ISOCurrencyCode, com_PriceValue, com_TextID "
                          "FROM tCOMd_GlobalPrice"
                 )
                 linked_list_ids = {str(r.get("com_PriceListID")) for r in mdb_service.read_table(
@@ -188,13 +218,6 @@ class PriceMdbExportService(BaseService):
         def norm_date(value: Any, fallback: str) -> str:
             return self._normalize_mdb_date(value, fallback)
 
-        numeric_ids = []
-        for row in existing_lists:
-            try:
-                numeric_ids.append(int(row.get("com_PriceListID")))
-            except (TypeError, ValueError):
-                pass
-        next_list_id = max(numeric_ids, default=0) + 1
         list_rows: list[dict[str, Any]] = []
         list_by_currency: dict[str, list[dict[str, Any]]] = {}
         used_labels = {_label_key(r.get("com_PriceListLabel")) for r in existing_lists}
@@ -232,14 +255,13 @@ class PriceMdbExportService(BaseService):
                     continue
                 if plan.action == "create":
                     list_rows.append(OcdExportService._row(list_proto, {
-                        "com_PriceListID": next_list_id,
+                        "com_PriceListID": f"new:list:{ccy}",
                         "com_PriceListLabel": plan.name,
                         "sys_ISOCurrencyCode": ccy,
                         "com_PriceValidFrom": _mdb_date_literal(plan.date_from),
                         "com_PriceValidTo": _mdb_date_literal(plan.date_to),
                     }))
-                    plan.list_id = next_list_id
-                    next_list_id += 1
+                    plan.list_id = f"new:list:{ccy}"
                     plan.label = plan.name
                 else:
                     plan.label = next((str(r.get("com_PriceListLabel") or plan.name) for r in existing_lists
@@ -261,14 +283,13 @@ class PriceMdbExportService(BaseService):
                 found = min(matches, key=lambda r: list_rank(r, label)) if matches else None
                 if found is None and _label_key(label) not in used_labels:
                     found = OcdExportService._row(list_proto, {
-                        "com_PriceListID": next_list_id,
+                        "com_PriceListID": f"new:list:{currency}:{len(list_rows)}",
                         "com_PriceListLabel": label,
                         "sys_ISOCurrencyCode": currency,
                         "com_PriceValidFrom": _mdb_date_literal(price_list.date_from or _DATE_MIN),
                         "com_PriceValidTo": _mdb_date_literal(price_list.date_to or _DATE_MAX),
                     })
                     list_rows.append(found)
-                    next_list_id += 1
                     used_labels.add(_label_key(label))
                 if found is not None and str(found.get("com_PriceListID")) not in snapshot_list_ids:
                     snapshot_list_ids.add(str(found.get("com_PriceListID")))
@@ -334,8 +355,8 @@ class PriceMdbExportService(BaseService):
             return None
 
         if optimized_reads:
-            # Read only existing identities that can collide with this export,
-            # plus aggregate next-ID values; this avoids moving the entire MDB
+            # Read only existing identities that can collide with this export;
+            # this avoids moving the entire MDB
             # price tables through PowerShell JSON serialization.
             relevant_article_ids = sorted({
                 str(article_ids.get((record.article_code or "").strip()))
@@ -348,6 +369,7 @@ class PriceMdbExportService(BaseService):
                 for record in snapshot.price_records
                 for mapped in [record_list(record)]
                 if mapped is not None and mapped.get("id") is not None
+                and not str(mapped["id"]).startswith("new:")
             })
             def sql_in(values):
                 return ", ".join(v if v.lstrip("-").isdigit() else "'" + v.replace("'", "''") + "'" for v in values)
@@ -373,25 +395,16 @@ class PriceMdbExportService(BaseService):
                         + " FROM tCOMd_Text WHERE "
                         "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id)
                     ),
-                    "text_max": "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text",
-                    "price_max": "SELECT MAX(com_PriceID) AS max_id FROM tCOMd_Price",
-                    "global_max": "SELECT MAX(com_GlobalPriceID) AS max_id FROM tCOMd_GlobalPrice",
                 })
                 existing_prices = targeted["price_keys"]
                 existing_globals = targeted["global_keys"]
                 price_texts = targeted["texts"]
-                text_max_rows = targeted["text_max"]
-                price_max_rows = targeted["price_max"]
-                global_max_rows = targeted["global_max"]
             except Exception as exc:
                 return {"ok": False, "error": f"Could not read existing price identities: {exc}"}
         else:
             price_texts = mdb_service.read_table(
                 mdb, "SELECT com_TextID, com_TextName FROM tCOMd_Text WHERE "
                      "com_TextTypeCode = 'price' AND com_PackageID = " + str(package_id))
-            text_max_rows = mdb_service.read_table(mdb, "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text")
-            price_max_rows = [{"max_id": max((int(r.get("com_PriceID") or 0) for r in existing_prices), default=0)}]
-            global_max_rows = [{"max_id": max((int(r.get("com_GlobalPriceID") or 0) for r in existing_globals), default=0)}]
 
         def key(row, global_price=False):
             # Identity as in PDM's UpdatePConItemPrice: owner (article/package) +
@@ -402,7 +415,7 @@ class PriceMdbExportService(BaseService):
             return (
                 str(row.get("com_PackageID" if global_price else "com_ArticleID") or ""),
                 str(row.get("com_PriceListID") or ""),
-                str(row.get("com_VariantCondition") or ""),
+                str(row.get("com_VariantCondition") or "").casefold(),
                 "" if global_price else str(row.get("com_PriceLevelCode") or "B"),
             )
 
@@ -423,9 +436,8 @@ class PriceMdbExportService(BaseService):
         text_ids_by_name: dict[str, list[Any]] = {}
         for t in price_texts:
             text_ids_by_name.setdefault(name_key(t.get("com_TextName")), []).append(t.get("com_TextID"))
-        next_text_id = int((text_max_rows[0].get("max_id") if text_max_rows else 0) or 0) + 1
         text_rows_new: list[dict[str, Any]] = []   # tCOMd_Text rows to create
-        new_text_ids: dict[str, Any] = {}          # name key -> id allocated this run
+        new_text_ids: dict[str, Any] = {}          # name key -> deferred MDB identity
         text_plan: list[dict[str, Any]] = []       # one entry per priced row
         blocked_rows = 0
         # Validity of a new article price: PDM copies the article's existing price
@@ -448,8 +460,6 @@ class PriceMdbExportService(BaseService):
                 "linked": str(price_list["id"]) in linked_list_ids,
                 "updates": 0, "inserts": 0})
             entry[kind] += 1
-        next_price_id = int((price_max_rows[0].get("max_id") if price_max_rows else 0) or 0) + 1
-        next_global_id = int((global_max_rows[0].get("max_id") if global_max_rows else 0) or 0) + 1
         price_rows: list[dict[str, Any]] = []
         global_rows: list[dict[str, Any]] = []
         skipped_existing = skipped_unmapped = skipped_ambiguous = skipped_zero = 0
@@ -539,18 +549,57 @@ class PriceMdbExportService(BaseService):
             row_key = (
                 str(package_id if is_global else article_id),
                 str(price_list["id"]),
-                record.variant_condition or "",
+                (record.variant_condition or "").casefold(),
                 "" if is_global else (record.level or "B").strip() or "B",
             )
             target_keys = existing_global_keys if is_global else existing_price_keys
             existing_map = existing_global_by_key if is_global else existing_price_by_key
             match_keys = [row_key]
-            if is_global and is_surcharge(record) and record.pdm_lookup_code:
+            family_keys = _legacy_fabric_family_keys(record)
+            family_target = record.variant_condition if family_keys is not None else None
+            if family_keys is not None:
+                legacy_target_key = (
+                    row_key[0], row_key[1], family_keys[0].casefold(), row_key[3])
+                canonical_matches = existing_map.get(row_key, [])
+                legacy_matches = existing_map.get(legacy_target_key, [])
+                matches = canonical_matches or legacy_matches
+                conflicts = canonical_matches and legacy_matches
+                source_keys = (family_keys[1], family_keys[1].replace("#", ""), record.pdm_lookup_code,
+                               record.pdm_lookup_code.replace("#", ""))
+                source_rows = [r for condition in dict.fromkeys(source_keys)
+                               for r in existing_map.get(
+                                   (row_key[0], row_key[1], condition.casefold(), row_key[3]), [])]
+                priced_source = False
+                for source_row in source_rows:
+                    try:
+                        priced_source |= float(source_row.get("com_PriceValue") or 0) != 0.0
+                    except (TypeError, ValueError):
+                        priced_source = True
+                duplicate_input = (is_global, row_key) in handled_keys
+                if (len(matches) > 1 or conflicts or priced_source or duplicate_input
+                        or (matches and str(matches[0].get("com_TextID")) not in text_name_by_id)):
+                    reason = (
+                        f"Fabric family target '{family_target}': expected at most one linked existing row, "
+                        f"found {len(matches)}; legacy/canonical conflicts={bool(conflicts)}, "
+                        f"priced source conflicts={priced_source}, duplicate input={duplicate_input}"
+                    )
+                    entry = text_entry(record, price_list, "blocked")
+                    entry.update(action=ACTION_SKIP, text_status="blocked", reason=reason,
+                                 price_source_condition=record.pdm_lookup_code,
+                                 target_variant_condition=family_target)
+                    text_plan.append(entry)
+                    blocked_rows += 1
+                    blocking_errors.append(reason)
+                    block_reasons[reason] = block_reasons.get(reason, 0) + 1
+                    blocked_detail.append(entry)
+                    continue
+                match_keys = [row_key if canonical_matches else legacy_target_key]
+            elif is_global and is_surcharge(record) and record.pdm_lookup_code:
                 # The worker can identify a row whose stored condition differs
                 # from AddMissingGlobalPricingRecords' insertion condition.
                 # Prefer that identity; canonical fallback makes inserts repeatable.
                 worker_keys = [
-                    (row_key[0], row_key[1], condition, row_key[3])
+                    (row_key[0], row_key[1], condition.casefold(), row_key[3])
                     for condition in dict.fromkeys((
                         record.pdm_lookup_code, record.pdm_lookup_code.replace("#", ""),
                     ))
@@ -575,9 +624,8 @@ class PriceMdbExportService(BaseService):
             handled_keys.add((is_global, row_key))
             handled_keys.update((is_global, k) for k in match_keys)
             if match_keys[0] in target_keys:
-                # Correct only com_PriceValue; a row already holding the value
-                # is left alone. Identity, validity, currency and unrelated rows
-                # remain untouched.
+                # Correct the value and, only for legacy fabric-family matches,
+                # normalize the condition. Other row fields remain untouched.
                 primary_key = "com_GlobalPriceID" if is_global else "com_PriceID"
                 table_name = "tCOMd_GlobalPrice" if is_global else "tCOMd_Price"
                 stale = 0
@@ -596,7 +644,11 @@ class PriceMdbExportService(BaseService):
                         ) < 1e-9
                     except (TypeError, ValueError):
                         same_value = False
-                    if same_value:
+                    condition_changed = (
+                        family_target is not None
+                        and str(existing_row.get("com_VariantCondition") or "") != family_target
+                    )
+                    if same_value and not condition_changed:
                         continue
                     existing_id = existing_row.get(primary_key)
                     if existing_id is None:
@@ -609,14 +661,18 @@ class PriceMdbExportService(BaseService):
                         }
                     stale += 1
                     note_target(price_list, "updates")
+                    update_set = {"com_PriceValue": price_value}
+                    if condition_changed:
+                        update_set["com_VariantCondition"] = family_target
                     planned_update_detail.append({
                         "table": table_name, "id": existing_id,
                         "variant_condition": existing_row.get("com_VariantCondition") or "",
+                        "target_variant_condition": family_target or existing_row.get("com_VariantCondition") or "",
                         "list": price_list["label"], "from": existing_value, "to": price_value})
                     value_updates.append({
                         "op": "update",
                         "table": table_name,
-                        "set": {"com_PriceValue": price_value},
+                        "set": update_set,
                         "where": {primary_key: existing_id},
                     })
                 if len(all_matches) > 1:
@@ -628,7 +684,10 @@ class PriceMdbExportService(BaseService):
                 linked_id = next((r.get("com_TextID") for r in all_matches
                                   if r.get("com_TextID") not in (None, "")), None)
                 entry = text_entry(record, price_list, "update" if stale else "unchanged")
-                entry["variant_condition"] = match_keys[0][2]
+                if family_target is not None:
+                    entry["computed_variant_condition"] = record.variant_condition
+                    entry["price_source_condition"] = record.pdm_lookup_code
+                entry["variant_condition"] = family_target or all_matches[0].get("com_VariantCondition") or ""
                 if is_global:
                     entry["row_ids"] = [r.get(primary_key) for r in all_matches]
                     entry.update(
@@ -655,6 +714,8 @@ class PriceMdbExportService(BaseService):
                     blocked_detail.append({
                         "article_code": record.article_code or "", "variant_condition": record.variant_condition or "",
                         "currency": (record.currency or "").strip().upper(), "reason": reason})
+                if family_target is not None:
+                    blocking_errors.append(f"Fabric family target '{family_target}': {reason}")
                 continue
             valid_from, valid_to = (
                 article_validity.get((str(article_id), str(price_list["id"])))
@@ -684,6 +745,10 @@ class PriceMdbExportService(BaseService):
                 known = text_ids_by_name.get(tkey, [])
                 entry = text_entry(record, price_list, "insert")
                 entry["text_name"] = text_name
+                if family_target is not None:
+                    entry.update(computed_variant_condition=record.variant_condition,
+                                 price_source_condition=record.pdm_lookup_code,
+                                 variant_condition=family_target)
                 if len(known) > 1:
                     entry.update(action=ACTION_SKIP, text_status="ambiguous",
                                  reason=f"{len(known)} price texts are named '{text_name}'")
@@ -691,7 +756,7 @@ class PriceMdbExportService(BaseService):
                     entry.update(action=ACTION_REUSE, text_id=known[0], text_status="existing",
                                  text_content=text_content_by_id.get(str(known[0]), ""))
                 elif tkey in new_text_ids:
-                    entry.update(action=ACTION_LINK_NEW, text_status="new")
+                    entry.update(action=ACTION_LINK_NEW, text_status="new", text_content=display)
                 elif not text_lang_cols:
                     entry.update(action=ACTION_SKIP, text_status="missing",
                                  reason="tCOMd_Text has no language columns to create the text in")
@@ -702,36 +767,36 @@ class PriceMdbExportService(BaseService):
                                  reason=f"Product_Code unknown for '{text_name}'; recompute prices")
                 else:
                     entry.update(action=ACTION_CREATE, text_status="new", text_content=display)
-                    new_text_ids[tkey] = next_text_id
+                    new_text_ids[tkey] = f"new:text:{tkey}"
                     text_rows_new.append({
-                        "com_TextID": next_text_id, "com_PackageID": package_id,
+                        "com_TextID": new_text_ids[tkey], "com_PackageID": package_id,
                         "com_TextTypeCode": "price", "com_TextName": text_name,
                         **{col: display for col in text_lang_cols},
                     })
-                    next_text_id += 1
                 text_plan.append(entry)
                 if entry["action"] == ACTION_SKIP:
                     blocked_rows += 1
+                    if family_target is not None:
+                        blocking_errors.append(f"Fabric family target '{family_target}': {entry['reason']}")
                     continue
                 common["com_TextID"] = entry["text_id"] if entry["text_id"] is not None else new_text_ids[tkey]
                 note_target(price_list, "inserts")
-                entry["row_ids"] = [next_global_id]
+                global_id = f"new:global:{len(global_rows)}"
+                entry["row_ids"] = [global_id]
                 global_rows.append(OcdExportService._row(global_proto, {
-                    "com_GlobalPriceID": next_global_id,
+                    "com_GlobalPriceID": global_id,
                     "com_PackageID": package_id,
                     **common,
                 }))
-                next_global_id += 1
-                existing_global_keys.add(row_key)
+                existing_global_keys.add(match_keys[0])
             else:
                 text_plan.append(text_entry(record, price_list, "insert"))
                 note_target(price_list, "inserts")
                 price_rows.append(OcdExportService._row(price_proto, {
-                    "com_PriceID": next_price_id,
+                    "com_PriceID": f"new:price:{len(price_rows)}",
                     "com_ArticleID": article_id,
                     **common,
                 }))
-                next_price_id += 1
                 existing_price_keys.add(row_key)
 
         ops = []
@@ -745,6 +810,16 @@ class PriceMdbExportService(BaseService):
             ops.append({"op": "insert", "table": "tCOMd_Price", "rows": price_rows})
         if global_rows:
             ops.append({"op": "insert", "table": "tCOMd_GlobalPrice", "rows": global_rows})
+        tokens = {row[_IDENTITY_COLUMNS[op["table"]]]
+                  for op in ops if op["op"] == "insert" for row in op["rows"]}
+        ops = [
+            {**op, "identity": _IDENTITY_COLUMNS[op["table"]], "rows": [
+                {col: ({"$ref": value} if isinstance(value, str) and value in tokens
+                       and col in _IDENTITY_COLUMNS.values()
+                       and col != _IDENTITY_COLUMNS[op["table"]] else value) for col, value in row.items()}
+                for row in op["rows"]]}
+            if op["op"] == "insert" else op for op in ops
+        ]
         report = {
             "mdb_path": str(mdb), "inserted_prices": 0, "inserted_global_prices": 0,
             "inserted_price_lists": 0, "updated_prices": 0, "updated_global_prices": 0,
@@ -765,7 +840,8 @@ class PriceMdbExportService(BaseService):
         report["blocked_rows"] = blocked_detail
         report["export_allowed"] = not blocking_errors
         report["plan_digest"] = hashlib.sha256(json.dumps(
-            {"ops": ops, "lists": report["list_plan"]}, sort_keys=True, default=str).encode()).hexdigest()
+            {"ops": ops, "lists": report["list_plan"], "texts": text_plan},
+            sort_keys=True, default=str).encode()).hexdigest()
 
         def count_action(*actions):
             return sum(1 for e in text_plan if e["action"] in actions)
@@ -790,8 +866,8 @@ class PriceMdbExportService(BaseService):
         if blocked_rows:
             reasons = sorted({e["reason"] for e in text_plan if e["action"] == ACTION_SKIP})
             report["warnings"].append(
-                f"{blocked_rows} new global price row(s) were not inserted because their text "
-                "block is missing or ambiguous: " + "; ".join(reasons[:3]))
+                f"{blocked_rows} global price row(s) were not inserted or updated due to target/text mapping: "
+                + "; ".join(reasons[:3]))
         if dry_run:
             # Report the plan only: nothing is executed.
             report.update({
@@ -805,7 +881,7 @@ class PriceMdbExportService(BaseService):
             })
             return {"ok": True, "error": None, **report}
         if blocking_errors:
-            return {"ok": False, "error": "Target price list validation failed: " + "; ".join(blocking_errors),
+            return {"ok": False, "error": "Price export validation failed: " + "; ".join(blocking_errors),
                     **report}
         if expected_plan is not None and expected_plan != report["plan_digest"]:
             return {"ok": False, "error": "The MDB or the export inputs changed since the preview; "
@@ -828,6 +904,30 @@ class PriceMdbExportService(BaseService):
         # Count what the bridge actually executed, not what was planned. Doubles
         # that return no per-op results fall back to the planned counts.
         results = list(getattr(batch, "results", None) or [])
+        generated = {token: value for res in results
+                     for token, value in (getattr(res, "generated_ids", None) or {}).items()}
+        missing_ids = tokens - generated.keys()
+        if missing_ids:
+            report["verified"] = False
+            for entry in text_plan:
+                if entry["action"] in (ACTION_CREATE, ACTION_LINK_NEW):
+                    entry["text_status"] = "unverified"
+            return {"ok": False, "error": "MDB write completed but did not return generated IDs for: "
+                    + ", ".join(sorted(missing_ids)), **report}
+        for rows in (text_rows_new, list_rows, price_rows, global_rows):
+            for row in rows:
+                for col, value in row.items():
+                    if col in _IDENTITY_COLUMNS.values() and isinstance(value, str) and value in generated:
+                        row[col] = generated[value]
+        for entry in text_plan:
+            entry["list_id"] = generated.get(entry["list_id"], entry["list_id"])
+            if "row_ids" in entry:
+                entry["row_ids"] = [generated.get(i, i) for i in entry["row_ids"]]
+        new_text_ids = {name: generated[token] for name, token in new_text_ids.items()}
+        for entry in report["target_lists"]:
+            entry["id"] = generated.get(entry["id"], entry["id"])
+        for entry in report["list_plan"]:
+            entry["list_id"] = generated.get(entry["list_id"], entry["list_id"])
         if len(results) != len(ops):
             results = [None] * len(ops)
         failed = 0
@@ -909,7 +1009,9 @@ class PriceMdbExportService(BaseService):
         pk = {"tCOMd_Price": "com_PriceID", "tCOMd_GlobalPrice": "com_GlobalPriceID"}
         for op in value_updates:
             table = op["table"]
-            expected[table][op["where"][pk[table]]] = (op["set"]["com_PriceValue"], None, None, None)
+            expected[table][op["where"][pk[table]]] = (
+                op["set"].get("com_PriceValue"), None,
+                op["set"].get("com_VariantCondition"), op["set"].get("sys_ISOCurrencyCode"))
         for table, rows in (("tCOMd_Price", price_rows), ("tCOMd_GlobalPrice", global_rows)):
             for row in rows:
                 expected[table][row[pk[table]]] = (
@@ -990,16 +1092,16 @@ class PriceMdbExportService(BaseService):
                     failures.append(f"{table} {row_id}: row missing after write")
                     continue
                 try:
-                    same = abs(float(row["com_PriceValue"]) - float(value)) < 1e-9
+                    same = value is None or abs(float(row["com_PriceValue"]) - float(value)) < 1e-9
                 except (TypeError, ValueError):
                     same = False
                 if not same:
                     failures.append(f"{table} {row_id}: value {row['com_PriceValue']} != {value}")
                 elif want_ccy and str(row.get("sys_ISOCurrencyCode") or "").upper() != str(want_ccy).upper():
                     failures.append(f"{table} {row_id}: currency {row.get('sys_ISOCurrencyCode')} != {want_ccy}")
-                elif list_id is not None and (
-                        str(row["com_PriceListID"]) != str(list_id)
-                        or str(row["com_VariantCondition"] or "") != str(varcond or "")):
+                elif varcond is not None and str(row["com_VariantCondition"] or "") != str(varcond):
+                    failures.append(f"{table} {row_id}: variant {row['com_VariantCondition']} != {varcond}")
+                elif list_id is not None and str(row["com_PriceListID"]) != str(list_id):
                     failures.append(f"{table} {row_id}: list/variant differs from intended")
 
         lists_read = {r["id"]: r for r in rows_of("lists")}

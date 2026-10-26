@@ -6,6 +6,8 @@ and loads it into the active snapshot. The page contains no SQL - all data
 access goes through the service/repository layers.
 """
 from __future__ import annotations
+from copy import deepcopy
+from ui.workers.background_task import ReportedTask
 
 import re
 import time
@@ -122,93 +124,6 @@ class _LoadWorker(QRunnable):
                 self._token, (self._product, result, duration)
             )
 
-class _FamilyLoadSignals(QObject):
-    """Signals emitted from the background family-load worker."""
-
-    finished = Signal(object)  # ProductLoadResult
-    failed = Signal(str)       # message
-
-
-class _FamilyLoadWorker(QRunnable):
-    """Loads a whole family (articles + details) into one snapshot off the UI
-    thread, in a single pass.
-
-    The worker only runs the service; all progress/activity reporting is emitted
-    by the service through the injected :class:`~core.progress.ProgressReporter`.
-    """
-
-    def __init__(self, pdm_service, products, family_name, reporter, signals):
-        super().__init__()
-        self._pdm_service = pdm_service
-        self._products = products
-        self._family_name = family_name
-        self._reporter = reporter
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            result = self._pdm_service.load_family(
-                self._products, self._family_name, reporter=self._reporter
-            )
-        except Exception as error:  # defensive: never crash the worker thread
-            self._signals.failed.emit(f"Unexpected error: {error}")
-        else:
-            self._signals.finished.emit(result)
-
-
-class _AddFamilyWorker(QRunnable):
-    """Merges a family into the CURRENT session's snapshot off the UI thread."""
-
-    def __init__(self, pdm_service, products, family_name, reporter, signals):
-        super().__init__()
-        self._pdm_service = pdm_service
-        self._products = products
-        self._family_name = family_name
-        self._reporter = reporter
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            result = self._pdm_service.add_family_to_session(
-                self._products, self._family_name, reporter=self._reporter
-            )
-        except Exception as error:  # defensive: never crash the worker thread
-            self._signals.failed.emit(f"Unexpected error: {error}")
-        else:
-            self._signals.finished.emit(result)
-
-
-class _EngineeringInitSignals(QObject):
-    """Signals emitted from the background Engineering Initialization worker."""
-
-    finished = Signal()     # engineering initialized successfully
-    failed = Signal(str)    # message
-
-
-class _EngineeringInitWorker(QRunnable):
-    """Runs EngineeringInitializationService.initialize() off the UI thread.
-
-    Only the existing initialization service is invoked - no loading, snapshot
-    creation or SQL is performed here - so business logic is unchanged; it just
-    moves the existing call onto a worker thread using the existing QRunnable
-    framework.
-    """
-
-    def __init__(self, init_service, snapshot, signals) -> None:
-        super().__init__()
-        self._service = init_service
-        self._snapshot = snapshot
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            self._service.initialize(self._snapshot)
-        except Exception as error:  # defensive: never crash the worker thread
-            self._signals.failed.emit(f"Unexpected error: {error}")
-        else:
-            self._signals.finished.emit()
-
-
 # Map the ProgressReporter log kinds to Activity log levels.
 _LOG_LEVEL_FOR = {
     "info": LogLevel.INFO,
@@ -241,6 +156,7 @@ class _ActivityProgressBridge:
         reporter.product_changed.connect(self._on_product)
         reporter.counts_changed.connect(self._on_counts)
         reporter.activity.connect(self._on_log)
+        reporter.finished.connect(self._on_finished)
 
     def disconnect(self) -> None:
         """Detach from the reporter so neither object keeps the other alive."""
@@ -252,6 +168,7 @@ class _ActivityProgressBridge:
             reporter.product_changed.disconnect(self._on_product)
             reporter.counts_changed.disconnect(self._on_counts)
             reporter.activity.disconnect(self._on_log)
+            reporter.finished.disconnect(self._on_finished)
         except (RuntimeError, TypeError):
             # Already disconnected or the reporter was deleted - nothing to do.
             pass
@@ -276,6 +193,14 @@ class _ActivityProgressBridge:
 
     def _on_log(self, kind: str, message: str) -> None:
         self._activity.add_log(message, _LOG_LEVEL_FOR.get(kind, LogLevel.INFO))
+
+    def _on_finished(self, success: bool, message: str) -> None:
+        if success:
+            self._activity.complete(message)
+        elif self._reporter.is_cancelled():
+            self._activity.cancel(message)
+        else:
+            self._activity.fail(message)
 
     def _stage_for(self, text: str):
         for prefix, index, name in self._STEP_STAGES:
@@ -1230,6 +1155,8 @@ class ProductPage(BasePage):
         """
         # Products come from every selected node (products / categories /
         # catalogues), so multi-selection loads them all in one family.
+        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+            return
         products, family_name = self._selected_family_products()
         if not products:
             self._search_status.setText("Select product(s) or categories to load.")
@@ -1239,7 +1166,9 @@ class ProductPage(BasePage):
 
         # One reusable reporter drives both the progress dialog and the Activity
         # panel; business logic in the service only calls the reporter methods.
-        reporter = ProgressReporter(self)
+        run = ReportedTask(self)
+        self._family_run = run
+        reporter = run.reporter
         dialog = self._progress_monitor()
         dialog.bind(reporter)
 
@@ -1284,17 +1213,17 @@ class ProductPage(BasePage):
         self._family_products = products
         self._family_name = family_name
 
-        signals = _FamilyLoadSignals()
-        signals.finished.connect(self._on_family_finished)
-        signals.failed.connect(self._on_family_load_failed)
-        self._family_signals = signals
-
-        worker = _FamilyLoadWorker(
-            self._context.pdm_service, products, family_name, reporter, signals
-        )
+        service = self._context.pdm_service
+        working_products = deepcopy(products)
+        self._family_products = working_products
         dialog.show()
         dialog.raise_()
-        self._pool.start(worker)
+        run.start(
+            lambda emit: service.load_family(working_products, family_name, reporter=reporter,
+                                             initialize_engineering=True),
+            finished=self._on_family_finished, failed=self._on_family_load_failed,
+            cancelled=self._on_family_cancelled,
+        )
 
     def _on_add_family_to_session(self) -> None:
         """Merge the selected family into the CURRENT session (accumulate).
@@ -1307,12 +1236,16 @@ class ProductPage(BasePage):
         """
         # Products come from every selected node (products / categories /
         # catalogues), so multi-selection adds them all to the session.
+        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+            return
         products, family_name = self._selected_family_products()
         if not products:
             self._search_status.setText("Select product(s) or categories to load.")
             return
 
-        reporter = ProgressReporter(self)
+        run = ReportedTask(self)
+        self._family_run = run
+        reporter = run.reporter
         dialog = self._progress_monitor()
         dialog.bind(reporter)
         main = self.window()
@@ -1337,16 +1270,25 @@ class ProductPage(BasePage):
         self._family_products = products
         self._family_name = family_name
 
-        signals = _FamilyLoadSignals()
-        signals.finished.connect(self._on_add_family_finished)
-        signals.failed.connect(self._on_family_load_failed)
-        self._family_signals = signals
-        worker = _AddFamilyWorker(
-            self._context.pdm_service, products, family_name, reporter, signals
-        )
+        service = self._context.pdm_service
+        working_products = deepcopy(products)
+        self._family_products = working_products
         dialog.show()
         dialog.raise_()
-        self._pool.start(worker)
+        run.start(
+            lambda emit: service.add_family_to_session(working_products, family_name, reporter=reporter,
+                                                       sync_engineering=True),
+            finished=self._on_add_family_finished, failed=self._on_family_load_failed,
+            cancelled=self._on_family_cancelled,
+        )
+
+    def _on_family_cancelled(self, message: str) -> None:
+        self._family_reporter.finish(False, message)
+        activity = getattr(self, "_family_activity", None)
+        if activity is not None:
+            activity.cancel(message)
+        self._search_status.setText(message)
+        self._finalize_load()
 
     def _on_add_family_finished(self, result) -> None:
         """A family was merged into the session: sync engineering additively and
@@ -1365,13 +1307,7 @@ class ProductPage(BasePage):
         # PDMService merged into the active snapshot: publish it as the PDM source.
         snapshot = self._context.adopt_loaded_pdm_snapshot()
         self._loaded_product = snapshot.product if snapshot is not None else None
-        # Additive engineering sync: add members for the new articles without
-        # discarding existing families / reduction work.
         reporter.advance("Refreshing Workspaces")
-        try:
-            self._context.engineering_initialization_service.sync(snapshot)
-        except Exception as error:  # never let sync break the add
-            reporter.log("error", f"Engineering sync: {error}")
         self._prepare_maintenance_scope()
         # Re-group everything across the combined session.
         self.product_loaded.emit(
@@ -1434,15 +1370,6 @@ class ProductPage(BasePage):
             return
 
         self._loaded_product = products[0]
-
-        # Engineering Initialization (in-memory, one member per article).
-        reporter.advance("Initializing Engineering")
-        try:
-            self._context.engineering_initialization_service.initialize(
-                self._context.active_snapshot
-            )
-        except Exception as error:  # never let init break the load
-            reporter.log("error", f"Engineering init: {error}")
 
         # Publish the COMPLETE snapshot + engineering to every workspace at once.
         reporter.advance("Finalizing Workspaces")
@@ -1551,6 +1478,8 @@ class ProductPage(BasePage):
             self._do_load(self._loaded_product)
 
     def _do_load(self, product: Product) -> None:
+        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+            return
         # Load on a worker thread; a token ignores superseded loads.
         if self._context_module == WorkbenchModule.MAINTENANCE:
             from services.maintenance_alignment_service import MaintenanceAlignmentService
@@ -1614,6 +1543,10 @@ class ProductPage(BasePage):
         self._refresh_hierarchy_btn.setEnabled(enabled)
 
     def _on_clear_snapshot(self) -> None:
+        run = getattr(self, "_family_run", None)
+        if run is not None and run.active:
+            run.reporter.request_cancel()
+            return
         if self._context_module == WorkbenchModule.MAINTENANCE:
             from services.maintenance_alignment_service import MaintenanceAlignmentService
             MaintenanceAlignmentService(self._context).restore_pdm_scope()

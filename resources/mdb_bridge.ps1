@@ -10,6 +10,9 @@
 #       { "op": "update", "table": "tCOMd_Package", "set": { ... }, "where": { "com_PackageID": 1 } },
 #       { "op": "query",  "sql": "SELECT ..." }
 #     ] }
+# Inserts may specify "identity": "<autonumber column>". That column contains
+# a symbolic token, omitted from SQL; later columns can reference {"$ref": token}.
+# The same connection reads @@IDENTITY immediately and returns generated_ids.
 # Output JSON: { "ok": true|false, "results": [ { "op": .., "ok": .., "error": .., "rows": [...] } ] }
 param(
     [Parameter(Mandatory = $true)][string]$InputPath,
@@ -40,9 +43,13 @@ function Format-SqlValue($v) {
 $result = [ordered]@{ ok = $true; results = @() }
 $conn = $null
 $rs = $null
+$identities = @{}
 try {
     $payload = Get-Content -Raw -LiteralPath $InputPath | ConvertFrom-Json
     $conn = New-Object -ComObject ADODB.Connection
+    if (@($payload.ops | Where-Object { $_.op -ne "query" }).Count -eq 0) {
+        $conn.Mode = 1 # adModeRead: previews and verification cannot write.
+    }
     $conn.Open("Provider=Microsoft.ACE.OLEDB.16.0;Data Source=$($payload.mdb);")
 
     $useTx = [bool]$payload.transaction
@@ -67,17 +74,50 @@ try {
                 "insert" {
                     if ($op.rows -and @($op.rows).Count -gt 0) {
                         $count = 0
+                        $generated = @{}
                         foreach ($row in $op.rows) {
                             $cols = @(); $vals = @()
+                            $token = $null
                             foreach ($p in $row.PSObject.Properties) {
+                                if ($op.identity -and $p.Name -eq $op.identity) {
+                                    $token = [string]$p.Value
+                                    if (-not $token -or $identities.ContainsKey($token)) {
+                                        throw "Missing or duplicate identity token '$token'"
+                                    }
+                                    continue
+                                }
+                                $value = $p.Value
+                                if ($null -ne $value -and $value.PSObject.Properties['$ref']) {
+                                    $reference = [string]$value.'$ref'
+                                    if (-not $identities.ContainsKey($reference)) {
+                                        throw "Unresolved identity reference '$reference'"
+                                    }
+                                    $value = $identities[$reference]
+                                }
                                 $cols += "[$($p.Name)]"
-                                $vals += (Format-SqlValue $p.Value)
+                                $vals += (Format-SqlValue $value)
+                            }
+                            if ($op.identity -and -not $token) {
+                                throw "Identity column '$($op.identity)' has no token"
                             }
                             $sql = "INSERT INTO [$($op.table)] (" + ($cols -join ",") + ") VALUES (" + ($vals -join ",") + ")"
                             $conn.Execute($sql) | Out-Null
+                            if ($op.identity) {
+                                $rs = $conn.Execute("SELECT @@IDENTITY")
+                                $id = $rs.Fields[0].Value
+                                if ($null -eq $id -or $id -is [System.DBNull]) {
+                                    throw "MDB returned no identity for '$token'"
+                                }
+                                $identities[$token] = $id
+                                $generated[$token] = $id
+                                $rs.Close()
+                                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+                                $rs = $null
+                            }
                             $count++
                         }
                         $r.inserted = $count
+                        $r.generated_ids = $generated
                     } else {
                         $r.inserted = 0
                     }
@@ -134,6 +174,7 @@ try {
             $result.ok = $false
         }
         $result.results += [pscustomobject]$r
+        if ($useTx -and -not $result.ok) { break }
     }
 
     # Commit only if every op succeeded; otherwise roll the whole batch back so

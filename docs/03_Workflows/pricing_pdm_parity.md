@@ -37,6 +37,92 @@ never consults `tCOMd_DistributionRegionPriceList` - the list is whatever the us
 | Post-write check | none | read-back of every written row; mismatch -> `ok: False` |
 | Preview | none | `export(..., dry_run=True)` returns the exact plan and writes nothing |
 
+## Revive component fabric-family routing (25-Oct-2026)
+
+Pricing now separates a fabric family's **price source** from its related
+colour-option **export target**. This is the requested compatibility policy
+for existing Revive component family records; it is not individual-colour
+price inheritance or a claim that the unavailable legacy desktop worker has
+been executed for this case.
+
+`PDMRepository._resolve_global_fabric_targets` runs after the unchanged Global
+calculation/cache path, for `revive` or when generation-program settings have
+not been configured. A freshly loaded PDM snapshot need not have a
+`generation_program`; that optional generation setting must not bypass the
+actual fabric relationship. Explicit other programs remain unchanged.
+It joins the priced `OptionValue`
+to its `[Option].IsFabric=1` definition and follows
+`DependentOptionValues.OptionValueId -> AdditionalOptionValueId` to active,
+catalogue-applicable values of a component-mapped option with `IsFabric=2`.
+Both options must be present as complete tokens in the catalogue-scoped
+parent/component `ItemComponents.FeaturePositionString`. The target option ID
+is read from metadata, not hardcoded to 28. Multiple mapped colour options,
+missing applicable dependent values, or separately priced related colours
+fail computation explicitly. Components without a mapped colour option and
+all explicitly selected other programs retain their original pricing.
+
+The Pricing table displays the resolved `PriceRecord.variant_condition`;
+`pdm_lookup_code` retains the original price source through snapshot save/load.
+New computations stamp a pricing-only `pricing_revision`. Older unresolved
+global fabric records are shown as outdated and require **Compute Prices**
+before preview/export; they are never silently rewritten. Previously resolved
+source/target-aware records remain usable. Imported MDB views and unrelated
+programs are not invalidated. Failed recomputation restores the historical
+table rather than leaving partially streamed results exportable.
+
+The source `OptionId`, `OptionValueId`, code, price, calculation/cache sequence,
+and result order are unchanged. `PricingService.build_records` emits
+`COMPONENT <colour-option>=<family>` while retaining the priced family's
+`COMPONENT <type-option>=<raw-code>` identity in the existing
+`pdm_lookup_code` field. The pricing-only revision is also serialized; no
+shared snapshot loading or migration behavior changes.
+These are family surcharges, not invented prices for individual colour
+values whose direct `IncPrice` is NULL. Recompute existing pricing snapshots
+to obtain the relationship-resolved target; old records are not rewritten
+or guessed during snapshot loading.
+
+Export uses that explicit source/target distinction to recognize the legacy
+`<colour-option>=COMPONENT_<family>` row, scoped to package/list and matched
+case-insensitively as Jet does. That key is lookup-only; new MDB rows use the
+canonical computed `COMPONENT <colour-option>=<family>` condition. A single
+legacy target row is normalized to the canonical condition while its price,
+MDB-generated ID, text link and other fields are preserved. A missing target is
+an **insert**, not an error, provided its component base price exists or is
+planned in the same list. Duplicate stored or computed family targets,
+simultaneous legacy/canonical rows, unlinked/dangling existing targets, already
+priced source-family rows, and ambiguous new-row text mappings still block the
+entire export. No fallback updates of both type and colour records are
+permitted. Preview retains source, computed and stored identities and
+distinguishes insert/update and text create/reuse.
+
+For `RY3SNNB.105512F`, **28 is the related Fabric colour option ID**, not a
+`com_TextID`. The exact `com_VariantCondition` written to the MDB is
+`RY3SNNB.105512F 28=1FD`. Its option ID independently determines the legacy
+price-text name `"28"` and label `"Surcharge 28"`. New family rows reuse the
+unique package-scoped `price` text named `"28"`, or create it in the supported
+language columns. Subsequent families and EUR/GBP rows share that text. An
+existing row keeps its linked text even when its name differs from `"28"`;
+translated labels are not rewritten. MDB generates the numeric IDs during the
+final transaction; preview never assigns a numeric ID to a proposed text.
+
+The relationship for pricing is **GlobalPrice.com_TextID -> Text.com_TextID**.
+It does not require additional article/class/property connection records.
+Article long/short texts remain linked through `Article.com_LongTextID` /
+`com_ShortTextID`; property/value texts remain linked through
+`Property.com_TextID` / `PropValue.com_TextID`, with article/class and relation
+connections left untouched. These are separate full-OCD export surfaces, not
+price-text creation requirements. The disposable ACE workflow test seeds and
+asserts preservation of these texts and connections.
+
+Read-only PDMLive, UK/site 1, EUR/25-Oct-2026, catalogue 658:
+`RY3SNNB.105512F` resolves source option 8 to related colour option 28.
+`1FD/1HA/4MT/ZM2` remain **89/44/133/89 EUR**. Actual Revive package 240,
+list 26 (`EURO_2026_2`), SELECT-only preview: **14 updates** (base plus 13
+families), **0 inserts**, **14 existing text links preserved**. No MDB write
+was performed. PDM's own option report confirms the dependent colour IDs
+but returns NULL direct colour prices; the new routing does not change that
+fact or assert legacy runtime/rendered-total parity.
+
 ## Evidence from the real MDB (backup copy)
 
 * Lists 23/24 (`GBP 2026_2` / `EURO 2026_2`) held the 1,520 earlier rows and have no region link;
@@ -84,15 +170,16 @@ bypasses the rewrite. Hardcoded raw selectors (`MYST`, `~W`, `~M`, etc.) have a
 different branch; this change does not implement or claim parity for those
 selector modes or arbitrary `FeaturePositionString` remapping.
 
-Export first checks the explicit worker key (also its `#`-stripped form),
-scoped to package/list. Matching existing rows receive **value-only** updates;
-their condition and text link are preserved and their actual stored condition
-is reported in the preview. If no worker row exists, exact canonical-condition
-matching allows a previously inserted row to be reused. If both representations
-exist, worker rows take precedence; the canonical row is not renamed or merged.
-If neither exists, insertion uses `variant_condition`. Records without lookup
-metadata retain exact-condition matching. Recompute old snapshots to obtain
-the corrected insertion condition; no guessed string migration is performed.
+For fabric-family records, the export recognizes the legacy MDB key only when
+the source/target option and family code in the record metadata establish that
+mapping. If both legacy and canonical targets exist, export blocks rather than
+guessing or merging. A uniquely matched legacy row is corrected to the
+canonical condition; an already canonical row is reused without changing its
+condition. If neither exists, insertion uses `variant_condition`. Other global
+surcharge records retain the general worker-key lookup and value-only update
+behavior. Records without lookup metadata retain exact-condition matching.
+Recompute old snapshots to obtain the relationship-resolved condition; no
+general string-replacement migration is performed.
 Article pricing, source SQL, currency/list routing and product-code attachment
 are unchanged. Both compute paths now pass the resolved snapshot program to
 the builder as well as the source fetch, preserving the `memo` exception.
@@ -361,17 +448,36 @@ when "add global price placeholders" is chosen and from `PriceMaintenance` line 
 | Case | Action |
 |---|---|
 | new global row, text exists | `reuse` - link to it |
-| new global row, text missing | `create` the text (PDM's columns, `com_TextID` = max+1) then link; later rows with the same name `link_new` to it, so EUR and GBP share one text |
+| new global row, text missing | `create` the text (PDM's columns, MDB-generated `com_TextID`) then link; later rows with the same name `link_new` to it, so EUR and GBP share one text |
 | existing global row with a link | `preserve` (value-only update; link untouched) |
 | existing global row with no link | `unlinked` - reported, left unchanged (PDM does not repair it either) |
 | several texts share the name | `skip` - row not inserted, reported (never guess) |
 | `tCOMd_Text` has no language columns | `skip` - cannot create |
 | article row | `none` |
 
-All texts, price rows and updates run in **one transaction**; ids are allocated explicitly (max+1) so the text id is
-known when the global row is built. A failed batch changes nothing. Read-back then checks: created texts exist with
-the intended package/type/name/language text, each inserted row's `com_TextID` equals the planned id and resolves to
+All texts, price lists, price rows and updates run in **one transaction**.
+New rows use symbolic identity tokens in the plan, not guessed numeric IDs.
+The bridge omits their AutoNumber columns, reads `@@IDENTITY` immediately on
+the same connection, and resolves later foreign-key references using those
+generated IDs. Texts still precede prices and lists precede their price rows.
+A failed batch stops and rolls back. Missing returned IDs are an explicit,
+unverified export error, never replaced with invented IDs.
+Query-only bridge batches open in read-only mode; preview executes no writes.
+The approved plan digest includes text associations as well as write operations.
+Read-back then checks: created texts exist with
+the intended package/type/name/language text, each inserted row's `com_TextID` equals the generated id and resolves to
 an existing text (no dangling reference), preserved rows keep their id, and no duplicate text name exists.
+
+Regression coverage: `tests/test_pricing_fabric_targets.py` exercises new and
+existing family targets, conflicts and invalid source relationships;
+`tests/test_pricing_page_text_blocks.py` checks preview/result labels;
+`tests/test_pricing_disposable_mdb.py` creates fresh ACE MDBs under pytest's
+temporary directory, verifies preview file hashes, real AutoNumber/FK behavior,
+EUR/GBP list reuse, repeat exports, preserved article/property connections,
+new-list creation and transaction rollback. It never opens a production MDB.
+The original legacy source is unavailable in this checkout; legacy claims
+remain grounded in the source-derived notes and checked-in parity oracle,
+not a newly executed desktop-PDM run.
 
 **Intentional differences from PDM** (each has a test in `tests/test_pricing_pdm_text_parity.py`):
 

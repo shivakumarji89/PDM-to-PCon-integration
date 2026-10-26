@@ -1,6 +1,7 @@
 """End-to-end Pricing export workflow: target lists -> preview -> bound write."""
 from __future__ import annotations
 
+from dataclasses import replace
 import pytest
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
@@ -112,6 +113,27 @@ def test_declining_the_preview_writes_nothing(wf):
     page = make([_rec(10.0, "EUR")], fake, export_accept=False)
     page._on_export_prices()
     assert fake.ops == []
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_new_fabric_families_write_only_after_explicit_preview_confirmation(wf, execute):
+    from tests.test_pricing_fabric_targets import new_target_mdb, records
+
+    make, state = wf
+    fake = new_target_mdb()
+    page = make([replace(r, valid_from="2026-10-25") for r in records()], fake, export_accept=execute)
+    page._on_export_prices()
+    assert not state["errors"], state["errors"]
+    assert state["dialogs"][0].export_button.isEnabled()
+    assert "Price rows to insert: 4" in state["dialogs"][0].summary_label.text()
+    assert "Text blocks to create: 1" in state["dialogs"][0].summary_label.text()
+    if execute:
+        assert "Export complete" in page._summary.text()
+        assert [op["table"] for op in fake.ops] == ["tCOMd_Text", "tCOMd_GlobalPrice"]
+        assert len(fake.ops[1]["rows"]) == 4
+        assert {r["com_TextID"] for r in fake.ops[1]["rows"]} == {fake.ops[0]["rows"][0]["com_TextID"]}
+    else:
+        assert fake.ops == []
 
 
 def test_renamed_list_is_created_exactly_as_approved(wf):

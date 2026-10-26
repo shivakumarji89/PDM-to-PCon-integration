@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -24,57 +24,9 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components import DialogTemplate
+from ui.workers.background_task import ReportedTask
 
 _COLS = ["", "Series", "OCD version", "ODB version", "Files"]
-
-
-class _Signals(QObject):
-    finished = Signal(object)
-    failed = Signal(str)
-
-
-class _ScanWorker(QRunnable):
-    """Discover series and read their current OCD/ODB versions."""
-
-    def __init__(self, service, repo, reporter, signals):
-        super().__init__()
-        self._svc, self._repo, self._reporter, self._signals = service, repo, reporter, signals
-
-    def run(self) -> None:
-        try:
-            folders = self._svc.series_folders(self._repo)
-            self._reporter.begin(max(len(folders), 1), title="Scan Versions",
-                                 subject=Path(self._repo.split(";")[0].strip()).name)
-            series = self._svc.read_series(
-                folders, progress=lambda d, t, text: self._reporter.advance(text))
-        except Exception as exc:  # never crash the worker thread
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(series)} series")
-            self._signals.finished.emit(series)
-
-
-class _ApplyWorker(QRunnable):
-    """Write the keyed version into the selected series' OCD + ODB packages."""
-
-    def __init__(self, service, series, mmb, reporter, signals):
-        super().__init__()
-        self._svc, self._series, self._mmb = service, series, mmb
-        self._reporter, self._signals = reporter, signals
-
-    def run(self) -> None:
-        try:
-            self._reporter.begin(max(len(self._series), 1), title="Update Version", subject="")
-            results = self._svc.update(
-                self._series, *self._mmb,
-                progress=lambda d, t, text: self._reporter.advance(text))
-        except Exception as exc:
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(results)} updated")
-            self._signals.finished.emit(results)
 
 
 class VersionUpdateDialog(DialogTemplate):
@@ -149,18 +101,26 @@ class VersionUpdateDialog(DialogTemplate):
             self._monitor = monitor
         return monitor
 
-    def _start(self, worker_factory, on_ready) -> None:
-        from core.progress import ProgressReporter
-        reporter = ProgressReporter(self)
+    def _start(self, work, on_ready) -> None:
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
+        run = self._run_task = ReportedTask(self)
+        reporter = run.reporter
         monitor = self._progress_monitor()
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
-        signals = _Signals()
-        signals.finished.connect(on_ready)
-        signals.failed.connect(self._on_failed)
-        self._signals = signals  # keep a reference alive
-        QThreadPool.globalInstance().start(worker_factory(reporter, signals))
+        run.start(lambda emit: work(reporter), finished=on_ready,
+                  failed=self._on_failed, cancelled=self._on_cancelled)
+
+    def _on_cancelled(self, message: str) -> None:
+        QMessageBox.information(self, "Update Version", message)
+
+    def done(self, result: int) -> None:
+        run = getattr(self, "_run_task", None)
+        if run is not None and run.active:
+            run.reporter.request_cancel()
+        super().done(result)
 
     def _set_all(self, checked: bool) -> None:
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
@@ -183,13 +143,22 @@ class VersionUpdateDialog(DialogTemplate):
         self._repo.setText(";".join(parts))
 
     def _on_scan(self) -> None:
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
         repo = self._repo.text().strip()
         if not repo:
             QMessageBox.information(self, "Update Version", "Choose the repository root.")
             return
-        self._start(
-            lambda reporter, signals: _ScanWorker(self._service, repo, reporter, signals),
-            self._on_scanned)
+        svc = self._service
+
+        def work(reporter):
+            folders = svc.series_folders(repo)
+            reporter.begin(max(len(folders), 1), title="Scan Versions",
+                           subject=Path(repo.split(";")[0].strip()).name)
+            return svc.read_series(
+                folders, progress=lambda d, t, text: reporter.advance(text))
+
+        self._start(work, self._on_scanned)
 
     def _on_scanned(self, series) -> None:
         self._series = list(series)
@@ -215,6 +184,8 @@ class VersionUpdateDialog(DialogTemplate):
                 "No series found under the repository. Check the path and try again.")
 
     def _on_apply(self) -> None:
+        if getattr(self, "_run_task", None) is not None and self._run_task.active:
+            return
         mmb = self._service.parse_version(self._version.text())
         if mmb is None:
             QMessageBox.information(
@@ -233,10 +204,14 @@ class VersionUpdateDialog(DialogTemplate):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        self._start(
-            lambda reporter, signals: _ApplyWorker(
-                self._service, selected, mmb, reporter, signals),
-            self._on_applied)
+        svc = self._service
+
+        def work(reporter):
+            reporter.begin(max(len(selected), 1), title="Update Version", subject="")
+            return svc.update(
+                selected, *mmb, progress=lambda d, t, text: reporter.advance(text))
+
+        self._start(work, self._on_applied)
 
     def _on_applied(self, results) -> None:
         ok = sum(1 for r in results if r.error is None)

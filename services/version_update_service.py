@@ -14,13 +14,17 @@ into the selected series' both files. Optionally stamps the release date.
 from __future__ import annotations
 
 import re
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.cancellation import OperationCancelled, checkpoint
 from services.base_service import BaseService
-from services.price_update_service import _mdb_date_literal
+from services.price_update_service import (
+    _execute_batch, _mdb_date_literal, _publish_staged, _read_table, _staged_file,
+)
 
 _ODB_FILE = "pcr_data_geo_odb.mdb"
 #: The package table that carries the version, per database.
@@ -72,6 +76,7 @@ class VersionUpdateService(BaseService):
         folders = list(folders)
         out: list[SeriesVersion] = []
         for i, folder in enumerate(folders, 1):
+            checkpoint()
             folder = Path(folder)
             if progress:
                 progress(i, len(folders), folder.name)
@@ -87,13 +92,14 @@ class VersionUpdateService(BaseService):
                 sv.program = sv.program or prog
             sv.program = sv.program or folder.name
             out.append(sv)
+        checkpoint()
         return out
 
     def _read_version(self, mdb: str, db: str) -> tuple[str, str]:
         """``(program, "M.m.b")`` from a package table; ``("", "")`` if unreadable."""
         table = _PACKAGE_TABLE[db]
         try:
-            rows = self.context.mdb_service.read_table(
+            rows = _read_table(self.context.mdb_service,
                 mdb, f"SELECT reg_ProgramCode, reg_VersionMajor, reg_VersionMinor, "
                      f"reg_VersionBuild FROM [{table}]")
         except OSError:
@@ -109,13 +115,26 @@ class VersionUpdateService(BaseService):
         self, series, major: int, minor: int, build: int, progress=None,
     ) -> list[VersionUpdateResult]:
         """Write ``major.minor.build`` into every selected series' OCD + ODB
-        package rows and stamp today's release date."""
+        package rows and stamp today's release date.
+
+        Cancellation discards both staged databases for the current series.
+        Completed series remain published. The two replacements form a single
+        cancellation boundary, but are not atomic against process/power loss.
+        """
         series = list(series)
         results: list[VersionUpdateResult] = []
-        for i, sv in enumerate(series, 1):
-            if progress:
-                progress(i, len(series), sv.program or Path(sv.folder).name)
-            results.append(self._update_one(sv, major, minor, build))
+        try:
+            for i, sv in enumerate(series, 1):
+                checkpoint()
+                results.append(self._update_one(sv, major, minor, build))
+                if progress:
+                    progress(i, len(series), sv.program or Path(sv.folder).name)
+            checkpoint()
+        except OperationCancelled as exc:
+            completed = sum(r.error is None for r in results)
+            raise OperationCancelled(
+                f"Cancelled. {completed} series committed; "
+                f"{len(results)} series completed.") from exc
         return results
 
     def _update_one(
@@ -127,23 +146,29 @@ class VersionUpdateService(BaseService):
         }
         release = {"reg_ReleaseDate": _mdb_date_literal(datetime.now().strftime("%Y%m%d"))}
         svc = self.context.mdb_service
-        for db, path in (("ocd", sv.ocd_path), ("odb", sv.odb_path)):
-            if not path or result.error is not None:
-                continue
-            table = _PACKAGE_TABLE[db]
-            # The version (integers) and the release date (a datetime) must be
-            # separate updates: ADODB rejects an int and a datetime field set in
-            # the same recordset update ("Specified cast is not valid").
-            ver = svc.execute_batch(path, [{"op": "update", "table": table, "set": version_fields}])
-            dated = svc.execute_batch(
-                path, [{"op": "update", "table": table, "set": release}]) if ver.ok else None
-            updated = ver.ok and dated is not None and dated.ok
-            if db == "ocd":
-                result.ocd_updated = updated
-            else:
-                result.odb_updated = updated
-            if not ver.ok:
-                result.error = ver.first_error()
-            elif dated is not None and not dated.ok:
-                result.error = dated.first_error()
+        # Both databases are staged before publishing either. Separate update
+        # ops avoid ADODB's mixed int/datetime recordset cast failure, while one
+        # transaction per staged MDB keeps the version and date together.
+        with ExitStack() as stack:
+            staged = {}
+            updated = []
+            for db, path in (("ocd", sv.ocd_path), ("odb", sv.odb_path)):
+                checkpoint()
+                if not path:
+                    continue
+                path = Path(path)
+                target = stack.enter_context(_staged_file(path))
+                table = _PACKAGE_TABLE[db]
+                batch = _execute_batch(svc, target, [
+                    {"op": "update", "table": table, "set": version_fields},
+                    {"op": "update", "table": table, "set": release},
+                ], transaction=True)
+                if not batch.ok:
+                    result.error = batch.first_error() or "Version update failed."
+                    return result
+                staged[path] = target
+                updated.append(db)
+            _publish_staged(staged)
+            result.ocd_updated = "ocd" in updated
+            result.odb_updated = "odb" in updated
         return result

@@ -798,6 +798,7 @@ def price_record_to_dict(record: PriceRecord) -> dict[str, Any]:
         "text_id": record.text_id,
         "source_item": record.source_item,
         "pdm_lookup_code": record.pdm_lookup_code,
+        "pricing_revision": record.pricing_revision,
     }
 
 
@@ -815,6 +816,7 @@ def price_record_from_dict(data: dict[str, Any]) -> PriceRecord:
         text_id=str(data.get("text_id", "")),
         source_item=str(data.get("source_item", "")),
         pdm_lookup_code=str(data.get("pdm_lookup_code", "")),
+        pricing_revision=int(data.get("pricing_revision", 0) or 0),
     )
 
 

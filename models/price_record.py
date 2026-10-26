@@ -24,7 +24,8 @@ class PriceRecord:
     #: ``com_ArticleCode`` (base article). Empty for a global record.
     article_code: str = ""
     #: Target condition for insertion: "" base, " 9502=OK" upcharge, full item (global).
-    #: Matching an existing Global row must not rename its stored condition.
+    #: Existing Global conditions are preserved except when a legacy fabric-family
+    #: key is safely matched and normalized to this canonical condition.
     variant_condition: str = ""
     #: ``com_PriceLevelCode``: 'B' base, 'X' upcharge. Ignored for global.
     level: str = "B"
@@ -44,6 +45,9 @@ class PriceRecord:
     #: PDM worker's existing-row lookup key; separate from the insertion condition.
     #: Empty on older snapshots: use variant_condition for exact matching.
     pdm_lookup_code: str = ""
+    #: Pricing-only computation revision; 0 denotes records computed before
+    #: relationship resolution was supported without generation-program settings.
+    pricing_revision: int = 0
 
     def key(self) -> tuple[bool, str, str, str, str]:
         """Identity for year-over-year diffing (everything but the value)."""
