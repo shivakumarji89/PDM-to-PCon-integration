@@ -849,6 +849,7 @@ class MainWindow(QMainWindow):
             prefix=prefix,
             property_exclusions=exclusions,
             property_substitutions=substitutions,
+            legacy_exact=True,
         )
         self._show_text_result(
             "Generate VARCOND", result.text, result.warnings, "varcond.txt"
