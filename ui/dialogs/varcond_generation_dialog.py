@@ -7,8 +7,9 @@ does not rewrite component target codes inside the VARCOND rules.
 """
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, Qt,
+    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QPlainTextEdit,
     QFileDialog, QVBoxLayout, QWidget, QSpinBox,
 )
@@ -133,9 +134,8 @@ class VarCondGenerationDialog(QDialog):
         for code, _label, _article_id in self._article_rows:
             if needle and not code.casefold().startswith(needle):
                 continue
-            relation_names.add("PA_" + (code[:length] if len(code) > length else code)
-
-            )
+            relation_prefix = code[:length] if len(code) > length else code
+            relation_names.add("PA_" + relation_prefix)
         self._relations.blockSignals(True)
         self._relations.clear()
         for name in sorted(relation_names, key=str.casefold):
