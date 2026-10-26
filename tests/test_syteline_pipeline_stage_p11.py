@@ -5,6 +5,7 @@ import pytest
 
 from services.syteline_export.pipeline.db import ScriptedExportDb
 from services.syteline_export.pipeline.run_base import ExportRunBase
+from core.cancellation import OperationCancelled
 from services.syteline_export.pipeline.stage_p11_finish import CSI_HEADERS, P11Mixin
 
 
@@ -117,12 +118,15 @@ def test_aborted_skips_xls_and_reports_abort(tmp_path):
     events = []
     h = make(tmp_path, _abortThread=True)
     h._status_callback = events.append
-    h.p11_write_outputs()
+    with pytest.raises(OperationCancelled):
+        h.p11_write_outputs()
     assert not any(c[0] in ("price", "code", "xls") for c in h.calls)
-    assert events == ["Export Aborted"]
-    assert h.warnings == ["Export Aborted: PDM Data Export Aborted"]
+    assert events == []
+    assert h.warnings == []
+    assert not (tmp_path / "item.txt").exists()
     h = make(tmp_path, _abortThread=True, _runAsService=True)
-    h.p11_write_outputs()
+    with pytest.raises(OperationCancelled):
+        h.p11_write_outputs()
     assert h.warnings == []
 
 

@@ -9,6 +9,7 @@ This is the documentation entry point. It is organized by **what the system is a
 | Understand the overall system pipeline | [`01_Architecture/`](./01_Architecture/) |
 | Understand a specific domain concept (PDM, Repository/Snapshot, Engineering, Product, Permutation, Article Encoding, Pricing, OBX) | [`02_Domain/`](./02_Domain/) |
 | Understand a cross-cutting process (QA/validation) | [`03_Workflows/`](./03_Workflows/) |
+| Understand cancellation controls, safe boundaries and worker lifetimes | [`Application cancellation`](./03_Workflows/application_cancellation.md) |
 | Read an external OFML/OCD/OAP spec, or MK's own pCon investigation narrative | [`04_Reference/`](./04_Reference/) |
 | Find historical/superseded material | [`99_Archive/`](./99_Archive/) |
 

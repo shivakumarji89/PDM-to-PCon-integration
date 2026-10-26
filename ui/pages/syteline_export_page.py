@@ -544,8 +544,11 @@ class SyteLineExportPage(BasePage):
         try:
             job = self._make_job(config, lock_policy, signals)
         except Exception as error:
+            signals.deleteLater()
             self.status.setText(f"Export could not be started: {error}")
             return
+        signals.bind(job, self)
+        self._export_cancel_requested = False
         self._job, self._job_signals, self._job_config = job, signals, config
         self._export_started = time.monotonic()
         self.elapsed.setText("Time: 00:00:00")
@@ -558,6 +561,10 @@ class SyteLineExportPage(BasePage):
         if self._job is None:
             return
         self._job.cancel()
+        token = getattr(self._job, "cancellation_token", None)
+        if token is not None and not token.is_cancelled():
+            return  # Publication already committed; cancellation can no longer win.
+        self._export_cancel_requested = True
         self.cancel_export.setEnabled(False)
         self.status.setText("Cancelling - the export stops at its next check point; nothing will be published.")
 
@@ -566,10 +573,13 @@ class SyteLineExportPage(BasePage):
         self.elapsed.setText(f"Time: {seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}")
 
     def _on_export_status(self, text: str) -> None:
-        if self._job is not None:
+        if self._job is not None and not getattr(self, "_export_cancel_requested", False):
             self.status.setText(f"Exporting - {text}")
 
     def _on_export_finished(self, result) -> None:
+        if getattr(self, "_export_cancel_requested", False) and not result.published:
+            from services.syteline_export.job import ExportResult
+            result = ExportResult(status="cancelled", message="Export cancelled; no output was published.")
         config = self._job_config
         self._elapsed_timer.stop()
         self._tick_elapsed()
@@ -596,7 +606,7 @@ class SyteLineExportPage(BasePage):
             self._show_result_message("warning", "Export completed with errors",
                                       f"{result.message}{detail}\n\nFiles were written to:\n{config.output_directory}")
         elif result.status == "cancelled":
-            self.status.setText("Export cancelled. No files were published and the site lock was released.")
+            self.status.setText("Export cancelled. No files were published.")
             self._show_result_message("info", "Export cancelled", result.message)
         else:
             stage = f" (stage {result.stage})" if result.stage else ""

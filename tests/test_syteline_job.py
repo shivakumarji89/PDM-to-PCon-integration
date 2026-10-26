@@ -130,7 +130,7 @@ def test_cancel_before_start_discards_everything(tmp_path):
     result = job.execute()
     assert result.status == "cancelled" and result.files == ()
     assert staging_dirs(tmp_path) == [] and not (tmp_path / "temp").exists()
-    assert len([c for c in db.calls if c[1].startswith("UPDATE Site SET ExtractUser = NULL")]) == 1
+    assert db.calls == []  # A run cancelled before starting never owns or modifies the lock.
 
 
 def test_cancel_during_the_item_loop_stops_before_the_next_item(tmp_path):

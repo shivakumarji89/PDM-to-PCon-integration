@@ -22,6 +22,7 @@ so the reporter is safe to construct and drive from business logic and tests.
 from __future__ import annotations
 
 import time
+from core.cancellation import CancellationToken, checkpoint
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -71,7 +72,7 @@ class ProgressReporter(QObject):
         self._committed = 0.0   # fraction of steps actually completed
         self._display = 0.0     # smoothly-animated fraction shown to the user
         self._last_sec = 0      # last whole second emitted for elapsed/remaining
-        self._cancelled = False
+        self.cancellation_token = CancellationToken()
         self._finished = False
 
         # Ticks several times a second so the bar creeps CONTINUOUSLY toward the
@@ -99,7 +100,6 @@ class ProgressReporter(QObject):
         self._committed = 0.0
         self._display = 0.0
         self._last_sec = 0
-        self._cancelled = False
         self._finished = False
         if title:
             self.title_changed.emit(title)
@@ -112,6 +112,7 @@ class ProgressReporter(QObject):
 
     def advance(self, step_text: str = "") -> None:
         """Complete one step: update the step text, percent, elapsed, remaining."""
+        checkpoint()
         if self._finished:
             return
         self._current_step = min(self._current_step + 1, self._total_steps)
@@ -136,17 +137,18 @@ class ProgressReporter(QObject):
         items") that happen *within* one step - the bar keeps creeping smoothly
         while the text reflects live progress, instead of jumping a whole step.
         """
+        checkpoint()
         if not self._finished and text:
             self.step_changed.emit(text)
 
     def stop_timer(self) -> None:
         """Stop live elapsed/progress ticking without ending the operation."""
-        self._timer.stop()
+        self._timer_control.emit(False)
 
     def start_timer(self) -> None:
         """Resume live elapsed/progress ticking for an active operation."""
         if not self._finished:
-            self._timer.start()
+            self._timer_control.emit(True)
 
     def pause(self, message: str = "") -> None:
         """Pause live progress reporting without marking the operation finished."""
@@ -158,11 +160,14 @@ class ProgressReporter(QObject):
         """End the operation: force 100%, stop the timer, emit ``finished``."""
         if self._finished:
             return
+        if success and self.is_cancelled():
+            success, message = False, "Cancelled by user."
         self._finished = True
         self._timer_control.emit(False)
-        self._current_step = self._total_steps
-        self._display = 1.0
-        self.progress_changed.emit(100)
+        if success:
+            self._current_step = self._total_steps
+            self._display = 1.0
+            self.progress_changed.emit(100)
         self.elapsed_changed.emit(int(time.perf_counter() - self._start_time))
         self.remaining_changed.emit(0)
         if message:
@@ -204,14 +209,15 @@ class ProgressReporter(QObject):
         """Emit generic named metric tiles (key, label, target, suffix)."""
         self.metrics_changed.emit(list(items))
 
-    # -- cancellation (wired for future support) ---------------------------
+    # -- cancellation -----------------------------------------------------
     def request_cancel(self) -> None:
-        """Flag a cancellation request. Business logic may poll
-        :meth:`is_cancelled`; no operation is forced to honour it yet."""
-        self._cancelled = True
+        self.cancellation_token.request_cancel()
 
     def is_cancelled(self) -> bool:
-        return self._cancelled
+        return self.cancellation_token.is_cancelled()
+
+    def checkpoint(self) -> None:
+        self.cancellation_token.checkpoint()
 
     # -- internals ---------------------------------------------------------
     def _on_tick(self) -> None:

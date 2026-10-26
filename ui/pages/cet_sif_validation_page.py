@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 #from unittest import signals
 
-from PySide6.QtCore import QDate, QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDateEdit,
@@ -31,47 +31,7 @@ from PySide6.QtWidgets import (
 from ui import theme
 from ui.components import SectionHeader, StatisticsGrid
 from ui.pages.base_page import BasePage
-
-
-class _SifSignals(QObject):
-    finished = Signal(object)   # (site, results)
-    failed = Signal(str)
-    line_done = Signal(object)  # a single SifResult, streamed as it completes
-
-
-class _SifWorker(QRunnable):
-    """Runs the SIF validation off the UI thread, driving a ProgressReporter."""
-
-    def __init__(self, svc, currency, lines, site_id, validation_date, reporter, signals):
-        super().__init__()
-        self._svc = svc
-        self._currency = currency
-        self._lines = lines
-        self._site_id = site_id
-        self._validation_date = validation_date
-        self._reporter = reporter
-        self._signals = signals
-        
-    def run(self) -> None:
-        try:
-            self._reporter.begin(max(len(self._lines), 1), title="Validate SIF",
-                                 subject=f"{len(self._lines)} order line(s)")
-            site, results = self._svc.validate(
-                self._currency,
-                self._lines,
-                site=self._site_id,
-                validation_date=self._validation_date,
-                progress=lambda done, total, text: self._reporter.advance(text),
-                stage=lambda text: self._reporter.note(text),
-                on_result=lambda r: self._signals.line_done.emit(r),
-            )
-
-        except Exception as exc:  # never crash the worker thread
-            self._reporter.finish(False, str(exc))
-            self._signals.failed.emit(str(exc))
-        else:
-            self._reporter.finish(True, f"{len(results)} line(s)")
-            self._signals.finished.emit((site, results))
+from ui.workers.background_task import ReportedTask
 
 
 class CetSifValidationPage(BasePage):
@@ -137,10 +97,19 @@ class CetSifValidationPage(BasePage):
         head = QHBoxLayout()
         head.addWidget(SectionHeader("Results", "Every order line is listed with its PDM result - VALID or the error comment."))
         head.addStretch(1)
+        self._toggle_btn = QPushButton("Show errors only", container)
+        self._toggle_btn.setCheckable(True)
+        self._toggle_btn.setChecked(True)
+        self._toggle_btn.setEnabled(False)
+        self._toggle_btn.toggled.connect(self._on_toggle_all)
+        head.addWidget(self._toggle_btn)
         self._export_btn = QPushButton("Export to CSV...", container)
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
         head.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(head)
+        self._grid = StatisticsGrid(columns=4, parent=container)
+        layout.addWidget(self._grid)
 
         self._table = QTableWidget(0, 8, container)
         self._table.setHorizontalHeaderLabels(
@@ -195,6 +164,8 @@ class CetSifValidationPage(BasePage):
         self._load_paths(paths)
 
     def _load_paths(self, paths: list[str]) -> None:
+        if getattr(self, "_validation_run", None) is not None and self._validation_run.active:
+            return
         svc = self._context.sif_validation_service
         currency, lines = "", []
         self._file_of_seq: dict[int, str] = {}
@@ -228,33 +199,36 @@ class CetSifValidationPage(BasePage):
         self._reset_results()
 
     def _on_launch(self) -> None:
+        if getattr(self, "_validation_run", None) is not None and self._validation_run.active:
+            return
         if not self._lines:
             return
-        from core.progress import ProgressReporter
-
-        reporter = ProgressReporter(self)
+        run = ReportedTask(self)
+        self._validation_run = run
+        reporter = run.reporter
         monitor = self._progress_monitor()
         monitor.bind(reporter)
         monitor.show()
         monitor.raise_()
-        signals = _SifSignals()
-        signals.finished.connect(self._on_results)
-        signals.failed.connect(self._on_failed)
-        signals.line_done.connect(self._on_line_done)
-        self._signals = signals  # keep a reference alive
         self._begin_live()
         site_id = None
         validation_date = self._validation_date.date().toString("dd-MMM-yyyy")
         
-        QThreadPool.globalInstance().start(_SifWorker(
-            self._context.sif_validation_service,
-            self._currency,
-            self._lines,
-            site_id,
-            validation_date,
-            reporter,
-            signals,
-        ))
+        service, currency, lines = self._context.sif_validation_service, self._currency, list(self._lines)
+        reporter.begin(max(len(lines), 1), title="Validate SIF")
+        self._launch_btn.setEnabled(False)
+        self._load_btn.setEnabled(False)
+        self._folder_btn.setEnabled(False)
+
+        def work(emit):
+            return service.validate(
+                currency, lines, site=site_id, validation_date=validation_date,
+                progress=lambda done, total, text: reporter.advance(text),
+                stage=reporter.note, on_result=emit,
+            )
+
+        run.start(work, finished=self._on_results, failed=self._on_failed,
+                  cancelled=self._on_cancelled, progress=self._on_line_done)
 
     def _progress_monitor(self):
         monitor = getattr(self, "_monitor", None)
@@ -265,7 +239,17 @@ class CetSifValidationPage(BasePage):
         return monitor
 
     def _on_failed(self, message: str) -> None:
+        self._launch_btn.setEnabled(bool(self._lines))
+        self._load_btn.setEnabled(True)
+        self._folder_btn.setEnabled(True)
         QMessageBox.warning(self, "CET SIF Validation", f"Validation failed:\n{message}")
+
+    def _on_cancelled(self, message: str) -> None:
+        self._launch_btn.setEnabled(bool(self._lines))
+        self._load_btn.setEnabled(True)
+        self._folder_btn.setEnabled(True)
+        self._file_label.setText(f"{message} {len(self._results)} completed line(s) retained.")
+        self._export_btn.setEnabled(bool(self._results))
 
     def _begin_live(self) -> None:
         """Reset the results view so lines stream in one by one as they validate."""
@@ -278,7 +262,6 @@ class CetSifValidationPage(BasePage):
             self._grid.set_metric(key, label, "0")
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(False)
-        self._rebuild_btn.setEnabled(True)
 
     def _on_line_done(self, r) -> None:
         """A single line finished validating - append it live and bump counters."""
@@ -294,6 +277,9 @@ class CetSifValidationPage(BasePage):
             self._append_row(r)
 
     def _on_results(self, payload) -> None:
+        self._launch_btn.setEnabled(bool(self._lines))
+        self._load_btn.setEnabled(True)
+        self._folder_btn.setEnabled(True)
         sites, results = payload
         self._results = results
         ok = sum(1 for r in results if r.status == "ok")
@@ -305,7 +291,6 @@ class CetSifValidationPage(BasePage):
         self._grid.set_metric("unresolved", "Unresolved", str(unres))
         self._toggle_btn.setEnabled(True)
         self._export_btn.setEnabled(bool(results))
-        self._rebuild_btn.setEnabled(bool(results))
         self._render_table()
         site_text = ", ".join(f"{cur}\u2192site {s}" for cur, s in sites.items())
         if mism == 0 and unres == 0:
@@ -373,7 +358,6 @@ class CetSifValidationPage(BasePage):
         self._toggle_btn.setChecked(True)
         self._toggle_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
-        self._rebuild_btn.setEnabled(False)
 
     def _render_table(self) -> None:
         rows = self._results if self._show_all else [r for r in self._results if r.status != "ok"]

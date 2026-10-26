@@ -11,6 +11,7 @@ are a separate subsystem; they are NOT included here yet. This report covers the
 directly portable increment prices only.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint, commit, OperationCancelled
 
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
@@ -21,6 +22,30 @@ from models.snapshot import Snapshot
 from repositories.pdm_repository import GlobalOptionPriceRow, PDMRepository
 from services.base_service import BaseService
 from services.varcond_service import VarCondService
+
+
+PRICING_REVISION = 1
+
+
+def pricing_requires_recompute(snapshot: Snapshot | None) -> bool:
+    """Old, unresolved PDM fabric-family records are historical until recomputed."""
+    if snapshot is None or (snapshot.metadata.source or "").upper() == "MDB":
+        return False
+    if snapshot.generation_program.strip().casefold() not in ("", "revive"):
+        return False
+    fabric_options = {str(option.id) for option in snapshot.options if option.is_fabric}
+    for record in snapshot.price_records:
+        if not record.is_global or record.pricing_revision >= PRICING_REVISION:
+            continue
+        _, space, condition = record.variant_condition.partition(" ")
+        option, equals, _ = condition.partition("=")
+        _, _, source_condition = record.pdm_lookup_code.partition(" ")
+        source_option, source_equals, _ = source_condition.partition("=")
+        if source_equals and source_option != option:
+            continue  # Already resolved by the earlier source/target-aware implementation.
+        if space and equals and option in fabric_options:
+            return True
+    return False
 
 
 @dataclass
@@ -195,9 +220,11 @@ class PricingService(BaseService):
         all_records: list[PriceRecord] = []
         unresolved: list[str] = []
         repo = PDMRepository(self.context)
+        checkpoint()
         conn = repo.get_connection()
         try:
             for cur in currencies:
+                checkpoint()
                 cparams = replace(params, currency=cur, program_code=program_code)
                 base_rows = repo.fetch_item_base_prices(
                     items,
@@ -208,6 +235,7 @@ class PricingService(BaseService):
                 )
                 inc_rows = []
                 for item in items:
+                    checkpoint()
                     if item in super_codes:
                         inc_rows.extend(
                             repo.fetch_global_option_increment_prices(
@@ -236,6 +264,7 @@ class PricingService(BaseService):
         finally:
             conn.close()
 
+        commit()
         snapshot.price_records = self._accumulate_currencies(
             snapshot.price_records, all_records, currencies
         )
@@ -305,15 +334,18 @@ class PricingService(BaseService):
             reporter.note("Connecting to PDM...")
 
         repo = PDMRepository(self.context)
+        checkpoint()
         conn = repo.get_connection()
         if reporter is not None:
             reporter.note("Connected to PDM.")
 
         try:
             for cur_index, cur in enumerate(currencies):
+                checkpoint()
                 cparams = replace(params, currency=cur, program_code=program_code)
 
                 for start in range(0, n, step):
+                    checkpoint()
                     chunk = items[start:start + step]
 
                     if reporter is not None:
@@ -333,12 +365,14 @@ class PricingService(BaseService):
                         conn,
                         site_id=params.site_id,
                     )
+                    checkpoint()
                     base_by_item = {str(row.Item): row for row in base_rows}
 
                     # Fetch each item's increments separately so the completed
                     # item's records can be emitted immediately. Global items use
                     # PDM's scoped query; Article items use the inline query.
                     for offset, item in enumerate(chunk):
+                        checkpoint()
                         item_no = start + offset + 1
 
                         if reporter is not None:
@@ -362,6 +396,7 @@ class PricingService(BaseService):
                                 conn,
                                 program_code=program_code,
                             )
+                        checkpoint()
                         base_row = base_by_item.get(str(item))
                         records, unres = self.build_records(
                             [base_row] if base_row is not None else [],
@@ -400,6 +435,7 @@ class PricingService(BaseService):
         finally:
             conn.close()
 
+        commit()
         snapshot.price_records = self._accumulate_currencies(
             snapshot.price_records, all_records, currencies
         )
@@ -435,6 +471,8 @@ class PricingService(BaseService):
         try:
             codes = {str(r.Item): str(r.Product_Code or "")
                      for r in repo.fetch_item_product_codes(items, site_id, conn)}
+        except OperationCancelled:
+            raise
         except Exception:
             return
         for r in records:
@@ -530,6 +568,12 @@ class PricingService(BaseService):
                 continue
             code = str(getattr(row, "Code", getattr(row, "OrderCodeValue2", ""))).replace("#", "")
             if item in super_codes or isinstance(row, GlobalOptionPriceRow):
+                target_option = row.OptionId
+                source_lookup = str(getattr(row, "LookupCode", ""))
+                if isinstance(row, GlobalOptionPriceRow) and row.TargetOptionId is not None:
+                    target_option = row.TargetOptionId
+                    # Retain the priced family identity separately from its colour target.
+                    source_lookup = f"{item} {row.OptionId}={row.Code}"
                 # PDM's missing-record path uses the raw suffix for memo.
                 if (
                     isinstance(row, GlobalOptionPriceRow)
@@ -537,7 +581,7 @@ class PricingService(BaseService):
                 ):
                     condition = f"{item}{code}"
                 else:
-                    condition = f"{item} {row.OptionId}={code}"
+                    condition = f"{item} {target_option}={code}"
                 records.append(
                     PriceRecord(
                         is_global=True,
@@ -549,7 +593,7 @@ class PricingService(BaseService):
                         valid_from=params.valid_from,
                         valid_to=params.valid_to,
                         source_item=item,
-                        pdm_lookup_code=str(getattr(row, "LookupCode", "")),
+                        pdm_lookup_code=source_lookup,
                     )
                 )
                 continue
@@ -570,6 +614,8 @@ class PricingService(BaseService):
                     valid_to=params.valid_to,
                 )
             )
+        for record in records:
+            record.pricing_revision = PRICING_REVISION
         return records, unresolved
 
     @staticmethod

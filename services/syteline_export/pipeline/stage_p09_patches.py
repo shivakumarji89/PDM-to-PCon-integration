@@ -27,6 +27,7 @@ class P09Mixin:
         arrayList109 = []
         if self._uniqueComponents:
             for num242 in range(len(arrayList)):
+                self.check_abort()
                 text221 = tostr(arrayList[num242])
                 text222 = substring(text221, 0, index_of(text221, "\t"))
                 if text222.startswith("9-"):
@@ -43,6 +44,7 @@ class P09Mixin:
                     text221 = text221.replace("0\t0\t\tF07-03\tF10-03", "0\t0\t\tF04-03\tF10-03")
                 arrayList[num242] = text221
             for num244 in range(len(arrayList2)):
+                self.check_abort()
                 text224 = tostr(arrayList2[num244])
                 text225 = substring(text224, 0, index_of(text224, "\t"))
                 if text225.startswith("9-"):
@@ -60,8 +62,10 @@ class P09Mixin:
                 arrayList2[num244] = text224
             if len(arrayList109) > 0:
                 for num246 in range(len(arrayList109)):
+                    self.check_abort()
                     arrayList2.append(tostr(arrayList109[num246]))
         for num248 in range(len(arrayList)):
+            self.check_abort()
             text227 = tostr(arrayList[num248])
             if text227.startswith("CQND58") & (index_of(text227, "F01-03\tF10-07") > -1):
                 text227 = text227.replace("F01-03\tF10-07", "F01-03\tF07-03\tF10-07")
@@ -70,6 +74,7 @@ class P09Mixin:
         arrayList109 = []
         flag24 = False
         for num250 in range(len(arrayList)):
+            self.check_abort()
             s = tostr(arrayList[num250])
             if s.startswith("MG1") | s.startswith("SR1") | s.startswith("SR2") | s.startswith("SR3") | s.startswith("SR4"):
                 flag24 = True
@@ -77,6 +82,7 @@ class P09Mixin:
         flag24 = False  # 6419: unconditional in legacy, so the two flag24 blocks below are dead (ported faithfully)
         if flag24:
             for num252 in range(len(arrayList)):
+                self.check_abort()
                 text228 = tostr(arrayList[num252])
                 if text228.startswith("9-BOCFAB") & ((index_of(text228, "-ZB3\t") > -1) | (index_of(text228, "-ZNC\t") > -1)):
                     text229 = text228.replace("-ZB3\t", "-ZB3c\t").replace("-ZNC\t", "-ZNCc\t")
@@ -85,9 +91,11 @@ class P09Mixin:
                         arrayList109.append(text229)
         if len(arrayList109) > 0:
             for num254 in range(len(arrayList109)):
+                self.check_abort()
                 arrayList.append(tostr(arrayList109[num254]))
         if flag24:
             for num256 in range(len(arrayList2)):
+                self.check_abort()
                 text230 = tostr(arrayList2[num256])
                 if (index_of(text230, "-CRB\t") > -1) & (index_of(text230, "-ZB3\tZB3\t") > -1):
                     text230 = text230.replace("-ZB3\tZB3\t", "-ZB3c\tZB3\t")
@@ -119,6 +127,7 @@ class P09Mixin:
             arrayList110 = []
             self.threadStage = "37"
             for num262 in range(len(self.skippedFabricColours)):
+                self.check_abort()
                 self.threadStage = "37." + str(num262) + "-" + str(len(self.skippedFabricColours))
                 text233 = tostr(self.skippedFabricColours[num262])
                 if index_of(text233, "|") <= -1:
@@ -138,6 +147,7 @@ class P09Mixin:
                     text237 = ""
                     num264 = 0     # number of parent codes found
                     for num266 in range(len(self.skippedFabricColours)):
+                        self.check_abort()
                         text238 = tostr(self.skippedFabricColours[num266])
                         if index_of(text238, "|") <= -1:
                             continue
@@ -155,6 +165,7 @@ class P09Mixin:
                         num264 = 1
                     num267 = num264
                     for num268 in range(1, num267 + 1):
+                        self.check_abort()
                         self.threadStage = ("37." + str(num262) + "-" + str(len(self.skippedFabricColours))
                                             + "." + str(num268) + "~" + str(num264))
                         text240 = "9-" + v.text6 + "-"
@@ -244,6 +255,7 @@ class P09Mixin:
                             text243 = text243 + "\t" + "\t" + "\t"
                             num274 = -1
                             for num276 in range(len(v.arrayList93)):
+                                self.check_abort()
                                 self.threadStage = ("38." + str(num262) + "." + str(num276 + 1) + "-"
                                                     + str(len(v.arrayList93)))
                                 if tostr(v.arrayList93[num276]).startswith(text242 + "\t"):

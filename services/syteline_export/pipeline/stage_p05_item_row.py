@@ -15,6 +15,7 @@ Helpers this mixin expects from other mixins (see the final report): ``write_dat
 ``add_material_to_item_tab``.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 from services.syteline_export.pipeline.netsem import (
     LegacyRangeError,
@@ -115,6 +116,7 @@ class P05Mixin:
         if self._millerCAD:
             array8 = self.materialstr.split("\r")
             for num79 in range(len(array8)):
+                self.check_abort()
                 if array8[num79].find("\t") > -1:
                     text96 = substring(array8[num79], 0, index_of(array8[num79], "\t"))
                     text97 = substring(array8[num79], 0, _index_of_from(array8[num79], "\t", len(text96) + 1))
@@ -127,6 +129,7 @@ class P05Mixin:
                     array8[num79] = substring(text99, 0, num80)
             self.materialstr = ""
             for num82 in range(len(array8)):
+                self.check_abort()
                 text100 = ""
                 text101 = array8[num82].replace("\r\n", "").replace("\r", "").replace("\n", "")
                 if text101 == "":
@@ -203,6 +206,7 @@ class P05Mixin:
                 text103 = "1"
                 num85 = 1
                 while True:
+                    self.check_abort()
                     text103 = (text103 + "0") if num85 > len(v.arrayList46) else (text103 + "1")
                     num85 += 1
                     if not (num85 <= 10):
@@ -210,6 +214,7 @@ class P05Mixin:
                 text102 += text103  # 11 chars
                 text104 = ""
                 for num87 in range(len(v.arrayList46)):
+                    self.check_abort()
                     text104 = text104 + v.arrayList46[num87].replace("BOCFAB-", "")
                     if num87 != self._numFeatureSlots - 1:
                         text104 += " "
@@ -241,6 +246,7 @@ class P05Mixin:
                            + "\t" + tostr(row["CommodityCode"]) + "\t" + right3 + "\t" + "" + "\t" + "no"
                            + "\t" + v.text19 + "\t" + "\t" + "\t" + right4 + "\t" + "0" + "\t" + "0" + "\t" + "\t")
                 for num91 in range(len(v.arrayList46)):
+                    self.check_abort()
                     text105 = v.arrayList46[num91].replace(v.text6 + "-", "")
                     if text105.find("bocfab") == -1:
                         if text105.find("-HAR-") > -1:
@@ -251,6 +257,7 @@ class P05Mixin:
                 if len(v.arrayList46) < self._numFeatureSlots:
                     count = len(v.arrayList46)
                     for num93 in range(count, self._numFeatureSlots):
+                        self.check_abort()
                         if num93 != self._numFeatureSlots:
                             text102 += "\t"
                 text102 = text102 + "\t" + v.text16 + "\t" + v.text17 + "\t" + v.text18 + "\t"
@@ -305,6 +312,7 @@ class P05Mixin:
         # text106 (debug trace string), flag14 (only guards text106) and text107 ("" constant) are
         # debug-only accumulators: text106 is only shown under debugLengthTransitions; omitted.
         for num96 in range(len(array9)):
+            self.check_abort()
             if array9[num96].find("\t[opt") <= -1:
                 continue
             text108 = substring(array9[num96], 0, array9[num96].find("\t[opt")).replace("\r", "").replace("\n", "")
@@ -353,11 +361,13 @@ class P05Mixin:
             self.threadStage = "18"
             rows2 = self.q("c2", text113, (tostr(row["LongItem"]), text108))
             for r2 in rows2:
+                self.check_abort()
                 text115 = tostr(r2["FeaturePositionString"])
                 if text115.find("|") <= -1:
                     continue
                 array10 = text115.split("|")
                 for num100 in range(len(array10)):
+                    self.check_abort()
                     # C# `&&` then non-short-circuit `|`: int.Parse(array10[i]) always runs when Length > 0
                     if len(array10[num100]) > 0:
                         parsed = net_int(array10[num100])
@@ -366,6 +376,7 @@ class P05Mixin:
             num101 = -1
             if (text114 != "") & (len(arrayList78) > 0):
                 for num103 in range(len(arrayList78)):
+                    self.check_abort()
                     mysql2 = ("SELECT optval.OptionId FROM OptionValue optval WITH (NOLOCK) "
                               "WHERE optval.OptionId = ? AND (optval.OrderCodeValue = ? OR optval.OrderCodeValue = ?)")
                     self.threadStage = "19"
@@ -395,6 +406,7 @@ class P05Mixin:
                     self.threadStage = "20"
                     rows20 = self.q("c2", text113, (self._catalogueId, arrayList78[num101]))
                     for r20 in rows20:
+                        self.check_abort()
                         num98 = net_int(r20["SLFeatureLength"])
                         num105 = net_int(r20["max_length"])
                         if num105 > num98 and num98 == 2:
@@ -417,6 +429,7 @@ class P05Mixin:
                 text116 = ""
                 if text108.startswith("9-"):
                     for num107 in range(len(arrayList76)):
+                        self.check_abort()
                         if text108.find(tostr(arrayList76[num107])) > -1:
                             text116 = tostr(arrayList76[num107])
                             break
@@ -461,6 +474,7 @@ class P05Mixin:
                     elif not text108.startswith("9-"):
                         self.threadStage = "20.41"
                         for num115 in range(len(arrayList69)):
+                            self.check_abort()
                             text118 = tostr(arrayList69[num115])
                             if not text118.startswith("9-" + text108):
                                 continue
@@ -518,12 +532,14 @@ class P05Mixin:
         self.threadStage = "20.7"
         # debugLengthTransitions block omitted (flag default false)
         for num122 in range(len(v.arrayList26)):
+            self.check_abort()
             self.materialstr = self.materialstr.replace("<" + tostr(v.arrayList26[num122]) + ">", "")
         self.threadStage = "20.8"
         array9 = self.materialstr.split("\r")
         text125 = ""
         flag17 = False  # never becomes True: text125 is "" and never reassigned (legacy dead code)
         for num124 in range(len(array9)):
+            self.check_abort()
             text126 = array9[num124].replace("\r", "").replace("\n", "")
             text127 = ""  # item
             text128 = ""  # feature
@@ -585,5 +601,7 @@ class P05Mixin:
                                  .replace(text130, substring(text130, 0, text130.find("|"))))
                     self.materialstr = self.materialstr.replace(
                         array9[num124].replace("\r", "").replace("\n", ""), newValue6)
+                except OperationCancelled:
+                    raise
                 except Exception as ex8:  # noqa: BLE001 - legacy catch (Exception) + MsgBox
                     self.report_swallowed(text130, ex8)

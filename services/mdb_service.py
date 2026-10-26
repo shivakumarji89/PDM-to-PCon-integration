@@ -36,6 +36,7 @@ class MDBOpResult:
     rows: list[dict[str, Any]] = field(default_factory=list)
     inserted: int = 0
     updated: int = 0
+    generated_ids: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -80,7 +81,10 @@ class MDBService(BaseService):
         ``resources/mdb_bridge.ps1`` for the accepted shapes). When
         ``transaction`` is set the whole batch is wrapped in one ADODB
         transaction (committed only if every op succeeds), so a partial failure
-        leaves the file unchanged.
+        leaves the file unchanged. Insert operations may name an AutoNumber
+        ``identity`` column containing symbolic tokens; ``{"$ref": token}``
+        values resolve to earlier inserts' generated IDs in that transaction.
+        Query-only batches open the connection read-only.
         """
         if not self.is_available():
             return MDBBatchResult(
@@ -124,6 +128,7 @@ class MDBService(BaseService):
                     rows=item.get("rows") or [],
                     inserted=int(item.get("inserted") or 0),
                     updated=int(item.get("updated") or 0),
+                    generated_ids={k: int(v) for k, v in (item.get("generated_ids") or {}).items()},
                 )
                 for item in (data.get("results") or [])
             ]

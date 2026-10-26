@@ -530,6 +530,14 @@ class ObxValidationService(BaseService):
 
     def validate(self, currency, lines, site=None, validation_date=None,
                  progress=None, stage=None, on_result=None, operation_control=None):
+        def check():
+            if operation_control is not None:
+                operation_control.checkpoint()
+            else:
+                from core.cancellation import checkpoint
+                checkpoint()
+
+        check()
         pricing = self._pricing_service(operation_control)
         unique_lines, duplicate_groups = self._deduplicate(lines)
         expanded_results: list[SifResult] = []
@@ -539,11 +547,13 @@ class ObxValidationService(BaseService):
         emitted_unique_seqs: set[int] = set()
 
         def handle_unique_result(result: SifResult) -> None:
+            check()
             if result.seq in emitted_unique_seqs:
                 return
             emitted_unique_seqs.add(result.seq)
             key = key_by_seq[result.seq]
             for line in duplicate_groups[key]:
+                check()
                 mapped = self._result_for_line(result, line)
                 expanded_results.append(mapped)
                 if on_result is not None:
@@ -559,6 +569,7 @@ class ObxValidationService(BaseService):
                 validation_date=validation_date, progress=progress, stage=stage,
                 on_result=handle_unique_result,
             )
+            check()
             return {currency: site}, sorted(expanded_results, key=lambda r: r.seq)
 
         from repositories.cancellable_pdm_repository import CancellablePDMRepository
@@ -568,8 +579,10 @@ class ObxValidationService(BaseService):
             if operation_control is not None
             else PDMRepository(self.context)
         )
-        conn = repo.get_connection()
+        conn = None
         try:
+            check()
+            conn = repo.get_connection()
             mydate = pricing._normalise_pricing_date(
                 validation_date or pricing._server_date(repo, conn)
             )
@@ -592,6 +605,7 @@ class ObxValidationService(BaseService):
 
                 misses: list[ObxLine] = []
                 for line in group:
+                    check()
                     cache_key = self._cache_key(line, mydate, resolved)
                     cached = cache.get(cache_key)
                     if cached is None:
@@ -605,6 +619,7 @@ class ObxValidationService(BaseService):
                 next_line_by_seq = {line.seq: line for line in misses}
 
                 def handle_miss_result(result: SifResult) -> None:
+                    check()
                     line = next_line_by_seq.get(result.seq)
                     if line is None:
                         return
@@ -630,8 +645,14 @@ class ObxValidationService(BaseService):
                         callback_seqs.add(result.seq)
                         handle_miss_result(result)
         finally:
-            conn.close()
+            try:
+                if conn is not None:
+                    conn.close()
+            finally:
+                if operation_control is not None:
+                    operation_control.unregister_cancel_handler(repo.cancel_active_operation)
 
+        check()
         return sites, sorted(expanded_results, key=lambda r: r.seq)
 
     def export_csv(self, path, currency, results, elapsed_seconds: float | None = None) -> None:

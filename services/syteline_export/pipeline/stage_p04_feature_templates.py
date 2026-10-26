@@ -11,6 +11,7 @@ Preconditions (assigned by the preceding chunk, ExportThread.cs 3579-3586, which
 and ``right2`` (3582-3585) are initialised here because nothing outside this range reads them.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 from services.syteline_export.pipeline.netsem import (
     debug_feature_pos,
@@ -66,6 +67,7 @@ class P04Mixin:
 
         num52 = len(v.arrayList45) - 1
         for num53_ in range(0, num52 + 1):  # num53_ == decompiled loop variable num53
+            self.check_abort()
             flag9 = False
             if not (list_contains(v.arrayList18, v.arrayList45[num53_]) | (not self._syteline)):
                 continue
@@ -169,8 +171,11 @@ class P04Mixin:
                                     # legacy opens a brand-new connection (sqlConnection7) for this query
                                     rows = self.q("c7", text60, (v.arrayList47[num53_],))
                                     for row in rows:
+                                        self.check_abort()
                                         num57 = net_int(row["parent_featlen"])
                                         num58 = net_int(row["child_featlen"])
+                                except OperationCancelled:
+                                    raise
                                 except Exception as exc:  # noqa: BLE001 - legacy catch (Exception) + MsgBox
                                     self.report_swallowed("17.2a option feature length: " + text60, exc)
                                 v.arrayList37.append(num57)
@@ -192,6 +197,7 @@ class P04Mixin:
                         v.num6 += num55
                         if _eq(v.arrayList57[num53_], ""):
                             for _ in range(1, num55 + 1):
+                                self.check_abort()
                                 v.text19 += debug_feature_template("X", "1")
                             v.text19 += "-"
             elif not flag10:
@@ -221,6 +227,7 @@ class P04Mixin:
                     text57 = "F" + text56 + "-0" + str(num62)
                     v.num6 += num62
                     for _ in range(1, num62 + 1):
+                        self.check_abort()
                         v.text19 += debug_feature_template(
                             "X", "2#" + text57.replace("-", "~") + ":" + tostr(v.arrayList47[num53_])
                         )
@@ -284,6 +291,7 @@ class P04Mixin:
                         num65 = net_int(substring(text65, text65.rfind("-") + 1))
                     if num65 > 0:
                         for _ in range(1, num65 + 1):
+                            self.check_abort()
                             v.text19 += debug_feature_template("X", "3")
                         v.text19 += "-"
             self.threadStage = "17.5"
@@ -312,6 +320,7 @@ class P04Mixin:
                     left11 = ""  # -MN2
                     left12 = ""  # -MJ2
                     for num69 in range(0, len(arrayList68)):
+                        self.check_abort()
                         text74 = tostr(arrayList68[num69])
                         if (index_of(text74, text67) > -1) & text74.endswith("-G1"):
                             text71 = text74
@@ -398,6 +407,7 @@ class P04Mixin:
                             self.materialstr = self.materialstr.replace(text88, text89)
                     num70 = 10
                     while True:  # do { ... } while (num70 <= 99)
+                        self.check_abort()
                         self.materialstr = self.materialstr.replace("DCR\t0\t1\t0\t" + str(num70), "DCR\t0\t1\t0\t4")
                         self.materialstr = self.materialstr.replace("DVP\t0\t1\t0\t" + str(num70), "DVP\t0\t1\t0\t4")
                         self.materialstr = self.materialstr.replace("DN4\t0\t1\t0\t" + str(num70), "DN4\t0\t1\t0\t4")
@@ -421,6 +431,7 @@ class P04Mixin:
             num71 = len(v.arrayList3) - 1
             num72 = 0
             while num72 <= num71:
+                self.check_abort()
                 comp = tostr(v.arrayList3[num72])
                 opt_tag = "[opt" + str(v.num7) + "]"
                 if index_of(comp, opt_tag) > -1:
@@ -430,6 +441,7 @@ class P04Mixin:
                     text92 = comp
                     if index_of(text92, "-" + item() + "-") > -1:
                         for num74 in range(0, len(v.arrayList65)):
+                            self.check_abort()
                             if (index_of(tostr(v.arrayList65[num74]), text92) > -1) & (
                                 index_of(tostr(v.arrayList65[num74]), "|") > -1
                             ):

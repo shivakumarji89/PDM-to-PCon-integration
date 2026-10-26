@@ -96,7 +96,12 @@ class ActivityPanel(QWidget):
 
         # Subscribe once to every activity event; the same handler add-or-updates
         # the matching card and moves it between sections on status change.
-        self._service.event_bus.subscribe(self._on_activity_event, ActivityEvent)
+        # The bus outlives this panel (it belongs to the application context), so
+        # unsubscribe when the panel is destroyed: activities still running in
+        # the background must not update deleted cards.
+        bus = self._service.event_bus
+        callback = bus.subscribe(self._on_activity_event, ActivityEvent)
+        self.destroyed.connect(lambda *_: bus.unsubscribe(callback))
 
         # Render any activities that already exist (panel created after start).
         for snapshot in self._service.snapshots():

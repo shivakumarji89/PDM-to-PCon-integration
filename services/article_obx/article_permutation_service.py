@@ -6,6 +6,7 @@ property values, relations, ArtBase restrictions and code scheme. Existing
 Article rows are therefore inputs (base identities), never generated variants.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint, OperationCancelled
 
 import itertools
 import re
@@ -39,6 +40,7 @@ class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
     def build(self, snapshot: Snapshot | None = None, *, reporter=None) -> list[ArticlePermutation]:
+        checkpoint()
         snapshot = snapshot or self.context.qa_snapshot
         if snapshot is None:
             if reporter is not None:
@@ -62,6 +64,7 @@ class ArticlePermutationService(BaseService):
             reporter.begin(len(articles) or 1, title="Building Article Permutations")
 
         for article in articles:
+            checkpoint()
             base_code = (article.code or "").strip()
             if not base_code:
                 if reporter is not None:
@@ -77,6 +80,7 @@ class ArticlePermutationService(BaseService):
             products = self._property_combinations(dimensions, relation_objects)
 
             for selected in products:
+                checkpoint()
                 properties = self._materialize_values(dimensions, selected)
                 property_ids = {v.value_id for v in properties}
 
@@ -94,6 +98,7 @@ class ArticlePermutationService(BaseService):
                 )
 
                 for selected_options in option_products:
+                    checkpoint()
                     try:
                         options = self._materialize_values(option_dimensions, selected_options)
                         all_ids = {v.value_id for v in (*properties, *options)}
@@ -144,6 +149,8 @@ class ArticlePermutationService(BaseService):
                         article_permutation_count += 1
                         if reporter is not None:
                             reporter.note(f"Building {base_code} — {article_permutation_count} permutations")
+                    except OperationCancelled:
+                        raise
                     except Exception as error:  # noqa: BLE001 - one bad configuration must not abort the build
                         if reporter is not None:
                             reporter.log(
@@ -164,8 +171,7 @@ class ArticlePermutationService(BaseService):
                 tuple(v.value_id for v in item.options),
             )
         )
-        if reporter is not None:
-            reporter.finish(True, f"Generated {len(results)} permutations")
+        checkpoint()
         return results
 
     def _property_dimensions(
@@ -256,6 +262,7 @@ class ArticlePermutationService(BaseService):
         ordered = cls._order_dimensions_by_dependencies(dimensions, constraints)
         results = []
         def visit(index, selected, selected_by_name):
+            checkpoint()
             if index >= len(ordered):
                 results.append(tuple(selected)); return
             dimension = ordered[index]

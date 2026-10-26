@@ -61,12 +61,14 @@ class P06Mixin:
             self.threadStage = "20.9"
             text132 = "***"
             while len(self.materialstr) > 0:
+                self.check_abort()
                 if index_of(self.materialstr, "\r\n") > -1:
                     text132 = substring(self.materialstr, 0, index_of(self.materialstr, "\r\n"))
                     if (index_of(text132, "BOCFAB") > -1) & (index_of(text132, "-CM01\t") > -1):
                         self.includesCOM = True
                     array11 = text132.split("\r")
                     for num129 in range(0, len(array11)):
+                        self.check_abort()
                         text133 = array11[num129].replace("\n", "")
                         if text133 != "" and ((not list_contains(self.materialsWritten, text133))
                                               & (text133 != "") & (text133 != "\r\n")):
@@ -125,6 +127,7 @@ class P06Mixin:
         self.threadStage = "21"
         rows2 = self.q("c2", text, tuple(params))  # sqlDataReader2
         for row2 in rows2:
+            self.check_abort()
             text134 = tostr(row2["FeaturePositionString"])  # FeaturePositionString, consumed below
             right6 = "P"      # item type column: P (plain) / M (has features)
             text135 = "no"    # noqa: F841  (assigned in legacy, never read)
@@ -142,6 +145,7 @@ class P06Mixin:
                 right7 = "BOC"
                 num130 = 1
                 while index_of(text134, "|") > -1:
+                    self.check_abort()
                     text138 = substring(text134, 0, index_of(text134, "|"))
                     if text138 != "":
                         if not list_contains(arrayList80, net_int(text138)):
@@ -151,6 +155,7 @@ class P06Mixin:
                     text134 = "" if index_of(text134, "|") >= len(text134) - 1 else substring(text134, index_of(text134, "|") + 1)
                 num131 = 1  # running feature position
                 for num133 in range(0, len(arrayList80)):
+                    self.check_abort()
                     # stage 22 SQL (5112); catalogue/language ids and the option id are bound.
                     mysql3 = (
                         "SELECT opt.IsFabric, optval.OptionValueId, opt.SLFeatureLength, optval.OrderCodeValue, "
@@ -185,6 +190,7 @@ class P06Mixin:
                     arrayList92 = []  # other-language ShortDescription
                     num134 = 2        # max code length seen (min 2)
                     for row3 in rows3:
+                        self.check_abort()
                         if list_contains(v.arrayList45, net_int(row3["OptionValueId"])):
                             if tostr(row3["AdditionalOptionValueId"]) != "":
                                 arrayList90.append(True)
@@ -204,6 +210,7 @@ class P06Mixin:
                             arrayList91.append(_net_long(row3["DisplayOrdinal"]))
                     # text139 "optcodes" accumulator is debug-only (never read): omitted.
                     for num137 in range(0, len(arrayList85)):
+                        self.check_abort()
                         if arrayList86[num137] > num134:
                             arrayList87.append(arrayList86[num137])
                         else:
@@ -234,10 +241,12 @@ class P06Mixin:
                             text136 = text136 + debug_feature_template("XXXXXXXX", "8")
                     elif arrayList89[0] == 0:
                         for num140 in range(1, num138 + 1):
+                            self.check_abort()
                             text136 += debug_feature_template("X", "4")
                     if num133 < len(arrayList80) - 1:
                         text136 += "-"
                     for num142 in range(0, len(arrayList85)):
+                        self.check_abort()
                         text141 = "9-" + text140 + "-" + arrayList85[num142]
                         if arrayList89[num142] == 2:
                             text141 = "9-FAB-" + arrayList85[num142]
@@ -263,6 +272,7 @@ class P06Mixin:
                 text137 = tostr(arrayList82[len(arrayList82) - 1])
             count2 = len(arrayList82)
             for num144 in range(count2, self._numFeatureSlots):
+                self.check_abort()
                 arrayList82.append("")
             if text136.endswith("-"):
                 text136 = substring(text136, 0, len(text136) - 1)
@@ -276,6 +286,7 @@ class P06Mixin:
                 + tostr(row2["Description"]) + "\t" + str(v.num3) + "\t"
             )
             for num146 in range(0, len(arrayList81)):
+                self.check_abort()
                 text143 = text143 + str(arrayList81[num146])
                 if num146 < len(arrayList81) - 1:
                     text143 += "\t"
@@ -325,9 +336,11 @@ class P06Mixin:
                     text146 = text146 + str(num151) if num151 >= 10 else text146 + "0" + str(num151)
                     text146 = debug_post_processed_feature_pos(text146, "GG")
                     for num156 in range(0, len(arrayList82)):
+                        self.check_abort()
                         if tostr(arrayList82[num156]) == "":
                             text136 += "-"
                             for num158 in range(1, num151 + 1):
+                                self.check_abort()
                                 text136 += debug_feature_template("X", "5")
                             if self._ignoreOptDeps:
                                 arrayList82[num156] = text146
@@ -343,6 +356,7 @@ class P06Mixin:
                     + "\t" + "0" + "\t" + "\t"
                 )
                 for num160 in range(0, len(arrayList82)):
+                    self.check_abort()
                     text144 = text144 + tostr(arrayList82[num160])
                     if num160 < len(arrayList82) - 1:
                         text144 += "\t"
@@ -380,6 +394,7 @@ class P06Mixin:
                             False,
                         )
             for num163 in range(0, len(arrayList83)):
+                self.check_abort()
                 if (not list_contains(v.arrayList8, arrayList83[num163])) and index_of(arrayList83[num163], "#") == -1:
                     v.arrayList8.append(arrayList83[num163])
                     # logMessage("{4444} ...") omitted (no-op)

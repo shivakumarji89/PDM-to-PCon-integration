@@ -11,6 +11,7 @@ The queries are ported verbatim from the proven V1 implementation:
 Read-only: this repository never writes to PDM.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 from dataclasses import dataclass
 from decimal import Decimal
@@ -86,6 +87,9 @@ class GlobalOptionPriceRow:
     RawIncrement: Decimal
     PriceBand: int | None
     IncPrice: Decimal | int
+    # Routing metadata only: OptionId/OptionValueId/IncPrice remain the price source.
+    TargetOptionId: int | None = None
+    ColourValueIds: tuple[int, ...] = ()
 
 
 class PDMRepository(BaseRepository):
@@ -444,6 +448,7 @@ class PDMRepository(BaseRepository):
 
     def get_connection(self):
         """Open a new connection to the PDM database."""
+        checkpoint()
         pyodbc = self._driver()
         connection_string = self.context.config.pdm_connection_string()
         try:
@@ -1055,6 +1060,7 @@ class PDMRepository(BaseRepository):
             return []
         rows: list[Any] = []
         owns_connection = connection is None
+        checkpoint()
         conn = self.get_connection() if owns_connection else connection
         required_columns = {
             "optionid", "optionvalueid", "ordercodevalue2", "status",
@@ -1614,10 +1620,77 @@ class PDMRepository(BaseRepository):
                         source_item, row.OptionValueId, row.OptionId, code,
                         source_code, lookup, raw, row.PriceBand, price,
                     ))
+            if program_code.strip().casefold() in ("", "revive") and result:
+                self._resolve_global_fabric_targets(result, catalogue_id, conn)
         finally:
             if owns_connection:
                 conn.close()
         return result
+
+    def _resolve_global_fabric_targets(
+        self, rows: list[GlobalOptionPriceRow], catalogue_id: str | int,
+        connection: Any,
+    ) -> None:
+        """Resolve component family routing without changing its price source."""
+        for item in dict.fromkeys(row.Item for row in rows):
+            item_rows = [row for row in rows if row.Item == item]
+            value_ids = list(dict.fromkeys(row.OptionValueId for row in item_rows))
+            query = f"""
+                SELECT DISTINCT source.OptionValueId AS SourceValueId,
+                    parent.Item AS ParentItem, colour_option.OptionId AS TargetOptionId,
+                    CASE WHEN cov.OptionValueId IS NOT NULL
+                        THEN colour.OptionValueId END AS ColourValueId,
+                    colour_price.IncrementalPrice, colour_price.IncrementalPrice2,
+                    colour_price.IncrementalPrice3
+                FROM Item component
+                INNER JOIN ItemOptionValues priced ON component.ItemId = priced.ItemId
+                INNER JOIN OptionValue source ON priced.OptionValueId = source.OptionValueId
+                INNER JOIN [Option] source_option
+                    ON source.OptionId = source_option.OptionId AND source_option.IsFabric = 1
+                INNER JOIN ItemComponents mapping ON component.ItemId = mapping.SubItemId
+                INNER JOIN Item parent ON mapping.ItemId = parent.ItemId
+                INNER JOIN CatalogueItems ci ON parent.ItemId = ci.ItemId AND ci.CatalogueId = ?
+                INNER JOIN [Option] colour_option ON colour_option.IsFabric = 2
+                    AND CHARINDEX('|' + CONVERT(varchar, colour_option.OptionId) + '|',
+                        '|' + COALESCE(mapping.FeaturePositionString, '')) > 0
+                LEFT JOIN DependentOptionValues dependency
+                    ON source.OptionValueId = dependency.OptionValueId
+                LEFT JOIN OptionValue colour
+                    ON dependency.AdditionalOptionValueId = colour.OptionValueId
+                    AND colour.OptionId = colour_option.OptionId AND colour.Status = 1
+                LEFT JOIN CatalogueOptionValues cov
+                    ON colour.OptionValueId = cov.OptionValueId AND cov.CatalogueId = ?
+                LEFT JOIN ItemOptionValues colour_price
+                    ON component.ItemId = colour_price.ItemId
+                    AND colour.OptionValueId = colour_price.OptionValueId
+                WHERE component.Item = ?
+                    AND source.OptionValueId IN ({self._placeholders(len(value_ids))})
+                    AND CHARINDEX('|' + CONVERT(varchar, source.OptionId) + '|',
+                        '|' + COALESCE(mapping.FeaturePositionString, '')) > 0
+            """
+            relations = self._execute(
+                query, (catalogue_id, catalogue_id, item, *value_ids), connection=connection,
+            )
+            for row in item_rows:
+                applicable = [r for r in relations if r.SourceValueId == row.OptionValueId]
+                if not applicable:
+                    continue  # No mapped colour option: genuine fabric-type pricing.
+                targets = {int(r.TargetOptionId) for r in applicable}
+                colours = {int(r.ColourValueId) for r in applicable if r.ColourValueId is not None}
+                separately_priced = any(
+                    getattr(r, column) is not None for r in applicable
+                    for column in ("IncrementalPrice", "IncrementalPrice2", "IncrementalPrice3")
+                )
+                if len(targets) != 1 or not colours or separately_priced:
+                    parents = ", ".join(dict.fromkeys(str(r.ParentItem) for r in applicable))
+                    raise PDMQueryError(
+                        f"Fabric pricing relationship unresolved: parent {parents}, component {item}, "
+                        f"source option {row.OptionId}/value {row.OptionValueId} ({row.Code}); "
+                        f"{len(targets)} colour options, {len(colours)} applicable colour values, "
+                        f"separate colour price={separately_priced}. No family target assigned."
+                    )
+                row.TargetOptionId = next(iter(targets))
+                row.ColourValueIds = tuple(sorted(colours))
 
     @staticmethod
     def _global_source_prefix(item: str, program_code: str) -> str:
@@ -2087,8 +2160,12 @@ class PDMRepository(BaseRepository):
         conn = self.get_connection() if owns_connection else connection
         try:
             cursor = conn.cursor()
+            checkpoint()
             cursor.execute(query, params)
-            return cursor.fetchall()
+            checkpoint()
+            rows = cursor.fetchall()
+            checkpoint()
+            return rows
         except self._driver().Error as error:
             raise PDMQueryError(f"PDM query failed: {error}") from error
         finally:

@@ -54,8 +54,11 @@ class BackgroundStatusIndicator(QLabel):
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._hide)
 
-        # Observe every activity event (delivered on the bus/UI thread).
-        self._service.event_bus.subscribe(self._on_event, ActivityEvent)
+        # Observe every activity event (delivered on the bus/UI thread). The bus
+        # outlives this widget, so stop observing once the widget is destroyed.
+        bus = self._service.event_bus
+        callback = bus.subscribe(self._on_event, ActivityEvent)
+        self.destroyed.connect(lambda *_: bus.unsubscribe(callback))
 
         # Reflect any activity already running when this indicator is created.
         for snapshot in self._service.active_snapshots():

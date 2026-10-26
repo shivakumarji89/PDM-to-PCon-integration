@@ -13,6 +13,7 @@ Control-flow facts verified in the C# source:
 * After an exception the catch (7432) reports and the finally (7455) always runs.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled, cancellation_scope
 
 from services.syteline_export.pipeline.helpers_fabric import HelpersFabricMixin
 from services.syteline_export.pipeline.helpers_misc import HelpersMiscMixin
@@ -46,6 +47,7 @@ class ExportRun(
         self.fatal_error = None
         self.items_processed = 0
         try:
+            self.check_abort()
             flow = self.p00_setup()
             if flow is Flow.RETURN:
                 return
@@ -54,13 +56,16 @@ class ExportRun(
             self._run_item_loop()
             for stage in (self.p07_converted_rows, self.p08_postprocess,
                           self.p09_item_material_patches, self.p10_bom):
+                self.check_abort()
                 if stage() is Flow.RETURN:
                     return
+            self.check_abort()
             self.p11_write_outputs()
+            self.check_abort()
             self.outputs_written = True
         except _ReturnFromExec:
             return                      # C# `return;` inside the try: the finally still runs
-        except ExportAborted:
+        except OperationCancelled:
             raise
         except Exception as exc:
             # ExportThread.cs 7432: the catch reports and the run ends. The port additionally records
@@ -68,12 +73,14 @@ class ExportRun(
             self.fatal_error = exc
             self.p11_on_error(exc)
         finally:
-            self.p11_finally()
+            with cancellation_scope(None):
+                self.p11_finally()
 
     # ExportThread.cs 2474-5426
     def _run_item_loop(self) -> None:
         v = self.v
         for row in v.item_rows:
+            self.check_abort()
             if self._abortThread:       # while (sqlDataReader.Read() && !_abortThread)
                 break
             v.sqlDataReader = row
@@ -93,6 +100,7 @@ class ExportRun(
             return flow
         if v.option_rows is not None:          # 2517 block (stages 10-17)
             for stage in (self.p02_option_rows, self.p03_materials):
+                self.check_abort()
                 flow = stage()
                 if flow is not None:
                     return flow
@@ -103,6 +111,7 @@ class ExportRun(
             if flow is not None:
                 return flow
         for stage in (self.p05_item_row_and_renumber, self.p06_item_tail):
+            self.check_abort()
             flow = stage()
             if flow is not None:
                 return flow

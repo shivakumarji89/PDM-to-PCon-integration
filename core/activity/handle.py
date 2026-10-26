@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Mapping
 
 from core.activity.models import LogLevel
+from core.cancellation import checkpoint, OperationCancelled
 
 if TYPE_CHECKING:  # avoid a runtime import cycle (service imports this module)
     from core.activity.service import ActivityService
@@ -39,6 +40,11 @@ class ActivityHandle:
     def is_cancel_requested(self) -> bool:
         """Whether cancellation has been requested (future cooperative stop)."""
         return self._service.is_cancel_requested(self._id)
+
+    def checkpoint(self) -> None:
+        checkpoint()
+        if self.is_cancel_requested:
+            raise OperationCancelled("Cancelled by user.")
 
     # -- reporting API -----------------------------------------------------
     def update_step(

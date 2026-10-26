@@ -5,6 +5,8 @@ from threading import RLock
 from typing import Any, Sequence
 
 from core.errors import PDMConnectionError, PDMQueryError
+from core.cancellation import OperationCancelled
+from core.validation_control import ValidationPaused
 from repositories.pdm_repository import PDMRepository
 
 
@@ -20,7 +22,9 @@ class _TrackedCursor:
         self._owner._control.checkpoint()
         self._owner._set_active(self._cursor, self._connection)
         try:
+            self._owner._control.checkpoint()
             self._cursor.execute(*args, **kwargs)
+            self._owner._control.checkpoint()
             return self
         except Exception:
             self._owner._clear_active(self._cursor)
@@ -30,16 +34,20 @@ class _TrackedCursor:
         self._owner._control.checkpoint()
         self._owner._set_active(self._cursor, self._connection)
         try:
-            return self._cursor.executemany(*args, **kwargs)
+            self._owner._control.checkpoint()
+            result = self._cursor.executemany(*args, **kwargs)
+            self._owner._control.checkpoint()
+            return result
         except Exception:
             self._owner._clear_active(self._cursor)
             raise
 
     def close(self) -> None:
-        try:
-            self._cursor.close()
-        finally:
-            self._owner._clear_active(self._cursor)
+        with self._owner._active_lock:
+            try:
+                self._cursor.close()
+            finally:
+                self._owner._clear_active(self._cursor)
 
     def __getattr__(self, name):
         return getattr(self._cursor, name)
@@ -53,6 +61,7 @@ class _TrackedConnection:
         self._owner = owner
 
     def cursor(self, *args, **kwargs):
+        self._owner._control.checkpoint()
         return _TrackedCursor(
             self._connection.cursor(*args, **kwargs),
             self._owner,
@@ -85,7 +94,13 @@ class CancellablePDMRepository(PDMRepository):
         self._control.register_cancel_handler(self.cancel_active_operation)
 
     def get_connection(self):
+        self._control.checkpoint()
         connection = super().get_connection()
+        try:
+            self._control.checkpoint()
+        except BaseException:
+            connection.close()
+            raise
         return _TrackedConnection(connection, self)
 
     def _execute(
@@ -99,8 +114,11 @@ class CancellablePDMRepository(PDMRepository):
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
-            return cursor.fetchall()
+            rows = cursor.fetchall()
+            self._control.checkpoint()
+            return rows
         except self._driver().Error as error:
+            self._control.checkpoint()
             raise PDMQueryError(f"PDM query failed: {error}") from error
         except (PDMConnectionError, PDMQueryError):
             raise
@@ -120,10 +138,12 @@ class CancellablePDMRepository(PDMRepository):
         self, items, currency, mydate, connection=None, site_id=1
     ) -> list[Any]:
         """Reuse completed OBX base-price lookups and query only missing items."""
+        self._control.checkpoint()
         cache = self._lookup_cache.setdefault("base_price", {})
         vals = [str(i) for i in items if i]
         missing = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
             if key not in cache:
                 missing.append(item)
@@ -133,12 +153,15 @@ class CancellablePDMRepository(PDMRepository):
             )
             by_item = {}
             for row in rows:
+                self._control.checkpoint()
                 by_item.setdefault(str(row.Item), []).append(row)
             for item in missing:
+                self._control.checkpoint()
                 key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
                 cache[key] = by_item.get(item, [])
         out = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
             out.extend(cache.get(key, []))
         return out
@@ -147,10 +170,12 @@ class CancellablePDMRepository(PDMRepository):
         self, items, currency, mydate, site_id, connection=None
     ) -> list[Any]:
         """Cache cancellable validation option rows and isolate item failures."""
+        self._control.checkpoint()
         cache = self._lookup_cache.setdefault("validation_options", {})
         vals = [str(item) for item in items if item]
         missing = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
             if key not in cache:
                 missing.append(item)
@@ -167,11 +192,13 @@ class CancellablePDMRepository(PDMRepository):
                 worker_repo = CancellablePDMRepository(
                     self.context, self._control, self._lookup_cache
                 )
-                worker_conn = worker_repo.get_connection()
+                worker_conn = None
                 successful_rows = []
                 skipped_items = []
                 try:
+                    worker_conn = worker_repo.get_connection()
                     for item in chunk:
+                        self._control.checkpoint()
                         try:
                             item_rows = PDMRepository.fetch_item_validation_options(
                                 worker_repo,
@@ -182,14 +209,18 @@ class CancellablePDMRepository(PDMRepository):
                                 connection=worker_conn,
                             )
                             successful_rows.extend(item_rows)
+                        except (OperationCancelled, ValidationPaused):
+                            raise
                         except Exception:
+                            self._control.checkpoint()
                             skipped_items.append(item)
                     return successful_rows, skipped_items
                 finally:
-                    worker_conn.close()
-                    self._control.unregister_cancel_handler(
-                        worker_repo.cancel_active_operation
-                    )
+                    try:
+                        if worker_conn is not None:
+                            worker_conn.close()
+                    finally:
+                        self._control.unregister_cancel_handler(worker_repo.cancel_active_operation)
 
             rows = []
             if worker_count > 1:
@@ -198,6 +229,7 @@ class CancellablePDMRepository(PDMRepository):
                     thread_name_prefix="obx-pdm-options",
                 ) as executor:
                     for chunk_rows, skipped_items in executor.map(fetch_chunk, chunks):
+                        self._control.checkpoint()
                         rows.extend(chunk_rows)
                         self.last_skipped_option_items.extend(skipped_items)
             else:
@@ -205,13 +237,16 @@ class CancellablePDMRepository(PDMRepository):
 
             by_item = {}
             for row in rows:
+                self._control.checkpoint()
                 by_item.setdefault(str(row.Item), []).append(row)
             for item in missing:
+                self._control.checkpoint()
                 key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
                 cache[key] = by_item.get(item, [])
 
         out = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id))
             out.extend(cache.get(key, []))
         return out
@@ -220,10 +255,12 @@ class CancellablePDMRepository(PDMRepository):
         self, items, currency, mydate, site_id, connection=None
     ) -> list[Any]:
         """Reuse completed per-item option-price procedure results for OBX."""
+        self._control.checkpoint()
         cache = self._lookup_cache.setdefault("option_increment", {})
         vals = [str(i) for i in items if i]
         missing = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
             if key not in cache:
                 missing.append(item)
@@ -246,11 +283,13 @@ class CancellablePDMRepository(PDMRepository):
                     self._control,
                     self._lookup_cache,
                 )
-                worker_conn = worker_repo.get_connection()
+                worker_conn = None
                 successful_rows = []
                 skipped_items = []
                 try:
+                    worker_conn = worker_repo.get_connection()
                     for item in chunk:
+                        self._control.checkpoint()
                         try:
                             item_rows = PDMRepository.fetch_item_option_increment_prices(
                                 worker_repo,
@@ -261,14 +300,18 @@ class CancellablePDMRepository(PDMRepository):
                                 connection=worker_conn,
                             )
                             successful_rows.extend(item_rows)
+                        except (OperationCancelled, ValidationPaused):
+                            raise
                         except Exception:
+                            self._control.checkpoint()
                             skipped_items.append(item)
                     return successful_rows, skipped_items
                 finally:
-                    worker_conn.close()
-                    self._control.unregister_cancel_handler(
-                        worker_repo.cancel_active_operation
-                    )
+                    try:
+                        if worker_conn is not None:
+                            worker_conn.close()
+                    finally:
+                        self._control.unregister_cancel_handler(worker_repo.cancel_active_operation)
 
             rows = []
             if worker_count > 1:
@@ -277,6 +320,7 @@ class CancellablePDMRepository(PDMRepository):
                     thread_name_prefix="obx-pdm-option",
                 ) as executor:
                     for chunk_rows, chunk_skipped in executor.map(fetch_chunk, chunks):
+                        self._control.checkpoint()
                         rows.extend(chunk_rows)
                         self.last_skipped_option_items.extend(chunk_skipped)
             else:
@@ -284,18 +328,22 @@ class CancellablePDMRepository(PDMRepository):
 
             by_item = {}
             for row in rows:
+                self._control.checkpoint()
                 by_item.setdefault(str(row.Item), []).append(row)
             for item in missing:
+                self._control.checkpoint()
                 key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
                 cache[key] = by_item.get(item, [])
         out = []
         for item in vals:
+            self._control.checkpoint()
             key = (item, (currency or "").strip().upper(), mydate or "", int(site_id) if site_id is not None else None)
             out.extend(cache.get(key, []))
         return out
 
     def _set_active(self, cursor, connection) -> None:
         with self._active_lock:
+            self._control.checkpoint()
             self._active_cursor = cursor
             self._active_connection = connection
 
@@ -309,24 +357,14 @@ class CancellablePDMRepository(PDMRepository):
         """Ask ODBC to cancel the currently executing statement.
 
         pyodbc exposes Cursor.cancel specifically for cancellation from a
-        separate thread. If the driver rejects that request, close the active
-        connection as a last-resort cleanup path.
+        separate thread. Unsupported cancellation waits for the statement to
+        return; never close a connection in use on a different thread.
         """
         with self._active_lock:
             cursor = self._active_cursor
-            connection = self._active_connection
-
-        if cursor is None:
-            return
-
-        try:
-            cursor.cancel()
-            return
-        except Exception:
-            pass
-
-        if connection is not None:
+            if cursor is None:
+                return
             try:
-                connection.close()
+                cursor.cancel()
             except Exception:
                 pass

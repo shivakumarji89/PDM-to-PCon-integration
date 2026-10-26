@@ -40,6 +40,7 @@ A failure in conversion is recorded via ``report_swallowed`` (legacy shows a Msg
 reports completion) and ALSO appended to ``self.warnings`` so the UI can show partial success.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 import os
 import re
@@ -79,6 +80,7 @@ class IoMixin:
         try:
             text2 = _STANDARD_CHARACTERS
             for i in range(0, len(data)):
+                self.check_abort()
                 ch = data[i]
                 if text2.find(ch) > -1:
                     text.append(ch)
@@ -140,11 +142,13 @@ class IoMixin:
     def write_to_sheet_slow(self, sheet, data_lines: list[str], context: str) -> None:
         num = 1
         for text in data_lines:
+            self.check_abort()
             self.update_status_label(
                 "writing row " + str(num) + " of " + str(len(data_lines)) + " (" + context + ")"
             )
             array = text.replace("\r", "").split("\t")
             for j in range(0, len(array)):
+                self.check_abort()
                 sheet.cell(row=num, column=j + 1).value = array[j]
             num += 1
 
@@ -156,9 +160,11 @@ class IoMixin:
         array = data_lines[0].split("\t")
         num2 = len(array)  # column count taken from the first line
         for i in range(0, num):
+            self.check_abort()
             array3 = data_lines[i].split("\t")
             num4 = min(len(array3), num2) - 1
             for j in range(0, num4 + 1):
+                self.check_abort()
                 cell = sheet.cell(row=i + 1, column=j + 1)
                 cell.value = _XLSX_ILLEGAL.sub("", array3[j])  # openpyxl rejects control characters Excel accepts
                 cell.data_type = "s"  # never a formula / number (deviation: no Excel auto-typing)
@@ -170,10 +176,13 @@ class IoMixin:
         """Worksheet.Columns.AutoFit approximation."""
         widths: dict[int, int] = {}
         for row in sheet.iter_rows():
+            checkpoint()
             for cell in row:
+                checkpoint()
                 if cell.value is not None:
                     widths[cell.column] = max(widths.get(cell.column, 0), len(str(cell.value)))
         for column, width in widths.items():
+            checkpoint()
             sheet.column_dimensions[sheet.cell(row=1, column=column).column_letter].width = min(width + 2, 255)
 
     # ExportThread.cs:523-707 -> openpyxl (see module docstring)
@@ -228,10 +237,12 @@ class IoMixin:
                 if not self._syteline:
                     self._autofit(worksheet5)
             for worksheet6 in list(workbook.worksheets):
+                self.check_abort()
                 if worksheet6.title == "Sheet1":
                     workbook.remove(worksheet6)
                     break
             for sheet in workbook.worksheets:
+                self.check_abort()
                 sheet.sheet_view.tabSelected = False
             workbook.active = workbook.worksheets.index(worksheet)  # Items!A1 selected
             worksheet.sheet_view.tabSelected = True
@@ -295,6 +306,7 @@ class IoMixin:
                 )
                 params: list = [self._siteId]
                 for i in range(0, len(self._priceCodes)):
+                    self.check_abort()
                     text = text + "pm.ItemPriceCode = ?"
                     params.append(tostr(self._priceCodes[i]))
                     if i < len(self._priceCodes) - 1:
@@ -303,6 +315,7 @@ class IoMixin:
                 # legacy used a fresh ConnectionFactory connection (not one of the five run connections)
                 rows = self.q("c_priceformula", text, tuple(params))
                 for row in rows:
+                    self.check_abort()
                     streamWriter.write(
                         tostr(row["Site"]) + "\t" + tostr(row["CustPriceCode"]) + "\t"
                         + tostr(row["ItemPriceCode"]) + "\t" + tostr(row["PriceFormula"]) + "\t"
@@ -328,6 +341,7 @@ class IoMixin:
                 )
                 params: list = [self._siteId]
                 for i in range(0, len(self._productCodes)):
+                    self.check_abort()
                     text = text + "pc.Product_Code = ?"
                     params.append(tostr(self._productCodes[i]))
                     if i < len(self._productCodes) - 1:
@@ -335,6 +349,7 @@ class IoMixin:
                 text += ") ORDER BY pc.Product_Code"
                 rows = self.q("c_productcode", text, tuple(params))
                 for row in rows:
+                    self.check_abort()
                     streamWriter.write(
                         tostr(row["Site"]) + "\t" + tostr(row["Product_Code"]) + "\t"
                         + tostr(row["Description"]) + "\t" + tostr(row["PriceCode"]) + "\r\n"

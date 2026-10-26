@@ -12,6 +12,12 @@ from services.pricing_service import PriceParams, PricingService
 from services.snapshot_serialization import price_record_from_dict, price_record_to_dict
 
 
+@pytest.fixture(autouse=True)
+def _no_component_colour_relationships(monkeypatch):
+    # These source-query/cache fixtures have no fabric component relationships.
+    monkeypatch.setattr(PDMRepository, "_resolve_global_fabric_targets", lambda *a: None)
+
+
 def source(item="GETH.1022FS4W", code="AA", option_id=9168, value="27.9", vid=299995):
     return SimpleNamespace(
         Item=item, OptionValueId=vid, OptionId=option_id,
@@ -160,6 +166,8 @@ def test_observed_source_code_and_lookup_mappings(item, program, projected, look
     row.OrderCodeValue = projected
 
     def execute(query, params, connection=None):
+        if "AS TargetOptionId" in query:
+            return []
         return [SimpleNamespace(Item=item, NewPrice=Decimal("47"))] if "AS NewPrice" in query else [row]
 
     repo._execute = execute

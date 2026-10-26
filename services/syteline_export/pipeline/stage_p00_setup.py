@@ -9,6 +9,7 @@ Database connections: legacy opens sqlConnection..sqlConnection5 at 2198-2222. H
 sessions lazily on first use (c1..c5), so nothing is done for those statements.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 import getpass
 import os
@@ -31,6 +32,7 @@ class P00Mixin:
         return os.environ.get("USERNAME") or getpass.getuser()  # Environment.UserName on Windows
 
     def p00_setup(self) -> Flow | None:
+        self.check_abort()
         v = self.v
         self.threadStage = "0"
         v.arrayList = []
@@ -48,6 +50,8 @@ class P00Mixin:
         streamWriter = None
         try:
             streamWriter = self.open_writer(self._itemFile)
+        except OperationCancelled:
+            raise
         except Exception:
             self.msgbox(
                 "Unable to open the file specified for write operation\r\n\r\n" + self._itemFile
@@ -63,6 +67,7 @@ class P00Mixin:
         v.text2 = ""
         numFeatureSlots = self._numFeatureSlots
         for i in range(1, numFeatureSlots + 1):
+            self.check_abort()
             v.text2 = v.text2 + "\tFeat" + str(i)
         v.streamWriter2 = None
         v.streamWriter3 = None
@@ -114,6 +119,7 @@ class P00Mixin:
         v.text9 = "'" + self._effectiveDate + "'"  # legacy SQL literal of the effective date (read by later chunks)
         v.text = "SELECT ExtractUser FROM Site WITH (NOLOCK) WHERE SiteId = ?"
         for row in self.q("c1", v.text, (self._siteId,)):
+            self.check_abort()
             v.text4 = tostr(row["ExtractUser"])
         # 2233: `if ((text4 != "" ? 1u : 0u) & 0u) != 0 { MsgBox(...); stop timer; return; }` is dead code in
         # legacy (the `& 0u` makes it unreachable). Nothing is checked or reported here; text4 is kept.
@@ -130,6 +136,7 @@ class P00Mixin:
             v.text = "SELECT DISTINCT optval.OptionValueId, optval.OptionId FROM CatalogueOptionValues cov WITH (NOLOCK) INNER JOIN OptionValue optval ON cov.OptionValueId = optval.OptionValueId WHERE cov.CatalogueId = ?"
             self.threadStage = "3"
             for row in self.q("c1", v.text, (self._catalogueId,)):
+                self.check_abort()
                 v.arrayList16.append(net_int(row["OptionValueId"]))
                 if not list_contains(arrayList17, net_int(row["OptionId"])):
                     arrayList17.append(net_int(row["OptionId"]))
@@ -140,6 +147,7 @@ class P00Mixin:
             self.threadStage = "4"
             v.text = "SELECT OptionValueId FROM OptionValue WITH (NOLOCK) WHERE Status = 1"
             for row in self.q("c1", v.text):
+                self.check_abort()
                 v.arrayList18.append(net_int(row["OptionValueId"]))
             self.threadStage = "5"
             arrayList21 = []
@@ -147,6 +155,7 @@ class P00Mixin:
             v.text = "SELECT cpoe.ProductId, optval.OptionValueId, optval.Name, optval.OrderCodeValue, optval_colours.OptionValueId AS colourId, optval_colours.Name AS colourName, optval_colours.OrderCodeValue AS colourCode FROM CatalogueProductOptionExclusions cpoe INNER JOIN OptionValue optval ON cpoe.OptionValueId = optval.OptionValueId LEFT OUTER JOIN DependentOptionValues dov ON optval.OptionValueId = dov.OptionValueId AND optval.OrderCodeValue LIKE '%#' LEFT OUTER JOIN OptionValue optval_colours ON dov.AdditionalOptionValueId = optval_colours.OptionValueId WHERE cpoe.CatalogueId = ? ORDER BY optval.OptionId, optval.DisplayOrdinal"
             # debug-only block omitted (flag default false): SytelineExport.debugExclusions
             for row in self.q("c1", v.text, (self._catalogueId,)):
+                self.check_abort()
                 text10 = tostr(row["OrderCodeValue"])
                 text11 = tostr(row["ProductId"]) + "~" + tostr(row["OptionValueId"])
                 if not list_contains(v.arrayList19, text11):
@@ -165,10 +174,12 @@ class P00Mixin:
                     arrayList22.append(text12)
             num = len(arrayList22) - 1
             for j in range(0, num + 1):
+                self.check_abort()
                 list_remove(v.arrayList19, tostr(arrayList22[j]))
             self.threadStage = "6"
             v.text = "SELECT ItemId, OptionValueId FROM CatalogueItemOptionExclusions WHERE CatalogueId = ?"
             for row in self.q("c1", v.text, (self._catalogueId,)):
+                self.check_abort()
                 v.arrayList20.append(tostr(row["ItemId"]) + "~" + tostr(row["OptionValueId"]))
             self.threadStage = "7"
             # legacy compares Language_Id with the quoted string '<id>'
@@ -215,6 +226,7 @@ class P00Mixin:
                 text += "AND ("
                 num2 = len(self._itemList) - 1
                 for k in range(0, num2 + 1):
+                    self.check_abort()
                     text = text + "Item.Item = ?"
                     p.append(tostr(self._itemList[k]))
                     if k < len(self._itemList) - 1:
@@ -270,6 +282,7 @@ class P00Mixin:
         # count pass (2436-2442): feeds only the "(n of N)" status text in the per-item loop (2493) via arrayList23.Count
         v.arrayList23 = []
         for row in self.q("c1", text, tuple(p)):
+            self.check_abort()
             v.arrayList23.append(tostr(row["LongItem"]))
         v.item_count = len(v.arrayList23)
         v.text14 = ""
@@ -285,6 +298,7 @@ class P00Mixin:
         v.text18 = ""
         v.num5 = 0  # item counter
         for n in range(27, 45):
+            self.check_abort()
             setattr(v, "arrayList%d" % n, [])
         # main pass (2473): the query is executed a second time, as in legacy
         v.item_rows = self.q("c1", text, tuple(p))

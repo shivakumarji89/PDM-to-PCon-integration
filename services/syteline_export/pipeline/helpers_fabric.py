@@ -57,6 +57,7 @@ class HelpersFabricMixin:
             flag = False
             num = len(self._convertedList) - 1
             for i in range(0, num + 1):
+                self.check_abort()
                 if tostr(self._convertedList[i]) != myitem:
                     continue
                 num2 = 2
@@ -72,6 +73,7 @@ class HelpersFabricMixin:
                 text = "_convertedList does NOT contain: [" + myitem + "]\r\n\r\n"
                 num3 = len(self._convertedList) - 1
                 for j in range(0, num3 + 1):
+                    self.check_abort()
                     text = text + tostr(self._convertedList[j]) + "\r\n"
                 self.msgbox(text)
         except Exception as exc:
@@ -135,6 +137,7 @@ class HelpersFabricMixin:
                 text = "0123456789-"
                 num = len(value) - 1
                 for i in range(0, num + 1):
+                    self.check_abort()
                     if text.find(value[i]) == -1:
                         result = False
                         break
@@ -208,6 +211,7 @@ class HelpersFabricMixin:
                 text3 = text3 + "WHERE optval.OptionId = ? AND optval.OptionValueId = ?"
             rows = self.q(_NEW_CONN, text3, (optionId, optvalId))
             for row in rows:
+                self.check_abort()
                 text = tostr(row["FT_code"])
                 text2 = tostr(row["FC_code"])
                 if not colour:
@@ -335,6 +339,7 @@ class HelpersFabricMixin:
                 rows = self.q(_NEW_CONN, text, tuple(params2))
             # debug-only block omitted (flag default false)
             for row in rows:
+                self.check_abort()
                 if list_contains(optvals, net_int(row["OptionValueId"])):
                     num3 = net_int(row["OptionId"])
                     if not (num2 == -1 or num2 == num3):

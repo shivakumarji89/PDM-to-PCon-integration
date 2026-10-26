@@ -11,6 +11,7 @@ Deliberate simplifications (documented deviations):
   .NET Framework 15-significant-digit format (the legacy project targets net40).
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 import math
 import re
@@ -123,6 +124,7 @@ def list_index_of(items: Sequence[Any], value: Any) -> int:
     """``ArrayList.IndexOf``: first equal element or -1 (no bool/int coercion)."""
     value_is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
     for position, item in enumerate(items):
+        checkpoint()
         item_is_number = isinstance(item, (int, float)) and not isinstance(item, bool)
         if (item_is_number and value_is_number) or type(item) is type(value):
             if item == value:

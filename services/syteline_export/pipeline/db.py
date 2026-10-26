@@ -8,6 +8,9 @@ is session scoped) but binds every value as a parameter.
 from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Protocol, Sequence
+from threading import RLock
+
+from core.cancellation import checkpoint
 
 
 class ExportDb(Protocol):
@@ -43,8 +46,31 @@ class PyodbcExportDb:
         self._session_factories = dict(session_factories or {})
         self._timeout = timeout_seconds
         self._sessions: dict[str, Any] = {}
+        self._active_lock = RLock()
+        self._active_cursor = None
+
+    def cancel_active_operation(self) -> None:
+        """Best-effort Cursor.cancel; unsupported drivers finish cooperatively."""
+        with self._active_lock:
+            if self._active_cursor is not None:
+                try:
+                    self._active_cursor.cancel()
+                except Exception:
+                    pass
+
+    def _activate(self, cursor) -> None:
+        with self._active_lock:
+            checkpoint()
+            self._active_cursor = cursor
+
+    def _close_cursor(self, cursor) -> None:
+        with self._active_lock:
+            if self._active_cursor is cursor:
+                self._active_cursor = None
+            cursor.close()
 
     def _session(self, name: str):
+        checkpoint()
         connection = self._sessions.get(name)
         if connection is None:
             connection = self._session_factories.get(name, self._factory)()
@@ -55,39 +81,59 @@ class PyodbcExportDb:
             except Exception:  # driver without autocommit support: fall back to explicit commit
                 pass
             self._sessions[name] = connection
+        checkpoint()
         return connection
 
     def query(self, conn, sql, params=(), *, stage=""):
+        checkpoint()
         cursor = self._session(conn).cursor()
-        cursor.timeout = self._timeout
         try:
+            cursor.timeout = self._timeout
+            self._activate(cursor)
+            checkpoint()
             cursor.execute(sql, *params)
+            checkpoint()
             # A procedure without SET NOCOUNT ON yields row-count results before its SELECT;
             # ADO.NET ExecuteReader skips them, so advance to the first real result set.
             while cursor.description is None and cursor.nextset():
-                pass
+                checkpoint()
             if cursor.description is None:
                 raise RuntimeError(f"[stage {stage}] statement returned no result set")
             columns = [column[0] for column in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            checkpoint()
+            result = []
+            for row in rows:
+                checkpoint()
+                result.append(dict(zip(columns, row)))
+            return result
+        except Exception:
+            checkpoint()
+            raise
         finally:
             try:
-                cursor.close()
+                self._close_cursor(cursor)
             except Exception:  # cursor already invalid; the session is closed in close()
                 pass
 
     def execute(self, conn, sql, params=(), *, stage=""):
+        checkpoint()
         connection = self._session(conn)
         cursor = connection.cursor()
-        cursor.timeout = self._timeout
         try:
+            cursor.timeout = self._timeout
+            self._activate(cursor)
+            checkpoint()
             cursor.execute(sql, *params)
             count = cursor.rowcount
             connection.commit()
             return count
+        except Exception:
+            checkpoint()
+            raise
         finally:
             try:
-                cursor.close()
+                self._close_cursor(cursor)
             except Exception:
                 pass
 

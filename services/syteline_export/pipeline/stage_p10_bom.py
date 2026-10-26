@@ -20,6 +20,7 @@ class P10Mixin:
         arrayList115 = []  # sheet2OptValIds: option value id per sheet-2 row
         if v.flag2:
             for num278 in range(len(v.arrayList)):
+                self.check_abort()
                 v.arrayList[num278] = tostr(v.arrayList[num278]).replace("F23-02", "F23-03")
                 v.arrayList[num278] = tostr(v.arrayList[num278]).replace("F25-05", "F26-04")
                 v.arrayList[num278] = tostr(v.arrayList[num278]).replace("F01-03\tF04-03\tF07-03\tF10-03\tF13-03\tF23-03", "F01-03\tF04-03\tF13-03\tF23-03\t\t\t")
@@ -30,15 +31,18 @@ class P10Mixin:
                 v.arrayList[num278] = tostr(v.arrayList[num278]).replace("\t\tF21-07\t", "\t\tF07-03\tF16-05\tF21-07")
                 v.arrayList[num278] = tostr(v.arrayList[num278]).replace("\t\tF16-05\tF21-07\t", "\t\tF07-03\tF16-05\tF21-07")
             for num280 in range(len(v.arrayList2)):
+                self.check_abort()
                 v.arrayList2[num280] = tostr(v.arrayList2[num280]).replace("F23-02", "F23-03")
                 v.arrayList2[num280] = tostr(v.arrayList2[num280]).replace("F25-04", "F26-04")
         for num282 in range(len(v.arrayList)):
+            self.check_abort()
             s = tostr(v.arrayList[num282])
             if (((index_of(s, "9-CN1G") > -1) | (index_of(s, "9-CN1L") > -1) | (index_of(s, "9-CN1R") > -1))
                     & (index_of(s, "-F05-03-") > -1)) and (
                     index_of(s, "F08-03") > -1 and index_of(s, "F14-03") == -1):
                 v.arrayList[num282] = s.replace("F08-03\t", "F08-03\tF14-03")
         for num284 in range(len(v.arrayList)):
+            self.check_abort()
             text244 = tostr(v.arrayList[num284])
             text245 = ""
             if index_of(text244, "\t") == 0:
@@ -47,6 +51,7 @@ class P10Mixin:
             text246 = ""
             num285 = 0
             for num287 in range(len(v.arrayList2)):
+                self.check_abort()
                 right11 = ""
                 text247 = ""
                 row2 = tostr(v.arrayList2[num287])
@@ -62,6 +67,7 @@ class P10Mixin:
             flag25 = False
             num288 = 1
             while True:  # do { ... } while (num288 <= 34); `continue` jumps to the condition
+                self.check_abort()
                 if index_of(text244, "\t") > -1:
                     text248 = text248 + substring(text244, 0, index_of(text244, "\t")) + "\t"
                     text244 = substring(text244, index_of(text244, "\t") + 1)
@@ -75,6 +81,7 @@ class P10Mixin:
                 continue
             num289 = 1
             while index_of(text244, "\t") > -1:
+                self.check_abort()
                 text244 = substring(text244, index_of(text244, "\t") + 1)
                 num289 += 1
                 if num289 > 20:
@@ -84,6 +91,7 @@ class P10Mixin:
             text250 += text246
             num290 = num285 + 2
             for _ in range(num290, 21):
+                self.check_abort()
                 text250 += "\t"
             text250 += text249
             v.arrayList[num284] = text250
@@ -93,6 +101,7 @@ class P10Mixin:
             arrayList117 = []  # OrderCodeValue2 of the current item's option report
             arrayList118 = []  # IncPriceBase of the current item's option report
             for num293 in range(len(v.arrayList2)):
+                self.check_abort()
                 text251 = tostr(v.arrayList2[num293])
                 value12 = "[undefined]"
                 num294 = -1
@@ -127,6 +136,7 @@ class P10Mixin:
                     text257 = "SELECT ItemId FROM Item WHERE Item = ?"
                     self.threadStage = "40"
                     for row in self.q("c2", text257, (text253,)):
+                        self.check_abort()
                         num296 = net_int(row["ItemId"])
                     if num296 > -1:
                         if left14 != text253:
@@ -139,6 +149,7 @@ class P10Mixin:
                                 "c2", "EXEC PDMOptionDataReportWithIncBase @item = ?, @siteId = ?",
                                 (text253, self._siteId),
                             ):
+                                self.check_abort()
                                 arrayList116.append(net_int(row["OptionValueId"]))
                                 arrayList117.append(tostr(row["OrderCodeValue2"]))
                                 if tostr(row["IncPriceBase"]) != "":
@@ -148,7 +159,9 @@ class P10Mixin:
                         num297 = -1
                         num298 = 1
                         while True:
+                            self.check_abort()
                             for num300 in range(len(arrayList117)):
+                                self.check_abort()
                                 if ((text254 == tostr(arrayList117[num300]))
                                         | ((num298 == 2) & (text254 + "#" == tostr(arrayList117[num300])))) \
                                         and num295 == arrayList118[num300]:
@@ -176,6 +189,7 @@ class P10Mixin:
             sytelineBOMExport = BomExport(
                 self.db, v.arrayList, v.arrayList2, arrayList114, arrayList115,
                 report_error=self.report_swallowed, stage=self.threadStage,
+                abort_check=self.check_abort,
             )
             if sytelineBOMExport.generate_bom_data():
                 v.arrayList = sytelineBOMExport.sheet1Data

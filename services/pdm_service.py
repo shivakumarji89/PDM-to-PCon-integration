@@ -8,6 +8,8 @@ active snapshot via the shared :class:`~core.snapshot_manager.SnapshotManager`.
 Contains no SQL and no MDB/export/validation/business logic.
 """
 from __future__ import annotations
+from copy import deepcopy
+from core.cancellation import checkpoint, commit, current_token, OperationCancelled
 
 import json
 import re
@@ -250,6 +252,7 @@ class PDMService(BaseService):
         """
         if snapshot is None:
             return None
+        checkpoint()
         try:
             self._SNAPSHOT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             path = (
@@ -278,9 +281,22 @@ class PDMService(BaseService):
                 "value_range": dict(snapshot.value_range),
                 "product_range": dict(snapshot.product_range),
             }
-            path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
-            )
+            text = json.dumps(payload, ensure_ascii=False, indent=1)
+            checkpoint()
+            from tempfile import NamedTemporaryFile
+            import os
+
+            temporary = None
+            try:
+                with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                        suffix=".tmp", delete=False) as output:
+                    temporary = Path(output.name)
+                    output.write(text)
+                checkpoint()
+                os.replace(temporary, path)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
             return path
         except OSError:
             # Saving is best-effort and must never break a load.
@@ -863,7 +879,8 @@ class PDMService(BaseService):
 
     # -- family load -------------------------------------------------------
     def load_family(
-        self, products: list[Product], family_name: str = "", reporter=None
+        self, products: list[Product], family_name: str = "", reporter=None,
+        *, initialize_engineering: bool = False,
     ) -> ProductLoadResult:
         """Load a whole family in one call (articles, then details).
 
@@ -875,9 +892,19 @@ class PDMService(BaseService):
         result = self.load_family_articles(products, family_name, reporter=reporter)
         if not result.ok or result.snapshot is None:
             return result
-        return self.load_family_details(
+        result = self.load_family_details(
             result.snapshot, products, family_name, reporter=reporter
         )
+        if result.ok and result.snapshot is not None and initialize_engineering:
+            checkpoint()
+            if reporter is not None:
+                reporter.advance("Initializing Engineering")
+            self.context.engineering_initialization_service.initialize(result.snapshot)
+        if result.ok and result.snapshot is not None and current_token() is not None:
+            commit()
+            self.context.snapshot_manager.load_snapshot(result.snapshot)
+            self.context.set_product_registry(products)
+        return result
 
     def set_excluded_ranges(self, snapshot: Snapshot | None, ranges) -> int:
         """Set the COMPLETE list of excluded ProductRanges and re-derive the
@@ -1039,7 +1066,11 @@ class PDMService(BaseService):
             return ProductLoadResult(False, "No products in the selected family.")
 
         first_product = products[0]
-        snapshot = self.context.snapshot_manager.create_empty_snapshot(first_product)
+        checkpoint()
+        snapshot = (
+            Snapshot(product=first_product) if current_token() is not None
+            else self.context.snapshot_manager.create_empty_snapshot(first_product)
+        )
         snapshot.id = first_product.id
 
         connection = None
@@ -1070,10 +1101,12 @@ class PDMService(BaseService):
 
         items_by: dict[str, list] = defaultdict(list)
         for row in item_rows:
+            checkpoint()
             items_by[str(row.ProductId)].append(row)
         info_by = {str(row.ProductId): row for row in info_rows}
 
         for product in products:
+            checkpoint()
             pid = str(product.id)
             if reporter is not None:
                 reporter.set_product(product.code)
@@ -1086,7 +1119,8 @@ class PDMService(BaseService):
 
         # Register the family's products so pages resolve product NAMES (not
         # numbers) from an article's product_id (e.g. Articles Long Text).
-        self.context.set_product_registry(products)
+        if current_token() is None:
+            self.context.set_product_registry(products)
 
         snapshot.metadata = SnapshotMetadata(
             source="PDM",
@@ -1174,6 +1208,8 @@ class PDMService(BaseService):
                     product_range[str(r.ProductId)] = (
                         getattr(r, "RangeName", "") or ""
                     ).strip()
+            except OperationCancelled:
+                raise
             except Exception:
                 product_range = {}
             # Option-value dependency edges (DependentOptionValues): a parent
@@ -1188,6 +1224,8 @@ class PDMService(BaseService):
                     dst = str(r.AdditionalOptionValueId)
                     if src and dst:
                         option_deps[src].add(dst)
+            except OperationCancelled:
+                raise
             except Exception:
                 option_deps = defaultdict(set)
             if reporter is not None:
@@ -1200,9 +1238,11 @@ class PDMService(BaseService):
 
         attrs_by: dict[str, list] = defaultdict(list)
         for row in attribute_rows:
+            checkpoint()
             attrs_by[str(row.ProductId)].append(row)
         opts_by: dict[str, list] = defaultdict(list)
         for row in option_rows:
+            checkpoint()
             opts_by[str(row.ProductId)].append(row)
 
         # Build the unioned collections locally, then assign them onto the
@@ -1215,6 +1255,7 @@ class PDMService(BaseService):
         seen_options: dict[str, Option] = {}
         seen_option_values: set[str] = set()
         for product in products:
+            checkpoint()
             pid = str(product.id)
             properties, _pv = self._map_attributes(attrs_by.get(pid, []))
             options, _ov = self._map_options(opts_by.get(pid, []))
@@ -1487,7 +1528,8 @@ class PDMService(BaseService):
         return ProductLoadResult(True, message, snapshot, [])
 
     def add_family_to_session(
-        self, products: list[Product], family_name: str = "", reporter=None
+        self, products: list[Product], family_name: str = "", reporter=None,
+        *, sync_engineering: bool = False,
     ) -> ProductLoadResult:
         """Load a family and MERGE it into the CURRENT session's snapshot.
 
@@ -1502,7 +1544,11 @@ class PDMService(BaseService):
             return ProductLoadResult(False, "No products in the selected family.")
         snapshot = self.context.active_snapshot
         if snapshot is None:
-            return self.load_family(products, family_name, reporter=reporter)
+            return self.load_family(products, family_name, reporter=reporter,
+                                    initialize_engineering=sync_engineering)
+        if current_token() is not None:
+            checkpoint()
+            snapshot = deepcopy(snapshot)
 
         product_ids = [p.id for p in products if p.id]
         catalogue_by_product = {
@@ -1617,7 +1663,8 @@ class PDMService(BaseService):
             )
 
         # Register the added family's products so pages resolve product NAMES.
-        self.context.set_product_registry(products)
+        if current_token() is None:
+            self.context.set_product_registry(products)
 
         # Extend the per-article/product link maps with the new family's keys.
         snapshot.article_property_value_ids.update(
@@ -1697,6 +1744,13 @@ class PDMService(BaseService):
         self.save_family_snapshot(
             snapshot, snapshot.metadata.product_code or family_name
         )
+        if sync_engineering:
+            checkpoint()
+            self.context.engineering_initialization_service.sync(snapshot)
+        if current_token() is not None:
+            commit()
+            self.context.snapshot_manager.load_snapshot(snapshot)
+            self.context.set_product_registry(products)
 
         message = (
             f"Added family '{family_name}': the session now holds "
@@ -1767,6 +1821,7 @@ class PDMService(BaseService):
 
         for row in rows:
             key = str(row.AttributeId) if row.AttributeId is not None else (row.Property or "").strip()
+            checkpoint()
             prop = by_id.get(key)
             if prop is None:
                 prop = Property(
@@ -1802,6 +1857,7 @@ class PDMService(BaseService):
         by_id: dict[str, Option] = {}
 
         for row in rows:
+            checkpoint()
             key = str(row.OptionId) if row.OptionId is not None else (row.Property or "").strip()
             option = by_id.get(key)
             if option is None:
@@ -1833,6 +1889,7 @@ class PDMService(BaseService):
         """Map Item rows into Article models (real fields only)."""
         articles: list[Article] = []
         for row in rows:
+            checkpoint()
             code = (row.Item or "").strip()
             description = (getattr(row, "Description", None) or "").strip()
             articles.append(

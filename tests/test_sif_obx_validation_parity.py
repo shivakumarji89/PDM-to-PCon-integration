@@ -637,6 +637,9 @@ def test_usitem_without_base_or_matrix_data_is_unresolved(monkeypatch):
 
 def test_cancellable_validation_option_rows_are_cached(monkeypatch):
     class Control:
+        def checkpoint(self):
+            pass
+
         def register_cancel_handler(self, callback):
             pass
 
@@ -1242,7 +1245,7 @@ def test_sif_validation_uses_legacy_base_price_path_and_keeps_option_increments(
     calls = []
     repo = SimpleNamespace(
         **_eligible_validation_repo_methods(),
-        get_connection=lambda: object(),
+        get_connection=lambda: SimpleNamespace(close=lambda: None),
         _execute=lambda query, params, connection: [SimpleNamespace(d="28 Sep 2026")],
         fetch_validation_get_price_ext_base_prices=lambda *args, **kwargs: (
             calls.append((args, kwargs)) or [SimpleNamespace(Item="SKU1", price=100.0)]
@@ -1343,7 +1346,7 @@ def test_sif_validation_rejects_invalid_date_before_base_price_lookup(monkeypatc
     service = SifValidationService(None)
     base_price_calls = []
     repo = SimpleNamespace(
-        get_connection=lambda: object(),
+        get_connection=lambda: SimpleNamespace(close=lambda: None),
         _execute=lambda query, params, connection: [SimpleNamespace(d="28 Sep 2026")],
         fetch_validation_get_price_ext_base_prices=lambda *args, **kwargs: (
             base_price_calls.append(args)

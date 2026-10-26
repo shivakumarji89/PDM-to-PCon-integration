@@ -295,6 +295,8 @@ def test_global_increment_fetch_keeps_only_active_priced_rows(monkeypatch):
         ),
     ]
     def execute(query, params, connection=None):
+        if "AS TargetOptionId" in query:
+            return []
         assert "fb.Application = 1" in query
         if "AS NewPrice" in query:
             return [SimpleNamespace(Item="GETH.1022FS4W", NewPrice=16)]
@@ -368,6 +370,8 @@ def test_global_fetch_matches_pdm_priced_rows_and_query_order(monkeypatch):
     ]
     repo = PDMRepository(None)
     def execute(query, params, connection=None):
+        if "AS TargetOptionId" in query:
+            return []
         if "AS NewPrice" in query:
             return [SimpleNamespace(Item="GETH.1022FS4W", NewPrice=params[7])]
         return [

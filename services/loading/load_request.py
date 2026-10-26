@@ -125,3 +125,4 @@ class LoadResult:
     product_ids: list[str] = field(default_factory=list)
     #: The Activity id used to report this load (for correlation / UI).
     activity_id: str | None = None
+    cancelled: bool = False

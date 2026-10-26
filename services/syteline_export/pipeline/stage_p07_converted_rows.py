@@ -34,11 +34,13 @@ class P07Mixin:
         self.threadStage = "25"
         text147 = ""  # all materialsWritten lines joined with CRLF
         for num165 in range(len(self.materialsWritten)):
+            self.check_abort()
             text147 = text147 + tostr(self.materialsWritten[num165]) + "\r\n"
         # text148 (debug-only report text, shown only under a debug flag) omitted
         # debug-only block omitted (flag default false)
         if not self._abortThread and not self._millerCAD:
             for num167 in range(len(self._convertedList)):
+                self.check_abort()
                 item = tostr(self._convertedList[num167])
                 if not (index_of(item, "--") == -1 and (not item.startswith("9-") or not self._superProductsOnly)):
                     continue
@@ -109,6 +111,7 @@ class P07Mixin:
                         v.text = "SELECT SLFeatureLength FROM [Option] WITH (NOLOCK) WHERE OptionId = ?"
                         rows = self.q("c2", v.text, (self._convertOptionId[num167],))
                         for row in rows:
+                            self.check_abort()
                             num172 = net_int(row["SLFeatureLength"])
                         if self._flattenFabrics and (
                             self._convertOptionId[num167] == 8512
@@ -154,6 +157,7 @@ class P07Mixin:
                     text163 = text160 + "\t" + text162 + "F"
                     if index_of(text161, text163) > -1:
                         while index_of(text161, text163) > -1:
+                            self.check_abort()
                             text161 = substring(text161, index_of(text161, text163) + len(text163) - 1)
                             text164 = substring(text161, 0, index_of(text161, "\t"))  # throws if no tab (legacy 5603)
                             if index_of(text164, "-") > -1 and index_of(text155, text164) == -1:
@@ -224,6 +228,7 @@ class P07Mixin:
                     ])
                     num181 = 0
                     while True:
+                        self.check_abort()
                         text167 += "\t"
                         num181 += 1
                         if not (num181 <= 4):

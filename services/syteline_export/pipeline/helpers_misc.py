@@ -34,6 +34,7 @@ class HelpersMiscMixin:
                 )
                 rows = self.q(NEW_CONN, mysql, (superproduct,))
                 for row in rows:
+                    self.check_abort()
                     if tostr(row["optcount"]) != "":
                         num = net_int(row["optcount"])
                 self._SPFeatureItems.append(superproduct)
@@ -57,10 +58,12 @@ class HelpersMiscMixin:
                 )
                 rows = self.q(NEW_CONN, text)
                 for row in rows:
+                    self.check_abort()
                     self.asiaUniveralScreenRoots.append(tostr(row["RootProductPrefix"]))
             flag = False
             num = len(self.asiaUniveralScreenRoots) - 1
             for i in range(0, num + 1):
+                self.check_abort()
                 if rootproduct.startswith(tostr(self.asiaUniveralScreenRoots[i])):
                     text3 = "S"
                     if tostr(rootproduct).endswith("B."):
@@ -101,6 +104,7 @@ class HelpersMiscMixin:
             num6 = num3
             # C# `for (i = num4; ((num6>>31)^i) <= ((num6>>31)^num5); i += num6)`
             for i in range(num4, (num5 + 1) if num6 > 0 else (num5 - 1), num6):
+                self.check_abort()
                 if index_of(tostr(self.materialsWritten[i]), "\t" + prefix) <= -1:
                     continue
                 text2 = substring(
@@ -117,6 +121,7 @@ class HelpersMiscMixin:
                 text2 = text2.replace("{DEBUGii}", "")
                 num7 = 1
                 while True:  # do { ... } while (num7 <= 2)
+                    self.check_abort()
                     if num7 == 2 and (
                         ((suffix == "ON") | (suffix == "DE") | (suffix == "ES") | (suffix == "FI")
                          | (suffix == "ST") | (suffix == "WH") | (suffix == "LB") | (suffix == "LE")
@@ -383,6 +388,7 @@ class HelpersMiscMixin:
             arrayList.append("Yes")
             num = len(arrayList) - 1
             for i in range(0, num + 1):
+                self.check_abort()
                 text += tostr(arrayList[i])
                 if i < len(arrayList) - 1:
                     text += "\t"
@@ -405,6 +411,7 @@ class HelpersMiscMixin:
             )
             rows = self.q(NEW_CONN, text, (self._languageId, myitem))
             for row in rows:
+                self.check_abort()
                 text2 = tostr(row["ShortDescription"])
                 text2 = substring(text2, index_of(text2, " [") + 2)
                 text2 = substring(text2, 0, index_of(text2, "]"))
@@ -431,6 +438,7 @@ class HelpersMiscMixin:
                 # Deviation: legacy sends the bare "PDMOptionDataReport 'x'"; EXEC is needed to bind a parameter.
                 rows = self.q(NEW_CONN, "EXEC PDMOptionDataReport ?", (myitem,))
                 for row in rows:
+                    self.check_abort()
                     if (tostr(row["ParentOptValCode"]) == right) & (
                         (tostr(row["ParentOptvalName"]) == text2) | (text2 == "")
                     ):
@@ -440,6 +448,7 @@ class HelpersMiscMixin:
                     # num3 comes from int.Parse; bound anyway
                     rows = self.q(NEW_CONN, "SELECT SLFeatureLength FROM [Option] WITH (NOLOCK) WHERE OptionId = ?", (num3,))
                     for row in rows:
+                        self.check_abort()
                         num = net_int(row["SLFeatureLength"])
                 self.cachedItemOptFeatKeys.append(value)
                 self.cachedItemOptFeatLens.append(num)

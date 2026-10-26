@@ -4,6 +4,9 @@ All fixtures are SYNTHETIC. Expected values are derived from the C# (line number
 """
 from __future__ import annotations
 
+import pytest
+
+from core.cancellation import OperationCancelled
 from services.syteline_export.pipeline.db import ScriptedExportDb
 from services.syteline_export.pipeline.helpers_fabric import HelpersFabricMixin
 from services.syteline_export.pipeline.run_base import ExportRunBase
@@ -378,9 +381,10 @@ def test_add_fabric_colour_legacy_throws_are_swallowed():
     assert len(h.errors) == 1
 
 
-def test_no_abort_checks_in_range():
-    # The C# in this range never checks _abortThread, so the flag must not change behaviour.
+def test_abort_stops_fabric_work_before_query_or_conversion():
     h = _fab_h([_fab_row()])
     h._abortThread = True
-    h.add_fabric_colour("X-10-02#", 7, [101], False)
-    assert h._convertedList == ["9-FAB-ABCDE"]
+    with pytest.raises(OperationCancelled):
+        h.add_fabric_colour("X-10-02#", 7, [101], False)
+    assert h._convertedList == []
+    assert h.db.calls == []

@@ -18,6 +18,7 @@ Legacy facts about the finally: it closes streamWriter2/3/4, releases ExtractUse
 closes sqlConnection..4 (sqlConnection5 is never closed in legacy).
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 import io
 import traceback
@@ -325,6 +326,7 @@ class P11Mixin:
 
     # ExportThread.cs 7033-7430
     def p11_write_outputs(self) -> Flow | None:
+        self.check_abort()
         v = self.v
         streamWriter5 = None
         try:  # 7034
@@ -338,6 +340,7 @@ class P11Mixin:
                         arrayList119.extend(PLAIN_HEADERS_A)
                         num301 = 1
                         while True:  # do { } while (num301 <= 20)
+                            self.check_abort()
                             arrayList119.append("Feat" + str(num301))
                             num301 += 1
                             if not (num301 <= 20):
@@ -345,6 +348,7 @@ class P11Mixin:
                         arrayList119.extend(PLAIN_HEADERS_B)
                     num302 = len(arrayList119) - 1
                     for num303 in range(0, num302 + 1):
+                        self.check_abort()
                         self.write_data(streamWriter5, tostr(arrayList119[num303]), False)
                         if num303 < len(arrayList119) - 1:
                             self.write_data(streamWriter5, "\t", False)
@@ -354,10 +358,13 @@ class P11Mixin:
             arrayList120 = []  # de-dup keys of sheet1 rows
             num304 = len(v.arrayList) - 1
             for num305 in range(0, num304 + 1):
+                self.check_abort()
                 if not list_contains(arrayList120, remove_non_alphanumeric(tostr(v.arrayList[num305]))):
                     arrayList120.append(remove_non_alphanumeric(tostr(v.arrayList[num305])))
                     if tostr(v.arrayList[num305]).strip() != "":
                         self.write_to_stream(streamWriter5, tostr(v.arrayList[num305]) + "\r\n", "sheet1Data")
+        except OperationCancelled:
+            raise
         except Exception as ex9:  # 7360
             self.msgbox("myWriter1 error: " + "".join(traceback.format_exception(ex9)))
         finally:
@@ -376,11 +383,14 @@ class P11Mixin:
             arrayList121 = []  # de-dup keys of sheet2 rows
             num306 = len(v.arrayList2) - 1
             for num307 in range(0, num306 + 1):
+                self.check_abort()
                 if not list_contains(arrayList121, remove_non_alphanumeric(tostr(v.arrayList2[num307]))):
                     arrayList121.append(remove_non_alphanumeric(tostr(v.arrayList2[num307])))
                     if tostr(v.arrayList2[num307]).strip() != "":
                         text259 = ""
                         self.write_to_stream(streamWriter6, tostr(v.arrayList2[num307]) + text259 + "\r\n", "sheet2Data")
+        except OperationCancelled:
+            raise
         except Exception as ex11:  # 7394
             self.msgbox("myWriter2 error: " + "".join(traceback.format_exception(ex11)))
         finally:
@@ -431,14 +441,17 @@ class P11Mixin:
         for name in ("streamWriter2", "streamWriter3", "streamWriter4"):  # 7457-7459
             writer = getattr(v, name, None)
             if writer is not None:
-                writer.close()
+                try:
+                    writer.close()
+                except Exception as exc:
+                    self.warnings.append(f"Output writer close failed: {type(exc).__name__}: {exc}")
         # Legacy releases whenever text4 == ""; here additionally only when THIS run acquired ExtractUser
         # (legacy 2240) so a run that never took the lock cannot clear another run's lock.
         if tostr(getattr(v, "text4", "")) == "" and self._extract_user_acquired:
             try:
                 v.text = "UPDATE Site SET ExtractUser = NULL WHERE SiteId = ?"
                 self.threadStage = "42"
-                self.x("c1", v.text, (self._siteId,))
+                self.db.execute("c1", v.text, (self._siteId,), stage=self.threadStage)
                 self._extract_user_acquired = False  # released exactly once
             except Exception as ex15:  # 7469: empty catch in legacy
                 self.warnings.append(f"ExtractUser release failed (ignored): {type(ex15).__name__}: {ex15}")

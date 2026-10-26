@@ -11,6 +11,7 @@ explicitly through ``include_prices`` so callers do not accidentally treat
 pricing as ordinary product structure.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -150,7 +151,9 @@ class MdbReverseEngineeringService(BaseService):
             table: f"SELECT * FROM [{table}]"
             for table in dict.fromkeys(table_names)
         }
+        checkpoint()
         rows_by_table = self.context.mdb_service.read_tables(path, sql_by_name)
+        checkpoint()
 
         package_rows = rows_by_table.get("tCOMd_Package", [])
         group_rows = rows_by_table.get("tCOMd_ComGroup", [])
@@ -163,6 +166,7 @@ class MdbReverseEngineeringService(BaseService):
             result.notes.append("tCOMd_ComGroup is empty.")
 
         for table in requested:
+            checkpoint()
             result.tables[table] = MdbTableData(
                 name=table,
                 rows=tuple(rows_by_table.get(table, [])),
@@ -172,6 +176,7 @@ class MdbReverseEngineeringService(BaseService):
 
     def import_snapshot(self, data: MdbPackageData) -> Snapshot:
         """Map an extracted OCD MDB into the same Snapshot consumed by all workflows."""
+        checkpoint()
         package = data.package or {}
         program = str(package.get("reg_ProgramCode") or "").strip()
         label = str(package.get("reg_ProgramLabel") or "").strip()
@@ -201,6 +206,7 @@ class MdbReverseEngineeringService(BaseService):
         }
         text_by_id: dict[str, TextBlock] = {}
         for row in text_rows:
+            checkpoint()
             tid = str(row.get("com_TextID") or "")
             if not tid:
                 continue
@@ -222,6 +228,7 @@ class MdbReverseEngineeringService(BaseService):
 
         class_by_mdb: dict[str, EngineeringClass] = {}
         for row in data.rows("tCOMd_Class"):
+            checkpoint()
             cid = str(row.get("com_ClassID") or "")
             name = str(row.get("com_ClassName") or "").strip()
             if not cid or not name:
@@ -232,6 +239,7 @@ class MdbReverseEngineeringService(BaseService):
 
         prop_by_mdb: dict[str, Property] = {}
         for row in data.rows("tCOMd_Property"):
+            checkpoint()
             pid = str(row.get("com_PropertyID") or "")
             name = str(row.get("com_PropName") or "").strip()
             if not pid or not name:
@@ -261,6 +269,7 @@ class MdbReverseEngineeringService(BaseService):
 
         value_by_mdb: dict[str, PropertyValue] = {}
         for row in data.rows("tCOMd_PropValue"):
+            checkpoint()
             vid = str(row.get("com_ValueID") or "")
             parent = str(row.get("com_PropertyID") or "")
             if not vid or parent not in prop_by_mdb:
@@ -292,6 +301,7 @@ class MdbReverseEngineeringService(BaseService):
         # is assembled. Keep the source definition in the Snapshot so later
         # permutation generation never needs to reopen the MDB.
         for row in data.rows("tCOMd_CodeScheme"):
+            checkpoint()
             scheme_id = str(row.get("com_CodeSchemeID") or "").strip()
             if not scheme_id:
                 continue
@@ -302,6 +312,7 @@ class MdbReverseEngineeringService(BaseService):
 
         article_by_mdb: dict[str, Article] = {}
         for row in data.rows("tCOMd_Article"):
+            checkpoint()
             aid = str(row.get("com_ArticleID") or "")
             code = str(row.get("com_ArticleCode") or "").strip()
             if not aid or not code:
@@ -325,6 +336,7 @@ class MdbReverseEngineeringService(BaseService):
         # repository configuration model. Keep every ArticleClass link; the
         # permutation builder uses the linked class properties as dimensions.
         for row in data.rows("tCOMd_ArticleClass"):
+            checkpoint()
             article_row_id = str(row.get("com_ArticleID") or "").strip()
             class_row_id = str(row.get("com_ClassID") or "").strip()
             if article_row_id.endswith(".0"):
@@ -377,6 +389,7 @@ class MdbReverseEngineeringService(BaseService):
 
         relmeta_by_obj: dict[str, list[dict[str, Any]]] = {}
         for row in data.rows("tCOMd_RelObjRel"):
+            checkpoint()
             obj_id = _mdb_id(row.get("com_RelObjID"))
             relation_id = _mdb_id(row.get("com_RelationID"))
             if not obj_id or not relation_id:
@@ -471,6 +484,7 @@ class MdbReverseEngineeringService(BaseService):
         }
         grouped_lines = {}
         for row in data.rows("tCOMd_TableLine"):
+            checkpoint()
             column = column_rows.get(str(row.get("com_TableColumnID") or ""))
             if column is None:
                 continue
@@ -483,6 +497,7 @@ class MdbReverseEngineeringService(BaseService):
             grouped_lines.setdefault((table_id, line_nr), {}).setdefault(name, []).append(value)
 
         for table_id, table_row in table_rows.items():
+            checkpoint()
             name = str(table_row.get("com_TableName") or "").strip()
             if not name:
                 continue
@@ -515,6 +530,7 @@ class MdbReverseEngineeringService(BaseService):
         for value in snapshot.property_values:
             value_by_code[(str(value.property_id), value.code)] = str(value.id or "")
         for row in data.rows("tCOMd_ArtBase"):
+            checkpoint()
             article_row_id = str(row.get("com_ArticleID") or "")
             article = article_by_mdb.get(article_row_id)
             if article is None:
@@ -546,6 +562,7 @@ class MdbReverseEngineeringService(BaseService):
             ).append(value_id)
 
         for row in data.rows("tCOMd_PriceList2"):
+            checkpoint()
             snapshot.price_lists.append(PriceList(
                 id=str(row.get("com_PriceListID") or ""),
                 label=str(row.get("com_PriceListLabel") or ""),
@@ -555,6 +572,7 @@ class MdbReverseEngineeringService(BaseService):
             ))
         article_code_by_id = {aid: article.code for aid, article in article_by_mdb.items()}
         for row in data.rows("tCOMd_Price"):
+            checkpoint()
             snapshot.price_records.append(PriceRecord(
                 is_global=False,
                 article_code=article_code_by_id.get(str(row.get("com_ArticleID") or ""), ""),
@@ -566,6 +584,7 @@ class MdbReverseEngineeringService(BaseService):
                 valid_to=self._mdb_date(row.get("com_PriceValidTo")),
             ))
         for row in data.rows("tCOMd_GlobalPrice"):
+            checkpoint()
             snapshot.price_records.append(PriceRecord(
                 is_global=True,
                 variant_condition=str(row.get("com_VariantCondition") or ""),

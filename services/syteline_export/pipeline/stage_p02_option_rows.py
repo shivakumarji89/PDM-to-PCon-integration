@@ -59,6 +59,7 @@ class P02Mixin:
     def p02_option_rows(self) -> Flow | None:
         v = self.v
         for row in v.option_rows:                                                    # 2607
+            self.check_abort()
             value = tostr(row["Option2"])                                            # 2609 (option name)
             text24 = tostr(row["optval_name"])                                       # 2610
             if _vb_equal(row["fsccompliant"], 1):                                    # 2611
@@ -130,6 +131,7 @@ class P02Mixin:
         self.threadStage = "11"                                                      # 2807
         num11 = len(v.arrayList53) - 1
         for l in range(0, num11 + 1):                                                # 2809
+            self.check_abort()
             num12 = list_index_of(v.arrayList30, v.arrayList53[l])
             if num12 <= -1:
                 text27 = ""
@@ -140,6 +142,7 @@ class P02Mixin:
                 )
                 rows = self.q("c2", v.text, (self._maxDescriptionLength, net_int(v.arrayList53[l]), self._languageId))
                 for r in rows:                                                       # 2818
+                    self.check_abort()
                     text27 += tostr(r["ShortDescription"]).replace(">", " ")
                 v.arrayList29.append(text27)
                 v.arrayList30.append(v.arrayList53[l])
@@ -147,6 +150,7 @@ class P02Mixin:
         self.threadStage = "12"                                                      # 2827
         num13 = len(v.arrayList53) - 1
         for m in range(0, num13 + 1):                                                # 2829
+            self.check_abort()
             num14 = list_index_of(v.arrayList32, v.arrayList53[m])
             if num14 <= -1:
                 text28 = ""
@@ -156,6 +160,7 @@ class P02Mixin:
                 )
                 rows = self.q("c2", v.text, (self._maxDescriptionLength, net_int(v.arrayList53[m]), self._otherlanguageId))
                 for r in rows:                                                       # 2838
+                    self.check_abort()
                     text28 += tostr(r["ShortDescription"]).replace(">", " ")
                 v.arrayList31.append(text28)
                 v.arrayList32.append(v.arrayList53[m])
@@ -163,6 +168,7 @@ class P02Mixin:
         self.threadStage = "13"                                                      # 2847
         num15 = len(v.arrayList47) - 1
         for n in range(0, num15 + 1):                                                # 2849
+            self.check_abort()
             num16 = 2
             num17 = list_index_of(v.arrayList34, v.arrayList47[n])
             if num17 > -1:
@@ -171,6 +177,7 @@ class P02Mixin:
                 v.text = "SELECT SLFeatureLength FROM [Option] WITH (NOLOCK) WHERE OptionId = ?"
                 rows = self.q("c2", v.text, (v.arrayList47[n],))
                 for r in rows:                                                       # 2862
+                    self.check_abort()
                     num16 = net_int(r["SLFeatureLength"])
                 v.arrayList33.append(num16)
                 v.arrayList34.append(v.arrayList47[n])

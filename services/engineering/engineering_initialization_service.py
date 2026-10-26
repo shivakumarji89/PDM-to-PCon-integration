@@ -14,6 +14,7 @@ It does NOT perform builder, reduction, validation, assignment, or generation -
 those remain the responsibility of their own services.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 from uuid import uuid4
 
@@ -40,6 +41,17 @@ class EngineeringInitializationService(BaseService):
         if snapshot is None or snapshot.engineering is None:
             return
 
+        members = []
+        for article in snapshot.articles:
+            checkpoint()
+            members.append(MemberArticle(
+                id=uuid4().hex,
+                article_id=article.id,
+                family_id=DEFAULT_FAMILY_ID,
+                reduced_article="",
+                long_description="",
+            ))
+        checkpoint()
         # Idempotency: discard the families this service owns before rebuilding.
         snapshot.engineering.families.clear()
 
@@ -48,16 +60,7 @@ class EngineeringInitializationService(BaseService):
         family = EngineeringFamily(
             id=DEFAULT_FAMILY_ID,
             name=DEFAULT_FAMILY_NAME,
-            members=[
-                MemberArticle(
-                    id=uuid4().hex,
-                    article_id=article.id,
-                    family_id=DEFAULT_FAMILY_ID,
-                    reduced_article="",
-                    long_description="",
-                )
-                for article in snapshot.articles
-            ],
+            members=members,
         )
         snapshot.engineering.families.append(family)
 
@@ -89,7 +92,9 @@ class EngineeringInitializationService(BaseService):
         # Backfill: guarantee every existing member carries its owning family id
         # (older members / restored caches may predate the family_id field).
         for family in families:
+            checkpoint()
             for member in family.members:
+                checkpoint()
                 if not member.family_id:
                     member.family_id = family.id
 
@@ -100,6 +105,7 @@ class EngineeringInitializationService(BaseService):
             for member in family.members
         }
         for article in snapshot.articles:
+            checkpoint()
             if article.id in existing_ids:
                 continue
             default_family.members.append(

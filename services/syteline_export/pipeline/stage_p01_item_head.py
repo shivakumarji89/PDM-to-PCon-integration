@@ -4,6 +4,7 @@ Mechanical transliteration; see PORTING_CONVENTIONS.md. The loop header (2474) b
 which sets ``v.sqlDataReader`` to the current item row before calling ``p01_item_head``.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 import logging
 from decimal import Decimal, ROUND_HALF_EVEN
@@ -128,6 +129,7 @@ class P01Mixin:
                     v.mysql = _TRADENET_SQL
                     self.threadStage = "9"
                     for row6 in self.q("tradenet", v.mysql, (tostr(v.sqlDataReader["Product_Code"]), tostr(self._contract))):
+                        self.check_abort()
                         discount = row6["Purchase_Discount"]
                         # Legacy: CompareObjectNotEqual(Purchase_Discount, 0) OR (Purchase_Discount != DBNull).
                         # VB compares DBNull with 0 first and throws InvalidCastException, swallowed below.
@@ -139,6 +141,8 @@ class P01Mixin:
                                 v.num4 = Decimal(0)
                             else:
                                 v.num4 = _math_round2_to_decimal(_vb_multiply(v.sqlDataReader["MyBasePrice"], v.num10))
+                except OperationCancelled:
+                    raise
                 except Exception as ex3:  # legacy catch (Exception): num4 = 0, Debug.WriteLine only
                     v.num4 = Decimal(0)
                     LOGGER.debug("Cannot connect to Tradenet Database (%s)", self._tradeNet)

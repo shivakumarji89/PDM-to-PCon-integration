@@ -43,6 +43,7 @@ class P08Mixin:
                 arrayList98: list = []
                 num182 = len(self.materialsWritten) - 1
                 for num183 in range(0, num182 + 1):
+                    self.check_abort()
                     self.threadStage = "30a"
                     text170 = ""
                     text171 = tostr(self.materialsWritten[num183])
@@ -79,9 +80,11 @@ class P08Mixin:
                         text180 = substring(text174, _rindex(text174, "-") + 1)
                         num184 = len(arrayList95) - 1
                         for num185 in range(0, num184 + 1):
+                            self.check_abort()
                             arrayList99 = arrayList96[num185]
                             num186 = len(arrayList99) - 1
                             for num187 in range(0, num186 + 1):
+                                self.check_abort()
                                 if (
                                     (tostr(arrayList99[num187]).replace("#", "") == text180)
                                     and not tostr(arrayList95[num185]).startswith(value7)
@@ -102,6 +105,7 @@ class P08Mixin:
                             )
                             self.threadStage = "30e"
                             for row in self.q("c1", v.text, (text180 + "#",)):
+                                self.check_abort()
                                 arrayList100.append(tostr(row["OrderCodeValue"]))
                             arrayList95.append(text174)
                             arrayList96.append(arrayList100)
@@ -109,13 +113,16 @@ class P08Mixin:
                     if index_of(text174, "-" + v.text6 + "-") > -1 and text170 != "":
                         if len(arrayList93) == 0:
                             for num189 in range(0, len(v.arrayList)):
+                                self.check_abort()
                                 arrayList93.append(tostr(v.arrayList[num189]))
                         if len(arrayList94) == 0:
                             for num191 in range(0, len(v.arrayList2)):
+                                self.check_abort()
                                 arrayList94.append(tostr(v.arrayList2[num191]))
                         num192 = -1
                         num193 = len(arrayList93) - 1
                         for num194 in range(0, num193 + 1):
+                            self.check_abort()
                             self.threadStage = "30." + str(num194 + 1) + "-" + str(len(arrayList93))
                             if tostr(arrayList93[num194]).startswith(text170 + "\t"):
                                 num192 = num194
@@ -137,6 +144,7 @@ class P08Mixin:
                         num192 = -1
                         num195 = len(arrayList94) - 1
                         for num196 in range(0, num195 + 1):
+                            self.check_abort()
                             self.threadStage = "30b." + str(num196 + 1) + "-" + str(len(arrayList94))
                             if tostr(arrayList94[num196]).startswith(
                                 text170 + "\t" + text173 + "\t" + text174 + "\t" + text175 + "\t"
@@ -155,6 +163,7 @@ class P08Mixin:
                         continue
                     num197 = len(self.skippedFabricColours) - 1
                     for num198 in range(0, num197 + 1):
+                        self.check_abort()
                         self.threadStage = "32a"
                         text184 = tostr(self.skippedFabricColours[num198])
                         if index_of(text184, "|") <= -1:
@@ -177,10 +186,12 @@ class P08Mixin:
                             continue
                         if len(arrayList93) == 0:
                             for num201 in range(0, len(v.arrayList)):
+                                self.check_abort()
                                 arrayList93.append(tostr(v.arrayList[num201]))
                         self.threadStage = "32.1"
                         if len(arrayList94) == 0:
                             for num203 in range(0, len(v.arrayList2)):
+                                self.check_abort()
                                 arrayList94.append(tostr(v.arrayList2[num203]))
                         self.threadStage = "32.2"
                         if not (index_of(text174, "-F01-") > -1 and num199 == 1):
@@ -199,6 +210,7 @@ class P08Mixin:
                         num204 = -1
                         num205 = len(arrayList94) - 1
                         for num206 in range(0, num205 + 1):
+                            self.check_abort()
                             self.threadStage = "32." + str(num206 + 1) + "-" + str(len(arrayList94))
                             if tostr(arrayList94[num206]).startswith(
                                 text172 + "\t" + text173 + "\t" + text174 + "\t" + text175 + "\t"
@@ -233,6 +245,7 @@ class P08Mixin:
                         num209 = -1
                         num210 = len(arrayList93) - 1
                         for num211 in range(0, num210 + 1):
+                            self.check_abort()
                             self.threadStage = "32b." + str(num211 + 1) + "-" + str(len(arrayList93))
                             if tostr(arrayList93[num211]).startswith(text174 + "\t"):
                                 num209 = num211
@@ -267,6 +280,7 @@ class P08Mixin:
                         num212 = -1
                         num213 = len(arrayList93) - 1
                         for num214 in range(0, num213 + 1):
+                            self.check_abort()
                             self.threadStage = "32c." + str(num214 + 1) + "-" + str(len(arrayList93))
                             if tostr(arrayList93[num214]).startswith(text196 + text194 + text195):
                                 num212 = num214
@@ -280,14 +294,17 @@ class P08Mixin:
                 arrayList102: list = []
                 if len(arrayList94) > 0:
                     for num216 in range(0, len(arrayList94)):
+                        self.check_abort()
                         arrayList102.append(tostr(arrayList94[num216]))
                 else:
                     for num218 in range(0, len(self.materialsWritten)):
+                        self.check_abort()
                         arrayList102.append(tostr(self.materialsWritten[num218]))
                 # arrayList102 is a snapshot; arrayList94 is appended to while arrayList102 is walked
                 # (6103-6113), so the loop bound is fixed up-front exactly like num219 in legacy.
                 num219 = len(arrayList102) - 1
                 for num220 in range(0, num219 + 1):
+                    self.check_abort()
                     text198 = tostr(arrayList102[num220]).replace("\r", "").replace("\n", "")
                     text198 = text198.strip("\t")
                     if not list_contains(arrayList101, text198):
@@ -297,6 +314,7 @@ class P08Mixin:
                 if self._flattenFabrics:
                     num221 = len(arrayList94) - 1
                     for num222 in range(0, num221 + 1):
+                        self.check_abort()
                         text199 = tostr(arrayList94[num222])
                         if index_of(text199, "9-FAB-F") > -1:
                             text200 = substring(text199, index_of(text199, "9-FAB-F"))
@@ -312,6 +330,7 @@ class P08Mixin:
                     # text202 accumulator is only a debug string in legacy; dropped.
                     num223 = len(arrayList93) - 1
                     for num224 in range(0, num223 + 1):
+                        self.check_abort()
                         text203 = tostr(arrayList93[num224])
                         if not list_contains(self._additionalItemsWritten, text203):
                             self._additionalItemsWritten.append(text203)
@@ -322,6 +341,7 @@ class P08Mixin:
                     # text204 accumulator is only a debug string in legacy; dropped.
                     num225 = len(arrayList94) - 1
                     for num226 in range(0, num225 + 1):
+                        self.check_abort()
                         text205 = tostr(arrayList94[num226])
                         if not list_contains(self._additionalMaterialsWritten, text205):
                             self._additionalMaterialsWritten.append(text205)
@@ -338,6 +358,7 @@ class P08Mixin:
                 text207 = ""
                 num227 = len(self.materialsWritten) - 1
                 for num228 in range(0, num227 + 1):
+                    self.check_abort()
                     text208 = tostr(self.materialsWritten[num228])
                     text209 = substring(text208, 0, index_of(text208, "\t"))
                     if text209.startswith("OF"):
@@ -405,6 +426,7 @@ class P08Mixin:
                     array12 = text206.split("\r")
                     num229 = len(array12) - 1
                     for num230 in range(num229, -1, -1):
+                        self.check_abort()
                         if array12[num230] != "":
                             if len(arrayList103) < 1:
                                 # ArrayList.Insert(1, x) on an empty list throws ArgumentOutOfRangeException
@@ -413,16 +435,19 @@ class P08Mixin:
                 if (len(arrayList104) > 0) and (len(arrayList103) > 0):
                     v.arrayList2 = []  # `arrayList2 = new ArrayList()` rebinding
                     for num232 in range(0, len(arrayList103)):
+                        self.check_abort()
                         value10 = tostr(arrayList103[num232]).replace("HAR-F", "H-F").replace("-bocfab-", "-BOCFAB-")
                         v.arrayList2.append(value10)
                 num233 = len(arrayList104) - 1
                 for num234 in range(1, num233 + 1):  # legacy starts at 1, not 0
+                    self.check_abort()
                     text216 = tostr(arrayList104[num234])
                     text216 = text216.replace("9-BOCFAB-", "")
                     if index_of(text216, "-HAR-") > -1:
                         text216 = substring(text216, 0, index_of(text216, "-HAR-"))
                     num235 = len(arrayList105) - 1
                     for num236 in range(0, num235 + 1):
+                        self.check_abort()
                         if tostr(arrayList105[num236]).startswith(text216 + "~"):
                             text217 = tostr(arrayList105[num236]).replace(text216 + "~", "")
                             text218 = tostr(arrayList104[num234]) + "\t"
@@ -444,6 +469,7 @@ class P08Mixin:
                                 text218 = text218.replace("-BOCFAB-", "-")
                             array13 = text218.replace("HAR-F", "H-F").replace("-bocfab-", "-BOCFAB-").split("\r")
                             for num240 in range(0, len(array13)):
+                                self.check_abort()
                                 value11 = array13[num240].replace("\n", "")
                                 v.arrayList2.append(value11)
         return None

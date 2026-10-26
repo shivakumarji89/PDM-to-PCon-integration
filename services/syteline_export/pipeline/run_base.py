@@ -12,6 +12,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any, Callable, Sequence
 
+from core.cancellation import OperationCancelled, checkpoint
 from services.syteline_export.pipeline.db import ExportDb
 
 LOGGER = logging.getLogger("syteline_export")
@@ -25,7 +26,7 @@ class Flow(enum.Enum):
     RETURN = "return"           # C# `return;` from execThread (abort the whole run)
 
 
-class ExportAborted(Exception):
+class ExportAborted(OperationCancelled):
     """Raised by the runner when the user cancels; never swallowed by stage code."""
 
 
@@ -98,6 +99,7 @@ class ExportRunBase:
         self._maxDescriptionLength = 200
         self._abortThread = False
         self._cancel_requested = False
+        self._extract_user_acquired = False
         self._SPFeatureItems: list = []
         self._SPFeatureCount: list = []
         self.skippedFabricColours: list = []
@@ -209,6 +211,7 @@ class ExportRunBase:
     # --- replacements for legacy UI/MsgBox/static plumbing ---------------------------------
     def update_status_label(self, text: str) -> None:
         """UpdateStatusLabel?.Invoke(this, text)."""
+        self.check_abort()
         LOGGER.info("[%s] %s", self.threadStage, text)
         if self._status_callback is not None:
             self._status_callback(text)
@@ -225,16 +228,36 @@ class ExportRunBase:
 
     def report_swallowed(self, context: str, exc: BaseException) -> None:
         """A legacy ``catch (Exception) { MsgBox(ex.ToString()); }`` that lets the run continue."""
+        if isinstance(exc, OperationCancelled):
+            raise exc
+        self.check_abort()
         self.msgbox(f"{context}: {type(exc).__name__}: {exc}")
 
     def q(self, conn: str, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]:
         """NewSqlCommand(...).ExecuteReader() fully fetched. conn is 'c1'..'c5' = sqlConnection..5."""
-        return self.db.query(conn, sql, params, stage=self.threadStage)
+        self.check_abort()
+        try:
+            rows = self.db.query(conn, sql, params, stage=self.threadStage)
+        except Exception:
+            self.check_abort()
+            raise
+        self.check_abort()
+        return rows
 
     def x(self, conn: str, sql: str, params: Sequence[Any] = ()) -> int:
         """NewSqlCommand(...).ExecuteNonQuery()."""
-        return self.db.execute(conn, sql, params, stage=self.threadStage)
+        self.check_abort()
+        try:
+            result = self.db.execute(conn, sql, params, stage=self.threadStage)
+        except Exception:
+            self.check_abort()
+            raise
+        if sql.startswith("UPDATE Site SET ExtractUser = ?"):
+            self._extract_user_acquired = True
+        self.check_abort()
+        return result
 
     def check_abort(self) -> None:
-        if self._abortThread:
+        checkpoint()
+        if self._abortThread or self._cancel_requested:
             raise ExportAborted()

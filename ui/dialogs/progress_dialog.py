@@ -23,7 +23,7 @@ from ui.components._styles import label_color_qss, secondary_button_qss
 class ProgressDialog(DialogTemplate):
     """Concise, reusable progress popup driven by a ProgressReporter."""
 
-    #: Emitted when the user clicks Cancel (wired for future cancellation).
+    #: Requests cooperative cancellation of the bound operation.
     cancel_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -94,7 +94,6 @@ class ProgressDialog(DialogTemplate):
         reporter.elapsed_changed.connect(self.set_elapsed)
         reporter.remaining_changed.connect(self.set_remaining)
         reporter.finished.connect(self._on_reporter_finished)
-        # Cancel is wired to the reporter's (currently advisory) flag.
         self.cancel_requested.connect(reporter.request_cancel)
 
     def _unbind(self) -> None:
@@ -138,6 +137,7 @@ class ProgressDialog(DialogTemplate):
         self.set_elapsed(0)
         self.set_remaining(0)
         self._cancel_btn.setText("Cancel")
+        self._cancel_btn.setEnabled(True)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         """Closing hides the monitor; it never cancels loading or destroys it.
@@ -185,10 +185,12 @@ class ProgressDialog(DialogTemplate):
         """Put the dialog into its terminal state, then auto-close it shortly
         after so the popup dismisses itself once the load completes."""
         self._finished = True
-        self.set_progress(100)
+        if success:
+            self.set_progress(100)
         if message:
             self._progress_card.set_operation(message)
         self._cancel_btn.setText("Close")
+        self._cancel_btn.setEnabled(True)
         # Brief pause so the user glimpses 100% / the final message, then close.
         QTimer.singleShot(700, self._auto_dismiss)
 
@@ -204,6 +206,8 @@ class ProgressDialog(DialogTemplate):
             self.accept()
             return
         self.cancel_requested.emit()
+        self._cancel_btn.setText("Cancelling...")
+        self._cancel_btn.setEnabled(False)
 
     def _on_reporter_finished(self, success: bool, message: str) -> None:
         self.finish(success, message)

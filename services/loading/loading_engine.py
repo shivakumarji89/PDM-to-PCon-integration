@@ -26,6 +26,7 @@ operation) and does not touch the existing Load Product / Load Family
 implementations or the shared active snapshot.
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -117,6 +118,7 @@ class LoadingEngine:
             snapshot = self._build_snapshot(built, request, activity)
             self._engineering_initialization(snapshot, activity)
 
+            activity.checkpoint()
             activity.complete("Load complete")
             return LoadResult(
                 ok=True,
@@ -124,6 +126,9 @@ class LoadingEngine:
                 product_ids=product_ids,
                 activity_id=activity.id,
             )
+        except OperationCancelled as error:
+            activity.cancel(str(error))
+            return LoadResult(ok=False, cancelled=True, message=str(error), activity_id=activity.id)
         except Exception as error:  # defensive: report and never leak partials
             activity.fail(str(error))
             return LoadResult(ok=False, message=str(error), activity_id=activity.id)
@@ -209,12 +214,15 @@ class LoadingEngine:
         info = {str(r.ProductId): r for r in info_rows}
         attributes: dict[str, list] = defaultdict(list)
         for r in attribute_rows:
+            activity.checkpoint()
             attributes[str(r.ProductId)].append(r)
         options: dict[str, list] = defaultdict(list)
         for r in option_rows:
+            activity.checkpoint()
             options[str(r.ProductId)].append(r)
         items: dict[str, list] = defaultdict(list)
         for r in item_rows:
+            activity.checkpoint()
             items[str(r.ProductId)].append(r)
         return _LookupIndexes(
             info=info,
@@ -233,6 +241,7 @@ class LoadingEngine:
         pdm = self._context.pdm_service
         built: list[_BuiltProduct] = []
         for pid in product_ids:
+            activity.checkpoint()
             product = Product(id=pid)
             info_row = indexes.info.get(pid)
             if info_row is not None:
@@ -277,6 +286,7 @@ class LoadingEngine:
             snapshot.product = first
             snapshot.id = first.id
         for entry in built:
+            activity.checkpoint()
             snapshot.articles.extend(entry.articles)
             snapshot.properties.extend(entry.properties)
             snapshot.property_values.extend(entry.property_values)
@@ -309,6 +319,7 @@ class LoadingEngine:
         self, activity: "ActivityHandle", index: int, operation: str
     ) -> None:
         """Report the current stage, operation and (stage-based) percentage."""
+        activity.checkpoint()
         activity.update_step(
             operation,
             stage_name=self._STAGES[index],

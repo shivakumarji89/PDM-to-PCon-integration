@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -32,16 +32,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.progress import ProgressReporter
 from services.mdb_classification_service import MdbClassificationService
 from ui.dialogs.progress_dialog import ProgressDialog
-
-
-class _RepositoryExtractSignals(QObject):
-    """Signals emitted by the background repository extraction worker."""
-
-    finished = Signal(int, object)  # (load token, payload)
-    failed = Signal(int, str)      # (load token, message)
+from ui.workers.background_task import ReportedTask
+from core.cancellation import checkpoint
 
 
 class _RepositoryClassTypeDialog(QDialog):
@@ -128,56 +122,6 @@ class _RepositoryClassTypeDialog(QDialog):
                 mapping[class_id] = combo.currentText()
         self._snapshot.mdb_class_types = mapping
         self.accept()
-
-
-class _RepositoryExtractWorker(QRunnable):
-    """Reads one selected repository MDB without blocking the UI."""
-
-    def __init__(self, context, repository_path: str, reporter, signals, token: int) -> None:
-        super().__init__()
-        self._context = context
-        self._repository_path = repository_path
-        self._reporter = reporter
-        self._signals = signals
-        self._token = token
-
-    def run(self) -> None:
-        try:
-            self._reporter.advance("Inspecting repository package...")
-            repository = self._context.maintenance_repository_link_service.inspect_repository(
-                self._repository_path
-            )
-
-            self._reporter.advance("Reading MDB structural tables...")
-            data = self._context.mdb_reverse_engineering_service.read(
-                repository["ocd_path"],
-                include_prices=True,
-            )
-
-            self._reporter.advance("Mapping MDB data to Workbench workflows...")
-            snapshot = self._context.mdb_reverse_engineering_service.import_snapshot(data)
-            self._reporter.advance("Initializing engineering workspace...")
-            self._context.engineering_initialization_service.initialize(snapshot)
-            self._reporter.advance("Activating Articles, Class Creation, Text, Relations and Pricing...")
-            total_rows = sum(data.table_counts.values())
-            self._signals.finished.emit(
-                self._token, (repository, data, snapshot, total_rows)
-            )
-        except RuntimeError as error:
-            message = str(error)
-            try:
-                self._signals.failed.emit(self._token, message)
-            except RuntimeError:
-                # The widget may have been destroyed while the worker was
-                # finishing. There is nothing left to update on the UI.
-                pass
-        except Exception as error:
-            try:
-                self._signals.failed.emit(self._token, str(error))
-            except RuntimeError:
-                pass
-
-
 
 
 class RepositoryWorkspace(QWidget):
@@ -335,17 +279,11 @@ class RepositoryWorkspace(QWidget):
             self._select_repository_path(path)
 
     def _select_repository_path(self, path: str) -> None:
-        # Invalidate the previous repository immediately. Otherwise downstream
-        # workflows can display the old snapshot while the new repository is
-        # still being extracted in the background.
+        if getattr(self, "_repository_run", None) is not None and self._repository_run.active:
+            self._repository_progress_dialog.show()
+            return
         self._repository_load_token += 1
         token = self._repository_load_token
-        if self._context.snapshot_source == "pdm":
-            from services.maintenance_alignment_service import MaintenanceAlignmentService
-            MaintenanceAlignmentService(self._context).restore_pdm_scope()
-        self._context.register_mdb_import_snapshot(None)
-        self._context.register_maintenance_repository_info(None)
-        self.repository_cleared.emit()
         try:
             inspection = self._context.maintenance_repository_link_service.inspect_repository(path)
         except Exception as error:
@@ -353,7 +291,6 @@ class RepositoryWorkspace(QWidget):
             return
 
         self._repository_path_value = str(inspection["path"])
-        self._context.register_maintenance_repository_info(inspection)
         self._repository_path.setText(self._repository_path_value)
         self._repository_status.setText(
             f"Loading: {inspection['name']}  |  "
@@ -365,15 +302,10 @@ class RepositoryWorkspace(QWidget):
     def _start_repository_extraction(self, path: str, token: int) -> None:
         # Keep the reporter independent of the widget lifetime. Repository extraction
         # runs in QThreadPool and may finish after the workspace is replaced.
-        reporter = ProgressReporter()
+        run = ReportedTask(self)
+        self._repository_run = run
+        reporter = run.reporter
         self._repository_extract_reporter = reporter
-        self._repository_extract_signals = _RepositoryExtractSignals()
-        self._repository_extract_signals.finished.connect(
-            self._on_repository_extraction_finished
-        )
-        self._repository_extract_signals.failed.connect(
-            self._on_repository_extraction_failed
-        )
         reporter.begin(5, title="Open Repository", subject=Path(path).name)
         reporter.log("info", f"Opening repository {Path(path).name}")
 
@@ -389,10 +321,29 @@ class RepositoryWorkspace(QWidget):
         progress_dialog.show()
         progress_dialog.raise_()
 
-        worker = _RepositoryExtractWorker(
-            self._context, path, reporter, self._repository_extract_signals, token
-        )
-        self._pool.start(worker)
+        context = self._context
+
+        def work(emit):
+            reporter.advance("Inspecting repository package...")
+            repository = context.maintenance_repository_link_service.inspect_repository(path)
+            checkpoint()
+            reporter.advance("Reading MDB structural tables...")
+            data = context.mdb_reverse_engineering_service.read(repository["ocd_path"], include_prices=True)
+            checkpoint()
+            reporter.advance("Mapping MDB data to Workbench workflows...")
+            snapshot = context.mdb_reverse_engineering_service.import_snapshot(data)
+            checkpoint()
+            reporter.advance("Initializing engineering workspace...")
+            context.engineering_initialization_service.initialize(snapshot)
+            checkpoint()
+            return repository, data, snapshot, sum(data.table_counts.values())
+
+        run.start(work, finished=lambda payload: self._on_repository_extraction_finished(token, payload),
+                  failed=lambda message: self._on_repository_extraction_failed(token, message),
+                  cancelled=self._on_repository_cancelled)
+
+    def _on_repository_cancelled(self, message: str) -> None:
+        self._repository_status.setText(f"{message} Previous repository snapshot retained.")
 
     def _on_repository_extraction_finished(self, token: int, payload) -> None:
         # Ignore a late worker result if the user selected another repository.
@@ -409,6 +360,7 @@ class RepositoryWorkspace(QWidget):
             )
             return
 
+        self._context.register_maintenance_repository_info(repository)
         self._context.register_mdb_import_snapshot(snapshot)
         if self._context.snapshot_source == "pdm" and self._context.pdm_snapshot is not None:
             from services.maintenance_alignment_service import MaintenanceAlignmentService
@@ -434,6 +386,9 @@ class RepositoryWorkspace(QWidget):
         QMessageBox.warning(self, "Open Repository", message)
 
     def clear_repository(self) -> None:
+        run = getattr(self, "_repository_run", None)
+        if run is not None and run.active:
+            run.reporter.request_cancel()
         self._repository_load_token += 1
         self._repository_path_value = ""
         self._context.register_maintenance_repository_info(None)

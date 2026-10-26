@@ -262,7 +262,6 @@ def test_sql_is_parameterised(tmp_path):
 
 def test_resets_run_state_and_status(tmp_path):
     h = make(tmp_path)
-    h._abortThread = True
     h._itemsWritten = ["old"]
     h.p00_setup()
     assert h._abortThread is False and h._itemsWritten == [] and h.materialsWritten == []

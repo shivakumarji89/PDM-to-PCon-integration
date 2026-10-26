@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from services.sif_validation_service import SifValidationService
+from core.cancellation import cancellation_scope, checkpoint
 
 
 class CancellableSifValidationService(SifValidationService):
@@ -17,12 +18,14 @@ class CancellableSifValidationService(SifValidationService):
         vals = [str(i) for i in items if i]
         missing = []
         for item in vals:
+            checkpoint()
             key = (item, int(site) if site is not None else None)
             if key not in cache:
                 missing.append(item)
 
         if missing:
             for chunk in repo._chunked(missing, repo._IN_CHUNK):
+                checkpoint()
                 ph = repo._placeholders(len(chunk))
                 rows = repo._execute(
                     "SELECT i.Item, pc.Product_Code AS Code, cat.Name AS Category "
@@ -42,12 +45,14 @@ class CancellableSifValidationService(SifValidationService):
                     conn,
                 )
                 for row in rows:
+                    checkpoint()
                     item = str(row.Item)
                     code = (row.Code or "").strip()
                     category = (row.Category or "").strip()
                     value = f"{category} ({code})" if code else category
                     cache[(item, int(site) if site is not None else None)] = value
             for item in missing:
+                checkpoint()
                 cache.setdefault((item, int(site) if site is not None else None), "")
 
         return {
@@ -81,10 +86,17 @@ class CancellableSifValidationService(SifValidationService):
 
         from repositories.cancellable_pdm_repository import CancellablePDMRepository
 
+        operation_control.checkpoint()
         repo = CancellablePDMRepository(self.context, operation_control, self._lookup_cache)
         self.last_skipped_items = []
-        conn = repo.get_connection()
+        conn = None
+        def emit_result(result):
+            operation_control.checkpoint()
+            if on_result is not None:
+                on_result(result)
+
         try:
+            conn = repo.get_connection()
             # Only query PDM for the server date when no validation date was supplied.
             # The OBX UI always supplies a date, so this avoids an unnecessary round trip
             # while preserving the existing fallback for programmatic callers.
@@ -93,6 +105,7 @@ class CancellableSifValidationService(SifValidationService):
             )
             groups: dict[str, list] = {}
             for line in lines:
+                operation_control.checkpoint()
                 groups.setdefault(line.currency or currency, []).append(line)
 
             sites: dict[str, int | None] = {}
@@ -105,26 +118,22 @@ class CancellableSifValidationService(SifValidationService):
                     cur, repo, conn, obx=obx
                 )
                 sites[cur] = group_site
-                results.extend(
-                    self._validate_group(
-                        cur,
-                        group,
-                        group_site,
-                        repo,
-                        conn,
-                        mydate,
-                        done,
-                        total,
-                        progress,
-                        stage,
-                        on_result,
-                        "OBX" if obx else "SIF",
-                        obx,
+                with cancellation_scope(operation_control.cancellation_token):
+                    results.extend(
+                        self._validate_group(
+                            cur, group, group_site, repo, conn, mydate,
+                            done, total, progress, stage,
+                            emit_result if on_result is not None else None,
+                            "OBX" if obx else "SIF", obx,
+                        )
                     )
-                )
             results.sort(key=lambda result: result.seq)
+            operation_control.checkpoint()
             self.last_skipped_items = list(dict.fromkeys(repo.last_skipped_option_items))
             return sites, results
         finally:
-            conn.close()
-            operation_control.unregister_cancel_handler(repo.cancel_active_operation)
+            try:
+                if conn is not None:
+                    conn.close()
+            finally:
+                operation_control.unregister_cancel_handler(repo.cancel_active_operation)

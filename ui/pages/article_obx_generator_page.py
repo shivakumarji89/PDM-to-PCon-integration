@@ -6,7 +6,7 @@ reviewed.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -23,37 +23,11 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
-from core.progress import ProgressReporter
 from ui.components import SectionHeader
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.components._styles import secondary_button_qss
 from ui.pages.base_page import BasePage
-
-
-class _PermutationBuildSignals(QObject):
-    """Signals emitted by the background permutation-build worker."""
-
-    finished = Signal(object)
-    failed = Signal(str)
-
-
-class _PermutationBuildWorker(QRunnable):
-    """Build permutations away from the UI thread."""
-
-    def __init__(self, service, snapshot, reporter, signals) -> None:
-        super().__init__()
-        self._service = service
-        self._snapshot = snapshot
-        self._reporter = reporter
-        self._signals = signals
-
-    def run(self) -> None:
-        try:
-            result = self._service.build(self._snapshot, reporter=self._reporter)
-        except Exception as error:  # defensive: never crash the worker thread
-            self._signals.failed.emit(f"Unexpected error: {error}")
-        else:
-            self._signals.finished.emit(result)
+from ui.workers.background_task import ReportedTask
 
 
 class ArticleObxGeneratorPage(BasePage):
@@ -72,7 +46,6 @@ class ArticleObxGeneratorPage(BasePage):
         )
         self._context = context
         self._permutations = []
-        self._thread_pool = QThreadPool(self)
         self._build_signals = None
         self._build_reporter = None
         self._build_dialog = None
@@ -167,6 +140,8 @@ class ArticleObxGeneratorPage(BasePage):
         )
 
     def _build_permutations(self) -> None:
+        if getattr(self, "_build_run", None) is not None and self._build_run.active:
+            return
         snapshot = self._context.ensure_qa_snapshot()
         self._table.setRowCount(0)
         self._permutations = []
@@ -179,16 +154,13 @@ class ArticleObxGeneratorPage(BasePage):
             return
 
         self._build_button.setEnabled(False)
-        reporter = ProgressReporter(self)
+        run = ReportedTask(self)
+        self._build_run = run
+        reporter = run.reporter
         dialog = self._context_window_progress_monitor()
         dialog.bind(reporter)
         self._build_reporter = reporter
         self._build_dialog = dialog
-
-        signals = _PermutationBuildSignals()
-        signals.finished.connect(self._on_permutations_finished)
-        signals.failed.connect(self._on_permutations_failed)
-        self._build_signals = signals
 
         reporter.begin(
             max(1, len(snapshot.articles)),
@@ -197,16 +169,20 @@ class ArticleObxGeneratorPage(BasePage):
         )
         reporter.note("Preparing repository configuration dimensions")
 
-        worker = _PermutationBuildWorker(
-            self._context.article_permutation_service,
-            snapshot,
-            reporter,
-            signals,
-        )
+        service = self._context.article_permutation_service
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
-        self._thread_pool.start(worker)
+        run.start(lambda emit: service.build(snapshot, reporter=reporter),
+                  finished=self._on_permutations_finished,
+                  failed=self._on_permutations_failed,
+                  cancelled=self._on_permutations_cancelled)
+
+    def _on_permutations_cancelled(self, message: str) -> None:
+        self._status.setText(message)
+        self._build_button.setEnabled(True)
+        self._build_reporter = None
+        self._build_signals = None
 
     def _context_window_progress_monitor(self) -> ProgressDialog:
         main = self.window()

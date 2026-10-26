@@ -16,9 +16,39 @@ from PySide6.QtWidgets import (
 )
 
 from core.errors import PDMConnectionError
+from core.cancellation import OperationCancelled, cancellation_scope
 from core.validation_control import ValidationCancelled, ValidationControl, ValidationPaused
 from ui import theme
 from ui.pages.base_page import BasePage
+from ui.workers.background_task import task_host
+
+
+class _ObxRunHost(QObject):
+    """Keep reporters/signals alive until every worker has unwound."""
+
+    def __init__(self, owner):
+        super().__init__(task_host())
+        from core.progress import ProgressReporter
+        self.reporter = ProgressReporter(self)
+        self.control = ValidationControl(self.reporter.cancellation_token)
+        self.workers = 0
+        self.released = False
+        owner.destroyed.connect(self.owner_destroyed)
+
+    def owner_destroyed(self, *_args):
+        self.control.cancel()
+        self.release()
+
+    def worker_finished(self, *_args):
+        self.workers -= 1
+        if self.released and self.workers == 0:
+            self.deleteLater()
+
+    def release(self):
+        self.released = True
+        self.reporter.stop_timer()
+        if self.workers == 0:
+            self.deleteLater()
 
 
 class _ObxSignals(QObject):
@@ -72,12 +102,16 @@ class _ObxWorker(QRunnable):
         return False
 
     def run(self) -> None:
+        if self._control.is_cancelled():
+            self._signals.cancelled.emit("Validation cancelled.")
+            return
         completed: dict[int, object] = {}
         pending = list(self._lines)
         sites: dict = {}
         recovery_attempts = 0
 
         def on_result(result) -> None:
+            self._control.checkpoint()
             key = getattr(result, "seq", None)
             if key in completed:
                 return
@@ -85,16 +119,18 @@ class _ObxWorker(QRunnable):
             self._reporter.advance(f"Validated line {key}")
             self._signals.line_done.emit(result)
 
-        self._reporter.note(f"Worker processing {len(pending)} line(s).")
         while pending:
             try:
                 self._control.checkpoint()
-                site, results = self._svc.validate(
-                    self._currency, pending, site=self._site_id,
-                    validation_date=self._validation_date, progress=None,
-                    stage=lambda text: self._reporter.note(text),
-                    on_result=on_result, operation_control=self._control,
-                )
+                self._reporter.note(f"Worker processing {len(pending)} line(s).")
+                with cancellation_scope(self._control.cancellation_token):
+                    site, results = self._svc.validate(
+                        self._currency, pending, site=self._site_id,
+                        validation_date=self._validation_date, progress=None,
+                        stage=lambda text: self._reporter.note(text),
+                        on_result=on_result, operation_control=self._control,
+                    )
+                self._control.checkpoint()
                 if site:
                     sites.update(site)
                 for result in results:
@@ -123,11 +159,10 @@ class _ObxWorker(QRunnable):
                     break
             except ValidationPaused as exc:
                 reason = str(exc) or "Validation paused."
-                self._reporter.pause(reason)
                 pending = [line for line in pending if getattr(line, "seq", None) not in completed]
                 self._signals.paused.emit((sites, pending, reason))
                 return
-            except ValidationCancelled as exc:
+            except OperationCancelled as exc:
                 self._signals.cancelled.emit(str(exc) or "Validation cancelled.")
                 return
             except Exception as exc:
@@ -136,7 +171,6 @@ class _ObxWorker(QRunnable):
                     return
                 if self._control.is_paused():
                     reason = "Validation paused."
-                    self._reporter.pause(reason)
                     pending = [line for line in pending if getattr(line, "seq", None) not in completed]
                     self._signals.paused.emit((sites, pending, reason))
                     return
@@ -677,6 +711,7 @@ class ObxValidationPage(BasePage):
         control = self._active_control
         if control is None:
             return
+        self._discard_results = True
         control.cancel()
         if self._active_reporter is not None:
             self._active_reporter.stop_timer()
@@ -685,9 +720,13 @@ class ObxValidationPage(BasePage):
         self._progress_state.setText("CANCELLING")
 
     def _start_validation(self, lines: list, fresh: bool) -> None:
-        from core.progress import ProgressReporter
-        reporter = ProgressReporter(self)
-        control = ValidationControl()
+        if self._active_control is not None:
+            return
+        self._run_host = _ObxRunHost(self)
+        reporter = self._run_host.reporter
+        control = self._run_host.control
+        self._terminal_error = None
+        self._discard_results = False
         self._active_control = control
         self._active_reporter = reporter
         self._reporter = reporter
@@ -751,6 +790,10 @@ class ObxValidationPage(BasePage):
     def _dispatch_memory_batch(self) -> None:
         if self._active_control is None:
             return
+        if self._active_control.is_cancelled():
+            if self._dispatch_workers == 0:
+                self._on_cancelled("Validation cancelled.")
+            return
         if not self._dispatch_batch_remaining:
             if not self._dispatch_remaining:
                 results = sorted(
@@ -777,13 +820,18 @@ class ObxValidationPage(BasePage):
         )
 
         for chunk in chunks[:2]:
-            signals = _ObxSignals()
+            if self._active_control.is_cancelled():
+                break
+            signals = _ObxSignals(self._run_host)
             signals.finished.connect(self._on_worker_finished)
             signals.failed.connect(self._on_failed)
             signals.paused.connect(self._on_paused)
             signals.cancelled.connect(self._on_cancelled)
             signals.recovery.connect(self._on_recovery)
             signals.line_done.connect(self._on_unique_result)
+            for terminal in (signals.finished, signals.failed, signals.paused, signals.cancelled):
+                terminal.connect(self._run_host.worker_finished)
+            self._run_host.workers += 1
             self._dispatch_workers += 1
             QThreadPool.globalInstance().start(
                 _ObxWorker(
@@ -799,6 +847,9 @@ class ObxValidationPage(BasePage):
             )
 
     def _on_worker_finished(self, payload) -> None:
+        if isinstance(self._active_control, ValidationControl) and self._active_control.is_cancelled():
+            self._on_cancelled("Validation cancelled.")
+            return
         sites, _results = payload
         self._dispatch_sites.update(sites or {})
         # Test doubles and older worker hosts may not initialise the counter.
@@ -808,10 +859,8 @@ class ObxValidationPage(BasePage):
         if type(workers) is not int:
             # Compatibility path for older worker hosts/test doubles without
             # a dispatch counter: expand this worker's remainder immediately.
-            completed_seqs = {getattr(result, "seq", None) for result in self._results}
-            self._pending_lines = self._context.obx_validation_service.expand_pending(
-                list(remaining_lines or []), self._lines, completed_seqs)
-            self._is_paused = True
+            self._dispatch_workers = 0
+            self._dispatch_memory_batch()
             return
         self._dispatch_workers = max(0, workers - 1)
         if self._active_control is None:
@@ -841,6 +890,10 @@ class ObxValidationPage(BasePage):
         self._dispatch_memory_batch()
 
     def _release_active_control(self) -> None:
+        host = getattr(self, "_run_host", None)
+        if isinstance(host, _ObxRunHost):
+            host.release()
+            self._run_host = None
         self._active_control = None
         self._active_reporter = None
         self._reporter = None
@@ -931,22 +984,27 @@ class ObxValidationPage(BasePage):
             self._update_bottom_status()
 
     def _on_recovery(self, payload) -> None:
+        if getattr(self, "_discard_results", False) is True:
+            return
         attempt, _maximum, message = payload
         self._recovery_attempt = attempt
         self._update_bottom_status()
         QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
-        self._finalize_validation_elapsed()
-        self._release_active_control()
-        self._set_run_button_state("Start Validation")
-        self._launch_btn.setEnabled(bool(self._lines))
-        self._save_session()
-        self._write_checkpoint()
-        self._progress_state.setText("FAILED")
-        QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{message}")
+        if self._active_control is not None:
+            self._terminal_error = message
+            self._active_control.cancel()
+        self._on_cancelled(message)
 
     def _on_cancelled(self, message: str) -> None:
+        self._discard_results = True
+        workers = self._dispatch_workers
+        if type(workers) is int:
+            self._dispatch_workers = max(0, workers - 1)
+            if self._dispatch_workers > 0:
+                self._launch_btn.setEnabled(False)
+                return
         self._finalize_validation_elapsed()
         self._release_active_control()
         self._pending_lines = []
@@ -955,9 +1013,18 @@ class ObxValidationPage(BasePage):
         self._launch_btn.setEnabled(bool(self._lines))
         self._delete_checkpoint()
         self._progress_state.setText("CANCELLED")
+        error = getattr(self, "_terminal_error", None)
+        if isinstance(error, str) and error:
+            self._progress_state.setText("FAILED")
+            QMessageBox.warning(self, "OBX Validation", f"Validation failed:\n{error}")
 
     def _on_paused(self, payload) -> None:
+        if isinstance(self._active_control, ValidationControl) and self._active_control.is_cancelled():
+            self._on_cancelled("Validation cancelled.")
+            return
         sites, remaining_lines, reason = payload
+        if self._active_reporter is not None:
+            self._active_reporter.pause(reason)
         self._pause_finalization_pending = True
         if not isinstance(self._paused_worker_sites, dict):
             self._paused_worker_sites = {}
@@ -1051,6 +1118,11 @@ class ObxValidationPage(BasePage):
         return f"{len(self._results)}/{len(self._lines)}"
 
     def _on_unique_result(self, result) -> None:
+        control = self._active_control
+        if getattr(self, "_discard_results", False) is True or (
+            isinstance(control, ValidationControl) and control.is_cancelled()
+        ):
+            return
         self._unique_done += 1
         for mapped in self._context.obx_validation_service.expand_unique_result(
             result, self._dispatch_groups
@@ -1058,6 +1130,11 @@ class ObxValidationPage(BasePage):
             self._on_line_done(mapped)
 
     def _on_line_done(self, r) -> None:
+        control = self._active_control
+        if getattr(self, "_discard_results", False) is True or (
+            isinstance(control, ValidationControl) and control.is_cancelled()
+        ):
+            return
         self._results.append(r)
         self._individual_export_action.setEnabled(True)
         self._refresh_export_menu_enabled()
@@ -1080,6 +1157,8 @@ class ObxValidationPage(BasePage):
             self._last_checkpoint_count = self._live["lines"]
 
     def _on_results(self, payload) -> None:
+        if getattr(self, "_discard_results", False) is True:
+            return
         self._finalize_validation_elapsed()
         sites, results = payload
         self._release_active_control()

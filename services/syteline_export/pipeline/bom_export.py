@@ -9,6 +9,7 @@ iteration (not one of ExportThread's five). They are used for single statements 
 tables), so the port uses ONE dedicated session named ``BOM_CONNECTION`` ("cbom").
 """
 from __future__ import annotations
+from core.cancellation import OperationCancelled, checkpoint
 
 from typing import Any, Callable
 
@@ -55,6 +56,7 @@ class BomExport:
         *,
         report_error: Callable[[str, BaseException], None] | None = None,
         stage: str = "",
+        abort_check: Callable[[], None] | None = None,
     ) -> None:
         self.db = db
         self.sheet1Data = sheet1Data
@@ -62,15 +64,29 @@ class BomExport:
         self.sheet2Items = sheet2Items
         self.sheet2OptValIds = sheet2OptValIds
         self._report_error = report_error
+        self._abort_check = abort_check
         self._stage = stage
         self.errors: list[str] = []
 
     def _q(self, sql: str, params: tuple) -> list[dict[str, Any]]:
-        return self.db.query(BOM_CONNECTION, sql, params, stage=self._stage)
+        self.check_abort()
+        try:
+            rows = self.db.query(BOM_CONNECTION, sql, params, stage=self._stage)
+        except Exception:
+            self.check_abort()
+            raise
+        self.check_abort()
+        return rows
+
+    def check_abort(self) -> None:
+        checkpoint()
+        if self._abort_check is not None:
+            self._abort_check()
 
     # SytelineBOMExport.cs:19-172
     def generate_bom_data(self) -> bool:
         try:
+            self.check_abort()
             sheet1Data = self.sheet1Data
             sheet2Data = self.sheet2Data
             sheet2Items = self.sheet2Items
@@ -79,6 +95,7 @@ class BomExport:
             num = len(sheet2Data) - 1
             i = num
             while i >= 0:
+                self.check_abort()
                 array = tostr(sheet2Data[i]).split("\t")
                 if array[0] == "":
                     del sheet2Data[i]
@@ -88,6 +105,7 @@ class BomExport:
 
             num2 = len(sheet2Items) - 1  # bound fixed once, as in C# (for-loop limit)
             for j in range(0, num2 + 1):
+                self.check_abort()
                 if tostr(sheet2Data[j]) == "":
                     continue
                 array2 = tostr(sheet2Data[j]).split("\t")
@@ -96,17 +114,20 @@ class BomExport:
                 sheet2Data[j] = _net_replace(tostr(sheet2Data[j]), text, newValue)
                 num3 = len(sheet2Items) - 1
                 for k in range(0, num3 + 1):
+                    self.check_abort()
                     array3 = tostr(sheet2Data[k]).split("\t")
                     if array3[0] == text:
                         sheet2Items[k] = _net_replace(tostr(sheet2Items[k]), text, newValue)
                 num4 = len(sheet1Data) - 1
                 for l in range(0, num4 + 1):
+                    self.check_abort()
                     array4 = tostr(sheet1Data[l]).split("\t")
                     if array4[0] == text:
                         sheet1Data[l] = _net_replace(tostr(sheet1Data[l]), text, newValue)
 
             num5 = len(sheet1Data) - 1
             for m in range(0, num5 + 1):
+                self.check_abort()
                 array5 = tostr(sheet1Data[m]).split("\t")
                 # C# uses non-short-circuit '&': array5[24] is evaluated even when the item starts with "9-".
                 cond_a = not array5[0].startswith("9-")
@@ -123,10 +144,12 @@ class BomExport:
                         num6 = 2
                         num7 = len(sheet2Data) - 1
                         for n in range(0, num7 + 1):
+                            self.check_abort()
                             array6 = tostr(sheet2Data[n]).split("\t")
                             if array6[0] == array5[0] and net_double(array6[7]) >= float(num6):
                                 num6 = round(net_double(array6[7]) + 1.0)
                         for r in rows2:
+                            self.check_abort()
                             text2 = _sheet1_row(r["material"], r["description"])
                             if not list_contains(sheet1Data, text2):
                                 sheet1Data.append(text2)
@@ -140,6 +163,7 @@ class BomExport:
 
             num8 = len(sheet2Items) - 1
             for num9 in range(0, num8 + 1):
+                self.check_abort()
                 if tostr(sheet2Data[num9]) == "":
                     continue
                 array7 = tostr(sheet2Data[num9]).split("\t")
@@ -157,10 +181,12 @@ class BomExport:
                         num10 = 2
                         num11 = len(sheet2Data) - 1
                         for num12 in range(0, num11 + 1):
+                            self.check_abort()
                             array8 = tostr(sheet2Data[num12]).split("\t")
                             if left == array8[0] and net_double(array8[7]) >= float(num10):
                                 num10 = round(net_double(array8[7]) + 1.0)
                         for r in rows4:
+                            self.check_abort()
                             text3 = _sheet1_row(r["material"], r["description"])
                             if not list_contains(sheet1Data, text3):
                                 sheet1Data.append(text3)
@@ -172,6 +198,8 @@ class BomExport:
                             sheet2Data.append(value2)
                             num10 += 1
             return True
+        except OperationCancelled:
+            raise
         except Exception as ex:  # catch (Exception) { MsgBox(ex.ToString()); result = false; }
             self.errors.append(f"{type(ex).__name__}: {ex}")
             if self._report_error is not None:

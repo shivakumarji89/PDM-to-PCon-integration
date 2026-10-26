@@ -16,6 +16,7 @@ option codes matched to their PDM band by prefix (``1HA01`` -> ``1HA#``).
 OBX (pCon) uses a dedicated parser and shares the PDM repricing engine; this service remains the shared pricing implementation.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -844,6 +845,17 @@ class SifValidationService(BaseService):
 
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
+        try:
+            return self._validate_connected(
+                repo, conn, currency, lines, site, obx, validation_date,
+                progress, stage, on_result,
+            )
+        finally:
+            conn.close()
+
+    def _validate_connected(self, repo, conn, currency, lines, site, obx,
+                            validation_date, progress, stage, on_result):
+        checkpoint()
         server_date = self._server_date(repo, conn)
         mydate = self._normalise_pricing_date(validation_date or server_date)
         groups: dict[str, list[SifLine]] = {}
@@ -855,6 +867,7 @@ class SifValidationService(BaseService):
         done = [0]
         total = len(lines)
         for cur, group in groups.items():
+            checkpoint()
             # Use the original PDM validator's currency-to-site business rule.
             # PDM remains the final authority: this only selects the context for
             # fnGetListPriceByItem and option pricing.
@@ -878,6 +891,7 @@ class SifValidationService(BaseService):
         results: list[SifResult] = []
         if site is None:
             for line in lines:
+                checkpoint()
                 done[0] += 1
                 if progress:
                     progress(done[0], total, line.base)
@@ -905,6 +919,7 @@ class SifValidationService(BaseService):
         # is handled by the OBX worker at a separate, higher level.
         window = self._PRICE_WINDOW
         for start in range(0, len(lines), window):
+            checkpoint()
             chunk = lines[start:start + window]
             items = sorted({l.base for l in chunk if l.base})
             normal_items = [item for item in items if item not in us_items]
@@ -1055,6 +1070,7 @@ class SifValidationService(BaseService):
             option_errors_by_seq: dict[int, str] = {}
             valid_pricing_items: set[str] = set()
             for line in chunk:
+                checkpoint()
                 if line.base not in eligible_base_items:
                     continue
                 if line.base in us_items:
@@ -1226,6 +1242,7 @@ class SifValidationService(BaseService):
                 ).append(row)
 
             for line in chunk:
+                checkpoint()
                 # A worker can report an individual option lookup as skipped.
                 # Do not manufacture a pricing result for it; the OBX worker
                 # will retain that line as pending so it can be retried alone.

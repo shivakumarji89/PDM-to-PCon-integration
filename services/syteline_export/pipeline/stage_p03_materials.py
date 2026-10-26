@@ -85,6 +85,7 @@ class P03Mixin:
         def read_increments(rows: list, target: list) -> None:
             # while (sqlDataReader7.Read()) { ... } shared by the stage 14 and stage 15 readers
             for row in rows:
+                self.check_abort()
                 # debug-only block omitted (flag default false)
                 if self._millerCAD:
                     if tostr(row["IncList"]) != "":
@@ -98,6 +99,7 @@ class P03Mixin:
                     )
 
         for num19 in range(v.num18 + 1):  # num18 = arrayList45.Count - 1 (ExportThread.cs:2875, other range)
+            self.check_abort()
             arrayList66 = []  # incremental prices "<item>|<increment>" for this option
             # debug-only block omitted (flag default false)  [debugItemsAndOptions text20]
             # NOTE: text20 is only ever read under debugItemsAndOptions/debugExclusions
@@ -194,6 +196,7 @@ class P03Mixin:
                 flag6 = False
                 num20 = 1
                 while True:  # do { ... } while (num20 <= 2)
+                    self.check_abort()
                     num21 = int(v.arrayList47[num19])  # Conversions.ToInteger(arrayList47[num19].ToString()) (int column)
                     if (num20 == 2) & (tostr(v.arrayList50[num19]).lower() == "access flap finish"):
                         num21 = 1142
@@ -214,6 +217,7 @@ class P03Mixin:
                         self.threadStage = "16.1"
                         sqlDataReader2 = self.q("c2", v.text, [v.sqlDataReader["ItemId"], num21, num21])
                         for row in sqlDataReader2:
+                            self.check_abort()
                             if tostr(row["parentitem"]) != "":
                                 text32 = text32 + tostr(row["parentitem"]) + "|"
                                 flag6 = True
@@ -226,6 +230,7 @@ class P03Mixin:
                         # debug-only block omitted (flag default false)
                         array = text30.split("|")
                         for num24 in range(len(array)):
+                            self.check_abort()
                             if array[num24] == "":
                                 continue
                             if num24 == 0:
@@ -246,6 +251,7 @@ class P03Mixin:
             flag7 = False  # foundAtLeastOneParent
             if v.arrayList57[num19] != "":
                 for num26 in range(len(v.arrayList63)):
+                    self.check_abort()
                     if not (v.arrayList63[num26] == net_int(v.arrayList57[num19])):
                         continue
                     flag7 = True
@@ -268,6 +274,7 @@ class P03Mixin:
                         # debug-only block omitted (flag default false)
                     self.threadStage = "16.3"
                     for num28 in range(len(arrayList67)):
+                        self.check_abort()
                         text34 = tostr(arrayList67[num28])
                         if index_of(text34, "<") > -1:
                             text34 = substring(text34, 0, index_of(text34, "<"))
@@ -332,6 +339,7 @@ class P03Mixin:
 
             # --- increment accumulation (ExportThread.cs:3200-3277)
             for num32 in range(len(arrayList66)):
+                self.check_abort()
                 text39 = text30
                 if text39.startswith("9-"):
                     text39 = substring(text39, 2)
@@ -345,6 +353,7 @@ class P03Mixin:
                     elif index_of(text31, "-") > -1:
                         array5 = text31.split("|")
                         for num35 in range(len(array5)):
+                            self.check_abort()
                             if array5[num35] != "":
                                 text39 = _net_replace(text39, array5[num35], array5[num35].replace("-", "~"))
                         num33 = 2
@@ -355,6 +364,7 @@ class P03Mixin:
                     elif num33 == 2:
                         array6 = text31.split("|")
                         for num37 in range(len(array6)):
+                            self.check_abort()
                             if array6[num37] != "":
                                 text39 = _net_replace(text39, array6[num37].replace("-", "~"), array6[num37])
                 # debug-only block omitted (flag default false)
@@ -398,11 +408,13 @@ class P03Mixin:
                     text38 = text38 + text33 + "\t\t\t" + text41 + "\t\r\n"
                 self.threadStage = "16.11a"
                 for num39 in range(len(arrayList67) - 1, -1, -1):
+                    self.check_abort()
                     text42 = tostr(arrayList67[num39])
                     if index_of(text42, "<") > -1:
                         text42 = substring(text42, 0, index_of(text42, "<"))
                     num30 = 0.0
                     for num41 in range(len(arrayList66)):
+                        self.check_abort()
                         # debug-only block omitted (flag default false)
                         # DEVIATION (legacy substring match fixed): see _increment_amount
                         if text42 != "":
@@ -441,11 +453,13 @@ class P03Mixin:
                     text38 = text38 + text33 + "\t\t\t" + text41 + "\t\r\n"
                 self.threadStage = "16.11b"
                 for num43 in range(len(arrayList67) - 1, -1, -1):
+                    self.check_abort()
                     text44 = tostr(arrayList67[num43])
                     if index_of(text44, "<") > -1:
                         text44 = substring(text44, 0, index_of(text44, "<"))
                     num30 = 0.0
                     for num45 in range(len(arrayList66)):
+                        self.check_abort()
                         # debug-only block omitted (flag default false)
                         # DEVIATION (legacy substring match fixed): see _increment_amount
                         amount = _increment_amount(tostr(arrayList66[num45]), text44)
@@ -516,6 +530,7 @@ class P03Mixin:
                     v.arrayList64.append(text46)
                     v.arrayList10[list_index_of(v.arrayList9, text30)].append(text46)
                     for num49 in range(len(arrayList67)):
+                        self.check_abort()
                         text48 = tostr(arrayList67[num49])
                         if index_of(text48, "<") > -1:
                             text48 = substring(text48, 0, index_of(text48, "<"))
@@ -546,6 +561,7 @@ class P03Mixin:
                 if (not text51.endswith("|")) & (len(text51) > 0):
                     text51 += "|"
                 while index_of(text51, "|") > -1:
+                    self.check_abort()
                     text52 = substring(text51, 0, index_of(text51, "|"))
                     if (not list_contains(v.arrayList12, text52)) and v.arrayList49[num19] < 2:
                         v.arrayList12.append(text52)

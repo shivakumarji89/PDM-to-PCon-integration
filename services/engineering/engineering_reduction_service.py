@@ -13,6 +13,7 @@ The engine is strictly read-only: it never mutates Engineering, members, or
 assignments. It performs no validation, generation, or synchronization.
 """
 from __future__ import annotations
+from core.cancellation import checkpoint, OperationCancelled
 
 import re
 from dataclasses import dataclass, field
@@ -409,6 +410,7 @@ class EngineeringReductionService(BaseService):
             else None
         )
         for article in snapshot.articles:
+            checkpoint()
             article_id = str(getattr(article, "id", "") or "")
             product_id = str(getattr(article, "product_id", "") or "")
 
@@ -659,6 +661,7 @@ class EngineeringReductionService(BaseService):
 
         sets: list[ArticleSet] = []
         for pc in classes:
+            checkpoint()
             article_ids = [str(a) for a in pc.article_ids]
             attributes = self._set_attributes(
                 article_ids,
@@ -1037,6 +1040,8 @@ class EngineeringReductionService(BaseService):
                         head_layout = self.context.engineering_class_service.config_code_layout(
                             snapshot
                         )
+                    except OperationCancelled:
+                        raise
                     except Exception:
                         head_layout = {}
                  # A head property is part of the base when its value is
@@ -1177,6 +1182,7 @@ class EngineeringReductionService(BaseService):
         order: list[str] = []
         article_value_ids = article_value_ids or {}
         for article_id in article_ids:
+            checkpoint()
             product_id = product_of.get(article_id, "")
             # PDM Item-level BaseAttributeValues are authoritative when
             # present. Product-level values are a fallback only when the Item

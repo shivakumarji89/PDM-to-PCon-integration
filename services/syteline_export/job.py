@@ -22,11 +22,12 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import Callable, Literal
 
+from core.cancellation import CancellationToken, OperationCancelled, cancellation_scope, checkpoint, current_token
 from services.syteline_export.config import SyteLineExportConfig
 from services.syteline_export.pipeline.db import ExportDb
-from services.syteline_export.pipeline.run_base import ExportAborted
 
 LOGGER = logging.getLogger("syteline_export")
 
@@ -80,6 +81,7 @@ class ExportJob:
         lock_policy: LockPolicy = "refuse",
         user_name: str | None = None,
         status_callback: Callable[[str], None] | None = None,
+        cancellation_token: CancellationToken | None = None,
     ) -> None:
         self._config = config
         self._db = db
@@ -89,23 +91,57 @@ class ExportJob:
         self._run_factory = run_factory
         self._run = None
         self._cancel_requested = False
+        self._cancel_lock = RLock()
+        self.cancellation_token = cancellation_token or current_token() or CancellationToken()
+        self._staging: Path | None = None
 
     # ------------------------------------------------------------------ public
     def cancel(self) -> None:
         """Request cancellation; honoured at the legacy `_abortThread` check points."""
-        self._cancel_requested = True
-        if self._run is not None:
-            self._run.abort_thread()
+        with self._cancel_lock:
+            if self._cancel_requested or not self.cancellation_token.request_cancel():
+                return
+            self._cancel_requested = True
+            if self._run is not None:
+                self._run.abort_thread()
+            cancel = getattr(self._db, "cancel_active_operation", None)
+            if cancel is not None:
+                try:
+                    cancel()
+                except Exception:
+                    LOGGER.debug("Native cursor cancellation is unavailable", exc_info=True)
 
     def execute(self) -> ExportResult:
         started = time.monotonic()
+        try:
+            with cancellation_scope(self.cancellation_token):
+                return self._execute()
+        except OperationCancelled:
+            if self._staging is not None:
+                self._discard(self._staging)
+            return self._result("cancelled", "Export cancelled; no output was published.", started)
+        except Exception as exc:
+            LOGGER.exception("Could not prepare the export")
+            if self._staging is not None:
+                self._discard(self._staging)
+            return self._result("failed", f"Export failed: {exc}", started, errors=(str(exc),))
+        finally:
+            self._safe_close()
+
+    def _execute(self) -> ExportResult:
+        started = time.monotonic()
+        checkpoint()
         errors = self._config.validate_for_execution()
         if errors:
             return self._result("failed", "Configuration is invalid: " + " ".join(errors), started,
                                 errors=errors)
         holder = ""
         try:
+            checkpoint()
             holder = self._current_lock_holder()
+            checkpoint()
+        except OperationCancelled:
+            raise
         except Exception as exc:  # cannot read the lock: do not guess, do not export
             LOGGER.exception("Could not read Site.ExtractUser")
             self._safe_close()
@@ -122,20 +158,25 @@ class ExportJob:
 
         if holder:  # take_over: clear the dead holder's lock so the run owns it and releases it itself
             try:
+                checkpoint()
                 self._db.execute("c1", "UPDATE Site SET ExtractUser = NULL WHERE SiteId = ?",
                                  (self._config.site_id,), stage="lock-takeover")
+                checkpoint()
+            except OperationCancelled:
+                raise
             except Exception as exc:
                 LOGGER.exception("Could not take over the site extract lock")
                 self._safe_close()
                 return self._result("failed", f"Could not take over the site extract lock: {exc}",
                                     started, errors=(str(exc),), lock_holder=holder)
             LOGGER.warning("Took over the extract lock held by %s for site %s", holder, self._config.site_id)
-        staging = self._make_staging_dir()
+        checkpoint()
+        staging = self._staging = self._make_staging_dir()
         run = self._new_run(staging)
         self._run = run
         if self._cancel_requested:
             run.abort_thread()
-        run._extract_user_acquired = True  # release only what this job took (stage 42 / finally)
+        run._extract_user_acquired = False
         try:
             outcome = self._drive(run)
         except BaseException:  # pragma: no cover - defensive; _drive handles Exception
@@ -147,7 +188,11 @@ class ExportJob:
         files: tuple[str, ...] = ()
         if outcome in ("success", "completed_with_errors"):
             try:
+                checkpoint()
                 files = self._publish(staging)
+            except OperationCancelled:
+                self._discard(staging)
+                raise
             except Exception as exc:
                 LOGGER.exception("Publishing export output failed")
                 self._discard(staging)
@@ -188,7 +233,7 @@ class ExportJob:
     def _drive(self, run) -> str:
         try:
             run.exec_thread()
-        except ExportAborted:
+        except OperationCancelled:
             return "cancelled"
         except Exception as exc:
             LOGGER.exception("SyteLine export failed at stage %s", getattr(run, "threadStage", "?"))
@@ -212,10 +257,17 @@ class ExportJob:
         """Move staged files into the real output folder (same relative layout), replacing atomically."""
         root = Path(self._config.output_directory).expanduser()
         published: list[str] = []
-        files = sorted(path for path in staging.rglob("*") if path.is_file())
+        files = []
+        for path in staging.rglob("*"):
+            checkpoint()
+            if path.is_file():
+                files.append(path)
+        files.sort()
         # Prepare destinations first so a missing folder fails before any file is replaced.
         for source in files:
+            checkpoint()
             (root / source.relative_to(staging)).parent.mkdir(parents=True, exist_ok=True)
+        self.cancellation_token.commit()
         for source in files:
             target = root / source.relative_to(staging)
             os.replace(source, target)

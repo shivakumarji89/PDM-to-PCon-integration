@@ -86,6 +86,19 @@ def test_cancel_requests_cancellation_and_disables_itself(page):
     assert "Cancelling" in page.status.text()
 
 
+def test_cancel_waits_for_worker_and_discards_queued_blocked_retry(page):
+    page._start_export()
+    page._cancel_running_export()
+    page._on_export_status("queued before cancellation")
+    assert "Cancelling" in page.status.text()
+    page._start_export()
+    assert len(page.jobs) == 1 and not page.export.isEnabled()
+    page._on_export_finished(ExportResult(status="blocked", message="locked", lock_holder="alice"))
+    assert len(page.jobs) == 1  # A queued blocked result must not start a take-over.
+    assert "cancelled" in page.status.text().lower()
+    assert page.export.isEnabled()
+
+
 def finish(page, **kw):
     page._on_export_finished(ExportResult(**kw))
 

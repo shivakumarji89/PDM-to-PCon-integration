@@ -6,6 +6,8 @@ Expectations come from the C# rules cited below.
 """
 from decimal import Decimal
 
+import pytest
+
 from services.syteline_export.pipeline.db import ScriptedExportDb
 from services.syteline_export.pipeline.run import ExportRun
 
@@ -120,9 +122,12 @@ def test_cancel_stops_before_the_next_item_but_finishes_cleanly(tmp_path):
             run.abort_thread()
         return original(conn, sql, params, stage=stage)
     db.query = query
-    run.exec_thread()
-    assert run.items_processed == 1 and run._abortThread
+    from services.syteline_export.pipeline.run_base import ExportAborted
+    with pytest.raises(ExportAborted):
+        run.exec_thread()
+    assert run.items_processed == 0 and run._abortThread
     assert run.fatal_error is None
+    assert db.closed
 
 
 def test_database_failure_is_fatal_and_cleanup_still_runs(tmp_path):
