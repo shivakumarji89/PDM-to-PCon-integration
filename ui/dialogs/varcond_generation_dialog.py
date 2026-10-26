@@ -34,12 +34,11 @@ class VarCondGenerationDialog(QDialog):
         filter_row.addWidget(self._filter, 1)
         self._relation_length = QSpinBox(self)
         self._relation_length.setRange(1, 30)
-        self._relation_length.setValue(9)
         self._relation_length.setPrefix("Relation prefix length: ")
         self._relation_length.setToolTip(
-            "Group selected parent articles by this many leading characters."
+            "Defaults to the full parent article-code length. Reduce it to group "
+            "articles sharing the same leading characters under one relation group."
         )
-        self._relation_length.valueChanged.connect(self._on_selection_changed)
         filter_row.addWidget(self._relation_length)
         root.addLayout(filter_row)
 
@@ -113,6 +112,10 @@ class VarCondGenerationDialog(QDialog):
             label = code + (f" — {article.name}" if article and article.name else "")
             self._article_rows.append((code, label, str(article_id)))
         self._article_rows.sort(key=lambda row: row[0].casefold())
+        max_article_length = max((len(row[0]) for row in self._article_rows), default=1)
+        self._relation_length.setRange(1, max_article_length)
+        self._relation_length.setValue(max_article_length)
+        self._relation_length.valueChanged.connect(self._on_selection_changed)
         for code, label, _article_id in self._article_rows:
             item = QListWidgetItem(label)
             item.setData(256, code)
