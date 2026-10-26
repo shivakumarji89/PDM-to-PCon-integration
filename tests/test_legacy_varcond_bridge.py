@@ -25,6 +25,8 @@ def _request(tmp_path: Path) -> LegacyVarCondRequest:
         item_codes=["ABC.123"],
         category_id=12,
         filter="ABC",
+        server="DBCHIP08v",
+        database="PDM_Prototipo_Test",
     )
 
 
@@ -32,6 +34,13 @@ def test_rejects_missing_helper(tmp_path: Path) -> None:
     request = _request(tmp_path)
     Path(request.helper_exe).unlink()
     with pytest.raises(LegacyVarCondError, match="bridge executable not found"):
+        generate_with_legacy(request)
+
+
+def test_requires_explicit_test_database(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    request = LegacyVarCondRequest(**{**request.__dict__, "database": "PDMLive"})
+    with pytest.raises(LegacyVarCondError, match="clearly identify a test/dev"):
         generate_with_legacy(request)
 
 
