@@ -608,9 +608,6 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(self._make_action("Preferences..."))
 
         generate_menu = menu_bar.addMenu("&Generate")
-        varcond_action = QAction("Generate VARCOND", self)
-        varcond_action.triggered.connect(self._on_generate_varcond)
-        generate_menu.addAction(varcond_action)
         pricing_action = QAction("Generate Pricing", self)
         pricing_action.triggered.connect(self._on_generate_pricing)
         generate_menu.addAction(pricing_action)
