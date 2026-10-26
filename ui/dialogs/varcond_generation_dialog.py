@@ -38,6 +38,7 @@ class VarCondGenerationDialog(QDialog):
         self._articles = QListWidget(self)
         self._articles.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self._articles.setMinimumWidth(300)
+        self._articles.itemSelectionChanged.connect(self._on_selection_changed)
         split.addWidget(self._articles, 1)
 
         right = QVBoxLayout()
@@ -117,6 +118,17 @@ class VarCondGenerationDialog(QDialog):
         for index in range(self._articles.count()):
             item = self._articles.item(index)
             item.setHidden(needle not in item.text().casefold())
+
+    def _on_selection_changed(self) -> None:
+        """Refresh the relation preview as the article selection changes."""
+        if any(
+            self._articles.item(index).isSelected()
+            for index in range(self._articles.count())
+        ):
+            self._generate()
+        else:
+            self._output.clear()
+            self._summary.setText("Select an article to preview its relations.")
 
     def _generate(self) -> None:
         selected_codes = [
