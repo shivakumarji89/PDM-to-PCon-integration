@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.varcond_service import VarCondService
+from ui.workers.background_task import BackgroundTask
 
 
 class VarCondGenerationPanel(QWidget):
@@ -35,6 +36,8 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_check = maintenance_check or (lambda: False)
         self._maintenance_service = None
         self._maintenance_snapshot = None
+        self._maintenance_load_task = None
+        self._maintenance_pending_refresh = False
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -209,26 +212,68 @@ class VarCondGenerationPanel(QWidget):
         """Explicit Generate / Refresh: re-read PDM (Maintenance path only)."""
         self._generate_selected(refresh=True)
 
-    def _generate_maintenance(self, parent_codes: list[str], refresh: bool):
-        """Maintenance: legacy-source rows are cached; only new parents (or an
-        explicit refresh) read PDM, every other edit is transformed locally."""
-        from PySide6.QtWidgets import QApplication
+    def _ensure_maintenance_service(self):
         from services.maintenance_varcond_service import MaintenanceVarCondService
 
         if self._maintenance_service is None:
             self._maintenance_service = MaintenanceVarCondService(self._context)
             self._maintenance_snapshot = self._snapshot
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            return self._maintenance_service.generate(
-                parent_codes,
-                prefix=self._prefix.text(),
-                property_exclusions=self._exclusions.text(),
-                property_substitutions=self._substitutions.text(),
-                refresh=refresh,
-            )
-        finally:
-            QApplication.restoreOverrideCursor()
+        return self._maintenance_service
+
+    def _load_maintenance_sources_async(self, parent_codes: list[str], refresh: bool) -> None:
+        """Load missing/refresh PDM source rows off the UI thread.
+
+        The service cache is only touched by this worker while a load is active;
+        after completion, generation and all setting changes are local.
+        """
+        if self._maintenance_load_task is not None:
+            self._maintenance_pending_refresh = self._maintenance_pending_refresh or refresh
+            return
+        service = self._ensure_maintenance_service()
+        self._maintenance_pending_refresh = False
+        self._summary.setText("Loading relation data from PDM in the background...")
+        self._output.setPlainText("Loading relation data from PDM...")
+        self._relations.setEnabled(False)
+        self._filter.setEnabled(False)
+        self._relation_length.setEnabled(False)
+        self._prefix.setEnabled(False)
+        self._exclusion_button.setEnabled(False)
+        self._substitution_button.setEnabled(False)
+        task = BackgroundTask(
+            lambda _progress: service.sources_for(parent_codes, refresh=refresh)
+        )
+        self._maintenance_load_task = task
+        task.signals.finished.connect(self._on_maintenance_sources_loaded)
+        task.signals.failed.connect(self._on_maintenance_sources_failed)
+        task.signals.cancelled.connect(self._on_maintenance_sources_cancelled)
+        from PySide6.QtCore import QThreadPool
+        QThreadPool.globalInstance().start(task)
+
+    def _finish_maintenance_load(self) -> None:
+        self._maintenance_load_task = None
+        self._relations.setEnabled(True)
+        self._filter.setEnabled(True)
+        self._relation_length.setEnabled(True)
+        self._prefix.setEnabled(True)
+        self._exclusion_button.setEnabled(True)
+        self._substitution_button.setEnabled(True)
+
+    def _on_maintenance_sources_loaded(self, _sources) -> None:
+        self._finish_maintenance_load()
+        refresh = self._maintenance_pending_refresh
+        self._maintenance_pending_refresh = False
+        # Read the current selection and current transformation controls, not
+        # stale values captured when the worker started.
+        self._generate_selected(refresh=refresh)
+
+    def _on_maintenance_sources_failed(self, message: str) -> None:
+        self._finish_maintenance_load()
+        self._summary.setText(f"Could not load relation data from PDM: {message}")
+        self._output.setPlainText("PDM relation loading failed. Use Generate / Refresh to retry.")
+
+    def _on_maintenance_sources_cancelled(self, message: str) -> None:
+        self._finish_maintenance_load()
+        self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_selected(self, refresh: bool = False) -> None:
         item = self._relations.currentItem()
@@ -249,7 +294,18 @@ class VarCondGenerationPanel(QWidget):
             return
 
         if self._maintenance_check():
-            result = self._generate_maintenance(parent_codes, refresh)
+            service = self._ensure_maintenance_service()
+            # Avoid blocking the GUI during initial PDM reads or explicit refresh.
+            # Once loaded, transformations are generated synchronously from cache.
+            if refresh or any(code not in service._cache for code in parent_codes):
+                self._load_maintenance_sources_async(parent_codes, refresh)
+                return
+            result = service.generate(
+                parent_codes,
+                prefix=self._prefix.text(),
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
+            )
         else:
             service = VarCondService(self._context)
             result = service.generate_live(
