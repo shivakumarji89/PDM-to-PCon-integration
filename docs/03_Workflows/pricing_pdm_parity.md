@@ -626,8 +626,8 @@ from services.legacy_pricing_engine import (
 )
 
 request = LegacyPricingEngineRequest(
-    pdm_dir=r"C:\\scratch\\pdm_copy",
-    pcon_root=r"C:\\scratch\\legacy_pricing_sandbox",
+    pdm_dir=r"C:\scratch\pdm_copy",
+    pcon_root=r"C:\scratch\legacy_pricing_sandbox",
     workspace="Layout_Studio",
     mode="global",
     items=["RY3SNNB.105512F"],
