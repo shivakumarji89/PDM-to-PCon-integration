@@ -7,6 +7,8 @@ does not rewrite component target codes inside the VARCOND rules.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
@@ -21,10 +23,18 @@ from services.varcond_service import VarCondService
 class VarCondGenerationPanel(QWidget):
     """PDM-style relation list on the left and selected relation body on right."""
 
-    def __init__(self, context, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, context, parent: QWidget | None = None,
+        maintenance_check: Callable[[], bool] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._context = context
         self._snapshot = context.active_snapshot
+        # Maintenance only: generate from the cached legacy-source service.
+        # Development (check absent/False) keeps VarCondService.generate_live.
+        self._maintenance_check = maintenance_check or (lambda: False)
+        self._maintenance_service = None
+        self._maintenance_snapshot = None
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -87,7 +97,7 @@ class VarCondGenerationPanel(QWidget):
 
         buttons = QHBoxLayout()
         generate = QPushButton("Generate / Refresh", self)
-        generate.clicked.connect(self._generate_selected)
+        generate.clicked.connect(self._on_generate_clicked)
         buttons.addWidget(generate)
         copy_btn = QPushButton("Copy", self)
         copy_btn.clicked.connect(self._copy)
@@ -130,6 +140,13 @@ class VarCondGenerationPanel(QWidget):
     def refresh_from_snapshot(self) -> None:
         """Refresh the article-code scope after a product snapshot is loaded."""
         self._snapshot = self._context.active_snapshot
+        if (
+            self._maintenance_service is not None
+            and self._snapshot is not self._maintenance_snapshot
+        ):
+            # A different product/snapshot: cached PDM rows no longer apply.
+            self._maintenance_service.clear_cache()
+            self._maintenance_snapshot = self._snapshot
         self._article_rows = []
         snapshot = self._snapshot
         if snapshot is not None:
@@ -188,7 +205,32 @@ class VarCondGenerationPanel(QWidget):
             self._output.clear()
             self._summary.setText("No relation selected.")
 
-    def _generate_selected(self) -> None:
+    def _on_generate_clicked(self) -> None:
+        """Explicit Generate / Refresh: re-read PDM (Maintenance path only)."""
+        self._generate_selected(refresh=True)
+
+    def _generate_maintenance(self, parent_codes: list[str], refresh: bool):
+        """Maintenance: legacy-source rows are cached; only new parents (or an
+        explicit refresh) read PDM, every other edit is transformed locally."""
+        from PySide6.QtWidgets import QApplication
+        from services.maintenance_varcond_service import MaintenanceVarCondService
+
+        if self._maintenance_service is None:
+            self._maintenance_service = MaintenanceVarCondService(self._context)
+            self._maintenance_snapshot = self._snapshot
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            return self._maintenance_service.generate(
+                parent_codes,
+                prefix=self._prefix.text(),
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
+                refresh=refresh,
+            )
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _generate_selected(self, refresh: bool = False) -> None:
         item = self._relations.currentItem()
         if item is None:
             self._output.clear()
@@ -206,13 +248,16 @@ class VarCondGenerationPanel(QWidget):
             self._summary.setText(f"{relation_name}: no matching parent articles.")
             return
 
-        service = VarCondService(self._context)
-        result = service.generate_live(
-            article_codes=parent_codes,
-            prefix=self._prefix.text(),
-            property_exclusions=self._exclusions.text(),
-            property_substitutions=self._substitutions.text(),
-        )
+        if self._maintenance_check():
+            result = self._generate_maintenance(parent_codes, refresh)
+        else:
+            service = VarCondService(self._context)
+            result = service.generate_live(
+                article_codes=parent_codes,
+                prefix=self._prefix.text(),
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
+            )
         self._output.setPlainText(result.text or "(nothing generated)")
         self._summary.setText(
             f"{relation_name} | {len(parent_codes)} parent article(s) | "

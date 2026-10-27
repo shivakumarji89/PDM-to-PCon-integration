@@ -74,7 +74,9 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         """Embed legacy-style article VARCOND generation in the Pricing Relation workspace."""
         box = QGroupBox("Article VARCOND Relations", self)
         layout = _v(box)
-        self._varcond_panel = VarCondGenerationPanel(context, box)
+        self._varcond_panel = VarCondGenerationPanel(
+            context, box, maintenance_check=self.is_maintenance_module
+        )
         layout.addWidget(self._varcond_panel)
         return box
 
