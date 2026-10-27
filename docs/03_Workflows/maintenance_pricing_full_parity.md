@@ -51,6 +51,11 @@ is a separate path and must not be treated as the authority for price records.
   routing instead of approximating global records with the article procedure.
 - A focused routing test was added at
   `tests/test_pdm_differential_fetch_routing.py`.
+- The harness now accepts a scenario-specific PDM program code and includes
+  `S14_revive_fabric_family_target` to compare a Revive component's priced
+  fabric-family source with the mapped colour-option export target. This
+  scenario still requires the controlled Windows/MDB run before it can be
+  counted as parity evidence.
 - The previously committed differential report predates this correction. Its
   global/super-product comparisons must be rerun and regenerated before they can
   count as current evidence. No live PDM executable or user SQL/MDB was run by
