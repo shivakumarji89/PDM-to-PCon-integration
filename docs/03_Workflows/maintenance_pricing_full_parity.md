@@ -15,7 +15,7 @@ is a separate path and must not be treated as the authority for price records.
 
 | Stage | PDM reference | Workbench reference | Required evidence |
 |---|---|---|---|
-| Article price pull | UpdatePriceThread.execThread -> PriceMaintenance.UpdatePConItemPrice / article base and surcharge queries | PDMRepository.fetch_item_base_prices, fetch_item_option_increment_prices, PricingService | Same item, date, currency and site; compare raw source rows and computed values |
+| Article price pull | UpdatePriceThread.execThread -> PriceMaintenance.UpdatePConItemPrice / article base and surcharge queries | PDMRepository.fetch_item_base_prices, fetch_article_option_increment_prices, PricingService | Same item, date, currency and site; compare raw source rows and computed values |
 | Super-product/global price pull | UpdatePriceThread.execThread -> PriceMaintenance.UpdatePConItemIncrementalPrice | PDMRepository.fetch_global_option_increment_prices, PricingService | Same catalogue, program, site, option-value rows, selected raw increment, price and source lookup |
 | Option/variant condition | PDM worker's condition construction and existing-row lookup keys | PricingService.build_records and source/target fields on PriceRecord | Compare source option ID/code, target option ID/code, condition text, order and duplicates |
 | Standard global price text block | PriceMaintenance.AddMissingGlobalPricingRecords | services/price_text_blocks.py, PriceMdbExportService | Existing text lookup, text-name/display-name rule, package scope, language columns, com_TextID link and preservation of existing links |
@@ -44,7 +44,7 @@ is a separate path and must not be treated as the authority for price records.
 ## Implementation progress
 
 - The differential runner now separates article and global source fetches:
-  article items use `fetch_item_option_increment_prices`; declared super-products
+  article items use `fetch_article_option_increment_prices`, matching the production PricingService; declared super-products
   use `fetch_global_option_increment_prices` with the selected catalogue and
   program. This exercises the Workbench's actual global query, secondary price
   calculation, lookup-code generation, and existing Fabric Type -> Colour target
