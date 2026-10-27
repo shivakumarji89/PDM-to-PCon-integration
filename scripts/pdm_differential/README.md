@@ -34,6 +34,14 @@ python scripts/pdm_differential/build_report.py raw.json docs/03_Workflows/pdm_d
 ```
 Each scenario needs minutes (full-table state reads through the 32-bit ACE bridge).
 
+## Program-specific component-family case
+
+The runner accepts `program_code` per scenario and passes it to both the compiled
+PDM worker and the Workbench global-fetch path. `S14_revive_fabric_family_target`
+covers the known Revive fabric-family example, where the priced source option and
+the related colour-option target differ. Run it with the normal isolated-MDB
+procedure; a source/target unit test alone does not establish final MDB parity.
+
 ## Evidence freshness
 
 The committed `docs/03_Workflows/pdm_differential_report.json` was captured before the
