@@ -250,6 +250,11 @@ class VarCondGenerationPanel(QWidget):
         reporter.note(f"Loading PDM source data for {len(parent_codes)} parent article(s)...")
         monitor = self._maintenance_progress_monitor()
         monitor.bind(reporter)
+        # ProgressReporter.note() is not rendered by ProgressDialog. Set visible
+        # labels directly so this workflow never shows the generic "-" placeholders.
+        monitor.set_family("Maintenance · PDM source loading")
+        monitor.set_step(f"Reading source data for {len(parent_codes)} parent article(s)...")
+        monitor.set_progress(10)
         monitor.show()
         monitor.raise_()
         self._maintenance_reporter = reporter
