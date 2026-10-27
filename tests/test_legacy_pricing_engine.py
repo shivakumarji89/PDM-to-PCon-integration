@@ -61,6 +61,8 @@ def test_invokes_legacy_harness_and_parses_result(tmp_path, monkeypatch):
     def fake_run(command, **kwargs):
         seen["command"] = command
         seen["kwargs"] = kwargs
+        job_path = Path(command[command.index("-JobPath") + 1])
+        seen["payload"] = json.loads(job_path.read_text(encoding="utf-8"))
         out_path = Path(command[command.index("-OutPath") + 1])
         out_path.write_text(json.dumps({
             "finished": True, "pdmVersion": "1.0.9686.24988",
@@ -80,8 +82,7 @@ def test_invokes_legacy_harness_and_parses_result(tmp_path, monkeypatch):
     assert seen["kwargs"]["shell"] is False
     assert seen["kwargs"]["timeout"] == req.timeout_seconds
     assert "-File" in seen["command"]
-    job_path = Path(seen["command"][seen["command"].index("-JobPath") + 1])
-    payload = json.loads(job_path.read_text(encoding="utf-8"))
+    payload = seen["payload"]
     assert payload["programCode"] == "revive"
     assert payload["catalogueId"] == 658
     assert payload["packageId"] == 240
