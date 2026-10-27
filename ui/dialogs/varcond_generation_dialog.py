@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView,
 )
 
+from core.progress import ProgressReporter
 from services.varcond_service import VarCondService
+from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
 
 
@@ -39,6 +41,8 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_task = None
         self._maintenance_pending_refresh = False
         self._maintenance_load_snapshot = None
+        self._maintenance_reporter = None
+        self._maintenance_monitor = None
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -237,14 +241,31 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_snapshot = self._snapshot
         self._summary.setText("Loading relation data from PDM in the background...")
         self._output.setPlainText("Loading relation data from PDM...")
+        reporter = ProgressReporter(self)
+        reporter.begin(
+            2,
+            title="Loading Price Relation",
+            subject=self._relations.currentItem().text() if self._relations.currentItem() else "Price Relations",
+        )
+        reporter.note(f"Loading PDM source data for {len(parent_codes)} parent article(s)...")
+        monitor = self._maintenance_progress_monitor()
+        monitor.bind(reporter)
+        monitor.show()
+        monitor.raise_()
+        self._maintenance_reporter = reporter
         self._relations.setEnabled(False)
         self._filter.setEnabled(False)
         self._relation_length.setEnabled(False)
         self._prefix.setEnabled(False)
         self._exclusion_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
+        def load_sources(_progress):
+            sources = service.sources_for(parent_codes, refresh=refresh)
+            reporter.advance("PDM source data loaded; preparing relation output...")
+            return sources
+
         task = BackgroundTask(
-            lambda _progress: service.sources_for(parent_codes, refresh=refresh)
+            load_sources, cancellation_token=reporter.cancellation_token
         )
         self._maintenance_load_task = task
         task.signals.finished.connect(self._on_maintenance_sources_loaded)
@@ -252,6 +273,22 @@ class VarCondGenerationPanel(QWidget):
         task.signals.cancelled.connect(self._on_maintenance_sources_cancelled)
         from PySide6.QtCore import QThreadPool
         QThreadPool.globalInstance().start(task)
+
+    def _maintenance_progress_monitor(self) -> ProgressDialog:
+        monitor = self._maintenance_monitor
+        if monitor is None:
+            monitor = ProgressDialog(self)
+            self._maintenance_monitor = monitor
+        return monitor
+
+    def _finish_maintenance_progress(self, success: bool, message: str) -> None:
+        reporter = self._maintenance_reporter
+        self._maintenance_reporter = None
+        if reporter is not None:
+            reporter.finish(success, message)
+        monitor = self._maintenance_monitor
+        if monitor is not None and reporter is not None:
+            monitor.unbind_reporter(reporter)
 
     def _finish_maintenance_load(self) -> None:
         self._maintenance_load_task = None
@@ -274,21 +311,25 @@ class VarCondGenerationPanel(QWidget):
             if self._maintenance_service is not None:
                 self._maintenance_service.clear_cache()
             self._maintenance_snapshot = self._snapshot
+            self._finish_maintenance_progress(False, "Product changed while loading; stale relation data discarded.")
             self._generate_selected()
             return
         # Read the current selection and current transformation controls, not
         # stale values captured when the worker started.
         self._generate_selected(refresh=refresh)
+        self._finish_maintenance_progress(True, "Price relation ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
         self._finish_maintenance_load()
         self._maintenance_load_snapshot = None
+        self._finish_maintenance_progress(False, "Price relation load failed")
         self._summary.setText(f"Could not load relation data from PDM: {message}")
         self._output.setPlainText("PDM relation loading failed. Use Generate / Refresh to retry.")
 
     def _on_maintenance_sources_cancelled(self, message: str) -> None:
         self._finish_maintenance_load()
         self._maintenance_load_snapshot = None
+        self._finish_maintenance_progress(False, "Price relation load cancelled")
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_selected(self, refresh: bool = False) -> None:
