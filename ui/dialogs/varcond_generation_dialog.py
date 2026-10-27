@@ -282,11 +282,13 @@ class VarCondGenerationPanel(QWidget):
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
         self._finish_maintenance_load()
+        self._maintenance_load_snapshot = None
         self._summary.setText(f"Could not load relation data from PDM: {message}")
         self._output.setPlainText("PDM relation loading failed. Use Generate / Refresh to retry.")
 
     def _on_maintenance_sources_cancelled(self, message: str) -> None:
         self._finish_maintenance_load()
+        self._maintenance_load_snapshot = None
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_selected(self, refresh: bool = False) -> None:
