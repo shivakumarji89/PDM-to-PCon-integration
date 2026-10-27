@@ -12,6 +12,7 @@ unchanged.
 """
 from __future__ import annotations
 
+import shiboken6
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
@@ -37,6 +38,13 @@ class ProgressDialog(DialogTemplate):
         self._reporter = None
         self._elapsed_str = "00:00"
         self._eta_str = "00:00"
+        # Owned, restartable dismissal: a pending auto-close from one run is
+        # cancelled when the dialog is reset for the next, so it can never hide
+        # a newer run's popup.
+        self._dismiss_timer = QTimer(self)
+        self._dismiss_timer.setSingleShot(True)
+        self._dismiss_timer.setInterval(700)
+        self._dismiss_timer.timeout.connect(self._auto_dismiss)
 
         self._build_header_trailing()
         self._build_content()
@@ -86,35 +94,78 @@ class ProgressDialog(DialogTemplate):
         self._unbind()
         self.reset()
         self._reporter = reporter
-        reporter.title_changed.connect(self.set_title)
-        reporter.family_changed.connect(self.set_family)
-        reporter.product_changed.connect(self.set_product)
-        reporter.step_changed.connect(self.set_step)
-        reporter.progress_changed.connect(self.set_progress)
-        reporter.elapsed_changed.connect(self.set_elapsed)
-        reporter.remaining_changed.connect(self.set_remaining)
-        reporter.finished.connect(self._on_reporter_finished)
+        for signal, slot in self._links(reporter):
+            signal.connect(slot)
         self.cancel_requested.connect(reporter.request_cancel)
+
+    def _links(self, reporter):
+        # Reporter-facing slots, not the public setters: signals a worker queued
+        # before a rebind are still delivered after disconnect(), and must not
+        # overwrite the newer run (see _from_bound_reporter).
+        return (
+            (reporter.title_changed, self._on_title),
+            (reporter.family_changed, self._on_family),
+            (reporter.product_changed, self._on_product),
+            (reporter.step_changed, self._on_step),
+            (reporter.progress_changed, self._on_progress),
+            (reporter.elapsed_changed, self._on_elapsed),
+            (reporter.remaining_changed, self._on_remaining),
+            (reporter.finished, self._on_reporter_finished),
+        )
+
+    def _from_bound_reporter(self) -> bool:
+        """True when the signal being delivered came from the bound reporter."""
+        sender = self.sender()
+        return sender is not None and sender is self._reporter
+
+    def _on_title(self, text: str) -> None:
+        if self._from_bound_reporter():
+            self.set_title(text)
+
+    def _on_family(self, name: str) -> None:
+        if self._from_bound_reporter():
+            self.set_family(name)
+
+    def _on_product(self, name: str) -> None:
+        if self._from_bound_reporter():
+            self.set_product(name)
+
+    def _on_step(self, text: str) -> None:
+        if self._from_bound_reporter():
+            self.set_step(text)
+
+    def _on_progress(self, percent: int) -> None:
+        if self._from_bound_reporter():
+            self.set_progress(percent)
+
+    def _on_elapsed(self, seconds: int) -> None:
+        if self._from_bound_reporter():
+            self.set_elapsed(seconds)
+
+    def _on_remaining(self, seconds: int) -> None:
+        if self._from_bound_reporter():
+            self.set_remaining(seconds)
 
     def _unbind(self) -> None:
         """Detach the currently-bound reporter, if any."""
         reporter = self._reporter
         if reporter is None:
             return
+        self._reporter = None
+        if not shiboken6.isValid(reporter):
+            return  # Qt already dropped every connection with the object.
+        # Each link is detached on its own: one already-deleted or already
+        # disconnected endpoint must not leave the others connected.
+        links = self._links(reporter)
+        for signal, slot in links:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
         try:
-            reporter.title_changed.disconnect(self.set_title)
-            reporter.family_changed.disconnect(self.set_family)
-            reporter.product_changed.disconnect(self.set_product)
-            reporter.step_changed.disconnect(self.set_step)
-            reporter.progress_changed.disconnect(self.set_progress)
-            reporter.elapsed_changed.disconnect(self.set_elapsed)
-            reporter.remaining_changed.disconnect(self.set_remaining)
-            reporter.finished.disconnect(self._on_reporter_finished)
             self.cancel_requested.disconnect(reporter.request_cancel)
         except (RuntimeError, TypeError):
-            # Already disconnected or the reporter was deleted - nothing to do.
             pass
-        self._reporter = None
 
     def unbind_reporter(self, reporter) -> None:
         """Detach ``reporter`` if (and only if) it is the one currently bound.
@@ -128,6 +179,7 @@ class ProgressDialog(DialogTemplate):
 
     def reset(self) -> None:
         """Clear the visuals so the monitor is ready for a fresh run."""
+        self._dismiss_timer.stop()
         self._finished = False
         self.set_title("Working...")
         self.set_family("-")
@@ -192,7 +244,7 @@ class ProgressDialog(DialogTemplate):
         self._cancel_btn.setText("Close")
         self._cancel_btn.setEnabled(True)
         # Brief pause so the user glimpses 100% / the final message, then close.
-        QTimer.singleShot(700, self._auto_dismiss)
+        self._dismiss_timer.start()
 
     def _auto_dismiss(self) -> None:
         """Close the popup if it is still in its finished state (a newer run may
@@ -210,7 +262,8 @@ class ProgressDialog(DialogTemplate):
         self._cancel_btn.setEnabled(False)
 
     def _on_reporter_finished(self, success: bool, message: str) -> None:
-        self.finish(success, message)
+        if self._from_bound_reporter():
+            self.finish(success, message)
 
     @staticmethod
     def _format_time(seconds: int) -> str:

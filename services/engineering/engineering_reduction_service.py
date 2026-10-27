@@ -1456,6 +1456,53 @@ class EngineeringReductionService(BaseService):
             )
         return tuple(candidates)
 
+    #: ``(snapshot, inputs, verdicts)`` computed off the UI thread by
+    #: :meth:`prewarm_article_set_validation`, consumed by the next call.
+    _prewarmed_validation: tuple | None = None
+
+    @staticmethod
+    def _validation_inputs(snapshot: Snapshot, language_id: Any, per_product_range: bool) -> tuple:
+        """Everything :meth:`candidate_families` reads from the snapshot."""
+        return (
+            language_id,
+            per_product_range,
+            len(snapshot.articles),
+            tuple(
+                (s.id, s.base_length, tuple(s.article_ids))
+                for s in (getattr(snapshot, "article_sets", None) or ())
+            ),
+            tuple(sorted((getattr(snapshot, "product_range", None) or {}).items())),
+        )
+
+    def prewarm_article_set_validation(
+        self, snapshot: Snapshot | None, language_id: Any = 1, per_product_range: bool = True
+    ) -> None:
+        """Run :meth:`validate_article_sets` on a worker so the UI thread need not.
+
+        The legacy ``ProductsList`` proof is live PDM SQL; the Articles
+        workspace asks for it on the UI thread right after a family load, which
+        froze the window and its progress popup for 10+ seconds. The verdicts
+        are identical - only the thread differs - and are handed to the next
+        ``validate_article_sets`` call for the same snapshot state, exactly
+        once. A failure is not fatal: the caller then asks PDM itself, as it
+        always did. Cancellation still propagates.
+        """
+        self._prewarmed_validation = None
+        if snapshot is None:
+            return
+        try:
+            verdicts = self.validate_article_sets(snapshot, language_id, per_product_range)
+        except OperationCancelled:
+            raise
+        except Exception:
+            return
+        checkpoint()
+        self._prewarmed_validation = (
+            snapshot,
+            self._validation_inputs(snapshot, language_id, per_product_range),
+            verdicts,
+        )
+
     def validate_article_sets(
         self,
         snapshot: Snapshot | None,
@@ -1486,6 +1533,13 @@ class EngineeringReductionService(BaseService):
         """
         if snapshot is None:
             return ()
+        # One-shot hand-off from a background prewarm of this exact snapshot
+        # state; any other call (or a changed snapshot) asks PDM as before.
+        prewarmed, self._prewarmed_validation = self._prewarmed_validation, None
+        if prewarmed is not None and prewarmed[:2] == (
+            snapshot, self._validation_inputs(snapshot, language_id, per_product_range)
+        ):
+            return prewarmed[2]
         candidates = self.candidate_families(snapshot, per_product_range)
         if not candidates:
             return ()

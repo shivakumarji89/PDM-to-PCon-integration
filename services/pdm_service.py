@@ -900,6 +900,11 @@ class PDMService(BaseService):
             if reporter is not None:
                 reporter.advance("Initializing Engineering")
             self.context.engineering_initialization_service.initialize(result.snapshot)
+            if reporter is not None:
+                reporter.note("Validating article families against PDM...")
+            self.context.engineering_reduction_service.prewarm_article_set_validation(
+                result.snapshot
+            )
         if result.ok and result.snapshot is not None and current_token() is not None:
             commit()
             self.context.snapshot_manager.load_snapshot(result.snapshot)
@@ -1747,6 +1752,9 @@ class PDMService(BaseService):
         if sync_engineering:
             checkpoint()
             self.context.engineering_initialization_service.sync(snapshot)
+            if reporter is not None:
+                reporter.note("Validating article families against PDM...")
+            self.context.engineering_reduction_service.prewarm_article_set_validation(snapshot)
         if current_token() is not None:
             commit()
             self.context.snapshot_manager.load_snapshot(snapshot)

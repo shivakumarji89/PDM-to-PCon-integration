@@ -1143,6 +1143,20 @@ class ProductPage(BasePage):
         elif chosen is refresh_hierarchy:
             self._on_refresh_hierarchy()
 
+    def _family_run_in_progress(self) -> bool:
+        """True while a family load runs; reopens its progress popup.
+
+        A second request is refused, but never silently: the user may have
+        hidden the popup, so it is brought back for the run in progress.
+        """
+        run = getattr(self, "_family_run", None)
+        if run is None or not run.active:
+            return False
+        dialog = self._progress_monitor()
+        dialog.show()
+        dialog.raise_()
+        return True
+
     def _on_load_family(self) -> None:
         """Load every product under the selected family into one session.
 
@@ -1155,7 +1169,7 @@ class ProductPage(BasePage):
         """
         # Products come from every selected node (products / categories /
         # catalogues), so multi-selection loads them all in one family.
-        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+        if self._family_run_in_progress():
             return
         products, family_name = self._selected_family_products()
         if not products:
@@ -1236,7 +1250,7 @@ class ProductPage(BasePage):
         """
         # Products come from every selected node (products / categories /
         # catalogues), so multi-selection adds them all to the session.
-        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+        if self._family_run_in_progress():
             return
         products, family_name = self._selected_family_products()
         if not products:
@@ -1478,7 +1492,7 @@ class ProductPage(BasePage):
             self._do_load(self._loaded_product)
 
     def _do_load(self, product: Product) -> None:
-        if getattr(self, "_family_run", None) is not None and self._family_run.active:
+        if self._family_run_in_progress():
             return
         # Load on a worker thread; a token ignores superseded loads.
         if self._context_module == WorkbenchModule.MAINTENANCE:

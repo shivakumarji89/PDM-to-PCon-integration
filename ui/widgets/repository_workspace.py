@@ -306,9 +306,6 @@ class RepositoryWorkspace(QWidget):
         self._repository_run = run
         reporter = run.reporter
         self._repository_extract_reporter = reporter
-        reporter.begin(5, title="Open Repository", subject=Path(path).name)
-        reporter.log("info", f"Opening repository {Path(path).name}")
-
         # Use the same visible progress monitor as Product loading. The
         # repository worker already reports each extraction stage through the
         # shared ProgressReporter; without this binding those updates were
@@ -317,7 +314,11 @@ class RepositoryWorkspace(QWidget):
         if progress_dialog is None:
             progress_dialog = ProgressDialog(self)
             self._repository_progress_dialog = progress_dialog
+        # Bind before begin(): binding resets the popup, which would otherwise
+        # wipe the title and subject that begin() has just published.
         progress_dialog.bind(reporter)
+        reporter.begin(5, title="Open Repository", subject=Path(path).name)
+        reporter.log("info", f"Opening repository {Path(path).name}")
         progress_dialog.show()
         progress_dialog.raise_()
 
