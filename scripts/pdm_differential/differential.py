@@ -196,24 +196,50 @@ def _dialogs(path: Path) -> list[str]:
 
 
 # ---- Pricing -----------------------------------------------------------------------------------------
-def pricing_records(ctx, items, currency, super_codes=frozenset(), prefix_from_notes=True):
+def pricing_records(
+    ctx, items, currency, super_codes=frozenset(), prefix_from_notes=True,
+    catalogue_id=CAT_GLOBAL, program_code=PROGRAM,
+):
+    """Build expected records using the same distinct PDM fetch paths as Maintenance.
+
+    Article items use PDMOptionDataReportWithIncList. Super-products use the
+    UpdatePriceThread global query (including its secondary price calculation,
+    lookup-code construction, and Fabric Type -> Colour target routing). Using
+    the article procedure for both paths can produce plausible but invalid
+    global comparisons, so keep the two sources separate.
+    """
     repo = PDMRepository(ctx)
     conn = repo.get_connection()
     try:
-        params = PriceParams(currency=currency, mydate=MYDATE, site_id=1, valid_from=VALID_FROM, valid_to="")
+        item_codes = [str(item) for item in items if item]
+        super_set = set(super_codes)
+        article_items = [item for item in item_codes if item not in super_set]
+        global_items = [item for item in item_codes if item in super_set]
+        params = PriceParams(
+            currency=currency, mydate=MYDATE, site_id=1,
+            valid_from=VALID_FROM, valid_to="",
+            program_code=program_code, catalogue_id=catalogue_id,
+        )
         prefix = {}
         if prefix_from_notes:  # PDM's prefix length rule: Item.Notes up to the comma
             cur = conn.cursor()
-            for it in items:
+            for it in item_codes:
                 cur.execute("SELECT Notes FROM Item WHERE Item = ?", (it,))
                 row = cur.fetchone()
                 notes = (row[0] or "") if row else ""
                 head = notes.split(",")[0].strip()
-                if head.isdigit() and 0 < int(head) <= 20 and it not in super_codes:
+                if head.isdigit() and 0 < int(head) <= 20 and it not in super_set:
                     prefix[it] = it[:int(head)]
-        base = repo.fetch_item_base_prices(items, currency, MYDATE, conn, site_id=1)
-        inc = repo.fetch_item_option_increment_prices(items, currency, MYDATE, 1, conn)
-        records, unresolved = PricingService.build_records(base, inc, set(super_codes), prefix, params)
+        base = repo.fetch_item_base_prices(item_codes, currency, MYDATE, conn, site_id=1)
+        inc = []
+        if article_items:
+            inc.extend(repo.fetch_item_option_increment_prices(article_items, currency, MYDATE, 1, conn))
+        if global_items:
+            inc.extend(repo.fetch_global_option_increment_prices(
+                global_items, currency, MYDATE, 1, conn,
+                catalogue_id=catalogue_id, program_code=program_code,
+            ))
+        records, unresolved = PricingService.build_records(base, inc, super_set, prefix, params)
         PricingService._attach_product_codes(records, repo, conn, 1)
         return records, unresolved
     finally:
