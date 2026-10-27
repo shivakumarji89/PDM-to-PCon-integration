@@ -33,3 +33,12 @@ python scripts/pdm_differential/differential.py --backup <backup.mdb> --pdm-dir 
 python scripts/pdm_differential/build_report.py raw.json docs/03_Workflows/pdm_differential_report.json
 ```
 Each scenario needs minutes (full-table state reads through the 32-bit ACE bridge).
+
+## Evidence freshness
+
+The committed `docs/03_Workflows/pdm_differential_report.json` was captured before the
+harness routed super-product increments through `fetch_global_option_increment_prices`.
+Treat its global/super-product outcomes as historical observations, **not current parity
+proof**, until those scenarios are rerun with this version. Article-only scenarios are
+not affected by that fetch-path correction. Rebuild the report after rerunning; do not
+manually relabel old global results as verified.
