@@ -87,11 +87,12 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
     def on_enter(self) -> None:
         """Generate PA_PRICING relations automatically when entering."""
         self._sync_source()
-        self._varcond_panel.refresh_from_snapshot()
-        self._varcond_panel.setEnabled(not self.is_mdb_view())
         if self.is_mdb_view():
+            self._varcond_panel.setEnabled(False)
             self.refresh()
             return
+        self._varcond_panel.setEnabled(True)
+        self._varcond_panel.refresh_from_snapshot()
         self._on_generate()
 
     def refresh(self) -> None:
@@ -102,13 +103,14 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
             self._render_mdb()
 
     def _on_source_changed(self, _source: str) -> None:
-        self._varcond_panel.refresh_from_snapshot()
-        self._varcond_panel.setEnabled(not self.is_mdb_view())
         if self._begin_refresh():
             return
         if self.is_mdb_view():
+            self._varcond_panel.setEnabled(False)
             self._render_mdb()
         else:
+            self._varcond_panel.setEnabled(True)
+            self._varcond_panel.refresh_from_snapshot()
             self._on_generate()
 
     def _render_mdb(self) -> None:
