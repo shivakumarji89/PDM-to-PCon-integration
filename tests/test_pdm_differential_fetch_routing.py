@@ -108,5 +108,5 @@ def test_article_only_scenario_does_not_call_global_query(monkeypatch):
 
     assert repo_instances[0].calls == [
         ("base", ["ARTICLE.01"], 1),
-        ("article_increments", ["ARTICLE.01"], 1),
+        ("article_increments", ["ARTICLE.01"], 1, "layout_studio"),
     ]
