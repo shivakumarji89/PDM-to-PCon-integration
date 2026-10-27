@@ -58,9 +58,14 @@ is a separate path and must not be treated as the authority for price records.
   counted as parity evidence.
 - The previously committed differential report predates this correction. Its
   global/super-product comparisons must be rerun and regenerated before they can
-  count as current evidence. No live PDM executable or user SQL/MDB was run by
-  this implementation session; full parity remains unverified until that
-  controlled run and the focused/full test suites are executed.
+  count as current evidence.
+- GitHub Actions full-suite result for the branch: **4,498 passed, 13 skipped,
+  15 failed**. The failing tests are in Maintenance VARCOND, Metatype, repository
+  link UI, and SyteLine areas; none are in the pricing-parity files changed here.
+  The newly added pricing-fetch routing tests passed as part of the run.
+- The compiled PDM worker and disposable-MDB differential have not been run by
+  this implementation session. Full parity therefore remains unverified until
+  the controlled Windows run is completed.
 
 ## Option-type investigation matrix
 
