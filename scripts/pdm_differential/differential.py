@@ -202,7 +202,8 @@ def pricing_records(
 ):
     """Build expected records using the same distinct PDM fetch paths as Maintenance.
 
-    Article items use PDMOptionDataReportWithIncList. Super-products use the
+    Article items use the same inline increment query as PricingService.
+    Super-products use the
     UpdatePriceThread global query (including its secondary price calculation,
     lookup-code construction, and Fabric Type -> Colour target routing). Using
     the article procedure for both paths can produce plausible but invalid
@@ -233,7 +234,10 @@ def pricing_records(
         base = repo.fetch_item_base_prices(item_codes, currency, MYDATE, conn, site_id=1)
         inc = []
         if article_items:
-            inc.extend(repo.fetch_item_option_increment_prices(article_items, currency, MYDATE, 1, conn))
+            inc.extend(repo.fetch_article_option_increment_prices(
+                article_items, currency, MYDATE, 1, conn,
+                program_code=program_code,
+            ))
         if global_items:
             inc.extend(repo.fetch_global_option_increment_prices(
                 global_items, currency, MYDATE, 1, conn,
