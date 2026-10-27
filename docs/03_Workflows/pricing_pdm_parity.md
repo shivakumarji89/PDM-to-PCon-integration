@@ -605,3 +605,58 @@ guards, plan-digest / stale-preview protection, transactions and rollback (PDM h
 These are covered by Pricing unit tests and the real-MDB copy runs above, not by a PDM differential.
 
 **Not verified at all:** how pCon renders any of this (physical pCon testing is out of scope).
+
+
+## Calling the compiled legacy worker from Python
+
+The opt-in adapter `services/legacy_pricing_engine.py` invokes the same
+compiled `PDMMaintenance.UpdatePriceThread.execThread` method through
+`scripts/pdm_differential/run_pdm_price_update.ps1`. It accepts the actual
+Maintenance inputs (item list, program, site, catalogue, date, currency, price
+list and package) and returns the worker status, unresolved items and assembly
+version. Unit tests mock the subprocess; they do not claim the installed legacy
+assembly was run.
+
+Example from a controlled diagnostic script:
+
+```python
+from services.legacy_pricing_engine import (
+    LegacyPricingEngineRequest,
+    run_legacy_pricing_engine,
+)
+
+request = LegacyPricingEngineRequest(
+    pdm_dir=r"C:\\scratch\\pdm_copy",
+    pcon_root=r"C:\\scratch\\legacy_pricing_sandbox",
+    workspace="Layout_Studio",
+    mode="global",
+    items=["RY3SNNB.105512F"],
+    program_code="revive",
+    site_id=1,
+    catalogue_id=658,
+    mydate="27-Oct-2026",
+    prevdate="26-Oct-2026",
+    currency="EUR",
+    price_list_id=26,
+    price_list_label="EURO_2026_2",
+    package_id=240,
+    isolated_mdb_confirmed=True,
+)
+result = run_legacy_pricing_engine(request)
+print(result)
+```
+
+Before running, prepare `pcon_root\\WS\\Layout_Studio\\pcr_data_com_ocd.mdb`
+as a disposable copy of the matching package MDB, and copy the full legacy PDM
+runtime (including `ExprEvaluator.dll`) into `pdm_dir`. Use the same values
+as the PDM form. The method writes to that MDB and has no rollback, so never
+point it at the live OCD. The legacy SQL connection still follows PDM's own
+connection policy; only use an approved test target.
+
+This adapter is deliberately not wired as the production Pricing engine yet.
+The legacy worker updates price rows already present in the MDB and has
+different missing-row/placeholder semantics from the Workbench's compute and
+export flow. First compare its output with the current workflow on the same
+input and classify option-condition differences (Fabric Type, Fabric Colour,
+Trim, Finish and other options). Only a demonstrated parity fix should then
+change the Maintenance workflow.
