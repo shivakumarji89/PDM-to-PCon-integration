@@ -149,10 +149,10 @@ def _msub(a, b):
 
 # ---- PDM ---------------------------------------------------------------------------------------------
 def run_pdm(work: Path, pdm_dir: Path, tag: str, mode: str, items, currency, list_id, label, catalogue=1,
-            variableincs=None, item_filter="", timeout=300) -> dict[str, Any]:
+            variableincs=None, item_filter="", timeout=300, program_code=PROGRAM) -> dict[str, Any]:
     job = {
         "pconRoot": str(work / tag / "root") + "\\", "workspace": WORKSPACE, "mode": mode, "items": list(items),
-        "itemFilter": item_filter, "programCode": PROGRAM, "siteId": 1, "catalogueId": catalogue,
+        "itemFilter": item_filter, "programCode": program_code, "siteId": 1, "catalogueId": catalogue,
         "mydate": MYDATE, "prevdate": PREVDATE, "currency": currency, "priceListId": list_id, "pricelist": label,
         "variableincsFromProgram": variableincs is None, "variableincs": bool(variableincs), "packageId": PACKAGE_ID, "resetToZero": False,
     }
@@ -494,7 +494,8 @@ def run_scenario(name, spec, ctx, backup: Path, pdm_dir: Path, work: Path) -> di
         outs = []
         for n, st in enumerate(spec["steps"]):
             outs.append(run_pdm(work, pdm_dir, f"{name}_pdm", st["mode"], st["items"], ccy, list_id, label,
-                                catalogue=st.get("catalogue", 1), variableincs=st.get("variableincs")))
+                                catalogue=st.get("catalogue", 1), variableincs=st.get("variableincs"),
+                                program_code=spec.get("program_code", PROGRAM)))
             if not outs[-1].get("executed"):
                 break
         return outs
@@ -504,7 +505,7 @@ def run_scenario(name, spec, ctx, backup: Path, pdm_dir: Path, work: Path) -> di
     catalogue_id = global_step.get("catalogue", CAT_GLOBAL) if global_step else CAT_GLOBAL
     records, unresolved = pricing_records(
         ctx, all_items, ccy, spec.get("super", ()),
-        catalogue_id=catalogue_id, program_code=PROGRAM,
+        catalogue_id=catalogue_id, program_code=spec.get("program_code", PROGRAM),
     )
     report["pricing_inputs"] = {"records": len(records), "unresolved": unresolved}
     report["pricing"] = run_pricing(ctx, b_mdb, records, ccy)
