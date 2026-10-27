@@ -65,6 +65,7 @@ class RepositoryLinkActionsTest(unittest.TestCase):
         ):
             page = _page("repo.mdb", None, loaded)
             page._update_repository_actions = MagicMock()
+            page._refresh_maintenance_source_table = MagicMock()
             page._context_module = ProductPage.__init__.__globals__["WorkbenchModule"].MAINTENANCE
             page.snapshot_changed = MagicMock()
             ProductPage._on_shared_repository_loaded(page, None)
