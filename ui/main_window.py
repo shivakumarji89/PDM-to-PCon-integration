@@ -608,9 +608,6 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(self._make_action("Preferences..."))
 
         generate_menu = menu_bar.addMenu("&Generate")
-        varcond_action = QAction("Generate VARCOND", self)
-        varcond_action.triggered.connect(self._on_generate_varcond)
-        generate_menu.addAction(varcond_action)
         pricing_action = QAction("Generate Pricing", self)
         pricing_action.triggered.connect(self._on_generate_pricing)
         generate_menu.addAction(pricing_action)
@@ -832,27 +829,17 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_generate_varcond(self) -> None:
-        """Generate PA_PRICING variant-condition rules from the active snapshot."""
+        """Open article-filtered VARCOND generation using legacy-shaped rules."""
         from PySide6.QtWidgets import QMessageBox
-        from services.varcond_service import VarCondService
+        from ui.dialogs.varcond_generation_dialog import VarCondGenerationDialog
 
         if not self._context.snapshot_manager.has_snapshot():
             QMessageBox.information(
                 self, "Generate VARCOND", "Load a product first."
             )
             return
-        inputs = self._prompt_varcond_inputs()
-        if inputs is None:
-            return
-        prefix, exclusions, substitutions = inputs
-        result = VarCondService(self._context).generate(
-            prefix=prefix,
-            property_exclusions=exclusions,
-            property_substitutions=substitutions,
-        )
-        self._show_text_result(
-            "Generate VARCOND", result.text, result.warnings, "varcond.txt"
-        )
+        dialog = VarCondGenerationDialog(self._context, self)
+        dialog.exec()
 
     def _prompt_varcond_inputs(self) -> tuple[str, str, str] | None:
         """Prompt for PDM ``SuperProductVarCondRelation`` inputs.

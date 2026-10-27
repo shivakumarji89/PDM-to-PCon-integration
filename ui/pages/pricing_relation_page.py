@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from services.pricing_relation_service import PricingRelationService
 from ui.pages.base_page import BasePage
+from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
 from ui.widgets.maintenance_source_tabs import (
     MDB_NOT_LOADED_TEXT,
     MaintenanceSourceMixin,
@@ -50,6 +51,7 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._init_source_tabs(context)
         self.add_content(self._build_toolbar())
         self.add_content(self._build_view())
+        self.add_content(self._build_varcond_workflow(context))
 
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Generate", self)
@@ -59,6 +61,14 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._copy_btn = QPushButton("Copy", box)
         self._copy_btn.clicked.connect(self._on_copy)
         layout.addWidget(self._copy_btn)
+        return box
+
+    def _build_varcond_workflow(self, context) -> QWidget:
+        """Embed legacy-style article VARCOND generation in the Pricing Relation workspace."""
+        box = QGroupBox("Article VARCOND Relations", self)
+        layout = _v(box)
+        self._varcond_panel = VarCondGenerationPanel(context, box)
+        layout.addWidget(self._varcond_panel)
         return box
 
     def _build_view(self) -> QWidget:
@@ -78,8 +88,11 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         """Generate PA_PRICING relations automatically when entering."""
         self._sync_source()
         if self.is_mdb_view():
+            self._varcond_panel.setEnabled(False)
             self.refresh()
             return
+        self._varcond_panel.setEnabled(True)
+        self._varcond_panel.refresh_from_snapshot()
         self._on_generate()
 
     def refresh(self) -> None:
@@ -93,8 +106,11 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         if self._begin_refresh():
             return
         if self.is_mdb_view():
+            self._varcond_panel.setEnabled(False)
             self._render_mdb()
         else:
+            self._varcond_panel.setEnabled(True)
+            self._varcond_panel.refresh_from_snapshot()
             self._on_generate()
 
     def _render_mdb(self) -> None:
