@@ -34,8 +34,10 @@ class _Repository:
         self.calls.append(("base", list(items), site_id))
         return []
 
-    def fetch_item_option_increment_prices(self, items, currency, mydate, site_id, connection):
-        self.calls.append(("article_increments", list(items), site_id))
+    def fetch_article_option_increment_prices(
+        self, items, currency, mydate, site_id, connection, program_code=""
+    ):
+        self.calls.append(("article_increments", list(items), site_id, program_code))
         return []
 
     def fetch_global_option_increment_prices(
@@ -80,7 +82,7 @@ def test_global_super_products_use_legacy_global_query(monkeypatch):
     assert unresolved == []
     assert repo_instances[0].calls == [
         ("base", ["ARTICLE.01", "SUPER.PRODUCT"], 1),
-        ("article_increments", ["ARTICLE.01"], 1),
+        ("article_increments", ["ARTICLE.01"], 1, "layout_studio"),
         ("global_increments", ["SUPER.PRODUCT"], 1, 660, "layout_studio"),
     ]
     assert captured["super_codes"] == {"SUPER.PRODUCT"}
