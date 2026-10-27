@@ -49,9 +49,16 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
             content_stretch=True,
         )
         self._init_source_tabs(context)
-        self.add_content(self._build_toolbar())
-        self.add_content(self._build_view())
-        self.add_content(self._build_varcond_workflow(context))
+        # PDM uses the legacy-style per-relation VARCOND workspace as the
+        # primary UI. The older aggregate PA_PRICING generator is retained only
+        # for inspecting imported PA_* relation objects in the MDB view.
+        self._toolbar = self._build_toolbar()
+        self._view = self._build_view()
+        self._varcond_workflow = self._build_varcond_workflow(context)
+        self.add_content(self._toolbar)
+        self.add_content(self._view)
+        self.add_content(self._varcond_workflow)
+        self._apply_source_layout()
 
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Generate", self)
@@ -84,16 +91,22 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._editor)
         return box
 
+    def _apply_source_layout(self) -> None:
+        """Show the intended workspace for the selected Maintenance source."""
+        mdb = self.is_mdb_view()
+        self._toolbar.setVisible(mdb)
+        self._view.setVisible(mdb)
+        self._varcond_workflow.setVisible(not mdb)
+        self._varcond_panel.setEnabled(not mdb)
+
     def on_enter(self) -> None:
-        """Generate PA_PRICING relations automatically when entering."""
+        """Show the per-relation VARCOND workflow for PDM, imported relations for MDB."""
         self._sync_source()
+        self._apply_source_layout()
         if self.is_mdb_view():
-            self._varcond_panel.setEnabled(False)
             self.refresh()
             return
-        self._varcond_panel.setEnabled(True)
         self._varcond_panel.refresh_from_snapshot()
-        self._on_generate()
 
     def refresh(self) -> None:
         """Maintenance MDB view only; PDM keeps its enter-time generation."""
@@ -105,13 +118,11 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
     def _on_source_changed(self, _source: str) -> None:
         if self._begin_refresh():
             return
+        self._apply_source_layout()
         if self.is_mdb_view():
-            self._varcond_panel.setEnabled(False)
             self._render_mdb()
         else:
-            self._varcond_panel.setEnabled(True)
             self._varcond_panel.refresh_from_snapshot()
-            self._on_generate()
 
     def _render_mdb(self) -> None:
         """Show the imported PA_* relation objects. Never generates or stores."""
@@ -210,8 +221,7 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
         self._sync_source()
-        if not self.is_mdb_view():
-            self._name_label.setText("")
+        self._apply_source_layout()
 
     def is_ready(self) -> bool:
         snapshot = self._context.active_snapshot
