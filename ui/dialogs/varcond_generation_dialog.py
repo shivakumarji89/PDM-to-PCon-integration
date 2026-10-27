@@ -38,6 +38,7 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_snapshot = None
         self._maintenance_load_task = None
         self._maintenance_pending_refresh = False
+        self._maintenance_load_snapshot = None
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -148,6 +149,8 @@ class VarCondGenerationPanel(QWidget):
             and self._snapshot is not self._maintenance_snapshot
         ):
             # A different product/snapshot: cached PDM rows no longer apply.
+            # If a worker is still loading, its completion handler will discard
+            # the result rather than let old-product data repopulate this cache.
             self._maintenance_service.clear_cache()
             self._maintenance_snapshot = self._snapshot
         self._article_rows = []
@@ -231,6 +234,7 @@ class VarCondGenerationPanel(QWidget):
             return
         service = self._ensure_maintenance_service()
         self._maintenance_pending_refresh = False
+        self._maintenance_load_snapshot = self._snapshot
         self._summary.setText("Loading relation data from PDM in the background...")
         self._output.setPlainText("Loading relation data from PDM...")
         self._relations.setEnabled(False)
@@ -259,9 +263,19 @@ class VarCondGenerationPanel(QWidget):
         self._substitution_button.setEnabled(True)
 
     def _on_maintenance_sources_loaded(self, _sources) -> None:
+        loaded_snapshot = self._maintenance_load_snapshot
         self._finish_maintenance_load()
+        self._maintenance_load_snapshot = None
         refresh = self._maintenance_pending_refresh
         self._maintenance_pending_refresh = False
+        if loaded_snapshot is not self._snapshot:
+            # Snapshot changed while PDM was loading. Never render/cache results
+            # from the previous product in the newly selected product's panel.
+            if self._maintenance_service is not None:
+                self._maintenance_service.clear_cache()
+            self._maintenance_snapshot = self._snapshot
+            self._generate_selected()
+            return
         # Read the current selection and current transformation controls, not
         # stale values captured when the worker started.
         self._generate_selected(refresh=refresh)
@@ -297,7 +311,7 @@ class VarCondGenerationPanel(QWidget):
             service = self._ensure_maintenance_service()
             # Avoid blocking the GUI during initial PDM reads or explicit refresh.
             # Once loaded, transformations are generated synchronously from cache.
-            if refresh or any(code not in service._cache for code in parent_codes):
+            if refresh or not service.has_sources(parent_codes):
                 self._load_maintenance_sources_async(parent_codes, refresh)
                 return
             result = service.generate(
