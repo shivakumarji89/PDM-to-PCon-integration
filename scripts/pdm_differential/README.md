@@ -12,7 +12,7 @@ identical copy, then diffs the results. Output of the committed run: `docs/03_Wo
 * `dialog_watcher.ps1` records and dismisses message boxes PDM raises (equivalent to an operator clicking OK).
 * `differential.py` applies identical setup edits to both copies, runs PDM, computes the Pricing records and
   exports them with `PriceMdbExportService`, reads both result states back and compares them (autonumber ids and
-  row order are the only things normalised away). Article items use `fetch_item_option_increment_prices`; declared
+  row order are the only things normalised away). Article items use `fetch_article_option_increment_prices` (the same inline query as production); declared
   super-products use the distinct `fetch_global_option_increment_prices` path with the scenario's catalogue and
   program. That global path includes PDM's secondary price calculation, lookup-code construction, and evidenced
   Fabric Type -> Colour target routing. The article option procedure must not be used as a substitute for the
