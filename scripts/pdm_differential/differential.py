@@ -463,6 +463,13 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "currency": "GBP", "super": ["GE2HDF."],
         "setup": _setup_global(delete_variants=("GE2HDF.%",), delete_text="GE2HDF.", delete_all_lists=True),
     },
+    "S14_revive_fabric_family_target": {
+        "title": "Revive component fabric-family price source vs mapped colour-option export target",
+        "covers": [3, 6],
+        "steps": [{"mode": "global", "items": ["RY3SNNB.105512F"], "catalogue": CAT_GLOBAL}],
+        "currency": "GBP", "super": ["RY3SNNB.105512F"], "program_code": "revive",
+        "setup": None,
+    },
 }
 
 
