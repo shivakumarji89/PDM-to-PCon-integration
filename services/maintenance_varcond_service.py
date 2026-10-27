@@ -83,6 +83,13 @@ class MaintenanceVarCondService(BaseService):
         self._cache.clear()
         self._increment_cache.clear()
 
+    def has_sources(self, article_codes: Sequence[str]) -> bool:
+        """Return whether every requested parent has cached source data."""
+        return all(
+            (code or "").strip() in self._cache
+            for code in article_codes if (code or "").strip()
+        )
+
     def invalidate(self, article_codes: Sequence[str]) -> None:
         """Drop the cached rows of the given parents (and shared components)."""
         for code in article_codes:
