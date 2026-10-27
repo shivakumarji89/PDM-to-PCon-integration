@@ -127,6 +127,36 @@ class VarCondGenerationPanel(QWidget):
             "Select a PA_<prefix> relation to preview its rules."
         )
 
+    def refresh_from_snapshot(self) -> None:
+        """Refresh the article-code scope after a product snapshot is loaded."""
+        self._snapshot = self._context.active_snapshot
+        self._article_rows = []
+        snapshot = self._snapshot
+        if snapshot is not None:
+            code_by_id = {
+                str(article.id): (article.code or "")
+                for article in snapshot.articles if article.id is not None
+            }
+            article_by_id = {
+                str(article.id): article for article in snapshot.articles if article.id is not None
+            }
+            for article_id in (snapshot.article_components or {}):
+                code = code_by_id.get(str(article_id), "")
+                if not code:
+                    continue
+                article = article_by_id.get(str(article_id))
+                label = code + (f" — {article.name}" if article and article.name else "")
+                self._article_rows.append((code, label, str(article_id)))
+        self._article_rows.sort(key=lambda row: row[0].casefold())
+        max_length = max((len(row[0]) for row in self._article_rows), default=1)
+        self._relation_length.setRange(1, max_length)
+        self._relation_length.setValue(max_length)
+        self._refresh_relations()
+        self._summary.setText(
+            f"{len(self._article_rows)} parent articles available. "
+            "VARCOND rules are fetched from live PDM when generated."
+        )
+
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
         current = self._relations.currentItem().text() if self._relations.currentItem() else ""
@@ -177,12 +207,11 @@ class VarCondGenerationPanel(QWidget):
             return
 
         service = VarCondService(self._context)
-        result = service.generate(
+        result = service.generate_live(
+            article_codes=parent_codes,
             prefix=self._prefix.text(),
             property_exclusions=self._exclusions.text(),
             property_substitutions=self._substitutions.text(),
-            legacy_exact=True,
-            article_codes=parent_codes,
         )
         self._output.setPlainText(result.text or "(nothing generated)")
         self._summary.setText(
