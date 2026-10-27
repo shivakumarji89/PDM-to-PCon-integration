@@ -231,6 +231,155 @@ class VarCondService(BaseService):
         dot = item.find(".")
         return item[: dot + 1] if dot > -1 else item
 
+    # -- live PDM generation ------------------------------------------------
+
+    def generate_live(
+        self,
+        article_codes: Sequence[str],
+        prefix: str = "",
+        property_exclusions: str = "",
+        property_substitutions: str = "",
+    ) -> VarCondResult:
+        """Generate VARCOND using fresh, read-only PDM queries, not snapshots.
+
+        The selected parent article codes define the scope. BOM, attributes,
+        prefix-length metadata and option increments are re-read from PDM for
+        this run. SQL remains in PDMRepository; the legacy output formatting
+        and exclusion/substitution semantics are retained here.
+        """
+        from repositories.pdm_repository import PDMRepository
+
+        result = VarCondResult()
+        codes = list(dict.fromkeys((code or "").strip() for code in article_codes if (code or "").strip()))
+        if not codes:
+            result.warnings.append("No parent article codes selected.")
+            return result
+
+        repo = PDMRepository(self.context)
+        conn = repo.get_connection()
+        try:
+            for parent in codes:
+                rows = repo._execute(
+                    "SELECT i.ItemId, i.Item, i.Notes, pr.ProductCategoryId, p.Product "
+                    "FROM Item i INNER JOIN Product p ON i.ProductId = p.ProductId "
+                    "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                    "WHERE i.Item = ?",
+                    (parent,), connection=conn,
+                )
+                if not rows:
+                    result.warnings.append(f"{parent}: article was not found in live PDM.")
+                    continue
+                item_row = rows[0]
+                item_id = getattr(item_row, "ItemId")
+                category_id = getattr(item_row, "ProductCategoryId", None)
+
+                components = repo.fetch_item_components([item_id], connection=conn)
+                if not components:
+                    continue
+
+                # CADMaintenance.getArticlePrefixLength: numeric Item.Notes,
+                # falling back to the category's master item's Notes.
+                prefix_length = 0
+                notes = str(getattr(item_row, "Notes", "") or "").split(",")[0].strip()
+                if notes.isdigit():
+                    prefix_length = int(notes)
+                if prefix_length <= 0 and category_id is not None:
+                    master_rows = repo.fetch_category_master_notes([category_id], connection=conn)
+                    for master in master_rows:
+                        token = str(getattr(master, "Notes", "") or "").split(",")[0].strip()
+                        if token.isdigit():
+                            prefix_length = int(token)
+                            break
+                if prefix_length <= 0:
+                    result.warnings.append(
+                        f"{parent}: article prefix length is undefined; parametric codes may be incorrect."
+                    )
+
+                attr_sql = (
+                    "SELECT DISTINCT Product.Product, "
+                    "CASE WHEN ABS(attr.HasDependentOptions) > 0 THEN "
+                    "SUBSTRING(Item.Item, ? + 1 + (SELECT COALESCE((SELECT SUM(ABS(attr2.HasDependentOptions)) "
+                    "FROM Item i2 INNER JOIN BaseAttributeValues bav2 ON i2.ItemId = bav2.ItemId "
+                    "INNER JOIN AttributeValue atval2 ON bav2.AttributeValueId = atval2.AttributeValueId "
+                    "INNER JOIN Attribute attr2 ON atval2.AttributeId = attr2.AttributeId "
+                    "WHERE i2.Item = ? AND (atval2.OrderCodeValue IS NOT NULL OR ABS(attr2.HasDependentOptions) <> 0) "
+                    "AND attr2.DisplayOrder < attr.DisplayOrder), 0)), ABS(attr.HasDependentOptions)) "
+                    "ELSE atval.OrderCodeValue END AS OrderCodeValue, attr.DisplayOrder, "
+                    "CASE WHEN CHARINDEX(' ', attr.Name) > 0 THEN "
+                    "SUBSTRING(attr.Name, 1, CHARINDEX(' ', attr.Name)) + "
+                    "UPPER(SUBSTRING(attr.Name, CHARINDEX(' ', attr.Name) + 1, 1)) + "
+                    "SUBSTRING(attr.Name, CHARINDEX(' ', attr.Name) + 2, 99) ELSE attr.Name END AS prop "
+                    "FROM Product INNER JOIN Item ON Product.ProductId = Item.ProductId "
+                    "INNER JOIN BaseAttributeValues bav ON Item.ItemId = bav.ItemId "
+                    "INNER JOIN AttributeValue atval ON bav.AttributeValueId = atval.AttributeValueId "
+                    "INNER JOIN Attribute attr ON atval.AttributeId = attr.AttributeId "
+                    "WHERE Item.Item = ? AND (atval.OrderCodeValue IS NOT NULL OR ABS(attr.HasDependentOptions) > 0) "
+                    "ORDER BY attr.DisplayOrder"
+                )
+                attrs = repo._execute(
+                    attr_sql, (prefix_length, parent, parent), connection=conn
+                )
+                condition_parts: list[str] = []
+                for attr in attrs:
+                    prop = self._pcon_property_name(str(getattr(attr, "prop", "") or ""), parent)
+                    if property_exclusions and prop in property_exclusions:
+                        if prop not in result.excluded:
+                            result.excluded.append(prop)
+                        continue
+                    prop = self._apply_substitutions(prop, property_substitutions)
+                    value = str(getattr(attr, "OrderCodeValue", "") or "").replace(".", "")
+                    condition_parts.append(
+                        f"{(prefix.strip() + '.') if prefix.strip() else ''}{prop} = '{value}'"
+                    )
+                body = "IF" + ((" " + " AND ".join(condition_parts)) if condition_parts else "")
+
+                for comp in components:
+                    sub = str(getattr(comp, "SubItem", "") or "").strip()
+                    if not sub:
+                        continue
+                    rule = f"$VARCOND = '{sub}' {body}"
+                    result.rules.append(VarCondRule(article=sub, body=body, rule=rule))
+                    try:
+                        qty = int(getattr(comp, "Quantity", 1) or 1)
+                    except (TypeError, ValueError):
+                        qty = 1
+                    if qty > 1:
+                        result.rules.append(VarCondRule(
+                            article=sub, body=body,
+                            rule=f"$SET_PRICING_FACTOR('{sub}', {qty}) {body}",
+                        ))
+
+                    # Live PDM option increment rows for this component prefix.
+                    inc_rows = repo.fetch_item_option_increments(
+                        [self._item_prefix(sub)], connection=conn
+                    )
+                    seen: set[int] = set()
+                    for inc in inc_rows:
+                        option_id = getattr(inc, "OptionId", None)
+                        if option_id is None or int(option_id) in seen:
+                            continue
+                        seen.add(int(option_id))
+                        option_name = self._pcon_option_name(
+                            str(getattr(inc, "OptionName", "") or "")
+                        )
+                        option_name = self._apply_substitutions(option_name, property_substitutions)
+                        suffix = f"'{sub} {option_id}=' + {option_name}"
+                        result.rules.append(VarCondRule(
+                            article=sub, body=body, rule=f"$VARCOND = {suffix} {body}"
+                        ))
+                        if qty > 1:
+                            result.rules.append(VarCondRule(
+                                article=sub, body=body,
+                                rule=f"$SET_PRICING_FACTOR({suffix}, {qty}) {body}",
+                            ))
+        finally:
+            conn.close()
+
+        # Legacy emits repeated definitions and preserves order.
+        if result.rules:
+            result.text = ",\r\n".join(rule.rule for rule in result.rules) + "\r\n"
+        return result
+
     # -- generation --------------------------------------------------------
 
     def generate(
