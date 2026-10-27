@@ -500,7 +500,12 @@ def run_scenario(name, spec, ctx, backup: Path, pdm_dir: Path, work: Path) -> di
         return outs
 
     report["pdm"] = pdm_all()
-    records, unresolved = pricing_records(ctx, all_items, ccy, spec.get("super", ()))
+    global_step = next((st for st in spec["steps"] if st["mode"] == "global"), None)
+    catalogue_id = global_step.get("catalogue", CAT_GLOBAL) if global_step else CAT_GLOBAL
+    records, unresolved = pricing_records(
+        ctx, all_items, ccy, spec.get("super", ()),
+        catalogue_id=catalogue_id, program_code=PROGRAM,
+    )
     report["pricing_inputs"] = {"records": len(records), "unresolved": unresolved}
     report["pricing"] = run_pricing(ctx, b_mdb, records, ccy)
     if not all(o.get("executed") for o in report["pdm"]):
