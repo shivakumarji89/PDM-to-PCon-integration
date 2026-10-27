@@ -198,11 +198,11 @@ class VarCondGenerationPanel(QWidget):
         match = self._relations.findItems(current, Qt.MatchFlag.MatchExactly) if current else []
         if match:
             self._relations.setCurrentItem(match[0])
-        elif self._relations.count():
-            self._relations.setCurrentRow(0)
+        # Do not auto-select the first relation. Opening the workflow should
+        # only build the local list; PDM generation starts after user selection
+        # or an explicit Generate / Refresh click.
         self._relations.blockSignals(False)
         self._relation_count.setText(f"{self._relations.count()} Price Relation(s)")
-        self._generate_selected()
 
     def _on_relation_changed(self, current, _previous) -> None:
         if current is not None:
