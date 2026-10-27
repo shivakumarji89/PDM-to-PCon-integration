@@ -41,6 +41,22 @@ is a separate path and must not be treated as the authority for price records.
 - docs/03_Workflows/pricing_pdm_parity.md documents the legacy export rules
   and text-block semantics.
 
+## Implementation progress
+
+- The differential runner now separates article and global source fetches:
+  article items use `fetch_item_option_increment_prices`; declared super-products
+  use `fetch_global_option_increment_prices` with the selected catalogue and
+  program. This exercises the Workbench's actual global query, secondary price
+  calculation, lookup-code generation, and existing Fabric Type -> Colour target
+  routing instead of approximating global records with the article procedure.
+- A focused routing test was added at
+  `tests/test_pdm_differential_fetch_routing.py`.
+- The previously committed differential report predates this correction. Its
+  global/super-product comparisons must be rerun and regenerated before they can
+  count as current evidence. No live PDM executable or user SQL/MDB was run by
+  this implementation session; full parity remains unverified until that
+  controlled run and the focused/full test suites are executed.
+
 ## Option-type investigation matrix
 
 Run the same source item set through the legacy and Workbench paths, retaining
