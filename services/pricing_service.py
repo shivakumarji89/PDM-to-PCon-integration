@@ -270,6 +270,9 @@ class PricingService(BaseService):
         )
         result.records = all_records
         result.unresolved = unresolved
+        routing_warning = self._blank_program_routing_warning(all_records, program_code)
+        if routing_warning:
+            result.warnings.append(routing_warning)
         if unresolved:
             result.warnings.append(
                 f"{len(unresolved)} item(s) had no resolvable PDM list price."
@@ -441,6 +444,9 @@ class PricingService(BaseService):
         )
         result.records = all_records
         result.unresolved = unresolved
+        routing_warning = self._blank_program_routing_warning(all_records, program_code)
+        if routing_warning:
+            result.warnings.append(routing_warning)
         if unresolved:
             result.warnings.append(
                 f"{len(unresolved)} item(s) had no resolvable PDM list price."
@@ -450,6 +456,33 @@ class PricingService(BaseService):
                 True, f"Priced {n} items · {len(all_records)} records"
             )
         return result
+
+    @staticmethod
+    def _blank_program_routing_warning(records, program_code: str) -> str:
+        """Explain fabric-family target routing that happened only because no program was set.
+
+        A blank program keeps the historic Revive-style Fabric Type -> Colour routing (source ``8=`` priced,
+        target ``28=`` exported). Series such as Layout Studio and Nevi keep ``8=`` in their MDBs, so for them
+        the routed rows cannot match the existing rows and the export is (correctly) blocked.
+        """
+        if (program_code or "").strip():
+            return ""
+        routed = 0
+        for record in records:
+            if not record.is_global:
+                continue
+            _, _, target = record.variant_condition.partition(" ")
+            _, _, source = record.pdm_lookup_code.partition(" ")
+            if target.partition("=")[0] != source.partition("=")[0] and "=" in source:
+                routed += 1
+        if not routed:
+            return ""
+        return (
+            f"{routed} global price record(s) were routed from the priced Fabric Type option to its colour "
+            "option because no Program is set (Review > Generation > Program). Set the series program "
+            "(for example layout_studio or nevi_enhanced) and recompute if the target MDB keeps the "
+            "priced option ids; the export is blocked when the routed rows do not match existing MDB rows."
+        )
 
     @staticmethod
     def _global_catalogue(snapshot: Snapshot, params: PriceParams) -> str | int:

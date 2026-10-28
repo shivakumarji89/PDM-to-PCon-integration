@@ -204,6 +204,8 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
                                 PriceBand=None) for r in rows]
 
     monkeypatch.setattr(PDMRepository, "_execute", execute)
+    shown = []  # compute warnings open a modal information box; capture it instead of blocking
+    monkeypatch.setattr(pp.QMessageBox, "information", lambda *args: shown.append(args[-1]))
     batches = []
     append = page._append_batch
 
@@ -216,6 +218,8 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     monkeypatch.setattr(page, "_append_batch", append_and_refresh)
     page._on_compute()
     assert not page._pricing_running
+    # A blank Program that routed fabric rows to their colour option is reported to the user, never silent.
+    assert any("because no Program is set" in message for message in shown) is mapped
     option = 28 if mapped else 8
     expected = [f"{ITEM} {option}={f[0]}" for _ in ("EUR", "GBP") for f in FAMILIES]
     assert [r[1] for r in _rows(page)] == expected

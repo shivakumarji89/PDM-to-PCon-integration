@@ -55,8 +55,9 @@ class Mdb:
         if not res.ok:
             raise RuntimeError(res.first_error())
 
-    def state(self, path: Path) -> dict[str, Any]:
+    def state(self, path: Path, global_lists: tuple[int, ...] = (21, 22, 23, 24)) -> dict[str, Any]:
         """Normalised rows of every table PDM/Pricing may touch (ids stripped)."""
+        in_lists = ",".join(str(int(i)) for i in global_lists)
         r = self.read(
             path,
             lists="SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2",
@@ -67,7 +68,7 @@ class Mdb:
             glob="SELECT l.com_PriceListLabel, l.com_PriceListID, g.com_GlobalPriceID, g.com_VariantCondition, g.com_PriceLevelCode, "
                  "g.com_PriceTypeCode, g.com_PriceValue, g.sys_ISOCurrencyCode, g.com_PriceValidFrom, g.com_PriceValidTo, g.com_TextID "
                  "FROM tCOMd_GlobalPrice g INNER JOIN tCOMd_PriceList2 l ON g.com_PriceListID=l.com_PriceListID "
-                 "WHERE l.com_PriceListID IN (21,22,23,24)",
+                 f"WHERE l.com_PriceListID IN ({in_lists})",
             gagg="SELECT com_PriceListID, COUNT(*) AS n, SUM(com_PriceValue) AS v FROM tCOMd_GlobalPrice GROUP BY com_PriceListID",
             texts="SELECT * FROM tCOMd_Text",
         )
@@ -149,12 +150,13 @@ def _msub(a, b):
 
 # ---- PDM ---------------------------------------------------------------------------------------------
 def run_pdm(work: Path, pdm_dir: Path, tag: str, mode: str, items, currency, list_id, label, catalogue=1,
-            variableincs=None, item_filter="", timeout=300, program_code=PROGRAM) -> dict[str, Any]:
+            variableincs=None, item_filter="", timeout=300, program_code=PROGRAM,
+            workspace=WORKSPACE, package_id=PACKAGE_ID) -> dict[str, Any]:
     job = {
-        "pconRoot": str(work / tag / "root") + "\\", "workspace": WORKSPACE, "mode": mode, "items": list(items),
+        "pconRoot": str(work / tag / "root") + "\\", "workspace": workspace, "mode": mode, "items": list(items),
         "itemFilter": item_filter, "programCode": program_code, "siteId": 1, "catalogueId": catalogue,
         "mydate": MYDATE, "prevdate": PREVDATE, "currency": currency, "priceListId": list_id, "pricelist": label,
-        "variableincsFromProgram": variableincs is None, "variableincs": bool(variableincs), "packageId": PACKAGE_ID, "resetToZero": False,
+        "variableincsFromProgram": variableincs is None, "variableincs": bool(variableincs), "packageId": package_id, "resetToZero": False,
     }
     job_path, out_path = work / tag / "job.json", work / tag / "out.json"
     job_path.write_text(json.dumps(job), encoding="utf-8")
@@ -171,14 +173,18 @@ def run_pdm(work: Path, pdm_dir: Path, tag: str, mode: str, items, currency, lis
              "-OutPath", str(out_path), "-PdmDir", str(pdm_dir)],
             capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return {"executed": False, "error": f"PDM run exceeded {timeout}s", "dialogs": _dialogs(dialog_log)}
+        return {"executed": False, "returncode": None, "error": f"PDM run exceeded {timeout}s",
+                "dialogs": _dialogs(dialog_log)}
     finally:
         watcher.kill()
     if not out_path.is_file():
-        return {"executed": False, "error": (proc.stderr or proc.stdout or "no output")[:800],
-                "dialogs": _dialogs(dialog_log)}
+        return {"executed": False, "returncode": proc.returncode,
+                "error": (proc.stderr or proc.stdout or "no output")[:800], "dialogs": _dialogs(dialog_log)}
     out = json.loads(out_path.read_text(encoding="utf-8-sig"))
-    out["executed"] = bool(out.get("finished"))
+    out["returncode"] = proc.returncode
+    out["stderr"] = (proc.stderr or "")[:800]
+    out["log_dir"] = str(work / tag)
+    out["executed"] = bool(out.get("finished")) and proc.returncode == 0
     out["dialogs"] = _dialogs(dialog_log)
     return out
 
@@ -250,10 +256,10 @@ def pricing_records(
         conn.close()
 
 
-def run_pricing(ctx, mdb_path: Path, records, currency, dry_first=True):
+def run_pricing(ctx, mdb_path: Path, records, currency, dry_first=True, lists=None):
     snap = Snapshot()
     snap.price_records = list(records)
-    name = LISTS[currency][0]
+    name = (lists or LISTS)[currency][0]
     svc = PriceMdbExportService(ctx)
     plan = svc.export(snap, mdb_path, dry_run=True, list_targets={currency: name})
     if not plan.get("ok") or not plan.get("export_allowed"):
