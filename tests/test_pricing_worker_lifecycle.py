@@ -199,6 +199,7 @@ class _Fake:
 @pytest.fixture
 def pricing(monkeypatch, errors):
     page = _page([_rec(1.0, "EUR")])
+    page._context.active_snapshot.generation_program = "layout_studio"  # Maintenance needs an explicit program
     monkeypatch.setattr(PricingService, "target_currencies", lambda self, s, p: ["EUR"])
     dialogs = {"critical": [], "information": []}
     monkeypatch.setattr(pp.QMessageBox, "critical", lambda *a: dialogs["critical"].append(a[-1]))

@@ -130,6 +130,38 @@ Nothing in the Workbench replaces a relation's source option with a target optio
   and hung the run; the test now captures the dialog and asserts the warning is shown for the routed case.
 * These are mocked/logic tests; the compiled-PDM evidence is the scenario table above.
 
+## Blank-program fix: explicit program validation (2026-10-29)
+
+**Observation.** The Pricing page (`Source: PDM snapshot`, Site 1, currency `All`) still showed several `28 (propo...)`
+text blocks for `GESNNU.105508F` (Nevi/Layout Screens).
+
+**Root cause.** Nothing in the Maintenance workflow sets `snapshot.generation_program`; it stays `""` unless the user
+opens Review > Generation > Program. `PricingPage._params` passed that `""` as `program_code`, `PricingService`
+accepted it, and `PDMRepository.fetch_global_option_increment_prices` treats `program_code in ("", "revive")` as
+Revive, running `_resolve_global_fabric_targets` and routing Fabric Type `8` to colour option `28`. The previous
+commit only added a *warning*, so computation and its `28=` text blocks were still produced. Nothing overwrote or
+mis-mapped a selected program: the program was blank. (Export: `ocd_export_service` falls back to a name-derived key,
+which is never `layout_studio`/`nevi_enhanced`.)
+
+**Fix.**
+* `services/pricing_program.py` (new): `validate_pricing_program` accepts only Layout Screens -> `layout_studio`,
+  Nevi Screens -> `nevi_enhanced`, Revive -> `revive` (codes or those labels); blank or anything else raises
+  `PricingProgramError` with the remedy. Blank is never defaulted to Revive.
+* `PriceParams.require_program` (default False): `PricingService.compute`/`compute_streaming` validate before any
+  PDM query when set. `PriceMdbExportService.export(require_program=...)` blocks preview and write.
+* `PricingPage` sets it only when the active module is Maintenance, shows the error on Compute and blocks export.
+  Development and unspecified-module behaviour, the repository, and Revive `28=` routing are unchanged.
+
+**Tests.** New `tests/test_pricing_program_validation.py` (19): three programs resolve; blank/unsupported rejected;
+the selected program reaches the repository and routing (`8=` for Layout/Nevi, `28=` for Revive) in `compute` and
+`compute_streaming`; blank/unsupported block before any query; Development unchanged; export blocked. Page-level
+tests added in `test_pricing_page_text_blocks.py` and `test_pricing_export_workflow.py`. Existing Maintenance fixtures
+that relied on a blank program now set an explicit one.
+Results (`QT_QPA_PLATFORM=offscreen`): full suite **4546 passed, 11 skipped, 22 subtests, 0 failed** (220 s).
+
+**Evidence limits.** Mocked/logic tests only; no compiled-PDM or live-MDB run was made for this fix, and the
+screenshot's snapshot was not inspected directly. The root cause is established from the code path.
+
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for
   rows the scenario made stale or that PDM actually priced; "no-op" runs (X2, X4, X5, X6) are not discriminating.

@@ -186,6 +186,7 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     page = _old_fabric_page()
     snap = page._context.active_snapshot
     assert snap.generation_program == ""
+    snap.generation_program = "revive"  # Maintenance requires an explicit program; Revive keeps 28= routing
     rows = source_rows()
     monkeypatch.setattr(pp.QThreadPool, "globalInstance", staticmethod(lambda: _Sync()))
     monkeypatch.setattr(PDMRepository, "get_connection",
@@ -218,8 +219,7 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     monkeypatch.setattr(page, "_append_batch", append_and_refresh)
     page._on_compute()
     assert not page._pricing_running
-    # A blank Program that routed fabric rows to their colour option is reported to the user, never silent.
-    assert any("because no Program is set" in message for message in shown) is mapped
+    assert not shown  # explicit program: no blank-program routing warning
     option = 28 if mapped else 8
     expected = [f"{ITEM} {option}={f[0]}" for _ in ("EUR", "GBP") for f in FAMILIES]
     assert [r[1] for r in _rows(page)] == expected
@@ -397,3 +397,16 @@ def test_refresh_during_stream_preserves_accumulated_records():
     assert len(_rows(page)) == 1
     assert page._context.active_snapshot.price_records == [stored]
     assert page._summary.text().startswith("Computing prices...")
+
+
+@pytest.mark.parametrize("program", ["", "aeron"])
+def test_maintenance_compute_with_blank_or_unsupported_program_is_blocked(monkeypatch, program):
+    page = _old_fabric_page()
+    page._context.active_snapshot.generation_program = program
+    warnings = []
+    monkeypatch.setattr(pp.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    started = []
+    monkeypatch.setattr(PricingService, "compute_streaming", lambda *a, **k: started.append(1))
+    page._on_compute()
+    assert warnings and "Program" in warnings[0]
+    assert not started and not getattr(page, "_pricing_running", False)

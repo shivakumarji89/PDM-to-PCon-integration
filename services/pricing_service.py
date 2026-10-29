@@ -21,6 +21,7 @@ from models.price_record import PriceRecord
 from models.snapshot import Snapshot
 from repositories.pdm_repository import GlobalOptionPriceRow, PDMRepository
 from services.base_service import BaseService
+from services.pricing_program import validate_pricing_program
 from services.varcond_service import VarCondService
 
 
@@ -80,6 +81,8 @@ class PriceParams:
     valid_to: str = ""              # com_PriceValidTo
     program_code: str = ""          # PDM text_programcode / package reg_ProgramCode
     catalogue_id: str | int | None = None
+    # Maintenance: the program must be explicit (layout_studio / nevi_enhanced / revive).
+    require_program: bool = False
 
 
 @dataclass
@@ -213,9 +216,7 @@ class PricingService(BaseService):
 
         prefix_by_item = self._prefix_by_item(snapshot)
         currencies = self.target_currencies(snapshot, params)
-        program_code = (
-            params.program_code or getattr(snapshot, "generation_program", "") or ""
-        ).strip()
+        program_code = self._resolve_program(params, snapshot)
 
         all_records: list[PriceRecord] = []
         unresolved: list[str] = []
@@ -307,9 +308,7 @@ class PricingService(BaseService):
 
         prefix_by_item = self._prefix_by_item(snapshot)
         currencies = self.target_currencies(snapshot, params)
-        program_code = (
-            params.program_code or getattr(snapshot, "generation_program", "") or ""
-        ).strip()
+        program_code = self._resolve_program(params, snapshot)
 
         product_by_item = {
             a.code: str(a.product_id)
@@ -456,6 +455,15 @@ class PricingService(BaseService):
                 True, f"Priced {n} items · {len(all_records)} records"
             )
         return result
+
+    @staticmethod
+    def _resolve_program(params: PriceParams, snapshot: Snapshot) -> str:
+        program = (
+            params.program_code or getattr(snapshot, "generation_program", "") or ""
+        ).strip()
+        if params.require_program:
+            return validate_pricing_program(program)  # raises PricingProgramError
+        return program
 
     @staticmethod
     def _blank_program_routing_warning(records, program_code: str) -> str:

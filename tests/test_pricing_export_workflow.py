@@ -41,7 +41,7 @@ def wf(monkeypatch, tmp_path):
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda p, t, m: state["infos"].append(m)))
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda p, t, m: state["errors"].append(m)))
 
-    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None):
+    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None, program="layout_studio"):
         names = target_names or {"EUR": "EURO_2026_2", "GBP": "GBP_2026_2"}
 
         def target_exec(self):
@@ -62,6 +62,7 @@ def wf(monkeypatch, tmp_path):
         monkeypatch.setattr(PriceExportPreviewDialog, "exec", preview_exec)
         snap = Snapshot()
         snap.metadata.source = "PDM"
+        snap.generation_program = program
         snap.price_records = list(records)
         ctx = ApplicationContext()
         ctx.register_pdm_snapshot(snap)
@@ -219,3 +220,12 @@ def test_pricing_computes_eur_and_gbp_even_without_snapshot_price_lists():
     snapshot = Snapshot()
     service = PricingService.__new__(PricingService)
     assert service.target_currencies(snapshot, PriceParams(currency="USD")) == ["EUR", "GBP"]
+
+
+def test_maintenance_export_is_blocked_when_program_is_blank(wf):
+    make, state = wf
+    fake = _OptimizedFake(_strict_lists(), linked=[21, 22])
+    page = make([_rec(10.0, "EUR")], fake, program="")
+    page._on_export_prices()
+    assert fake.ops == []
+    assert any("not treated as Revive" in m for m in state["errors"] + [page._summary.text()])

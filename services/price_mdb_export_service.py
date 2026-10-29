@@ -25,6 +25,7 @@ from services.price_update_service import _mdb_date_literal
 from services.price_list_targets import (
     computation_date, normalize_mdb_date, resolve_targets,
 )
+from services.pricing_program import PricingProgramError, validate_pricing_program
 from services.pricing_service import pricing_requires_recompute
 from services.price_text_blocks import (
     ACTION_CREATE, ACTION_LINK_NEW, ACTION_NONE, ACTION_PRESERVE, ACTION_REUSE,
@@ -101,7 +102,8 @@ class PriceMdbExportService(BaseService):
 
     def export(self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False,
                list_targets: dict[str, str] | None = None,
-               expected_plan: str | None = None) -> dict[str, Any]:
+               expected_plan: str | None = None,
+               require_program: bool = False) -> dict[str, Any]:
         """Write ``snapshot.price_records`` into ``mdb_path`` (see module docstring).
 
         ``dry_run`` reads the MDB and reports exactly what would be updated,
@@ -119,6 +121,11 @@ class PriceMdbExportService(BaseService):
             return {"ok": False, "error": "Select an existing OCD MDB file."}
         if not snapshot.price_records:
             return {"ok": False, "error": "Compute prices before exporting."}
+        if require_program:
+            try:
+                validate_pricing_program(snapshot.generation_program)
+            except PricingProgramError as exc:
+                return {"ok": False, "error": str(exc)}
         if pricing_requires_recompute(snapshot):
             return {"ok": False, "error": (
                 "Stored fabric pricing predates colour-relationship resolution. "
