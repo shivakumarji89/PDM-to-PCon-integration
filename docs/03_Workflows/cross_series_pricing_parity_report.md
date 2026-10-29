@@ -179,6 +179,57 @@ and the only fixture in the repo uses `"NEVI"`, which is deliberately *not* matc
 to `_ALIASES`; that is the smallest remaining decision. Evidence for this change is mocked tests; no compiled-PDM or
 UI run was made.
 
+## Option-code routing audit: where `8=` is read and `28=` is introduced (2026-10-29)
+
+**Question.** Should Maintenance pricing read/generate Fabric Type `8=` instead of Finish/Colour `28=`?
+
+**Flow, by code.**
+1. *Source read (`8=`)*: `PDMRepository.fetch_global_option_increment_prices` runs PDM's Global query. Rows carry
+   `OptionId` = the priced Fabric Type option (8) and the price/cache sequence is unchanged by routing.
+2. *Target introduced (`28=`)*: only `PDMRepository._resolve_global_fabric_targets`, which runs after the prices and only when
+   `program_code.strip().casefold() in ("", "revive")`. It sets `GlobalOptionPriceRow.TargetOptionId` from PDM metadata
+   (`Option.IsFabric=2` option present in the component's `FeaturePositionString`).
+3. *Record build*: `PricingService.build_records` writes `variant_condition = "<item> <TargetOptionId>=<code>"` (export
+   target) and keeps `pdm_lookup_code = "<item> 8=<code>"` (source). So `8` is the **source** option, `28` the **target**
+   option; both appear on the same record. `PriceMdbExportService` treats them as source/target and matches existing MDB rows.
+4. *Program*: `PricingPage._program_code` passes the explicit Review program, else (Maintenance only) the linked
+   repository's `reg_ProgramCode` if it is exactly `layout_studio`/`nevi_enhanced`/`revive`, else `""`.
+   Price Relation / VARCOND is a separate path and never rewrites `8=` to `28=` (see Price Relation section above).
+
+**What the evidence proves.**
+* Layout/Nevi under explicit `layout_studio`/`nevi_enhanced`: compiled legacy PDM matches the MDB's `8=` rows; the Workbench
+  writes the same `8=` conditions and never calls `_resolve_global_fabric_targets`. **8= is correct; no mapping.**
+* The compiled legacy PDM **never produced a `28=` row in any run**. For Revive it reported the 312 fabric rows as
+  unresolved. So `8`->`28` is **not legacy behaviour**; it is the Workbench's owner-requested Revive compatibility policy
+  (docs/03_Workflows/pricing_pdm_parity.md, "Revive component fabric-family routing"), validated only by the existing Revive
+  MDB rows (`28=`). It was deliberately extended to a blank program so an unset optional setting does not bypass the relation.
+* Layout/Nevi components carry the same `|8|28|` metadata as Revive, so no PDM metadata discriminates the series. Only the
+  program does. A blank program therefore cannot be told apart from Revive by the data.
+
+**What is NOT proven.** What compiled legacy does for a *blank* `programCode` on Layout/Nevi (only `layout_studio` and
+`revive` were run; blank was run on the Workbench side only), and the real `reg_ProgramCode` values of the three MDBs.
+No PDM/MDB was queried or run for this audit (production PDM excluded by instruction), so no parity is claimed.
+
+**Decision: no routing change.** Making a blank program stop routing to `28=` would break the legitimate Revive blank-program
+workflow and contradict the 25-Oct policy; making the choice by program name would be new automatic Program mapping; making
+the program mandatory was withdrawn. None is supported by evidence, so none was done. The `28=` the user still sees is the
+blank-program path: either Review > Generation > Program is unset and the linked repository code did not resolve (unverified
+code values, see above), or the series is Revive. Setting the program to `layout_studio`/`nevi_enhanced` yields `8=`.
+
+**Added.** `tests/test_fabric_option_routing_matrix.py` (mocked logic tests, **not** compiled-PDM evidence): `8=` source
+identical for every program; explicit layout/nevi -> `8=` target; revive and blank -> `28=` target with `8=` source lookup;
+blank-program warning present only when routing was caused by a blank program; `require_program` stays off.
+Existing coverage retained: export safeguards (`test_pricing_fabric_targets.py`, `test_price_mdb_export_service.py`),
+program resolution (`test_pricing_page_text_blocks.py`), Development unchanged (`test_pricing_page_program_...` case).
+
+**Tests.** Full suite `QT_QPA_PLATFORM=offscreen`: 4565 passed, 11 skipped, 0 failed (220 s). Two earlier full runs aborted
+with a Windows access violation in `tests/test_progress_popup_lifecycle.py` (Qt teardown, intermittent: the file passes 24/24
+alone, and the suite passes without and with the new file); this flake is unrelated to pricing and is not fixed here.
+
+**Open owner decision (smallest remaining step).** Confirm the real `reg_ProgramCode` of the Layout/Nevi/Revive MDBs, and
+authorise a non-production legacy run with a blank `programCode` on Layout. Only then can blank-program routing be changed
+with proof.
+
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for
   rows the scenario made stale or that PDM actually priced; "no-op" runs (X2, X4, X5, X6) are not discriminating.
