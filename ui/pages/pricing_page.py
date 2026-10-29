@@ -37,7 +37,6 @@ from core.engines.filtering import text_match
 from core.activity.models import ActivityType, LogLevel
 from core.progress import ProgressReporter
 from models.price_record import PriceRecord
-from services.pricing_program import PricingProgramError, validate_pricing_program
 from services.pricing_service import PriceParams, PricingService, pricing_requires_recompute
 from services.price_mdb_export_service import PriceMdbExportService
 from services.price_text_blocks import (
@@ -326,10 +325,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         module = getattr(self.window(), "_active_module", None)
         return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
 
-    def _program_required(self) -> bool:
-        """Only the Maintenance module requires an explicit series program."""
-        return getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
-
     def _price_list_currencies(self) -> list[str]:
         """Return currencies for the price-list workflow.
         
@@ -513,7 +508,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             valid_from=d.toString("yyyy-MM-dd"),
             valid_to="",
             program_code=str(getattr(snapshot, "generation_program", "") or ""),
-            require_program=self._program_required(),
         )
 
     def _on_compute(self) -> None:
@@ -531,12 +525,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             return
 
         params = self._params()
-        if params.require_program:
-            try:
-                validate_pricing_program(params.program_code)
-            except PricingProgramError as exc:
-                QMessageBox.warning(self, "Compute Prices", str(exc))
-                return
         # Compute every price-list currency (EUR + GBP + ...), or the selected
         # currency when no lists are defined. Diff only within the computed
         # currencies; any other currency's records stay for their own lists.
@@ -731,11 +719,9 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         targets = dialog.names()
         self._wf["targets"] = targets
         self._summary.setText("Building export preview (nothing is written)...")
-        require_program = self._program_required()
         self._preview_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).export(
-                snapshot, mdb_path, dry_run=True, list_targets=targets,
-                require_program=require_program)
+                snapshot, mdb_path, dry_run=True, list_targets=targets)
         )
         self._preview_task.signals.finished.connect(self._on_preview_finished)
         self._preview_task.signals.failed.connect(self._on_price_export_failed)
@@ -761,11 +747,9 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._export_btn.setEnabled(False)
         self._preview_btn.setEnabled(False)
         self._summary.setText("Exporting prices to MDB... the application remains available.")
-        require_program = self._program_required()
         self._export_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).export(
-                snapshot, mdb_path, list_targets=targets, expected_plan=digest,
-                require_program=require_program)
+                snapshot, mdb_path, list_targets=targets, expected_plan=digest)
         )
         self._export_task.signals.finished.connect(
             lambda res: self._on_price_export_finished(res, mdb_path)
