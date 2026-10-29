@@ -156,6 +156,29 @@ for those series, or require it, is an owner decision; no mapping or requirement
 globally replaced; Revive routing is unchanged. Evidence is mocked tests plus the earlier compiled-PDM runs; no
 live PDM/MDB was used for this correction.
 
+## Blank Program: resolved from the linked repository (2026-10-29, follow-up)
+
+**Root cause (unchanged).** Blank `snapshot.generation_program` reaches `PDMRepository.fetch_global_option_increment_prices`
+as `""`, which it handles as Revive (`28=`). The series name (`range_name`) is not an input to routing, and
+`XocdExportService.program_key` cannot yield `layout_studio`/`nevi_enhanced`.
+
+**Authoritative metadata found.** The Maintenance state (`context.maintenance_snapshot`) holds the MDB of the repository
+the user linked to this PDM product (`MaintenanceRepositoryLinkService`); its package `reg_ProgramCode` is imported as
+`mdb_import_snapshot.product.code`. `PriceParams.program_code` is documented as "PDM text_programcode / package
+reg_ProgramCode", and legacy price update reads `tCOMd_Package.reg_ProgramCode`.
+
+**Change.** `PricingPage._program_code`: explicit Review program first; otherwise, **only in Maintenance** and only when
+the Maintenance state is aligned to the active snapshot, `program_from_linked_repository` returns that package code if
+(and only if) it is `layout_studio`, `nevi_enhanced` or `revive`. Anything else returns `""` and the previous
+behaviour (including the 8d85fca routing warning) applies. No mandatory validation (`require_program` stays off), no
+name or article-number guessing, snapshot not mutated, Development unchanged, `28=` not replaced globally.
+
+**Not verified.** The real `reg_ProgramCode` values of the Layout, Nevi and Revive MDBs. No MDB was read (constraint),
+and the only fixture in the repo uses `"NEVI"`, which is deliberately *not* matched. If production codes differ
+(e.g. `NEVI`), blank-program behaviour stays as before for that series until the exact codes are confirmed and added
+to `_ALIASES`; that is the smallest remaining decision. Evidence for this change is mocked tests; no compiled-PDM or
+UI run was made.
+
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for
   rows the scenario made stale or that PDM actually priced; "no-op" runs (X2, X4, X5, X6) are not discriminating.

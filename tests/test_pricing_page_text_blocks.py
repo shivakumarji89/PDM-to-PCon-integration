@@ -411,3 +411,25 @@ def test_maintenance_compute_with_blank_program_is_not_blocked(monkeypatch):
     monkeypatch.setattr(pp.QThreadPool, "globalInstance", staticmethod(lambda: SimpleNamespace(start=lambda t: None)))
     page._on_compute()
     assert not warnings
+
+
+@pytest.mark.parametrize("explicit,linked,module,expected", [
+    ("", "layout_studio", WorkbenchModule.MAINTENANCE, "layout_studio"),
+    ("", "nevi_enhanced", WorkbenchModule.MAINTENANCE, "nevi_enhanced"),
+    ("", "revive", WorkbenchModule.MAINTENANCE, "revive"),
+    ("", "aeron", WorkbenchModule.MAINTENANCE, ""),              # unknown series: previous behaviour
+    ("", "", WorkbenchModule.MAINTENANCE, ""),                   # no link: previous behaviour
+    ("revive", "layout_studio", WorkbenchModule.MAINTENANCE, "revive"),   # explicit Review choice wins
+    ("", "layout_studio", WorkbenchModule.DEVELOPMENT, ""),      # Development unchanged
+])
+def test_pricing_page_program_for_blank_and_explicit_programs(explicit, linked, module, expected):
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.generation_program = explicit
+    page._active_module = module
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=snap, mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=linked))))
+    params = page._params()
+    assert params.program_code == expected
+    assert params.require_program is False
+    assert snap.generation_program == explicit  # never mutated

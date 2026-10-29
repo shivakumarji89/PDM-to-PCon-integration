@@ -44,3 +44,23 @@ def validate_pricing_program(program: str | None) -> str:
             f"Unsupported Program '{text}'. Supported programs: {', '.join(SUPPORTED_PROGRAMS)}."
         )
     return canonical
+
+
+def program_from_linked_repository(maintenance_state, snapshot) -> str:
+    """Routing program named by the linked repository's package ``reg_ProgramCode``, or ``""``.
+
+    Only the Maintenance state aligned to ``snapshot`` is consulted, and only a value that is one of the
+    supported routing programs is used. Anything else (no link, other series, an unrecognised code such as
+    a display name) yields ``""`` so the previous behaviour applies; nothing is guessed from names or
+    article numbers.
+    """
+    if maintenance_state is None or snapshot is None:
+        return ""
+    if getattr(maintenance_state, "pdm_snapshot", None) is not snapshot:
+        return ""
+    package = getattr(getattr(maintenance_state, "mdb_import_snapshot", None), "product", None)
+    code = str(getattr(package, "code", "") or "")
+    try:
+        return validate_pricing_program(code)
+    except PricingProgramError:
+        return ""

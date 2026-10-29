@@ -112,3 +112,27 @@ def test_export_is_blocked_for_blank_or_unsupported_program(tmp_path, program):
     result = PriceMdbExportService(SimpleNamespace()).export(snapshot, mdb, require_program=True)
     assert result["ok"] is False
     assert "Program" in result["error"]
+
+
+# ---- blank Program resolved from the linked repository (Maintenance) --------------------------------------
+from services.pricing_program import program_from_linked_repository  # noqa: E402
+
+
+def _state(snapshot, code):
+    return SimpleNamespace(pdm_snapshot=snapshot,
+                           mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=code)))
+
+
+@pytest.mark.parametrize("code,expected", [
+    ("layout_studio", "layout_studio"), ("nevi_enhanced", "nevi_enhanced"), ("revive", "revive"),
+    ("NEVI", ""), ("aeron", ""), ("", ""),            # unrecognised / unknown series: nothing guessed
+])
+def test_linked_repository_program_only_when_it_is_a_routing_program(code, expected):
+    snap = SimpleNamespace()
+    assert program_from_linked_repository(_state(snap, code), snap) == expected
+
+
+def test_linked_repository_ignored_for_another_snapshot_or_no_link():
+    snap = SimpleNamespace()
+    assert program_from_linked_repository(_state(SimpleNamespace(), "revive"), snap) == ""
+    assert program_from_linked_repository(None, snap) == ""
