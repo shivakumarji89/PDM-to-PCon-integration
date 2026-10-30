@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui import theme
-from ui.components.workflow_layout import WorkflowPageLayout
+from ui.components.workflow_layout import WorkflowHeader, WorkflowPageLayout
 
 
 class BasePage(QWidget):
@@ -42,6 +42,7 @@ class BasePage(QWidget):
         #: Shared workflow layout (header/toolbar/summary/main/footer) when the
         #: page opted in with ``workflow_layout=True``; ``None`` otherwise.
         self.wf: WorkflowPageLayout | None = None
+        self.header: WorkflowHeader | None = None
 
         root = QVBoxLayout(self)
         # The center panel owns the outer padding; the page adds none, so page
@@ -59,20 +60,11 @@ class BasePage(QWidget):
                 root.addStretch(1)
             return
 
-        header = QLabel(title, self)
-        header.setObjectName("pageTitle")
-        root.addWidget(header)
-
-        if description:
-            subtitle = QLabel(description, self)
-            subtitle.setObjectName("pageSubtitle")
-            subtitle.setWordWrap(True)
-            root.addWidget(subtitle)
-
-        divider = QFrame(self)
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setObjectName("pageDivider")
-        root.addWidget(divider)
+        # All standard workflow pages share the same headline treatment as
+        # pages using WorkflowPageLayout. Presentation only; page content,
+        # controls, signals and lifecycle remain untouched.
+        self.header = WorkflowHeader(title, description, self, header_glyph)
+        root.addWidget(self.header)
 
         # Content area that concrete pages can fill in later phases. When
         # ``content_stretch`` is set the content expands to fill the workspace
