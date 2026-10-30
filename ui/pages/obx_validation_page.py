@@ -1,6 +1,7 @@
 """OBX Validation workspace page."""
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 import hashlib
 import math
@@ -518,8 +519,8 @@ class ObxValidationPage(BasePage):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_1)
-        self._table = QTableWidget(0, 10, container)
-        self._table.setHorizontalHeaderLabels(["#", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Source date", "Result", "OBX file"])
+        self._table = QTableWidget(0, 11, container)
+        self._table.setHorizontalHeaderLabels(["#", "SKU", "Currency", "Category (PLC)", "Qty", "OBX price", "PDM price", "Price Difference", "Source date", "Result", "OBX file"])
         self._table.setSortingEnabled(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -528,9 +529,9 @@ class ObxValidationPage(BasePage):
         # Keep compact/numeric columns sized to their contents and let the
         # descriptive columns share the remaining viewport width. This avoids
         # the OBX file column alone absorbing the available space.
-        for column in (0, 2, 4, 5, 6, 7):
+        for column in (0, 2, 4, 5, 6, 7, 8):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        for column in (1, 3, 8, 9):
+        for column in (1, 3, 9, 10):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
         header.setStretchLastSection(False)
         layout.addWidget(self._table, 1)
@@ -1667,14 +1668,23 @@ class ObxValidationPage(BasePage):
             str(r.qty),
             f"{r.sif_price:.2f}",
             "-" if r.pdm_price is None else f"{r.pdm_price:.2f}",
+            self._price_difference_text(r),
             r.source_date or "-",
             r.result,
             source_name,
         ]
         for col, text in enumerate(cells):
             cell = QTableWidgetItem(text)
-            if col in (0, 4, 5, 6):
+            if col in (0, 4, 5, 6, 7):
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if r.status != "ok":
                 cell.setForeground(Qt.GlobalColor.red)
             self._table.setItem(row, col, cell)
+
+    @staticmethod
+    def _price_difference_text(result) -> str:
+        """Format PDM minus OBX price without binary floating-point drift."""
+        if result.pdm_price is None or result.sif_price is None:
+            return "-"
+        difference = Decimal(str(result.pdm_price)) - Decimal(str(result.sif_price))
+        return f"{difference:.2f}"
