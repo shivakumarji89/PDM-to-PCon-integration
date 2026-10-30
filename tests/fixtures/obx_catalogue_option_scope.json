@@ -1,0 +1,2171 @@
+{
+  "provenance": {
+    "database": "DBCHIP12V/PDMLive",
+    "captured_utc": "2026-10-30 03:33:09.817000",
+    "legacy_source_hashes": {
+      "VerifyOptions.cs": "0fc05d925575e8e84902fffeede7e37c30d742ca12f2b8404be5caaf2396d425",
+      "GetLeadTime.cs": "df5e59f899e45c45124ebe23fa500bfce3a7544a6a9ffbb792b9091348bdb2c0",
+      "GetPrice.cs": "84b836c82b2260e2541dab3f2111d8f40522db6e4feea08cbcf3e34f84d6408c",
+      "GetPriceExt.cs": "ec5ae50b6e27e8cef64b22ff35391660c726fc1f87777d96f8008d471e370342"
+    },
+    "evidence": "Catalogue membership, product/item exclusions and option-parent metadata projected from the reviewed read-only capture; prices in target cases are reported reference amounts, not captured pricing fixtures.",
+    "projection": "Target/control token rows, their parent chains, and T1P# overlap controls. Scope IDs are intersected with these rows; no acceptance outcomes are encoded."
+  },
+  "cases": [
+    {
+      "sku": "70LCXD Y 01",
+      "reported_price": 8072
+    },
+    {
+      "sku": "73LCRRD Y 01",
+      "reported_price": 12275
+    },
+    {
+      "sku": "73L1RRD Y 01",
+      "reported_price": 12337
+    },
+    {
+      "sku": "70L1XD Y 01",
+      "reported_price": 8197
+    },
+    {
+      "sku": "70LMC S 101FI",
+      "reported_price": 6044
+    },
+    {
+      "sku": "70LMC C K10543",
+      "reported_price": 5814
+    },
+    {
+      "sku": "74YMC S OP18",
+      "reported_price": 1851
+    },
+    {
+      "sku": "74YMC C K10543",
+      "reported_price": 1809
+    },
+    {
+      "sku": "74YMC S 101FI",
+      "reported_price": 1851
+    },
+    {
+      "sku": "74YCRD Y 01",
+      "reported_price": 3294
+    },
+    {
+      "sku": "74Y1RD Y 01",
+      "reported_price": 3367
+    }
+  ],
+  "items": {
+    "70L1XD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "70LCXD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "70LMC": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288469,
+          "OrderCodeValue2": "G",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288470,
+          "OrderCodeValue2": "C",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288471,
+          "OrderCodeValue2": "S",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 310220,
+          "OrderCodeValue2": "T1P#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288470,
+          "ParentOptValCode": "C"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284975,
+          "OrderCodeValue2": "FI#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288471,
+          "ParentOptValCode": "S"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284846,
+          "OrderCodeValue2": "H0#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288469,
+          "ParentOptValCode": "G"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 288136,
+          "OrderCodeValue2": "K1054#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288470,
+          "ParentOptValCode": "C"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 310221,
+          "OrderCodeValue2": "T1P201",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 310220,
+          "ParentOptValCode": "T1P#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 284851,
+          "OrderCodeValue2": "01H",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284846,
+          "ParentOptValCode": "H0#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 285036,
+          "OrderCodeValue2": "101FI",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284975,
+          "ParentOptValCode": "FI#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 288183,
+          "OrderCodeValue2": "K10543",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 288136,
+          "ParentOptValCode": "K1054#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            285036,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            288136
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "73L1RRD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "73LCRRD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "74Y1RD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "74YCRD": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288476,
+          "OrderCodeValue2": "Y",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 291999,
+          "OrderCodeValue2": "0Y#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288476,
+          "ParentOptValCode": "Y"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 291853,
+          "OrderCodeValue2": "01",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 291999,
+          "ParentOptValCode": "0Y#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            288476,
+            291853,
+            291999
+          ],
+          "product_exclusions": [
+            291999
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "74YMC": {
+      "options": [
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288469,
+          "OrderCodeValue2": "G",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288470,
+          "OrderCodeValue2": "C",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8714,
+          "OptionValueId": 288471,
+          "OrderCodeValue2": "S",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 310220,
+          "OrderCodeValue2": "T1P#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288470,
+          "ParentOptValCode": "C"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284975,
+          "OrderCodeValue2": "FI#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288471,
+          "ParentOptValCode": "S"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284846,
+          "OrderCodeValue2": "H0#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288469,
+          "ParentOptValCode": "G"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 288136,
+          "OrderCodeValue2": "K1054#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288470,
+          "ParentOptValCode": "C"
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284978,
+          "OrderCodeValue2": "OP#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 8714,
+          "ParentOptValId": 288471,
+          "ParentOptValCode": "S"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 310221,
+          "OrderCodeValue2": "T1P201",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 310220,
+          "ParentOptValCode": "T1P#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 284851,
+          "OrderCodeValue2": "01H",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284846,
+          "ParentOptValCode": "H0#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 285036,
+          "OrderCodeValue2": "101FI",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284975,
+          "ParentOptValCode": "FI#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 288183,
+          "OrderCodeValue2": "K10543",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 288136,
+          "ParentOptValCode": "K1054#"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 285095,
+          "OrderCodeValue2": "OP18",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284978,
+          "ParentOptValCode": "OP#"
+        }
+      ],
+      "catalogues": {
+        "721": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "828": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "649": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            284846,
+            284851,
+            284975,
+            284978,
+            285036,
+            285095,
+            288136,
+            288183,
+            288469,
+            288470,
+            288471,
+            310220,
+            310221
+          ],
+          "product_exclusions": [
+            284975,
+            284978,
+            288136
+          ],
+          "item_exclusions": []
+        }
+      }
+    },
+    "AER1B33DW-AERON-FAST01": {
+      "options": [
+        {
+          "OptionId": 6430,
+          "OptionValueId": 152139,
+          "OrderCodeValue2": "ALP",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 6431,
+          "OptionValueId": 152140,
+          "OrderCodeValue2": "G1",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 6435,
+          "OptionValueId": 152142,
+          "OrderCodeValue2": "G1",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": 6431,
+          "ParentOptValId": 152140,
+          "ParentOptValCode": "G1"
+        },
+        {
+          "OptionId": 6436,
+          "OptionValueId": 152297,
+          "OrderCodeValue2": "G1",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": 6435,
+          "ParentOptValId": 152142,
+          "ParentOptValCode": "G1"
+        },
+        {
+          "OptionId": 6432,
+          "OptionValueId": 152148,
+          "OrderCodeValue2": "BB",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 6437,
+          "OptionValueId": 152152,
+          "OrderCodeValue2": "BK",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 6434,
+          "OptionValueId": 152301,
+          "OrderCodeValue2": "23103",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": 6431,
+          "ParentOptValId": 152140,
+          "ParentOptValCode": "G1"
+        }
+      ],
+      "catalogues": {
+        "37": {
+          "membership": [
+            152139,
+            152140,
+            152142,
+            152148,
+            152152,
+            152297,
+            152301
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        }
+      }
+    },
+    "BUNLC": {
+      "options": [
+        {
+          "OptionId": 9415,
+          "OptionValueId": 305094,
+          "OrderCodeValue2": "G",
+          "Status": 1,
+          "IsFabric": 0,
+          "ParentOptId": null,
+          "ParentOptValId": null,
+          "ParentOptValCode": null
+        },
+        {
+          "OptionId": 8512,
+          "OptionValueId": 284845,
+          "OrderCodeValue2": "FED#",
+          "Status": 1,
+          "IsFabric": 1,
+          "ParentOptId": 9415,
+          "ParentOptValId": 305094,
+          "ParentOptValCode": "G"
+        },
+        {
+          "OptionId": 8513,
+          "OptionValueId": 284849,
+          "OrderCodeValue2": "01FED",
+          "Status": 1,
+          "IsFabric": 2,
+          "ParentOptId": 8512,
+          "ParentOptValId": 284845,
+          "ParentOptValCode": "FED#"
+        }
+      ],
+      "catalogues": {
+        "649": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "823": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "829": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "725": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "753": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "888": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "890": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "723": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "752": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "746": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        },
+        "751": {
+          "membership": [
+            284845,
+            284849,
+            305094
+          ],
+          "product_exclusions": [],
+          "item_exclusions": []
+        }
+      }
+    }
+  }
+}

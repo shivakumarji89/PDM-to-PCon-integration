@@ -28,6 +28,9 @@ def _eligible_validation_repo_methods(**overrides):
         "fetch_items_valid_catalogues": lambda items, catalogue_ids, **kwargs: {
             str(item): list(catalogue_ids) for item in items
         } if catalogue_ids else {},
+        "fetch_obx_catalogue_option_values": lambda items, catalogues, values, **kwargs: {
+            (item, catalogue): set(values) for item in items for catalogue in catalogues
+        },
     }
     methods.update(overrides)
     return methods

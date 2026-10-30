@@ -142,3 +142,34 @@ def test_documented_deviation_only_price_type_texts_are_linked():
     _export(mdb, [_global("GEMTD", 9.0, CURRENCY, product_code="P")])
     assert _texts_op(mdb)["rows"][0]["com_TextTypeCode"] == "price"
     assert _global_op(mdb)["rows"][0]["com_TextID"] == _texts_op(mdb)["rows"][0]["com_TextID"]
+
+
+_REVIVE_LIKE_TEXTS = [  # shapes found in the real Layout / Nevi / Revive MDBs (read-only check, 2026-10-30)
+    {"com_TextID": 71645, "com_PackageID": PACKAGE, "com_TextTypeCode": "price", "com_TextName": "8",
+     **{c: "Surcharge 8" for c in LANG}},
+    {"com_TextID": 49958, "com_PackageID": PACKAGE, "com_TextTypeCode": "price", "com_TextName": "8_FT",
+     **{c: "Surcharge fabric type" for c in LANG}},
+    {"com_TextID": 73981, "com_PackageID": PACKAGE, "com_TextTypeCode": "price", "com_TextName": "28",
+     **{c: "Surcharge fabric type" for c in LANG}},
+]
+
+
+def test_fabric_type_row_reuses_the_text_named_by_its_option_id_not_a_colour_text():
+    """A new ``<item> 8=<code>`` row links the text named ``8`` (as PDM does); the ``28`` and ``8_FT`` texts are never used."""
+    items = [("RY3SNNB.1", "FR-RA-US"), ("RY3SNNB.1 8=1FD", "FR-RA-US")]  # surcharge needs its base row
+    pdm_texts, pdm_globals = _pdm_add_missing_global(_REVIVE_LIKE_TEXTS, [], items)
+    our_texts, our_globals, result = _apply_export(_REVIVE_LIKE_TEXTS, items)
+    surcharge = [g["com_TextID"] for g in our_globals if g["com_VariantCondition"] == "RY3SNNB.1 8=1FD"]
+    assert surcharge == [71645]
+    assert _normal(our_texts, our_globals) == _normal(pdm_texts, pdm_globals)
+    assert result["text_summary"]["text_reuse"] == 1
+
+
+def test_missing_option_text_is_created_as_surcharge_option_id_like_pdm():
+    """With no text named ``8`` PDM creates name ``8`` / content ``Surcharge 8`` (never 'Surcharge Fabric Type')."""
+    items = [("DWE3VNNS.1", "FR-ID-US"), ("DWE3VNNS.1 8=1FD", "FR-ID-US")]
+    pdm_texts, pdm_globals = _pdm_add_missing_global([], [], items)
+    our_texts, our_globals, _ = _apply_export([], items)
+    created = [t for t in our_texts if t["com_TextName"] == "8"]
+    assert len(created) == 1 and created[0]["com_Text_1_en"] == "Surcharge 8"
+    assert _normal(our_texts, our_globals) == _normal(pdm_texts, pdm_globals)

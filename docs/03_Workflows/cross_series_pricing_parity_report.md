@@ -270,6 +270,27 @@ code but are unused by the fetch. The blank-program routing warning can no longe
 * No new compiled-PDM run was made for this change; tests are mocked. Legacy VARCOND parity remains NOT RUN.
 * Superseded: the earlier "Revive `8`->`28`" statements above describe the behaviour before this change.
 
+## Price text block: "Surcharge 8" vs "Surcharge fabric type" (2026-10-30)
+
+**Legacy rule** (`PriceMaintenance.AddMissingGlobalPricingRecords`, ~10161-10240). For a new global row `<item> <OptionId>=<code>`:
+1. use the `com_TextID` already on the existing row (package + list + condition); else
+2. look up a `price` text by **name = `<OptionId>`** in the package (last match wins); else
+3. create text name `<OptionId>`, content **`Surcharge <OptionId>`** (e.g. `Surcharge 8`) in en/de/fr/nl/it.
+Legacy re-writes a text's language columns only when the condition has no `_` and the label has no "Surcharge", so a
+surcharge text is never relabelled. The string "Surcharge Fabric Type" does not exist in legacy.
+
+**Real MDB check (read-only, copies of the working OCDs).** The text named `8` already carries human-authored content, which is
+why the label varies: Layout_Studio `8` = "Surcharge fabric" (40,109 rows); Nevi_enhanced `8` = "Surcharge fabric type" (18,120 rows);
+Revive: most existing `8=` rows link `8_FT` = "Surcharge fabric type" (31,958), 1,872 rows link `28` = "Surcharge fabric type", and a text
+named `8` = "Surcharge 8" exists. So **"Surcharge <id>" appears only when no text named `<id>` exists; otherwise the existing text's
+own content shows**, exactly as in legacy. No Workbench defect; no code change.
+
+**Workbench.** `price_text_labels` and `PriceMdbExportService` already follow the order above (existing link preserved,
+reuse by case-insensitive name, else create `Surcharge <id>`). With the target now `8=` (no `28` routing) new Fabric Type
+rows look up name `8`, never `28`/`8_FT`. Pinned by two new tests in `tests/test_pricing_pdm_text_parity.py`, which compare
+against a literal transcription of the legacy method (not a live PDM run).
+**Known deviation, unchanged:** several texts with the same name block the row (legacy silently takes the last one).
+
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for
   rows the scenario made stale or that PDM actually priced; "no-op" runs (X2, X4, X5, X6) are not discriminating.

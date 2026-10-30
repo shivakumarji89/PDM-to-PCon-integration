@@ -20,6 +20,36 @@ USdata is a separate domain. A normal `Item` record wins when a code exists in b
 
 Validation dates reuse one normalizer for UI dates (`DD-Mon-YYYY`), server dates (`DD Mon YYYY`), ISO dates, explicit DMY slash dates, and date/datetime values. Invalid or timezone-ambiguous inputs are rejected. Base, component, and US price queries construct the legacy SQL datetime using `DATEADD`/`DATEDIFF` around `CAST(? AS datetime)`.
 
+### OBX catalogue option eligibility
+
+OBX Validate checks each configured normal Item against its eligible catalogues
+individually. `fetch_obx_catalogue_option_values` reads `CatalogueOptionValues`,
+subtracting `CatalogueProductOptionExclusions` by ProductId and
+`CatalogueItemOptionExclusions` by ItemId within that same catalogue. The existing
+option verifier receives those allowed value IDs before building option groups
+and dependent-colour parent chains. A known active colour cannot bypass an
+excluded value or parent by matching another fabric band's prefix. A complete
+configuration must pass in one eligible catalogue; permissions are never merged
+between catalogues.
+
+This gate is OBX-only in the existing `_validate_group` path. CET SIF, USItem-only
+handling, unfiltered pricing metadata, price calculations, UI/workers, progress,
+pause/resume, cancellation, checkpointing and exports retain their existing
+behavior. Invalid options use the existing unresolved result and are not priced.
+The query uses the existing repository execution/cancellation hooks; SQL failures
+propagate rather than becoming successful validation results.
+
+The captured regression fixture in
+`tests/fixtures/obx_catalogue_option_scope.json` records the 2026-10-30 read-only
+PDMLive option metadata and catalogue restrictions for the 11 Saarinen targets
+and Saarinen, Aeron and Perron controls. All 11 targets have an excluded fabric
+parent in each of 13 eligible catalogues and must fail their option check even
+when their prices match. Fixture-based integration tests use
+`ObxValidationService.validate`; they do not claim compiled legacy execution or
+live monetary parity. Other source-audit differences (positional matching,
+insufficient-option counting/stopping, generic inactive-prefix matching and
+family-specific exceptions) are outside this correction.
+
 ## Audit Boundaries
 
 Catalogue selection intentionally follows the current main site's resolved `SiteId`; the parity branch's hard-coded regional site-ID lists were not copied. Current main's currency regions were checked against PDMLive `Site.Site` codes and descriptions; lookup prefers the code and retains the known description as a fallback.
