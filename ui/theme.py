@@ -29,7 +29,7 @@ ACCENT_DARK = "#4D941D"
 COLOR_OK = "#1f9d55"
 COLOR_WARNING = "#c77f0a"
 COLOR_ERROR = "#c0392b"
-COLOR_INFO = "#2f6fed"
+COLOR_INFO = "#6DAE1F"
 COLOR_MUTED = "#63707e"
 
 # Additive V1 surfaces / soft tints (design system).
