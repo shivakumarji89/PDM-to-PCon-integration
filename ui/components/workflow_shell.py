@@ -226,7 +226,7 @@ class _StepRow(QWidget):
     clicked = Signal(object)
 
     _TEXT_X = 54
-    _MAX_DESC_LINES = 2
+    _MAX_DESC_LINES = 1
 
     def __init__(self, step, index: int, title: str, description: str,
                  first: bool, last: bool, parent: QWidget | None = None) -> None:
@@ -275,9 +275,18 @@ class _StepRow(QWidget):
     def _text_width(self, width: int) -> int:
         return max(40, width - self._TEXT_X - 14)
 
+    def _description_font(self):
+        font = theme.font("helper")
+        font.setPixelSize(10)
+        return font
+
     def _desc_lines(self, width: int) -> list[str]:
-        return _wrap_lines(QFontMetrics(theme.font("helper")), self._description,
-                           self._text_width(width), self._MAX_DESC_LINES)
+        # Keep navigation compact; the complete text remains in the tooltip.
+        metrics = QFontMetrics(self._description_font())
+        text = metrics.elidedText(
+            self._description, Qt.TextElideMode.ElideRight, self._text_width(width)
+        )
+        return [text] if text else []
 
     def _title_lines(self, width: int) -> list[str]:
         return _wrap_lines(QFontMetrics(theme.font("wf_card_title")), self._title,
@@ -383,7 +392,8 @@ class _StepRow(QWidget):
         # Title + wrapped description (never clipped mid-glyph).
         x = self._TEXT_X
         avail = self._text_width(w)
-        tf, df = theme.font("wf_card_title"), theme.font("helper")
+        tf = theme.font("wf_card_title")
+        df = self._description_font()
         tfm, dfm = QFontMetrics(tf), QFontMetrics(df)
         title_color = "#FFFFFF" if current else (theme.WB_NAVY if state != "blocked" else theme.WB_NEUTRAL)
         desc_color = "#EAF5DA" if current else (theme.WB_NEUTRAL if state == "blocked" else theme.WB_TEXT_SECONDARY)
