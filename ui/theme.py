@@ -23,8 +23,8 @@ MUTED = "#63707e"        # helper / disabled text
 LINE = "#e1e6ec"         # borders / dividers
 SURFACE = "#ffffff"      # panels / inputs
 CANVAS = "#f4f6f8"       # window background
-ACCENT = "#2f6fed"       # primary / current
-ACCENT_DARK = "#2a63d4"
+ACCENT = "#6DAE1F"       # primary / current
+ACCENT_DARK = "#4D941D"
 
 COLOR_OK = "#1f9d55"
 COLOR_WARNING = "#c77f0a"
@@ -35,11 +35,11 @@ COLOR_MUTED = "#63707e"
 # Additive V1 surfaces / soft tints (design system).
 SURFACE_ALT = "#fafbfc"   # zebra rows / card body
 LINE_STRONG = "#cfd6de"   # active borders
-ACCENT_SOFT = "#eaf1fe"   # selection / accent fill
+ACCENT_SOFT = "#F1F7E8"   # selection / accent fill
 OK_SOFT = "#e7f5ee"
 WARNING_SOFT = "#fdf3e2"
 ERROR_SOFT = "#fbecea"
-INFO_SOFT = "#eaf1fe"
+INFO_SOFT = "#F1F7E8"
 
 # --------------------------------------------------------------------------
 # Workbench visual language (front-page palette) for internal workflow pages.
