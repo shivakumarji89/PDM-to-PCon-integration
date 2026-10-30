@@ -68,15 +68,19 @@ class WorkflowHeader(QWidget):
                  glyph: str = "") -> None:
         super().__init__(parent)
         self.setObjectName("wfHeader")
-        self.setStyleSheet("QWidget#wfHeader { background: transparent; }")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"QWidget#wfHeader {{ background: #FFFFFF; border: 1px solid {theme.WB_BORDER}; "
+            f"border-radius: 12px; }}"
+        )
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setContentsMargins(theme.SPACE_3, 8, theme.SPACE_3, 8)
         outer.setSpacing(theme.SPACE_3)
         glyph = glyph or workflow_glyph(title)
         if glyph:
             from ui.components.workflow_cards import IconBadge
 
-            self.icon = IconBadge(glyph, "success", 36, self)
+            self.icon = IconBadge(glyph, "success", 42, self)
             outer.addWidget(self.icon, 0, Qt.AlignmentFlag.AlignVCenter)
 
         text = QVBoxLayout()
@@ -99,10 +103,15 @@ class WorkflowHeader(QWidget):
     def set_status(self, text: str, tone: str = "neutral") -> None:
         self.status_pill.set_status(text, tone)
 
-    def add_action(self, widget: QWidget, role: str | None = None) -> None:
+    def add_action(self, widget: QWidget, role: str | None = "secondary") -> None:
+        """Place a real page action in the headline action group.
+
+        Existing callbacks and enabled/disabled state remain owned by the page.
+        Use ``role="primary"`` for the forward/commit action.
+        """
         if role is not None and hasattr(widget, "setStyleSheet"):
             set_button_role(widget, role)  # type: ignore[arg-type]
-        self._actions.addWidget(widget, 0, Qt.AlignmentFlag.AlignTop)
+        self._actions.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
 
 class ActionBar(QFrame):
