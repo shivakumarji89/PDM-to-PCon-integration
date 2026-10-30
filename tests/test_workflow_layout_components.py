@@ -150,12 +150,11 @@ def test_every_registered_workflow_has_a_distinct_glyph():
     titles = (
         "Product", "Articles", "Class Creation", "Text", "Relation Object",
         "Pricing", "Pricing Relation", "Review", "Generate", "Engineering",
-        "Maintenance", "OBX Validation", "CET SIF Validation",
-        "Article OBX Generator", "Article OBX Generator (pCon SDK)",
-        "Export PDM Data", "Create Metatype", "Repository Analysis",
-        "Metatype Articles", "Metatype Properties", "Metatype Values",
-        "Metatype Texts", "Metatype Setup", "Metatype Relations",
-        "Metatype Review", "OAP",
+        "PDM ↔ MDB Comparison", "Bulk Update", "SyteLine Export",
+        "Create Metatype", "Property Values", "Texts", "Setup",
+        "Relations / Ordering", "Final Review", "Repository Analysis",
+        "CET SIF Validation", "OBX Validation", "Article OBX Generator",
+        "Article OBX Generator (pCon SDK)", "Export PDM Data", "OAP",
     )
     glyphs = [workflow_glyph(title) for title in titles]
     assert all(glyph != "◇" for glyph in glyphs)
