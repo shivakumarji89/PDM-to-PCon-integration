@@ -107,12 +107,13 @@ class KpiCard(Card):
                  glyph: str | None = None, caption: str = "", compact_value: bool = False,
                  parent: QWidget | None = None) -> None:
         super().__init__(tone, tinted=tone != "neutral", parent=parent)
-        self.setMinimumWidth(170)
-        self.body.setContentsMargins(theme.SPACE_3, 6, theme.SPACE_3, 6)
-        self.body.setSpacing(2)
+        self.setMinimumWidth(180)
+        self.setMinimumHeight(76)
+        self.body.setContentsMargins(10, 8, 10, 8)
+        self.body.setSpacing(5)
         row = QHBoxLayout()
-        row.setSpacing(theme.SPACE_2)
-        self._badge = IconBadge(glyph or "", tone, 26, self)
+        row.setSpacing(10)
+        self._badge = IconBadge(glyph or "", tone, 32, self)
         row.addWidget(self._badge, 0, Qt.AlignmentFlag.AlignVCenter)
         text = QVBoxLayout()
         text.setSpacing(0)
@@ -165,7 +166,7 @@ class KpiCard(Card):
 
     def _apply_tone(self) -> None:
         self._badge.set_tone(self._tone, self._glyph)
-        style_progress_bar(self._meter, self._tone if self._tone != "neutral" else "success", height=4)
+        style_progress_bar(self._meter, self._tone if self._tone != "neutral" else "success", height=5)
 
 
 class InfoCard(Card):
