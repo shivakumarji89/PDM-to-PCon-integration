@@ -532,7 +532,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._shell_hsplit.insertWidget(0, self._family_box)
             self._shell_hsplit.insertWidget(1, self._table)
             self._shell_hsplit.setSizes([190, 900])
-            self._detail_layout.insertWidget(1, self._details_box)
             self._shell_card.show()
             body.addWidget(self._shell_card, 1)
             for widget, _stretch in self._toolbar_widgets:
@@ -543,8 +542,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._search.setMinimumWidth(170)
             self._search.setFixedWidth(200)
             self._base_len_spin.setMaximumWidth(72)
-            # Details: label/value pairs move into a balanced two-column grid.
-            self._arrange_details(True)
             header = self._table.horizontalHeader()
             self._table_header_alignment = header.defaultAlignment()
             header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -581,7 +578,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                     group_layout.removeWidget(widget)
             for widget, stretch in self._toolbar_widgets:
                 self._toolbar_legacy_layout.addWidget(widget, stretch)
-            self._arrange_details(False)
             header = self._table.horizontalHeader()
             header.setDefaultAlignment(self._table_header_alignment)
             self._table.setAlternatingRowColors(self._table_alternating)
@@ -688,33 +684,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._details_grid.setVerticalSpacing(6)
         self._details_host.hide()
         self._details_form.addRow(self._details_host)
-        self._detail_sel = None
-        self._shell_toolbar.hide()
-        self._detail_tabs = DetailTabs(self)
-        page = QWidget()
-        self._detail_layout = QVBoxLayout(page)
-        self._detail_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2, theme.SPACE_3, theme.SPACE_2)
-        self._detail_placeholder = QLabel("Select an article to see its details.", page)
-        self._detail_placeholder.setStyleSheet(
-            f"background: transparent; color: {theme.WB_TEXT_SECONDARY};"
-        )
-        self._detail_layout.addWidget(self._detail_placeholder)
-        self._detail_layout.addStretch(1)
-        # Scrolls instead of squashing rows when the panel is short.
-        detail_scroll = QScrollArea(self._detail_tabs)
-        detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        detail_scroll.setWidgetResizable(True)
-        detail_scroll.setStyleSheet("QScrollArea { background: transparent; border: 0; }")
-        detail_scroll.setWidget(page)
-        self._detail_tabs.addTab(detail_scroll, "Article Details")
         self._shell_vsplit = QSplitter(Qt.Orientation.Vertical, self)
         self._shell_vsplit.setChildrenCollapsible(False)
         self._shell_vsplit.addWidget(self._shell_hsplit)
-        self._shell_vsplit.addWidget(self._detail_tabs)
-        self._shell_vsplit.setStretchFactor(0, 3)
-        self._shell_vsplit.setStretchFactor(1, 2)
-        self._shell_vsplit.setSizes([330, 200])
-        self._detail_tabs.setMinimumHeight(88)
+        self._shell_vsplit.setStretchFactor(0, 1)
+        self._shell_vsplit.setSizes([1])
         self._shell_card = DataCard("Articles", "", parent=self)
         # The count line replaces the card title; the KPI cards already name the table.
         self._shell_card.title_label.setVisible(False)
@@ -774,16 +748,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 "!" if issues else "\u2713",
             )
             self._shell_card.set_subtitle(f"{shown:,} of {total:,} articles shown")
-        selected = self._details_box.isVisibleTo(self._detail_tabs)
-        self._detail_placeholder.setVisible(not selected)
-        if selected != self._detail_sel:
-            # Give the table the room until an article is selected, then split
-            # the column roughly 60 / 40 between table and details.
-            self._detail_sel = selected
-            sizes = self._shell_vsplit.sizes()
-            total = max(sum(sizes), 1)
-            detail = max(150, int(total * 0.34)) if selected else self._detail_tabs.minimumHeight()
-            self._shell_vsplit.setSizes([max(total - detail, 1), detail])
+
 
     def _build_status_group(self) -> QWidget:
         box = QGroupBox("Workspace Status", self)
