@@ -66,7 +66,7 @@ _WORKFLOW_GLYPHS = {
     "article obx generator": "◇",
     "article obx generator (pcon sdk)": "◈",
     "pcon article obx generator": "◈",
-    "export pdm data": "⇧",
+    "export pdm data": "↗",
     "syteline export": "⇧",
     # Metatype workflows
     "create metatype": "⌗",
@@ -76,6 +76,7 @@ _WORKFLOW_GLYPHS = {
     "metatype values": "◆",
     "property values": "◆",
     "metatype texts": "¶",
+    "texts": "¶",
     "metatype setup": "⚒",
     "setup": "⚒",
     "metatype relations": "∞",
