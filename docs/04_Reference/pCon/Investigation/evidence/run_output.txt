@@ -1,0 +1,22 @@
+Dalby pCon exports (excl Price_Mismatch): 1242  Lino: 2352
+('Bottom_Material_G == OCD-derived value', True) 1242
+('Bottom_Stright_Edge == OCD-derived value', True) 1242
+('Bottom_WFT == Bottom_Material_G or Bottom_Stright_Edge', True) 1242
+('dalby final==scheme walk', True) 1242
+('lino final==scheme walk', True) 2352
+('price total == OCD recompute (OBX priceDate+currency)', True) 1242
+('priceComponents == % of total (none when base only)', True) 1242
+('propVarCode @VOID == feature omitted', True) 1242
+('propVarCode @value (+"_" if leading digit)', True) 40786
+('propVarCode empty-string == empty feature', True) 4968
+('purchase==sale', True) 1242
+('varcode == final@space-joined ofml values', True) 3594
+cascade table:
+  ('BRC', 'BRC', None, 'BRC') 84
+  ('BSE', None, 'BSE', 'BSE') 86
+  ('OAK', 'OAK', None, 'OAK') 90
+  ('Q*', 'MDF', None, 'MDF') 720
+  ('WLN', 'WLN', None, 'WLN') 90
+  ('WRC', 'WRC', None, 'WRC') 86
+  ('WSE', None, 'WSE', 'WSE') 86
+2_GBP distinct (base,frame,top): 56 Counter({'NODLE150': 28, 'NODLE160': 28}) tops 14 Counter({'WLN': 28, 'OAK': 28})

@@ -1,0 +1,27 @@
+file,bytes,root,app,articles,unique_final,duplicates,bases,currency,price_date,progId,region
+1_Dalby_Circular_Table_Euro.obx,557787,cutBuffer,pCon.planner_ME 8.11,111,111,0,NODLE100 NODLE110 NODLE130 NODLE140,EUR,2025-10-27,@hmx_dalby,ANY
+1_Dalby_Circular_Table_GBP.obx,442768,cutBuffer,pCon.planner_ME 8.11,83,83,0,NODLE100 NODLE110 NODLE140,GBP,2025-10-27,@hmx_dalby,ANY
+1_Dalby_Circular_Table_GBP_Price_Mismatch.obx,451102,root,(no versionInfo),83,83,0,NODLE100 NODLE110 NODLE140,GBP,2025-10-27,@hmx_dalby,ANY
+2_Dalby_Side_Table_Euro.obx,305600,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE150 NODLE160,EUR,2025-10-27,@hmx_dalby,ANY
+2_Dalby_Side_Table_GBP.obx,305478,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE150 NODLE160,GBP,2025-10-27,@hmx_dalby,ANY
+2_Dalby_Side_Table_GBP_Price_Mismatch.obx,311195,root,(no versionInfo),56,56,0,NODLE150 NODLE160,GBP,2025-10-27,@hmx_dalby,ANY
+3_Dalby_Cafe_Table_Euro.obx,305838,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE210 NODLE230,EUR,2025-10-27,@hmx_dalby,ANY
+3_Dalby_Cafe_Table_GBP.obx,305880,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE210 NODLE230,GBP,2025-10-27,@hmx_dalby,ANY
+3_Dalby_Cafe_Table_GBP_Price_Mismatch.obx,311589,root,(no versionInfo),56,56,0,NODLE210 NODLE230,GBP,2025-10-27,@hmx_dalby,ANY
+4_Dalby_Circular_Table_Euro.obx,459939,cutBuffer,pCon.planner_ME 8.11,76,76,0,NODLE300 NODLE310 NODLE320,EUR,2025-10-27,@hmx_dalby,ANY
+4_Dalby_Circular_Table_GBP.obx,459990,cutBuffer,pCon.planner_ME 8.11,76,76,0,NODLE300 NODLE310 NODLE320,GBP,2025-10-27,@hmx_dalby,ANY
+4_Dalby_Circular_Table_GBP_Price_Mismatch.obx,468723,root,(no versionInfo),76,76,0,NODLE300 NODLE310 NODLE320,GBP,2025-10-27,@hmx_dalby,ANY
+5_Dalby_Rectangular_Table_Euro.obx,1002948,cutBuffer,pCon.planner_ME 8.11,168,168,0,NODLE400 NODLE410 NODLE420 NODLE430 NODLE440 NODLE450,EUR,2025-10-27,@hmx_dalby,ANY
+5_Dalby_Rectangular_Table_GBP.obx,1002948,cutBuffer,pCon.planner_ME 8.11,168,168,0,NODLE400 NODLE410 NODLE420 NODLE430 NODLE440 NODLE450,GBP,2025-10-27,@hmx_dalby,ANY
+5_Dalby_Rectangular_Table_GBP_Price_Mismatch.obx,1021761,root,(no versionInfo),168,168,0,NODLE400 NODLE410 NODLE420 NODLE430 NODLE440 NODLE450,GBP,2025-10-27,@hmx_dalby,ANY
+6_Dalby_Bar_Height_Table_GBP.obx,663720,cutBuffer,pCon.planner_ME 8.11,112,112,0,NODLE500 NODLE510 NODLE520 NODLE530,GBP,2025-10-27,@hmx_dalby,ANY
+6_Dalby_Bar_Height_Table_GBP_Price_Mismatch.obx,495312,root,(no versionInfo),81,81,0,NODLE500 NODLE510 NODLE520,GBP,2025-10-27,@hmx_dalby,ANY
+6_Dalby_Bar_Height_Table_Snappers.obx,663484,cutBuffer,pCon.planner_ME 8.11,112,112,0,NODLE500 NODLE510 NODLE520 NODLE530,EUR,2025-10-27,@hmx_dalby,ANY
+7_Dalby_6-Leg_Table_Euro.obx,344444,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE600 NODLE610,EUR,2025-10-27,@hmx_dalby,ANY
+7_Dalby_6-Leg_Table_GBP.obx,344328,cutBuffer,pCon.planner_ME 8.11,56,56,0,NODLE600 NODLE610,GBP,2025-10-27,@hmx_dalby,ANY
+Lino_Stool_snappers_27Aug26_Euro.obx,1221118,cutBuffer,pCon.planner_ME 8.15,168,168,0,MI7E3,EUR,2026-09-07,@hmx_lino,ANY
+Lino_Stool_snappers_27Aug26_GBP.obx,1221312,cutBuffer,pCon.planner_ME 8.15,168,168,0,MI7E3,GBP,2026-09-07,@hmx_lino,ANY
+Lino_Task_Chair_KD_snappers_27Aug26_Euro.obx,3642277,cutBuffer,pCon.planner_ME 8.15,504,504,0,MI2E3,EUR,2026-09-07,@hmx_lino,ANY
+Lino_Task_Chair_KD_snappers_27Aug26_GBP.obx,3642232,cutBuffer,pCon.planner_ME 8.15,504,504,0,MI2E3,GBP,2026-09-07,@hmx_lino,ANY
+Lino_Task_Chair_snappers_27Aug26_Euro.obx,3628381,cutBuffer,pCon.planner_ME 8.15,504,504,0,MI1E3,EUR,2026-09-07,@hmx_lino,ANY
+Lino_Task_Chair_snappers_27Aug26_GBP.obx,3628524,cutBuffer,pCon.planner_ME 8.15,504,504,0,MI1E3,GBP,2026-09-07,@hmx_lino,ANY
