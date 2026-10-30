@@ -4,19 +4,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QVBoxLayout, QWidget,
+)
 
 from core.modules import WorkbenchModule, module_title
 from ui import theme
 
 
+# Six workspaces arranged around the central PDM -> DATA -> pCon hub.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.DEVELOPMENT, "01", "◆", "#70B52B", "Create and develop product engineering data.", "PRODUCT ENGINEERING"),
-    (WorkbenchModule.MAINTENANCE, "02", "⌁", "#E83220", "Maintain and update published product packages.", "PUBLISHED DATA"),
-    (WorkbenchModule.METATYPE, "03", "◇", "#70B52B", "Create and validate metatype definitions.", "HMX REPOSITORY"),
-    (WorkbenchModule.OAP, "04", "◈", "#E83220", "Create and validate OAP definitions and packages.", "OAP CONFIGURATION"),
-    (WorkbenchModule.QA_VALIDATION, "05", "✓", "#70B52B", "Validate product data and generated deliverables.", "QUALITY ASSURANCE"),
-    (WorkbenchModule.BULK_UPDATE, "06", "⇄", "#E83220", "Run bulk maintenance operations on published packages.", "BULK OPERATIONS"),
+    (WorkbenchModule.DEVELOPMENT, "01", "◆", "#70B52B", "Product engineering", "Create and develop product data."),
+    (WorkbenchModule.MAINTENANCE, "02", "⌁", "#E83220", "Published data", "Maintain existing product packages."),
+    (WorkbenchModule.METATYPE, "03", "◇", "#70B52B", "HMX repository", "Create and validate metatypes."),
+    (WorkbenchModule.OAP, "04", "◈", "#E83220", "OAP configuration", "Create and validate OAP packages."),
+    (WorkbenchModule.QA_VALIDATION, "05", "✓", "#70B52B", "Quality assurance", "Validate data and deliverables."),
+    (WorkbenchModule.BULK_UPDATE, "06", "⇄", "#E83220", "Bulk operations", "Run maintenance across packages."),
 )
 
 
@@ -27,17 +31,17 @@ class _StatusTile(QFrame):
         super().__init__()
         self.setObjectName("frontStatusTile")
         self.setStyleSheet(
-            "QFrame#frontStatusTile { background:#FFFFFF; border:1px solid #E3E8EF; border-radius:9px; }"
+            "QFrame#frontStatusTile { background:#FFFFFF; border:1px solid #E3E8EF; border-radius:8px; }"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(11, 7, 11, 7)
         layout.setSpacing(2)
         name = QLabel(label.upper())
-        name.setStyleSheet("color:#7B8796; font-size:10px; font-weight:700;")
+        name.setStyleSheet("color:#7B8796; font-size:9px; font-weight:700;")
         self.value_label = QLabel(value)
-        self.value_label.setStyleSheet("color:#17243A; font-size:12px; font-weight:700;")
+        self.value_label.setStyleSheet("color:#17243A; font-size:11px; font-weight:700;")
         self.detail_label = QLabel(detail)
-        self.detail_label.setStyleSheet("color:#7B8796; font-size:10px;")
+        self.detail_label.setStyleSheet("color:#7B8796; font-size:9px;")
         self.detail_label.setWordWrap(True)
         layout.addWidget(name)
         layout.addWidget(self.value_label)
@@ -50,7 +54,7 @@ class _StatusTile(QFrame):
 
 
 class ModuleHomePage(QWidget):
-    """Landing screen for the six primary workbench modules."""
+    """Landing screen with workspace actions arranged around the PDM/data/pCon hub."""
 
     module_selected = Signal(object)
 
@@ -61,92 +65,73 @@ class ModuleHomePage(QWidget):
         super().__init__(parent)
         self._context = context
         self.setObjectName("moduleHomePage")
-        self.setStyleSheet("QWidget#moduleHomePage { background:#F7F9FC; }")
+        self.setStyleSheet("QWidget#moduleHomePage { background:#F5F7FA; }")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 22, 28, 18)
-        root.setSpacing(14)
+        root.setContentsMargins(26, 18, 26, 14)
+        root.setSpacing(11)
 
         header = QHBoxLayout()
         title_block = QVBoxLayout()
-        title_block.setSpacing(3)
+        title_block.setSpacing(2)
         eyebrow = QLabel("ENGINEERING WORKSPACE")
-        eyebrow.setStyleSheet("color:#70A936; font-size:10px; font-weight:800; letter-spacing:2px;")
+        eyebrow.setStyleSheet("color:#70A936; font-size:9px; font-weight:800; letter-spacing:2px;")
         title_block.addWidget(eyebrow)
-
         title = QLabel("MK Product Workbench")
-        title.setObjectName("frontPageTitle")
         title.setFont(theme.font("workspace_title"))
-        title.setStyleSheet("color:#17243A; font-size:25px; font-weight:750;")
+        title.setStyleSheet("color:#17243A; font-size:23px; font-weight:750;")
         title_block.addWidget(title)
-
         subtitle = QLabel("PDM  ·  pCon Integration Suite")
-        subtitle.setStyleSheet("color:#647184; font-size:13px;")
+        subtitle.setStyleSheet("color:#647184; font-size:12px;")
         title_block.addWidget(subtitle)
-
-        accent = QFrame()
-        accent.setFixedSize(64, 4)
-        accent.setStyleSheet("background:#70B52B; border-radius:2px;")
-        title_block.addWidget(accent)
         header.addLayout(title_block, 1)
 
         self._app_badge = QLabel("●  APPLICATION READY")
         self._app_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._app_badge.setStyleSheet(
-            "QLabel { color:#4D941D; background:#EFF7E8; border:1px solid #D8EBC8; border-radius:13px; padding:8px 12px; font-size:10px; font-weight:800; }"
+            "color:#4D941D; background:#EFF7E8; border:1px solid #D8EBC8; "
+            "border-radius:11px; padding:7px 12px; font-size:9px; font-weight:800;"
         )
         header.addWidget(self._app_badge, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
-        hero = QFrame()
-        hero.setObjectName("frontHero")
-        hero.setStyleSheet("QFrame#frontHero { background:#FFFFFF; border:1px solid #E7ECF2; border-radius:14px; }")
-        hero_layout = QHBoxLayout(hero)
-        hero_layout.setContentsMargins(18, 10, 18, 10)
-        hero_layout.setSpacing(16)
+        section = QHBoxLayout()
+        section_title = QLabel("CHOOSE A WORKSPACE")
+        section_title.setStyleSheet("color:#647184; font-size:10px; font-weight:800; letter-spacing:1.4px;")
+        section.addWidget(section_title)
+        section.addStretch(1)
+        section_hint = QLabel("Select any module to open its workflow")
+        section_hint.setStyleSheet("color:#8994A2; font-size:10px;")
+        section.addWidget(section_hint)
+        root.addLayout(section)
 
-        hero_text = QVBoxLayout()
-        hero_text.setSpacing(3)
-        hero_heading = QLabel("One workspace. Every stage.")
-        hero_heading.setStyleSheet("color:#17243A; font-size:15px; font-weight:700;")
-        hero_text.addWidget(hero_heading)
-        hero_copy = QLabel(
-            "Select a module to work with product data, published packages, metatypes or validation."
+        # The central hub remains the visual anchor; module launchers surround it.
+        stage = QFrame()
+        stage.setObjectName("moduleOrbitStage")
+        stage.setStyleSheet(
+            "QFrame#moduleOrbitStage { background:#FFFFFF; border:1px solid #E4EAF0; border-radius:15px; }"
         )
-        hero_copy.setWordWrap(True)
-        hero_copy.setStyleSheet("color:#647184; font-size:11px;")
-        hero_text.addWidget(hero_copy)
-        hero_layout.addLayout(hero_text, 1)
+        orbit = QGridLayout(stage)
+        orbit.setContentsMargins(22, 18, 22, 18)
+        orbit.setHorizontalSpacing(18)
+        orbit.setVerticalSpacing(14)
+        orbit.setColumnStretch(0, 1)
+        orbit.setColumnStretch(1, 1)
+        orbit.setColumnStretch(2, 1)
+        orbit.setRowStretch(0, 1)
+        orbit.setRowStretch(1, 1)
+        orbit.setRowStretch(2, 1)
 
-        visual = QLabel("PDM   ◈   DATA   ◈   pCon")
-        visual.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        visual.setMinimumWidth(210)
-        visual.setStyleSheet(
-            "color:#4D941D; background:#F2F7ED; border:1px solid #E1EED6; border-radius:10px; padding:14px; font-size:13px; font-weight:800;"
-        )
-        hero_layout.addWidget(visual, 0)
-        root.addWidget(hero)
+        placements = ((0, 0), (2, 0), (0, 2), (2, 2), (1, 0), (1, 2))
+        self._module_buttons: list[QPushButton] = []
+        for item, (row, col) in zip(_PRIMARY_MODULES, placements):
+            button = self._build_module_button(*item)
+            self._module_buttons.append(button)
+            orbit.addWidget(button, row, col)
 
-        section_row = QHBoxLayout()
-        section_title = QLabel("SELECT A MODULE")
-        section_title.setStyleSheet("color:#647184; font-size:10px; font-weight:800; letter-spacing:1.5px;")
-        section_row.addWidget(section_title)
-        section_row.addStretch(1)
-        hint = QLabel("Choose a workspace to continue")
-        hint.setStyleSheet("color:#8A95A3; font-size:10px;")
-        section_row.addWidget(hint)
-        root.addLayout(section_row)
-
-        self._cards_grid = QGridLayout()
-        self._cards_grid.setContentsMargins(0, 0, 0, 0)
-        self._cards_grid.setHorizontalSpacing(14)
-        self._cards_grid.setVerticalSpacing(12)
-        self._card_widgets: list[QFrame] = []
-        for index, item in enumerate(_PRIMARY_MODULES):
-            card = self._build_card(*item)
-            self._card_widgets.append(card)
-            self._cards_grid.addWidget(card, index // 3, index % 3)
-        root.addLayout(self._cards_grid, 1)
+        hub = self._build_hub()
+        orbit.addWidget(hub, 0, 1, 3, 1)
+        root.addWidget(stage, 1)
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
@@ -163,11 +148,10 @@ class ModuleHomePage(QWidget):
         note.setStyleSheet("color:#8792A0; font-size:10px; font-weight:700;")
         utility_row.addWidget(note)
         syte_line = QPushButton("SyteLine Export  →")
-        syte_line.setObjectName("syteLineModuleLink")
         syte_line.setCursor(Qt.CursorShape.PointingHandCursor)
         syte_line.setStyleSheet(
-            "QPushButton#syteLineModuleLink { color:#647184; background:transparent; border:0; padding:4px 8px; font-size:11px; font-weight:700; }"
-            "QPushButton#syteLineModuleLink:hover { color:#4D941D; }"
+            "QPushButton { color:#647184; background:transparent; border:0; padding:3px 8px; "
+            "font-size:10px; font-weight:700; } QPushButton:hover { color:#4D941D; }"
         )
         syte_line.clicked.connect(lambda: self.module_selected.emit(WorkbenchModule.SYTELINE_EXPORT))
         utility_row.addWidget(syte_line)
@@ -176,70 +160,78 @@ class ModuleHomePage(QWidget):
 
         self.refresh_status()
 
-    def _build_card(self, module, number, glyph, accent, description, category) -> QFrame:
-        card = QFrame(self)
-        card.setObjectName("frontModuleCard")
-        card.setMinimumHeight(142)
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        card.setStyleSheet(
-            "QFrame#frontModuleCard { background:#FFFFFF; border:1px solid #E3E8EF; border-radius:12px; }"
-            f"QFrame#frontModuleCard:hover {{ border:1px solid {accent}; background:#FCFDFE; }}"
+    def _build_hub(self) -> QFrame:
+        hub = QFrame()
+        hub.setObjectName("moduleHub")
+        hub.setMinimumWidth(250)
+        hub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        hub.setStyleSheet(
+            "QFrame#moduleHub { background:#F1F7EB; border:1px solid #DDEBD2; border-radius:16px; }"
         )
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 0, 14, 12)
-        layout.setSpacing(6)
+        layout = QVBoxLayout(hub)
+        layout.setContentsMargins(18, 22, 18, 22)
+        layout.setSpacing(12)
+        layout.addStretch(1)
 
-        accent_bar = QFrame(card)
-        accent_bar.setFixedHeight(4)
-        accent_bar.setStyleSheet(f"background:{accent}; border:0; border-top-left-radius:3px; border-top-right-radius:3px;")
-        layout.addWidget(accent_bar)
-        layout.addSpacing(7)
+        eyebrow = QLabel("PRODUCT DATA FLOW")
+        eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        eyebrow.setStyleSheet("color:#6C9D43; font-size:9px; font-weight:800; letter-spacing:1.8px;")
+        layout.addWidget(eyebrow)
 
-        accent_soft = "#EFF7E8" if accent == "#70B52B" else "#FCECE9"
-        top = QHBoxLayout()
-        number_label = QLabel(number)
-        number_label.setStyleSheet(f"color:{accent}; background:" + accent_soft + "; border-radius:6px; padding:4px 7px; font-size:10px; font-weight:800;")
-        top.addWidget(number_label)
-        top.addStretch(1)
-        category_label = QLabel(category)
-        category_label.setStyleSheet("color:#8792A0; font-size:9px; font-weight:800; letter-spacing:0.7px;")
-        top.addWidget(category_label)
-        layout.addLayout(top)
+        flow = QHBoxLayout()
+        flow.setSpacing(5)
+        for index, label in enumerate(("PDM", "DATA", "pCon")):
+            node = QLabel(label)
+            node.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            node.setMinimumHeight(48)
+            node.setStyleSheet(
+                "color:#315D20; background:#FFFFFF; border:1px solid #D9E8CE; "
+                "border-radius:9px; padding:5px 8px; font-size:13px; font-weight:800;"
+            )
+            flow.addWidget(node, 1)
+            if index < 2:
+                arrow = QLabel("›")
+                arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                arrow.setStyleSheet("color:#79A85A; font-size:20px; font-weight:700;")
+                flow.addWidget(arrow)
+        layout.addLayout(flow)
 
-        middle = QHBoxLayout()
-        icon = QLabel(glyph)
-        icon.setFixedSize(42, 42)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet(f"color:{accent}; background:" + accent_soft + "; border-radius:10px; font-size:23px; font-weight:700;")
-        middle.addWidget(icon)
+        divider = QFrame()
+        divider.setFixedHeight(2)
+        divider.setStyleSheet("background:#DCE9D2; border:0;")
+        layout.addWidget(divider)
 
-        text_block = QVBoxLayout()
-        text_block.setSpacing(2)
-        name = QLabel(module_title(module))
-        name.setStyleSheet("color:#17243A; font-size:15px; font-weight:750;")
-        text_block.addWidget(name)
-        copy = QLabel(description)
+        heading = QLabel("One connected workspace")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        heading.setStyleSheet("color:#17243A; font-size:15px; font-weight:750;")
+        layout.addWidget(heading)
+        copy = QLabel("Choose a module around the hub to work with product engineering, published packages, repository data or validation.")
         copy.setWordWrap(True)
+        copy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copy.setStyleSheet("color:#647184; font-size:10px;")
-        text_block.addWidget(copy)
-        middle.addLayout(text_block, 1)
+        layout.addWidget(copy)
+        layout.addStretch(1)
+        return hub
 
-        arrow = QLabel("↗")
-        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        arrow.setFixedSize(27, 27)
-        arrow.setStyleSheet(f"color:{accent}; border:1px solid {accent}; border-radius:13px; font-size:14px; font-weight:700;")
-        middle.addWidget(arrow)
-        layout.addLayout(middle)
-
-        action = QPushButton("Open workspace")
-        action.setCursor(Qt.CursorShape.PointingHandCursor)
-        action.setStyleSheet(
-            f"QPushButton {{ color:{accent}; background:#F5F8F1; border:0; border-radius:6px; padding:6px 9px; text-align:left; font-size:10px; font-weight:800; }}"
-            "QPushButton:hover { background:#EAF2E2; }"
+    def _build_module_button(self, module, number, glyph, accent, category, description) -> QPushButton:
+        button = QPushButton(f"{number}   {glyph}   {module_title(module)}\n{category.upper()}\n{description}")
+        button.setObjectName("moduleOrbitButton")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(104)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        soft = "#EFF7E8" if accent == "#70B52B" else "#FCECE9"
+        button.setStyleSheet(
+            "QPushButton#moduleOrbitButton {"
+            f" color:#17243A; background:#FFFFFF; border:1px solid #E2E8EF; border-left:4px solid {accent};"
+            " border-radius:10px; padding:12px; text-align:left; font-size:12px; font-weight:700;"
+            "}"
+            "QPushButton#moduleOrbitButton:hover {"
+            f" background:{soft}; border:1px solid {accent};"
+            "}"
+            "QPushButton#moduleOrbitButton:pressed { background:#EAF0E6; }"
         )
-        action.clicked.connect(lambda checked=False, selected=module: self.module_selected.emit(selected))
-        layout.addWidget(action)
-        return card
+        button.clicked.connect(lambda checked=False, selected=module: self.module_selected.emit(selected))
+        return button
 
     def refresh_status(self) -> None:
         """Show configured/loaded state without claiming an untested DB connection."""
