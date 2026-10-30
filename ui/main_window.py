@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
     """Top-level window hosting the workbench shell and workflow framework."""
 
     #: Default horizontal sizes for [navigator, workspace] when no saved layout.
-    _DEFAULT_SPLITTER_SIZES = [290, 1010]
+    _DEFAULT_SPLITTER_SIZES = [315, 985]
     #: Default width of the Engineering Assistant dock.
     _DEFAULT_ASSISTANT_WIDTH = 300
 
@@ -410,7 +410,7 @@ class MainWindow(QMainWindow):
         center = self._build_center_panel()
 
         # Minimum widths keep panels usable while remaining freely resizable.
-        left.setMinimumWidth(220)
+        left.setMinimumWidth(250)
         center.setMinimumWidth(480)
 
         splitter.addWidget(left)
