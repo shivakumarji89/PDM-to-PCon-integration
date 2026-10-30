@@ -117,21 +117,21 @@ def style_progress_bar(bar: QProgressBar, tone: str = "success", *, height: int 
 
 
 def style_table(view: QAbstractItemView) -> None:
-    """Light, borderless data table: grey header, hairline rows, soft-green selection."""
+    """Apply the shared compact spreadsheet treatment to a table or tree."""
     kind = "QTreeView" if isinstance(view, QTreeWidget) else "QTableView"
-    header = "QHeaderView"
+    view.setAlternatingRowColors(True)
     view.setStyleSheet(
-        f"{kind} {{ background: {theme.WB_SURFACE}; alternate-background-color: {theme.WB_SURFACE_ALT}; "
-        f"border: 1px solid {theme.WB_BORDER}; border-radius: {theme.RADIUS_MD}px; "
-        f"gridline-color: {theme.WB_BORDER}; color: {theme.WB_NAVY}; "
-        f"selection-background-color: {theme.WB_GREEN_SOFT}; selection-color: {theme.WB_NAVY}; }} "
-        f"{kind}::item:selected {{ background: {theme.WB_GREEN_SOFT}; color: {theme.WB_NAVY}; }} "
-        f"{kind}::item {{ padding: 0 8px; border: none; }} "
-        f"{header}::section {{ background: {theme.WB_SURFACE_ALT}; color: {theme.WB_NAVY}; font-weight: 700; "
-        f"font-size: 12px; border: none; border-bottom: 1px solid {theme.WB_BORDER}; "
-        f"border-right: 1px solid {theme.WB_BORDER}; padding: 5px 8px; text-align: left; }}"
+        f"{kind} {{ background: #FFFFFF; alternate-background-color: #F7F9FC; "
+        f"border: 1px solid #DDE4EC; border-radius: 8px; gridline-color: #E8EDF2; "
+        f"color: #1B2433; selection-background-color: #E5F2D8; selection-color: #1B2433; "
+        f"outline: 0; }} "
+        f"{kind}::item {{ padding: 3px 7px; border: 0; border-bottom: 1px solid #EEF1F4; }} "
+        f"{kind}::item:selected {{ background: #E5F2D8; color: #1B2433; }} "
+        f"QHeaderView::section {{ background: #F0F3F7; color: #273449; font-weight: 650; "
+        f"font-size: 12px; border: 0; border-bottom: 1px solid #DDE4EC; "
+        f"border-right: 1px solid #E1E7EE; padding: 5px 8px; text-align: left; }} "
+        f"QHeaderView::section:hover {{ background: #EAF2E2; color: #1B2433; }}"
     )
-
 
 def divider_qss(name: str) -> str:
     return f"QFrame#{name} {{ background: {theme.WB_DIVIDER}; border: none; }}"
