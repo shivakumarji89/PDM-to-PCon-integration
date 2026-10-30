@@ -565,6 +565,20 @@ class MainWindow(QMainWindow):
             left_layout.insertWidget(1, self._database_selector)
             self._database_label.show()
             self._database_selector.show()
+        # Match the horizontal gutter around the workflow workspace:
+        # keep the sidebar's outer left inset, but remove the doubled right
+        # inset so the gap between sidebar and content matches the page's
+        # right-hand breathing room.
+        if shell:
+            self._left_panel.layout().setContentsMargins(
+                theme.PANEL_INSET, theme.PANEL_INSET, 0, theme.PANEL_INSET
+            )
+        else:
+            self._left_panel.layout().setContentsMargins(
+                theme.PANEL_INSET, theme.PANEL_INSET,
+                theme.PANEL_INSET, theme.PANEL_INSET
+            )
+
         # Shell look: panels become transparent so the sidebar and page cards sit
         # on the window canvas; the menu bar blends into the white header.
         self._left_panel.setStyleSheet(
