@@ -602,6 +602,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     def _build_shell(self) -> None:
         self._shell_built = True
+        # Articles has its own richer shell header (Reload action, source tabs,
+        # KPIs and toolbar). BasePage also creates the standard header for
+        # ordinary pages; remove that one here to avoid a duplicate blank card.
+        base_header = getattr(self, "header", None)
+        if base_header is not None:
+            self.layout().removeWidget(base_header)
+            base_header.hide()
+            base_header.deleteLater()
+            self.header = None
         self._legacy_header = [
             w for w in (
                 self.findChild(QLabel, "pageTitle"),
