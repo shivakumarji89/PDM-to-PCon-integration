@@ -527,87 +527,99 @@ class WorkflowSidebar(QWidget):
         self.nav.step_clicked.connect(self._on_step_clicked)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
-        """Paint the reference sidebar finish without changing its layout.
-
-        The corner ribbons and botanical watermark are deliberately low-contrast:
-        they sit behind the existing identity, navigation and tips widgets.
-        """
+        """Render the sidebar's restrained editorial finish behind its controls."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         panel = QPainterPath()
         panel.addRoundedRect(rect, 16, 16)
-        p.fillPath(panel, QColor(theme.WB_SURFACE))
+
+        # Warm-white surface with a very slight tonal shift, rather than a flat
+        # colour block. All decoration is clipped to the existing sidebar card.
+        base = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        base.setColorAt(0.0, QColor("#FFFFFF"))
+        base.setColorAt(1.0, QColor("#FBFCFA"))
+        p.fillPath(panel, base)
         p.save()
         p.setClipPath(panel)
 
-        # Warm coral ribbon sweeping across the upper-right corner.
-        top = QPainterPath()
-        top.moveTo(rect.left() + rect.width() * 0.56, rect.top())
-        top.lineTo(rect.right(), rect.top())
-        top.lineTo(rect.right(), rect.top() + rect.height() * 0.22)
-        top.cubicTo(rect.right() - 24, rect.top() + rect.height() * 0.19,
-                    rect.right() - rect.width() * 0.16, rect.top() + rect.height() * 0.13,
-                    rect.left() + rect.width() * 0.56, rect.top())
-        coral = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.top() + rect.height() * 0.2)
-        coral.setColorAt(0.0, QColor(232, 52, 28, 18))
-        coral.setColorAt(0.55, QColor(232, 52, 28, 42))
-        coral.setColorAt(1.0, QColor(232, 52, 28, 25))
-        p.fillPath(top, coral)
+        w, h = rect.width(), rect.height()
 
-        # A second fine sweep gives the top corner the layered ribbon seen in
-        # the supplied reference, without introducing an image dependency.
-        ribbon = QPainterPath()
-        ribbon.moveTo(rect.left() + rect.width() * 0.72, rect.top())
-        ribbon.cubicTo(rect.left() + rect.width() * 0.84, rect.top() + 7,
-                       rect.right() - 15, rect.top() + rect.height() * 0.08,
-                       rect.right(), rect.top() + rect.height() * 0.12)
-        p.setPen(QPen(QColor(232, 52, 28, 34), 5, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.RoundCap))
+        # Layered coral corner fold: confined to the upper-right corner, with
+        # curved edges and a narrow highlight line (not a large diagonal slab).
+        fold = QPainterPath()
+        fold.moveTo(rect.left() + w * 0.60, rect.top())
+        fold.lineTo(rect.right(), rect.top())
+        fold.lineTo(rect.right(), rect.top() + h * 0.145)
+        fold.cubicTo(rect.right() - w * 0.09, rect.top() + h * 0.125,
+                     rect.right() - w * 0.17, rect.top() + h * 0.045,
+                     rect.left() + w * 0.60, rect.top())
+        fold_fill = QLinearGradient(rect.left() + w * 0.58, rect.top(),
+                                    rect.right(), rect.top() + h * 0.15)
+        fold_fill.setColorAt(0.0, QColor("#FCEDEA"))
+        fold_fill.setColorAt(0.62, QColor("#F8DAD5"))
+        fold_fill.setColorAt(1.0, QColor("#F5C9C1"))
+        p.fillPath(fold, fold_fill)
+
+        # Fine inner ribbon follows the fold's curve to create depth.
+        seam = QPainterPath()
+        seam.moveTo(rect.left() + w * 0.70, rect.top() + 1)
+        seam.cubicTo(rect.left() + w * 0.84, rect.top() + h * 0.015,
+                     rect.right() - w * 0.055, rect.top() + h * 0.075,
+                     rect.right() - 1, rect.top() + h * 0.12)
+        p.setPen(QPen(QColor(255, 255, 255, 155), 2.0,
+                      Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(ribbon)
+        p.drawPath(seam)
 
-        # Soft green wash rises from the lower-left/lower edge.
-        bottom = QPainterPath()
-        bottom.moveTo(rect.left(), rect.bottom() - rect.height() * 0.19)
-        bottom.cubicTo(rect.left() + rect.width() * 0.20, rect.bottom() - rect.height() * 0.10,
-                       rect.left() + rect.width() * 0.30, rect.bottom() - rect.height() * 0.04,
-                       rect.left() + rect.width() * 0.48, rect.bottom())
-        bottom.lineTo(rect.left(), rect.bottom())
-        bottom.closeSubpath()
-        green = QLinearGradient(rect.left(), rect.bottom() - rect.height() * 0.22,
-                                 rect.left() + rect.width() * 0.42, rect.bottom())
-        green.setColorAt(0.0, QColor(109, 174, 31, 5))
-        green.setColorAt(1.0, QColor(109, 174, 31, 34))
-        p.fillPath(bottom, green)
+        # A slim green echo at the lower-left balances the coral corner.
+        lower = QPainterPath()
+        lower.moveTo(rect.left(), rect.bottom() - h * 0.19)
+        lower.cubicTo(rect.left() + w * 0.13, rect.bottom() - h * 0.145,
+                      rect.left() + w * 0.20, rect.bottom() - h * 0.045,
+                      rect.left() + w * 0.37, rect.bottom())
+        lower.lineTo(rect.left(), rect.bottom())
+        lower.closeSubpath()
+        lower_fill = QLinearGradient(rect.left(), rect.bottom() - h * 0.18,
+                                     rect.left() + w * 0.38, rect.bottom())
+        lower_fill.setColorAt(0.0, QColor("#F3F8EC"))
+        lower_fill.setColorAt(1.0, QColor("#E7F1D9"))
+        p.fillPath(lower, lower_fill)
 
-        # Faint botanical watermark in the lower corner, kept behind the tips
-        # card and workflow rows. It is vector-painted and scales with the panel.
-        leaf_origin = QPointF(rect.left() + rect.width() * 0.30,
-                              rect.bottom() - rect.height() * 0.055)
-        stem = QPainterPath(leaf_origin)
-        stem.cubicTo(rect.left() + rect.width() * 0.27, rect.bottom() - 42,
-                     rect.left() + rect.width() * 0.18, rect.bottom() - 88,
-                     rect.left() + rect.width() * 0.13, rect.bottom() - 126)
-        p.setPen(QPen(QColor(109, 174, 31, 28), 2))
+        # Delicate botanical line-art watermark. It stays low in the panel so
+        # it never competes with the step labels or active navigation state.
+        stem_start = QPointF(rect.left() + w * 0.31, rect.bottom() - h * 0.035)
+        stem_end = QPointF(rect.left() + w * 0.105, rect.bottom() - h * 0.205)
+        stem = QPainterPath(stem_start)
+        stem.cubicTo(rect.left() + w * 0.25, rect.bottom() - h * 0.075,
+                     rect.left() + w * 0.14, rect.bottom() - h * 0.12,
+                     stem_end.x(), stem_end.y())
+        p.setPen(QPen(QColor(109, 174, 31, 42), 1.6,
+                      Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawPath(stem)
-        for i, (dx, dy, side) in enumerate(((0.035, 0.16, -1), (0.075, 0.25, 1),
-                                             (0.025, 0.34, -1), (0.095, 0.42, 1))):
-            base = QPointF(rect.left() + rect.width() * (0.18 + dx),
-                           rect.bottom() - rect.height() * dy)
-            tip = QPointF(base.x() + side * rect.width() * 0.075,
-                          base.y() - rect.height() * 0.055)
-            leaf_path = QPainterPath()
-            leaf_path.moveTo(base)
-            leaf_path.quadTo(QPointF((base.x() + tip.x()) / 2 - side * 7,
-                                     (base.y() + tip.y()) / 2 - 10), tip)
-            leaf_path.quadTo(QPointF((base.x() + tip.x()) / 2 + side * 7,
-                                     (base.y() + tip.y()) / 2 + 10), base)
-            p.fillPath(leaf_path, QColor(109, 174, 31, 15 + i * 2))
-            p.setPen(QPen(QColor(109, 174, 31, 20), 1))
-            p.drawPath(leaf_path)
+
+        leaves = (
+            (0.265, 0.080, 0.105, 0.135, -1),
+            (0.225, 0.112, 0.345, 0.165, 1),
+            (0.175, 0.145, 0.075, 0.205, -1),
+            (0.135, 0.178, 0.245, 0.232, 1),
+        )
+        for bx, by, tx, ty, side in leaves:
+            origin = QPointF(rect.left() + w * bx, rect.bottom() - h * by)
+            tip = QPointF(rect.left() + w * tx, rect.bottom() - h * ty)
+            leaf = QPainterPath()
+            leaf.moveTo(origin)
+            leaf.quadTo(QPointF((origin.x() + tip.x()) / 2 - side * 7,
+                                (origin.y() + tip.y()) / 2 - 9), tip)
+            leaf.quadTo(QPointF((origin.x() + tip.x()) / 2 + side * 7,
+                                (origin.y() + tip.y()) / 2 + 9), origin)
+            p.fillPath(leaf, QColor(109, 174, 31, 17))
+            p.setPen(QPen(QColor(109, 174, 31, 36), 1))
+            p.drawPath(leaf)
 
         p.restore()
+
+        # Hairline border and a subtle top-left glint finish the card edge.
         p.setPen(QPen(QColor(theme.WB_BORDER), 1))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(panel)
