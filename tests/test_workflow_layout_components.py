@@ -136,10 +136,30 @@ def test_card_row_reflows_without_clipping(app):
     assert row.width() >= 150
 
 
-def test_basepage_default_layout_unchanged(app):
+def test_basepage_uses_shared_headline_for_standard_pages(app):
     page = BasePage("T", "D", show_placeholder=False)
     assert page.wf is None
-    assert page.findChild(QLabel, "pageTitle").text() == "T"
+    assert page.header is not None
+    assert page.header.title_label.text() == "T"
+    assert page.header.description_label.text() == "D"
+
+
+def test_every_registered_workflow_has_a_distinct_glyph():
+    from ui.components.workflow_layout import workflow_glyph
+
+    titles = (
+        "Product", "Articles", "Class Creation", "Text", "Relation Object",
+        "Pricing", "Pricing Relation", "Review", "Generate", "Engineering",
+        "Maintenance", "OBX Validation", "CET SIF Validation",
+        "Article OBX Generator", "Article OBX Generator (pCon SDK)",
+        "Export PDM Data", "Create Metatype", "Repository Analysis",
+        "Metatype Articles", "Metatype Properties", "Metatype Values",
+        "Metatype Texts", "Metatype Setup", "Metatype Relations",
+        "Metatype Review", "OAP",
+    )
+    glyphs = [workflow_glyph(title) for title in titles]
+    assert all(glyph != "◇" for glyph in glyphs)
+    assert len(glyphs) == len(set(glyphs))
 
 
 def test_basepage_workflow_layout_routes_add_content(app):
