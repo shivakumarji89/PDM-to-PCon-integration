@@ -209,11 +209,28 @@ class ArticleObxGeneratorPage(BasePage):
                 f"| Options: {len(snapshot.options)} "
                 f"| Prices: {len(snapshot.price_records)}"
             )
+        issues = self._generation_issues()
+        if issues and snapshot is not None:
+            self._status.setText(
+                self._status.text()
+                + f" | {len(issues)} generation issue(s) - first: {issues[0]}"
+            )
         if reporter is not None:
             reporter.finish(True, f"Generated {len(self._permutations)} permutation(s)")
         self._build_button.setEnabled(True)
         self._build_reporter = None
         self._build_signals = None
+
+    def _generation_issues(self) -> list[str]:
+        """Warnings/errors the engine recorded (e.g. a truncated, incomplete article)."""
+        service = getattr(self._context, "article_permutation_service", None)
+        diagnostics = getattr(service, "last_diagnostics", None)
+        if diagnostics is None:
+            return []
+        return [
+            str(d) for d in diagnostics
+            if getattr(d.severity, "value", "") in {"warning", "error"}
+        ]
 
     def _on_permutations_failed(self, message: str) -> None:
         reporter = self._build_reporter

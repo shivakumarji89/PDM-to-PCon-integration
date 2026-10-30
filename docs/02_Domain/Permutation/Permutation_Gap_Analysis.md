@@ -1,5 +1,7 @@
 # 19 — MK Workbench vs Discovered pCon/OFML Behavior: Mapping Table
 
+> **Update:** rows 1-6 (relations, permutation pruning, CodeScheme tokenization, separators, grouping, computed codes) are now implemented in `services/ocd_engine`; see [../OBX/OCD_Engine.md](../OBX/OCD_Engine.md). This page is kept as the original gap record.
+
 **Status:** Empirical, evidence-only. Companion to `24_article_encoding_findings.md` (read that
 file for full grammar detail and per-item source citations). No files under `services/`, `ui/`,
 `workflow/`, `tests/`, or `main.py` were modified — read-only audit.

@@ -4,6 +4,11 @@ In the repository/MDB model an Article is a *base article*. A permutation is a
 runtime configuration built from that base article's classes/properties,
 property values, relations, ArtBase restrictions and code scheme. Existing
 Article rows are therefore inputs (base identities), never generated variants.
+
+Relation evaluation, computed properties, VARCOND collection and CodeScheme
+encoding are delegated to the standalone engine in ``services/ocd_engine``
+through ``ocd_engine_adapter``; this service keeps the repository-specific
+parts (dimension discovery, options, exclusions, ArtBase).
 """
 from __future__ import annotations
 from core.cancellation import checkpoint, OperationCancelled
@@ -13,11 +18,16 @@ import re
 from dataclasses import dataclass
 
 from models.snapshot import Snapshot
+from services.article_obx import ocd_engine_adapter as adapter
 from services.article_obx.article_obx_models import (
     ArticleConfigurationValue,
     ArticlePermutation,
 )
 from services.base_service import BaseService
+from services.ocd_engine import diagnostics as dg
+from services.ocd_engine import model as ocd_model
+from services.ocd_engine.codescheme_engine import CodeSchemeEncoder
+from services.ocd_engine.configuration_engine import ConfigurationEngine, EnumerationLimits
 
 
 @dataclass(frozen=True)
@@ -28,20 +38,30 @@ class _Dimension:
     display_order: int
     values: tuple[object, ...]
 
-@dataclass(frozen=True)
-class _EvaluatedConfiguration:
-    properties: tuple[ArticleConfigurationValue, ...]
-    options: tuple[ArticleConfigurationValue, ...]
-    computed_codes: dict[str, str]
-    variant_condition: str = ""
-
 
 class ArticlePermutationService(BaseService):
     """Build valid final article numbers from a repository Snapshot."""
 
+    #: Safeguard against permutation explosion. When an article would exceed
+    #: this many configurations the build stops for that article and records an
+    #: ``ENUMERATION_TRUNCATED`` error in ``last_diagnostics`` (never silent).
+    #: ``None`` disables the limit.
+    max_permutations_per_article: int | None = 250_000
+
+    #: When a user-defined scheme has no ``@``, the legacy generator prefixed the
+    #: base article. OCD 4.2 says the scheme alone produces the whole number, so
+    #: the standalone engine defaults to ``False``; the repository generator
+    #: keeps ``True`` until the owner decides (see docs/02_Domain/OBX).
+    legacy_base_prefix_without_at: bool = True
+
+    #: Diagnostics of the most recent ``build`` (rejections, unsupported syntax, truncation).
+    last_diagnostics: dg.DiagnosticSink | None = None
+
     def build(self, snapshot: Snapshot | None = None, *, reporter=None) -> list[ArticlePermutation]:
         checkpoint()
         snapshot = snapshot or self.context.qa_snapshot
+        sink = dg.DiagnosticSink()
+        self.last_diagnostics = sink
         if snapshot is None:
             if reporter is not None:
                 reporter.begin(1, title="Building Article Permutations")
@@ -49,12 +69,10 @@ class ArticlePermutationService(BaseService):
             return []
 
         results: list[ArticlePermutation] = []
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple] = set()
 
-        relation_objects = tuple(sorted(
-            getattr(snapshot, "relation_objects", []) or [],
-            key=lambda r: (int(getattr(r, "order", 100) or 100), getattr(r, "name", "") or ""),
-        ))
+        relation_index = adapter.SnapshotRelationIndex(getattr(snapshot, "relation_objects", []) or [])
+        tables = adapter.value_tables(snapshot)
 
         articles = sorted(
             snapshot.articles,
@@ -74,89 +92,9 @@ class ArticlePermutationService(BaseService):
             if reporter is not None:
                 reporter.advance(f"Building {base_code}")
 
-            article_permutation_count = 0
-
-            dimensions = self._property_dimensions(snapshot, article.id, base_code)
-            products = self._property_combinations(dimensions, relation_objects)
-
-            for selected in products:
-                checkpoint()
-                properties = self._materialize_values(dimensions, selected)
-                property_ids = {v.value_id for v in properties}
-
-                if not self._valid_art_base(snapshot, base_code, property_ids, {v.entity_id for v in properties}):
-                    continue
-                if not self._valid_exclusions(snapshot, property_ids):
-                    continue
-
-                option_dimensions = self._option_dimensions(
-                    snapshot, article, property_ids, base_code
-                )
-                option_products = (
-                    itertools.product(*(d.values for d in option_dimensions))
-                    if option_dimensions else [()]
-                )
-
-                for selected_options in option_products:
-                    checkpoint()
-                    try:
-                        options = self._materialize_values(option_dimensions, selected_options)
-                        all_ids = {v.value_id for v in (*properties, *options)}
-
-                        if not self._valid_art_base(snapshot, base_code, all_ids, {v.entity_id for v in (*properties, *options)}):
-                            continue
-                        if not self._valid_exclusions(snapshot, all_ids):
-                            continue
-
-                        evaluated = self._evaluate_configuration(
-                            snapshot, base_code, properties, options,
-                            relation_objects=relation_objects,
-                        )
-                        if evaluated is None:
-                            continue
-
-                        encoded = self._encode_article(
-                            snapshot, article.id, base_code, evaluated
-                        )
-                        if encoded is None:
-                            continue
-
-                        final_article, variant_code = encoded
-                        # Semantic identity, not the encoded text: two distinct
-                        # configurations (different selected value IDs) may
-                        # legitimately encode to the same visible final article
-                        # (e.g. a property that does not feed the CodeScheme at
-                        # all) and must both be kept, not silently merged.
-                        key = (
-                            str(article.id or ""),
-                            tuple(v.value_id for v in properties),
-                            tuple(v.value_id for v in options),
-                        )
-                        if key in seen:
-                            continue
-                        seen.add(key)
-
-                        results.append(
-                            self._make_permutation(
-                                article,
-                                base_code,
-                                evaluated,
-                                final_article,
-                                variant_code,
-                                self._scheme_id(snapshot, article.id),
-                            )
-                        )
-                        article_permutation_count += 1
-                        if reporter is not None:
-                            reporter.note(f"Building {base_code} — {article_permutation_count} permutations")
-                    except OperationCancelled:
-                        raise
-                    except Exception as error:  # noqa: BLE001 - one bad configuration must not abort the build
-                        if reporter is not None:
-                            reporter.log(
-                                "error",
-                                f"{base_code}: skipped an invalid configuration ({error})",
-                            )
+            self._build_article(
+                snapshot, article, base_code, relation_index, tables, results, seen, sink, reporter,
+            )
 
             if reporter is not None:
                 reporter.advance(
@@ -173,6 +111,160 @@ class ArticlePermutationService(BaseService):
         )
         checkpoint()
         return results
+
+    def _build_article(self, snapshot, article, base_code, relation_index, tables,
+                       results, seen, sink, reporter) -> None:
+        limit = self.max_permutations_per_article
+        dimensions = self._property_dimensions(snapshot, article.id, base_code)
+        property_defs = tuple(
+            adapter.property_def(d, relation_index, base_code, order=index)
+            for index, d in enumerate(dimensions)
+        )
+        dimension_by_key = {pdef.key: dim for pdef, dim in zip(property_defs, dimensions)}
+        scheme_id = self._scheme_id(snapshot, article.id)
+        scheme = adapter.scheme_definition(self._scheme(snapshot, article.id))
+        model = ocd_model.ArticleModel(
+            base_code=base_code, article_key=str(article.id or ""),
+            properties=property_defs,
+            article_relations=relation_index.article_level(base_code),
+            tables=tables, scheme_id=scheme_id,
+        )
+        engine = ConfigurationEngine(
+            model, sink=sink,
+            limits=EnumerationLimits(max_configurations=limit),
+            rhs_values_factory=lambda values, assignments: adapter.codes_by_name(assignments),
+        )
+        encoder = CodeSchemeEncoder(
+            scheme, base_prefix_when_no_at=self.legacy_base_prefix_without_at, tables=tables,
+        )
+        option_cache: dict[tuple, tuple[ocd_model.PropertyDef, ...]] = {}
+        count = 0
+
+        for config in engine.enumerate(property_defs):
+            checkpoint()
+            by_key = {a.prop.key: a for a in config.assignments}
+            ordered = tuple(by_key[pdef.key] for pdef in property_defs)
+            properties = tuple(
+                self._configuration_value(dimension_by_key[a.prop.key], a)
+                for a in ordered if a.value is not None and not a.hidden
+            )
+            property_ids = {v.value_id for v in properties}
+
+            if not self._valid_art_base(snapshot, base_code, property_ids, {v.entity_id for v in properties}):
+                continue
+            if not self._valid_exclusions(snapshot, property_ids):
+                continue
+
+            option_dimensions = self._option_dimensions(snapshot, article, property_ids, base_code)
+            option_defs = self._option_defs(option_dimensions, relation_index, base_code, option_cache)
+            option_dimension_by_key = {
+                pdef.key: dim for pdef, dim in zip(option_defs, option_dimensions)
+            }
+            option_products = (
+                itertools.product(*(d.values for d in option_defs)) if option_defs else [()]
+            )
+
+            for selected_options in option_products:
+                checkpoint()
+                try:
+                    option_assignments = tuple(
+                        ocd_model.Assignment(d, v) for d, v in zip(option_defs, selected_options)
+                    )
+                    options = tuple(
+                        self._configuration_value(option_dimension_by_key[a.prop.key], a)
+                        for a in option_assignments
+                    )
+                    all_ids = {v.value_id for v in (*properties, *options)}
+
+                    if not self._valid_art_base(snapshot, base_code, all_ids, {v.entity_id for v in (*properties, *options)}):
+                        continue
+                    if not self._valid_exclusions(snapshot, all_ids):
+                        continue
+
+                    assignments = ordered + option_assignments
+                    final = engine.finalize(assignments)
+                    if not final.valid:
+                        continue
+
+                    encoded = encoder.encode(
+                        base_code, engine.view(assignments, final.computed), sink, base_code,
+                    )
+                    if encoded is None:
+                        continue
+
+                    # Semantic identity, not the encoded text: two distinct
+                    # configurations (different selected value IDs) may
+                    # legitimately encode to the same visible final article
+                    # (e.g. a property that does not feed the CodeScheme at
+                    # all) and must both be kept, not silently merged.
+                    key = (
+                        str(article.id or ""),
+                        tuple(v.value_id for v in properties),
+                        tuple(v.value_id for v in options),
+                    )
+                    if key in seen:
+                        continue
+                    if limit is not None and count >= limit:
+                        self._truncated(sink, base_code, limit, count, reporter)
+                        return
+                    seen.add(key)
+
+                    varconds = tuple(dict.fromkeys(x for x in final.varconds if x))
+                    results.append(
+                        self._make_permutation(
+                            article, base_code, properties, options, varconds,
+                            encoded.final_article, encoded.variant_code, scheme_id,
+                            tuple(final.pricing_factors.items()),
+                        )
+                    )
+                    count += 1
+                    if reporter is not None:
+                        reporter.note(f"Building {base_code} — {count} permutations")
+                except OperationCancelled:
+                    raise
+                except Exception as error:  # noqa: BLE001 - one bad configuration must not abort the build
+                    sink.add(dg.RELATION_EVAL_ERROR, f"skipped an invalid configuration ({error})",
+                             article=base_code)
+                    if reporter is not None:
+                        reporter.log(
+                            "error",
+                            f"{base_code}: skipped an invalid configuration ({error})",
+                        )
+        if engine.stats.truncated:
+            self._truncated(sink, base_code, limit, count, reporter, already_recorded=True)
+
+    @staticmethod
+    def _truncated(sink, base_code, limit, count, reporter, already_recorded=False) -> None:
+        if not already_recorded:
+            sink.add(dg.ENUMERATION_TRUNCATED,
+                     f"permutation limit {limit} reached after {count} configuration(s); "
+                     f"the result for this article is incomplete",
+                     dg.Severity.ERROR, article=base_code)
+        if reporter is not None:
+            reporter.log("error", f"{base_code}: permutation limit reached; result incomplete")
+
+    @staticmethod
+    def _configuration_value(dimension: _Dimension, assignment) -> ArticleConfigurationValue:
+        value = assignment.value
+        return ArticleConfigurationValue(
+            kind=dimension.kind,
+            entity_id=dimension.entity_id,
+            value_id=value.key,
+            name=dimension.name,
+            value=value.value,
+            code=value.code,
+            display_order=dimension.display_order,
+        )
+
+    @staticmethod
+    def _option_defs(option_dimensions, relation_index, base_code, cache):
+        signature = tuple((d.entity_id, tuple(str(v.id) for v in d.values)) for d in option_dimensions)
+        if signature not in cache:
+            cache[signature] = tuple(
+                adapter.property_def(d, relation_index, base_code, order=1000 + index)
+                for index, d in enumerate(option_dimensions)
+            )
+        return cache[signature]
 
     def _property_dimensions(
         self,
@@ -252,6 +344,14 @@ class ArticlePermutationService(BaseService):
             )
 
         return tuple(dimensions)
+
+    # -- legacy single-parent hierarchy pruning ------------------------------
+    #
+    # No longer used by ``build()``: the engine evaluates the full relation
+    # grammar (multi-parent, OR, NOT IN, three-valued logic). Retained because
+    # tests/test_cancellation_workflow_surfaces.py exercises the cancellation
+    # checkpoint inside ``_property_combinations``; removable once that test is
+    # retargeted at the engine.
 
     @classmethod
     def _property_combinations(cls, dimensions, relation_objects):
@@ -338,6 +438,7 @@ class ArticlePermutationService(BaseService):
             if selected is not None and selected not in allowed:
                 return False
         return True
+
     def _option_dimensions(
         self, snapshot: Snapshot, article, selected_property_ids: set[str], base_code: str
     ) -> tuple[_Dimension, ...]:
@@ -431,271 +532,6 @@ class ArticlePermutationService(BaseService):
         sid = cls._scheme_id(snapshot, article_id)
         return (snapshot.code_schemes or {}).get(sid, {}) if sid else {}
 
-    @classmethod
-    def _scheme_body(cls, snapshot: Snapshot, article_id: str | None) -> str:
-        scheme = cls._scheme(snapshot, article_id)
-        return str(
-            scheme.get("body")
-            or scheme.get("Scheme")
-            or scheme.get("scheme")
-            or ""
-        )
-
-    @classmethod
-    def _evaluate_configuration(
-        cls,
-        snapshot: Snapshot,
-        base_code: str,
-        properties: tuple[ArticleConfigurationValue, ...],
-        options: tuple[ArticleConfigurationValue, ...],
-        *,
-        relation_objects=None,
-    ) -> _EvaluatedConfiguration | None:
-        values = (*properties, *options)
-        selected_ids = {v.value_id for v in values}
-        selected = {
-            cls._normalise_name(v.name): (v.value or "").upper()
-            for v in values
-        }
-        # Raw per-value tokens available to a computed-code expression (a
-        # property/option's own code, or its display value when no code is
-        # recorded). Distinct from `computed_codes`, which holds relation
-        # *output* and is what encoding/self-reference actually consult.
-        codes_by_name = {
-            cls._normalise_name(v.name): (v.code or v.value or "")
-            for v in values
-        }
-        computed_codes = {
-            cls._normalise_name(v.name): v.code
-            for v in values if v.code
-        }
-        varconds: list[str] = []
-
-        relations = (
-            relation_objects
-            if relation_objects is not None
-            else tuple(sorted(
-                getattr(snapshot, "relation_objects", []) or [],
-                key=lambda r: (int(getattr(r, "order", 100) or 100), getattr(r, "name", "") or ""),
-            ))
-        )
-        for relation in relations:
-            domain = str(getattr(relation, "domain", "") or "")
-            type_code = str(getattr(relation, "type_code", "") or "")
-            body = str(getattr(relation, "body", "") or "")
-
-            if domain == "C" and type_code in {"1", "2"}:
-                value_ids = {
-                    str(value_id)
-                    for value_id in (getattr(relation, "value_ids", []) or [])
-                    if str(value_id)
-                }
-                value_id = str(getattr(relation, "value_id", "") or "")
-                if value_id:
-                    value_ids.add(value_id)
-                if selected_ids.intersection(value_ids) and not cls._relation_body_matches(
-                    body, base_code, selected
-                ):
-                    return None
-
-            if domain == "C" and type_code == "4":
-                if not cls._constraint_matches(snapshot, body, base_code, selected):
-                    return None
-
-            if type_code == "3":
-                cls._apply_action_clauses(body, base_code, selected, codes_by_name, computed_codes)
-                cls._extract_varconds(body, varconds)
-
-            if domain == "P" and type_code == "3":
-                cls._extract_varconds(body, varconds)
-
-        return _EvaluatedConfiguration(
-            properties=properties,
-            options=options,
-            computed_codes=computed_codes,
-            variant_condition=" ".join(dict.fromkeys(x for x in varconds if x)),
-        )
-
-    # -- computed-code relation actions (OCD-evidenced grammar) -------------
-    #
-    # Real repository action bodies (docs/02_Domain/Article_Encoding/
-    # Article_Encoding.md Finding 3c, sourced from a live HM OFML repository's
-    # ocd_relation.csv) are a comma-separated list of assignment clauses:
-    #
-    #   <Target> = <expr> [IF <condition>], <Target> = <expr> [IF <condition>], ...
-    #
-    # evaluated strictly left to right, each later matching clause overwriting
-    # the target's prior value (self-reference: "Code = Code + ... IF ...").
-    # <expr> is '+'-concatenated terms: a quoted literal, SUBSTR(<expr>,s,l),
-    # $BAN (the base article number), the target's own prior value, or another
-    # property/option's code. <condition> reuses the same AND/OR/IN/SPECIFIED/
-    # equality grammar already used for validity relations.
-
-    @classmethod
-    def _apply_action_clauses(cls, body, base_code, selected, codes_by_name, computed_codes) -> None:
-        for clause in cls._split_top_level(body, ","):
-            clause = clause.strip().rstrip(".").strip()
-            if not clause:
-                continue
-            assignment = re.match(r"^([A-Za-z0-9_]+)\s*=\s*(.*)$", clause, re.DOTALL)
-            if not assignment:
-                continue
-            target_name, rhs = assignment.groups()
-
-            if_match = cls._find_unquoted(rhs, r"\bIF\b")
-            if if_match:
-                expr_text, condition_text = rhs[:if_match.start()], rhs[if_match.end():]
-            else:
-                expr_text, condition_text = rhs, ""
-
-            if condition_text.strip() and not cls._relation_body_matches(
-                condition_text, base_code, selected
-            ):
-                continue
-
-            try:
-                value = cls._eval_expr(
-                    expr_text.strip(), base_code, target_name, codes_by_name, computed_codes
-                )
-            except (ValueError, IndexError, TypeError):
-                # A clause this evaluator cannot safely interpret must not be
-                # treated as if it produced a value; skip only that clause.
-                continue
-            computed_codes[cls._normalise_name(target_name)] = value
-
-    @classmethod
-    def _eval_expr(cls, expr_text, base_code, target_name, codes_by_name, computed_codes) -> str:
-        terms = [t for t in cls._split_top_level(expr_text, "+") if t.strip()]
-        if not terms:
-            raise ValueError(f"empty expression: {expr_text!r}")
-        return "".join(
-            cls._eval_term(term.strip(), base_code, target_name, codes_by_name, computed_codes)
-            for term in terms
-        )
-
-    @classmethod
-    def _eval_term(cls, term, base_code, target_name, codes_by_name, computed_codes) -> str:
-        literal = re.fullmatch(r"'([^']*)'", term)
-        if literal:
-            return literal.group(1)
-
-        substr = re.fullmatch(r"SUBSTR\s*\((.*)\)", term, re.IGNORECASE | re.DOTALL)
-        if substr:
-            args = cls._split_top_level(substr.group(1), ",")
-            if len(args) != 3:
-                raise ValueError(f"SUBSTR expects 3 arguments: {term!r}")
-            value = cls._eval_expr(args[0].strip(), base_code, target_name, codes_by_name, computed_codes)
-            start = int(args[1].strip())
-            length = int(args[2].strip())
-            return value[start:start + length]
-
-        if term.upper() == "$BAN":
-            return base_code
-
-        name = cls._normalise_name(term)
-        if name == cls._normalise_name(target_name):
-            return computed_codes.get(name, "")
-        if name in computed_codes:
-            return computed_codes[name]
-        return codes_by_name.get(name, "")
-
-    @staticmethod
-    def _split_top_level(text: str, sep: str) -> list[str]:
-        """Split ``text`` on ``sep`` at depth 0, ignoring separators inside
-        single-quoted strings or parentheses (so ``SUBSTR($BAN,0,3)`` is one
-        term, not three, when splitting an expression on commas)."""
-        parts: list[str] = []
-        current: list[str] = []
-        depth = 0
-        in_quote = False
-        for ch in text:
-            if ch == "'":
-                in_quote = not in_quote
-                current.append(ch)
-                continue
-            if not in_quote:
-                if ch in "([":
-                    depth += 1
-                elif ch in ")]":
-                    depth = max(0, depth - 1)
-                elif ch == sep and depth == 0:
-                    parts.append("".join(current))
-                    current = []
-                    continue
-            current.append(ch)
-        parts.append("".join(current))
-        return parts
-
-    @staticmethod
-    def _find_unquoted(text: str, pattern: str):
-        """First regex match of ``pattern`` that starts outside a single-quoted
-        string (so a literal like ``'IF'`` never splits as the IF keyword)."""
-        for match in re.finditer(pattern, text, re.IGNORECASE):
-            if text[:match.start()].count("'") % 2 == 0:
-                return match
-        return None
-
-    @staticmethod
-    def _extract_varconds(body, target) -> None:
-        for match in re.finditer(r"\$VARCOND\s*=\s*'([^']*)'", body, re.IGNORECASE):
-            target.append(match.group(1))
-
-    @classmethod
-    def _constraint_matches(cls, snapshot, body, base_code, selected) -> bool:
-        match = re.search(
-            r"TABLE\s+([A-Za-z0-9_]+)\s*\((.*?)\)",
-            body, re.IGNORECASE | re.DOTALL
-        )
-        if match:
-            return cls._table_constraint_matches(
-                snapshot, match.group(1), match.group(2), base_code, selected
-            )
-        restrictions = body.split("Restrictions:", 1)[-1].strip()
-        return True if restrictions == body else cls._relation_body_matches(
-            restrictions, base_code, selected
-        )
-
-    @classmethod
-    def _table_constraint_matches(
-        cls, snapshot, table_name, arguments, base_code, selected
-    ) -> bool:
-        table = next(
-            (
-                t for t in (getattr(snapshot, "value_tables", []) or [])
-                if str(t.name or "").upper() == table_name.upper()
-            ),
-            None,
-        )
-        if table is None:
-            return True
-
-        access = {}
-        for parameter in arguments.split(","):
-            if "=" in parameter:
-                column, expression = parameter.split("=", 1)
-                access[column.strip().upper()] = expression.strip()
-
-        for line in table.lines:
-            valid = True
-            for column, expected in line.items():
-                expression = access.get(str(column).upper())
-                if expression is None:
-                    continue
-                if expression.upper() == "$BAN":
-                    actual = base_code
-                else:
-                    prop = re.search(r"x\.([A-Za-z0-9_]+)", expression, re.IGNORECASE)
-                    if not prop:
-                        continue
-                    actual = selected.get(prop.group(1).upper())
-                allowed = expected if isinstance(expected, (list, tuple)) else [expected]
-                if str(actual or "").upper() not in {str(v).upper() for v in allowed}:
-                    valid = False
-                    break
-            if valid:
-                return True
-        return False
-
     @staticmethod
     def _article_property_ids(snapshot: Snapshot, article_id: str | None) -> set[str]:
         article_key = str(article_id or "")
@@ -757,32 +593,8 @@ class ArticlePermutationService(BaseService):
         return [cls._normalise_name(prop) for _class_name, prop in tokens]
 
     @staticmethod
-    def _truthy(value: str) -> bool:
-        return str(value or "").strip().lower() in {"1", "true", "yes", "y"}
-
-    @staticmethod
     def _normalise_name(value: str) -> str:
-        return re.sub(r"[^A-Za-z0-9_]+", "_", value or "").strip("_").upper()
-
-    @staticmethod
-    def _materialize_values(
-        dimensions: tuple[_Dimension, ...],
-        selected_values: tuple[object, ...],
-    ) -> tuple[ArticleConfigurationValue, ...]:
-        values: list[ArticleConfigurationValue] = []
-        for dimension, source in zip(dimensions, selected_values):
-            values.append(
-                ArticleConfigurationValue(
-                    kind=dimension.kind,
-                    entity_id=dimension.entity_id,
-                    value_id=str(source.id),
-                    name=dimension.name,
-                    value=source.value or "",
-                    code=(getattr(source, "code", "") or getattr(source, "supplier_code", "") or "").replace("#", ""),
-                    display_order=dimension.display_order,
-                )
-            )
-        return tuple(values)
+        return adapter.normalise_name(value)
 
     @staticmethod
     def _valid_art_base(
@@ -816,190 +628,16 @@ class ArticlePermutationService(BaseService):
         return True
 
     @staticmethod
-    def _relation_body_matches(
-        body: str,
-        base_code: str,
-        selected: dict[str, str],
-    ) -> bool:
-        restrictions = body.split("Restrictions:", 1)[-1].strip()
-        if not restrictions:
-            return True
-
-        branches = re.split(r"\s+OR\s+", restrictions, flags=re.IGNORECASE)
-        for branch in branches:
-            terms = re.split(r"\s+AND\s+", branch, flags=re.IGNORECASE)
-            if all(
-                ArticlePermutationService._relation_term_matches(
-                    term.strip(), base_code, selected
-                )
-                for term in terms
-                if term.strip()
-            ):
-                return True
-        return False
-
-    @staticmethod
-    def _relation_term_matches(
-        term: str,
-        base_code: str,
-        selected: dict[str, str],
-    ) -> bool:
-        term = term.strip(" ()")
-
-        ban = re.search(
-            r"\$BAN\s+IN\s*\(\s*'([^']*)'",
-            term,
-            re.IGNORECASE,
-        )
-        if ban:
-            return ban.group(1).upper() == base_code.upper()
-
-        specified = re.search(
-            r"SPECIFIED\s+([A-Z0-9_]+)",
-            term,
-            re.IGNORECASE,
-        )
-        if specified and specified.group(1).upper() not in selected:
-            return False
-
-        value_match = re.search(
-            r"([A-Z0-9_]+)\s+IN\s*\((.*?)\)",
-            term,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if value_match:
-            name = value_match.group(1).upper()
-            allowed = {
-                item.strip().strip("'").upper()
-                for item in value_match.group(2).split(",")
-            }
-            return selected.get(name) in allowed
-
-        equality = re.search(
-            r"^\s*([A-Za-z0-9_]+)\s*=\s*'([^']*)'",
-            term,
-            re.IGNORECASE,
-        )
-        if equality:
-            return selected.get(equality.group(1).upper()) == equality.group(2).strip().upper()
-
-        return True
-
-    @classmethod
-    def _encode_article(
-        cls,
-        snapshot: Snapshot,
-        article_id: str | None,
-        base_code: str,
-        configuration: _EvaluatedConfiguration,
-    ) -> tuple[str, str] | None:
-        scheme = cls._scheme(snapshot, article_id)
-        body = cls._scheme_body(snapshot, article_id)
-
-        values = {
-            cls._normalise_name(v.name): v
-            for v in (*configuration.properties, *configuration.options)
-        }
-        codes = dict(configuration.computed_codes)
-
-        if not body:
-            lowered = {str(k).lower(): str(v) for k, v in scheme.items()}
-            value_sep = lowered.get("valuesep", lowered.get("value_sep", ""))
-            var_sep = lowered.get("varcodesep", lowered.get("var_code_sep", ""))
-
-            parts = []
-            for value in configuration.properties:
-                token = codes.get(cls._normalise_name(value.name)) or value.code or value.value
-                if cls._truthy(lowered.get("trim", "")):
-                    token = str(token).strip()
-                parts.append(token)
-
-            variant = value_sep.join(parts)
-            return base_code + var_sep + variant, variant
-
-        # In a user-defined scheme '@' is a final-article placeholder for the
-        # base article. It is NOT part of the variant code. Other segments
-        # contribute to the variant portion and are rendered after/beside the
-        # base according to the scheme.
-        final_parts: list[str] = []
-        variant_parts: list[str] = []
-        has_base_placeholder = False
-        recognised = False
-        base_index = 0
-
-        for segment in body.split(","):
-            token = segment
-
-            if token == "@":
-                recognised = True
-                has_base_placeholder = True
-                if base_index < len(base_code):
-                    final_parts.append(base_code[base_index])
-                    base_index += 1
-                continue
-
-            ref = re.fullmatch(
-                r"\s*([A-Za-z0-9_]+):([A-Za-z0-9_]+)\s*", token
-            )
-            if ref:
-                recognised = True
-                name = cls._normalise_name(ref.group(2))
-                value = values.get(name)
-                code = codes.get(name)
-                # A scheme may reference a purely computed property (e.g. the
-                # real Aeron `AERON_OPTIONS:Code`) that is never itself a
-                # selected property/option — only a relation action produces
-                # it. That is valid provided some relation actually did.
-                if value is None and code is None:
-                    return None
-                encoded = code if code is not None else (value.code or value.value)
-                final_parts.append(encoded)
-                variant_parts.append(encoded)
-                continue
-
-            def replace_reference(match):
-                nonlocal recognised
-                recognised = True
-                name = cls._normalise_name(match.group(2))
-                value = values.get(name)
-                code = codes.get(name)
-                if value is None and code is None:
-                    return ""
-                return code if code is not None else (value.code or value.value)
-
-            rendered = re.sub(
-                r"([A-Za-z0-9_]+):([A-Za-z0-9_]+)",
-                replace_reference,
-                token,
-            )
-            final_parts.append(rendered)
-            if rendered:
-                variant_parts.append(rendered)
-
-        if not recognised:
-            return None
-
-        final_article = "".join(final_parts)
-        variant = "".join(variant_parts)
-
-        if has_base_placeholder:
-            # The user-defined scheme explicitly emitted the base characters
-            # through '@'. VarCodeSep is a predefined-scheme field and must
-            # not be added to a user-defined scheme.
-            return final_article, variant
-
-        # No '@' means the user-defined body describes only the variant part.
-        return base_code + final_article, variant
-
-
-    @staticmethod
     def _make_permutation(
         article,
         base_code: str,
-        configuration: _EvaluatedConfiguration,
+        properties: tuple[ArticleConfigurationValue, ...],
+        options: tuple[ArticleConfigurationValue, ...],
+        variant_conditions: tuple[str, ...],
         final_article: str,
         variant_code: str,
         scheme_id: str,
+        pricing_factors: tuple[tuple[str, float], ...] = (),
     ) -> ArticlePermutation:
         return ArticlePermutation(
             article_id=str(article.id or ""),
@@ -1007,12 +645,14 @@ class ArticlePermutationService(BaseService):
             base_code=base_code,
             final_article=final_article,
             variant_code=variant_code,
-            variant_condition=configuration.variant_condition,
+            variant_condition=" ".join(variant_conditions),
+            variant_conditions=variant_conditions,
+            pricing_factors=pricing_factors,
             code_scheme_id=scheme_id,
             name=article.name or "",
             description=article.description or "",
             quantity=1,
             is_super_item=bool(getattr(article, "is_super_item", False)),
-            properties=configuration.properties,
-            options=configuration.options,
+            properties=properties,
+            options=options,
         )

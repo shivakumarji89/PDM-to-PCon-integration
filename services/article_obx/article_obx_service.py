@@ -4,20 +4,42 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 from services.base_service import BaseService
+from services.ocd_engine import diagnostics as dg
 from services.article_obx.article_obx_models import ArticleObxResult, ArticleObxRow
 from services.article_obx.article_permutation_service import ArticlePermutationService
 from services.article_obx.article_price_service import ArticlePriceRequest, ArticlePriceService
-from services.obx_service import _DEFAULT_EXCLUSIONS
+from services.obx_service import _DEFAULT_EXCLUSIONS, OBX_SENTINEL
 from services.xocd_export_service import XocdExportService
 
 
+#: How ``<artNr type="final">`` is written (see ``generate``).
+FINAL_PREDICTED = "predicted"
+FINAL_OMIT = "omit"
+FINAL_SENTINEL = "sentinel"
+
+
 class ArticleObxService(BaseService):
-    """Generate an OBX from repository Snapshot articles at a specified price date."""
+    """Generate an OBX from repository Snapshot articles at a specified price date.
+
+    ``final_article_mode`` controls ``artNr type="final"``:
+
+    * ``predicted`` (default, unchanged behaviour): the final number computed by
+      the CodeScheme engine. pCon resolves the real number itself on *Update*.
+    * ``omit``: input style - only ``base`` and ``ofmlvarcode``, as the pCon
+      input OBX files observed in evidence carry.
+    * ``sentinel``: the Snapper marker, so ``OBXService.clean_obx`` can drop
+      configurations pCon could not resolve.
+
+    ``artNr type="varcode"`` is never written: it is pCon's resolved output.
+    """
 
     def generate(self, currency: str, effective_date: str, site_id: int = 1,
                  manufacturer_id: str = "HM", series_id: str | None = None,
                  ofml_class_suffix: str = "_OPT",
-                 exclude_features: set[str] | None = None) -> ArticleObxResult:
+                 exclude_features: set[str] | None = None,
+                 final_article_mode: str = FINAL_PREDICTED) -> ArticleObxResult:
+        if final_article_mode not in {FINAL_PREDICTED, FINAL_OMIT, FINAL_SENTINEL}:
+            raise ValueError(f"unknown final_article_mode {final_article_mode!r}")
         # Article OBX is repository-driven. Never fall back to a PDM snapshot.
         snapshot = self.context.qa_snapshot
         result = ArticleObxResult()
@@ -25,15 +47,20 @@ class ArticleObxService(BaseService):
             result.warnings.append("No active snapshot.")
             return result
 
-        permutations = ArticlePermutationService(self.context).build(snapshot)
+        permutation_service = ArticlePermutationService(self.context)
+        permutations = permutation_service.build(snapshot)
+        for diagnostic in (permutation_service.last_diagnostics or ()):
+            if diagnostic.severity is not dg.Severity.INFO:
+                result.warnings.append(str(diagnostic))
         prices = ArticlePriceService(self.context).resolve(
             permutations,
             ArticlePriceRequest(currency=currency, effective_date=effective_date, site_id=site_id),
         )
-        price_by_article = {price.article_id: price for price in prices}
 
-        for permutation in permutations:
-            price = price_by_article.get(permutation.article_id)
+        # Prices are resolved per permutation and returned in the same order. (They
+        # were once keyed by article_id, which gave every configuration of an
+        # article the price of its last one.)
+        for permutation, price in zip(permutations, prices):
             if price is None or price.total_price is None:
                 result.warnings.append(
                     f"{permutation.final_article}: "
@@ -47,6 +74,7 @@ class ArticleObxService(BaseService):
         result.xml = self._render_xml(
             result.rows, manufacturer_id=manufacturer_id, series_id=sid,
             ofml_class_suffix=ofml_class_suffix, exclusions=exclusions,
+            final_mode=final_article_mode,
         )
         return result
 
@@ -57,7 +85,8 @@ class ArticleObxService(BaseService):
             name = name[:qualifier]
         return name.replace(" ", "_")
 
-    def _render_xml(self, rows, *, manufacturer_id, series_id, ofml_class_suffix, exclusions) -> str:
+    def _render_xml(self, rows, *, manufacturer_id, series_id, ofml_class_suffix, exclusions,
+                    final_mode: str = FINAL_PREDICTED) -> str:
         root = ET.Element("cutBuffer")
         version = ET.SubElement(root, "versionInfo")
         version.attrib.update({
@@ -75,11 +104,12 @@ class ArticleObxService(BaseService):
 
             base = ET.SubElement(bsk, "artNr", {"type": "base"})
             base.text = p.base_code
-            final = ET.SubElement(bsk, "artNr", {"type": "final"})
-            final.text = p.final_article
-            if p.description or p.name:
-                txt = ET.SubElement(final, "text", {"lang": "en"})
-                txt.text = p.description or p.name
+            if final_mode != FINAL_OMIT:
+                final = ET.SubElement(bsk, "artNr", {"type": "final"})
+                final.text = OBX_SENTINEL if final_mode == FINAL_SENTINEL else p.final_article
+                if p.description or p.name:
+                    txt = ET.SubElement(final, "text", {"lang": "en"})
+                    txt.text = p.description or p.name
 
             varcode = ET.SubElement(bsk, "artNr", {"type": "ofmlvarcode"})
             varcode.text = self._varcode(p, series_id, ofml_class_suffix, exclusions)

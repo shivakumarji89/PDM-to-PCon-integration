@@ -8,6 +8,8 @@ OBX/packaging generation — belongs to QA (the OBX generator produces the artic
 | [Contains_Relationship_Graph.md](./Contains_Relationship_Graph.md) | The generated `contains` relationship graph |
 | [Generator_Roadmap.md](./Generator_Roadmap.md) | Executive summary of the packaging subsystem + the future-generator implementation roadmap |
 
-**Known current gap (see [`../Article_Encoding/Article_Encoding.md`](../Article_Encoding/Article_Encoding.md) §16):** the current OBX generator (`services/article_obx/article_permutation_service.py`) only orders CodeScheme properties — it does not tokenize `@`/literal characters, insert separators, or evaluate computed/script (`R`-type) properties, and may write an incorrect `<artNr type="final">` value.
+| [OCD_Engine.md](./OCD_Engine.md) | The standalone OCD engine behind the Article OBX generator: relations, CodeScheme, VARCOND, pricing; verified datasets, limits, decisions needed, performance |
+
+**Status:** the former CodeScheme/relation gap (`Article_Encoding.md` §16) is closed by `services/ocd_engine`; what is and is not verified against pCon is stated in [OCD_Engine.md](./OCD_Engine.md).
 
 For QA/validation of generated OBX output, see [`../../03_Workflows/QA_Validation.md`](../../03_Workflows/QA_Validation.md).

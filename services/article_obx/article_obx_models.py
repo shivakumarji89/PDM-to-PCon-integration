@@ -31,6 +31,11 @@ class ArticlePermutation:
     final_article: str
     variant_code: str = ""
     variant_condition: str = ""
+    #: Every ``$VARCOND`` key the price relations assigned (OCD 3.2: multivalued),
+    #: upper-case, in assignment order. ``variant_condition`` is these joined by a space.
+    variant_conditions: tuple[str, ...] = ()
+    #: ``$SET_PRICING_FACTOR`` results, ``((variant condition, factor), ...)``.
+    pricing_factors: tuple[tuple[str, float], ...] = ()
     code_scheme_id: str = ""
     name: str = ""
     description: str = ""
