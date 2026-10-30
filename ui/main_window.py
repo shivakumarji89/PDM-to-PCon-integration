@@ -15,10 +15,12 @@ from PySide6.QtCore import Qt, QSettings, QProcess
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QDockWidget,
+    QFrame,
     QLabel,
     QMainWindow,
     QMenuBar,
     QSplitter,
+    QSizePolicy,
     QStatusBar,
     QTableWidget,
     QTreeWidget,
