@@ -609,11 +609,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 self.findChild(QFrame, "pageDivider"),
             ) if w is not None
         ]
-        self._shell_header = WorkflowHeader(self._title, self._description, self, "\u2630")
+        self._shell_header = WorkflowHeader(self._title, self._description, self)
         self.layout().insertWidget(0, self._shell_header)
 
-        self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="\u2630", parent=self)
-        self._kpi_shown = KpiCard("Shown", "0", "neutral", glyph="\u2315", parent=self)
+        self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="▤", parent=self)
+        self._kpi_shown = KpiCard("Shown", "0", "neutral", glyph="⌕", parent=self)
         self._kpi_selected = KpiCard("Selected", "0", "neutral", glyph="\u2713", parent=self)
         self._kpi_issues = KpiCard("Issue Groups", "-", "neutral", glyph="!", parent=self)
         self._kpi_row = CardRow(170, self)
