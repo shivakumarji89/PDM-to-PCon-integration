@@ -481,7 +481,9 @@ class MainWindow(QMainWindow):
         self._pdm_monitor_btn.clicked.connect(self._on_check_pdm_changes)
         layout.addWidget(self._pdm_monitor_btn)
 
-        layout.addSpacing(theme.SECTION_SPACING)
+        self._legacy_nav_spacer = QWidget(container)
+        self._legacy_nav_spacer.setFixedHeight(theme.SECTION_SPACING)
+        layout.addWidget(self._legacy_nav_spacer)
         layout.addWidget(self._navigator, 1)
 
         # Workflow shell sidebar (module identity + vertical steps + tips). It
@@ -543,6 +545,7 @@ class MainWindow(QMainWindow):
         self._app_header.setVisible(shell)
         self._sidebar.setVisible(shell)
         self._navigator.setVisible(not shell)
+        self._legacy_nav_spacer.setVisible(not shell)
         self._active_module_label.setVisible(not shell)
 
         # In the Maintenance shell, keep the database choice beside the PDM
