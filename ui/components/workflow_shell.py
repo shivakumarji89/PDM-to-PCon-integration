@@ -542,7 +542,7 @@ class WorkflowSidebar(QWidget):
         self.setObjectName("wfSidebar")
         self.setStyleSheet("QWidget#wfSidebar { background: transparent; }")
         col = QVBoxLayout(self)
-        col.setContentsMargins(theme.SPACE_2, theme.SPACE_2, theme.SPACE_2, theme.SPACE_3)
+        col.setContentsMargins(theme.SPACE_2, 0, theme.SPACE_2, theme.SPACE_3)
         col.setSpacing(theme.SPACE_2)
         self.identity = ModuleIdentityPanel(self)
         self.nav = WorkflowStepNav(self)
