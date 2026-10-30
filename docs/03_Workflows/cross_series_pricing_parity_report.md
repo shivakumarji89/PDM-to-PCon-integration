@@ -230,6 +230,41 @@ alone, and the suite passes without and with the new file); this flake is unrela
 authorise a non-production legacy run with a blank `programCode` on Layout. Only then can blank-program routing be changed
 with proof.
 
+## Legacy source review and live PDM check (2026-10-30)
+
+Authorised by the owner: legacy source `PDMMaintenance/PriceMaintenance.cs`, `UpdatePriceThread.cs`, `PConPriceUpdate.cs`
+(`Desktop\PDM`) read directly, and read-only SELECTs against PDMLive. No MDB was written.
+
+**Legacy facts (source).**
+* `UpdatePConItemIncrementalPrice` (PriceMaintenance.cs:9128) reads `ItemOptionValues` for every option value of the component
+  (no `IsFabric` filter), builds `<item> <OptionId>=<code>` and matches it to the existing MDB `com_VariantCondition`
+  (`parsePConOrderCode`). **There is no `8`->`28` mapping anywhere in legacy**; a row only updates if PDM's own option id matches
+  the MDB row, otherwise it is "did not match".
+* `programCode` is never blank in legacy: `PConPriceUpdate.InitWorkspace` (line ~1527) sets `text_programcode` to the
+  **workspace folder name, lower-cased, spaces -> `_`**, and passes it as both `programCode` and `actualProgramCode`;
+  `actualProgramCode` must equal the MDB package `reg_ProgramCode`.
+
+**Live PDM (read-only).** For `GESNNU.105508F`, `DWE3VNNS.105516F` and `RY3SNNB.105512F` every priced `ItemOptionValues` row is
+Fabric Type (`OptionId 8`, `IsFabric=1`); **no colour-level (`28`) price exists**. So the price value is always the Fabric Type
+price; `28=` is only a target relabel. Fetch with program `""` or `revive` gives (source 8 -> target 28) for all rows;
+`layout_studio` gives (8 -> none).
+
+**Root cause of the `28=` seen on Layout/Nevi.** The Workbench let a blank Program fall into Revive routing, but a blank program
+does not exist in legacy: legacy derives it from the workspace. **Fix:** `PricingPage._program_code` now follows legacy.
+Explicit Review program first; in Maintenance, else the workspace folder of the linked repository MDB
+(`services.pricing_program.program_from_workspace_path`, only when the Maintenance state is aligned to the snapshot); else the
+previous package-code lookup. No mandatory validation, snapshot not mutated, Development unchanged. Layout_Studio ->
+`layout_studio` -> `8=`; Nevi_enhanced -> `nevi_enhanced` -> `8=`; Revive -> `revive` (28 target retained, see below).
+
+**Still not 100 % parity (stated, not hidden).**
+* **Revive `8`->`28` routing is a Workbench policy, not legacy.** Legacy cannot update those rows (reports them unresolved).
+  Removing it would make Revive exports insert/block on `8=` rows, so it was left; removing it is an owner decision.
+* The legacy-derived program is applied for any workspace name (as legacy does); only Layout, Nevi, Revive, Aeron and Always
+  workspaces have compiled-PDM evidence. Article and 8= global parity under explicit programs is from the 10-27/28 runs.
+* No new compiled-PDM run was made for this change; tests are mocked (`tests/test_pricing_page_text_blocks.py`,
+  `tests/test_fabric_option_routing_matrix.py`). Legacy VARCOND parity remains NOT RUN.
+* Full suite: 4573 passed, 11 skipped, 0 failed.
+
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for
   rows the scenario made stale or that PDM actually priced; "no-op" runs (X2, X4, X5, X6) are not discriminating.
