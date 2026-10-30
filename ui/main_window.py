@@ -544,6 +544,24 @@ class MainWindow(QMainWindow):
         self._sidebar.setVisible(shell)
         self._navigator.setVisible(not shell)
         self._active_module_label.setVisible(not shell)
+
+        # In the Maintenance shell, keep the database choice beside the PDM
+        # connection indicator in the global header. Restore it to the legacy
+        # left panel for modules that have not migrated to the shell.
+        left_layout = self._left_panel.layout()
+        if shell:
+            left_layout.removeWidget(self._database_label)
+            left_layout.removeWidget(self._database_selector)
+            self._database_label.hide()
+            self._app_header.set_database_selector(self._database_selector)
+        else:
+            self._app_header.set_database_selector(None)
+            self._database_selector.setParent(self._left_panel)
+            self._database_label.setParent(self._left_panel)
+            left_layout.insertWidget(0, self._database_label)
+            left_layout.insertWidget(1, self._database_selector)
+            self._database_label.show()
+            self._database_selector.show()
         # Shell look: panels become transparent so the sidebar and page cards sit
         # on the window canvas; the menu bar blends into the white header.
         self._left_panel.setStyleSheet(
