@@ -54,7 +54,7 @@ from ui.pages.syteline_export_page import SyteLineExportPage
 from workflow.host import WorkspaceHost
 from workflow.manager import WorkflowManager
 from ui.widgets.activity_panel import ActivityPanel
-from ui.widgets.page_viewport import CurrentPageStack, scrollable
+from ui.widgets.page_viewport import CurrentPageStack
 from ui.widgets.assistant_panel import AssistantPanel
 from ui.widgets.background_status import BackgroundStatusIndicator
 from ui.components.workflow_shell import AppHeaderBar, WorkflowSidebar
@@ -691,7 +691,11 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
         layout.setSpacing(theme.SECTION_SPACING)
-        layout.addWidget(scrollable(self._stack, container), 1)
+        # Keep the page stack itself in the expanding centre region. The
+        # individual data controls (tree/table/detail panes) own their scroll
+        # bars; a second, page-wide scroll area makes the Product explorer and
+        # footer compete for height and can push the footer out of alignment.
+        layout.addWidget(self._stack, 1)
 
         footer_widget = QWidget(container)
         footer = QHBoxLayout(footer_widget)
