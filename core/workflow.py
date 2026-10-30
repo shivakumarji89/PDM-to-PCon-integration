@@ -77,3 +77,14 @@ if CET_SIF_VALIDATION_ENABLED:
         WorkflowItem(WorkflowStep.ARTICLE_OBX_GENERATOR, "Article OBX Generator",
                      "Build article permutations, resolve repository prices, and generate an OBX for a specified date."),
     )
+
+# --- Article OBX Generator (pCon SDK) (self-contained, easily disconnectable) --
+# Drives pCon.planner through its Plugin SDK via the MK OBX Generator plugin.
+# Set False to remove the navigator entry, page and step with no other change.
+PCON_SDK_OBX_GENERATOR_ENABLED = True
+
+if PCON_SDK_OBX_GENERATOR_ENABLED:
+    WORKFLOW_ITEMS = WORKFLOW_ITEMS + (
+        WorkflowItem(WorkflowStep.PCON_ARTICLE_OBX_GENERATOR, "Article OBX Generator (pCon SDK)",
+                     "Configure catalogue articles in pCon.planner through the Plugin SDK and export an OBX."),
+    )

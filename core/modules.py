@@ -124,6 +124,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLE_OBX_GENERATOR,
+        WorkflowStep.PCON_ARTICLE_OBX_GENERATOR,
         WorkflowStep.OBX_VALIDATION,
         WorkflowStep.CET_SIF_VALIDATION,
     ),

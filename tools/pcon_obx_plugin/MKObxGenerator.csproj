@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    MK OBX Generator plugin for pCon.planner (Plugin SDK 8.15, X3gPlugin 3.20).
+
+    Targets .NET Framework 4.8.1, matching the SDK's SamplePlugin
+    (TargetFrameworkVersion v4.8.1) and the Getting Started guide. The 4.8.1
+    reference assemblies are restored from NuGet
+    (Microsoft.NETFramework.ReferenceAssemblies.net481).
+
+    X3gPlugin.dll is referenced from the installed pCon.planner, as the SDK's
+    Getting Started guide instructs ("your project should use the files from
+    there"). Override with -p:X3gPluginDir=... to build against the SDK copy.
+  -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net481</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>MKObxGenerator</AssemblyName>
+    <RootNamespace>MKObxGenerator</RootNamespace>
+    <Version>0.1.0</Version>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <UseWindowsForms>true</UseWindowsForms>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <X3gPluginDir Condition="'$(X3gPluginDir)' == ''">C:\Program Files\EasternGraphics\pCon.planner PRO\bin</X3gPluginDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="X3gPlugin">
+      <HintPath>$(X3gPluginDir)\X3gPlugin.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\MKObxGenerator.xml" CopyToOutputDirectory="PreserveNewest" Link="MKObxGenerator.xml" />
+    <None Include="res\MKObxGenerator.ui" CopyToOutputDirectory="PreserveNewest" Link="MKObxGenerator.ui" />
+  </ItemGroup>
+</Project>

@@ -46,6 +46,7 @@ from ui.pages.maintenance_comparison_page import MaintenanceComparisonPage
 from ui.pages.cet_sif_validation_page import CetSifValidationPage  # CET SIF (disconnectable)
 from ui.pages.obx_validation_page import ObxValidationPage
 from ui.pages.article_obx_generator_page import ArticleObxGeneratorPage
+from ui.pages.pcon_article_obx_generator_page import PconArticleObxGeneratorPage
 from ui.pages.metatype_repository_page import MetatypeRepositoryPage
 from ui.pages.metatype_creation_page import MetatypeCreationPage
 from ui.pages.module_home_page import ModuleHomePage
@@ -141,6 +142,10 @@ class MainWindow(QMainWindow):
                 )
             else:
                 self.statusBar().showMessage("Ready - Article OBX Generator workspace")
+        elif step == WorkflowStep.PCON_ARTICLE_OBX_GENERATOR:
+            self.statusBar().showMessage(
+                "Ready - Article OBX Generator (pCon SDK) workspace (requires pCon.planner)"
+            )
         elif step == WorkflowStep.METATYPE_REPOSITORY_ANALYSIS:
             self.statusBar().showMessage("Ready - Repository Analysis workspace")
         elif step in metatype_steps:
@@ -321,6 +326,8 @@ class MainWindow(QMainWindow):
             WorkflowStep.CET_SIF_VALIDATION: CetSifValidationPage,
             WorkflowStep.OBX_VALIDATION: ObxValidationPage,
             WorkflowStep.ARTICLE_OBX_GENERATOR: ArticleObxGeneratorPage,
+            # pCon SDK generator - unused when the step is disconnected in core.workflow.
+            WorkflowStep.PCON_ARTICLE_OBX_GENERATOR: PconArticleObxGeneratorPage,
             WorkflowStep.METATYPE_REPOSITORY_ANALYSIS: MetatypeRepositoryPage,
             WorkflowStep.METATYPE_CREATION: MetatypeCreationPage,
         }

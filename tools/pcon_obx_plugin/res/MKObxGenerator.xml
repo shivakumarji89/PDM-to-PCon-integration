@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pluginInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:noNamespaceSchemaLocation="PluginInfo.xsd">
+  <!--
+    hash="0" is only accepted on a machine with a pCon.planner Plugin SDK
+    developer licence (Getting Started, section 3). For distribution the plugin
+    must be registered with EasternGraphics (request@easterngraphics.com) and the
+    issued hash placed here AND returned by X3gGetGlobalIdentifier().
+  -->
+  <plugin id="MKObxGenerator" hash="0" version="0.1.0" baseAPIVersion="3" vendorName="MillerKnoll">
+    <caption>MK OBX Generator</caption>
+    <description>Generates configured articles and OBX files on behalf of MK Product Workbench QA.</description>
+    <dependencies>
+      <module name="core" minVersion="1.16.0"/>
+      <module name="planner" minVersion="8.10"/>
+      <edition key="PRO" supported="1"/>
+      <edition key="ME" supported="1"/>
+      <edition key="STD" supported="0"/>
+    </dependencies>
+  </plugin>
+</pluginInfo>

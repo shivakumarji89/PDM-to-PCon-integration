@@ -47,6 +47,7 @@ def test_module_workflow_mapping_uses_existing_workflows():
     assert module_workflows(WorkbenchModule.QA_VALIDATION) == (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLE_OBX_GENERATOR,
+        WorkflowStep.PCON_ARTICLE_OBX_GENERATOR,
         WorkflowStep.OBX_VALIDATION,
         WorkflowStep.CET_SIF_VALIDATION,
     )

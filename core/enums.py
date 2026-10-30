@@ -33,6 +33,8 @@ class WorkflowStep(Enum):
     OBX_VALIDATION = "obx_validation"
     #: Standalone Article OBX generation workflow driven by repository data.
     ARTICLE_OBX_GENERATOR = "article_obx_generator"
+    #: QA Article OBX generation through the pCon.planner Plugin SDK (plugin-hosted).
+    PCON_ARTICLE_OBX_GENERATOR = "pcon_article_obx_generator"
     #: Metatype module: read-only HMX repository scan (first Metatype component).
     METATYPE_REPOSITORY_ANALYSIS = "metatype_repository_analysis"
     #: Metatype module runtime workflow: guided creation, polymorphic stage first.

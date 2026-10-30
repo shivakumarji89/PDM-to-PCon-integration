@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pluginUI xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <actions>
+    <action key="runJobs" command="mk::MKObxGenerator::RunPendingJobs" params="">
+      <caption>Run Workbench jobs</caption>
+      <hint>Process pending MK Product Workbench OBX jobs now (they are also processed automatically).</hint>
+    </action>
+    <action key="showFolder" command="mk::MKObxGenerator::ShowJobFolder" params="">
+      <caption>Job folder</caption>
+      <hint>Show the folder exchanged with MK Product Workbench.</hint>
+    </action>
+  </actions>
+  <items>
+    <item name="itmRunJobs" type="LargeButton" actionKey="runJobs"/>
+    <item name="itmShowFolder" type="Button" actionKey="showFolder"/>
+  </items>
+  <toolBars>
+    <toolBar name="tbMKObx">
+      <caption>MK OBX Generator</caption>
+      <itemLinks>
+        <link item="itmRunJobs"/>
+        <link item="itmShowFolder"/>
+      </itemLinks>
+    </toolBar>
+  </toolBars>
+  <tabs>
+    <tab name="tabMKObx" insertAfter="tabPresentation" keyTip="K">
+      <workSpaces model="1" layout="0"/>
+      <caption>MK Workbench</caption>
+      <groups>
+        <group toolBar="tbMKObx"/>
+      </groups>
+    </tab>
+  </tabs>
+</pluginUI>
