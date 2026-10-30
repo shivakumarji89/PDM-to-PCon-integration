@@ -57,6 +57,7 @@ _WORKFLOW_GLYPHS = {
     # Maintenance and data operations
     "maintenance": "✎",
     "pdm / mdb comparison": "↔",
+    "pdm ↔ mdb comparison": "↔",
     "comparison": "↔",
     "bulk update": "▥",
     # QA and generated deliverables
@@ -73,10 +74,14 @@ _WORKFLOW_GLYPHS = {
     "metatype articles": "▣",
     "metatype properties": "▧",
     "metatype values": "◆",
+    "property values": "◆",
     "metatype texts": "¶",
     "metatype setup": "⚒",
+    "setup": "⚒",
     "metatype relations": "∞",
+    "relations / ordering": "∞",
     "metatype review": "☑",
+    "final review": "☑",
     # OAP and supporting workspaces
     "oap": "◎",
     "oap setup": "⚑",
