@@ -166,7 +166,7 @@ def test_other_programs_do_not_resolve_or_remap_fabric_targets(program):
 
 
 @pytest.mark.parametrize("program", ["revive", ""])
-def test_fetch_keeps_calculation_order_and_applies_relationship_after_prices(program):
+def test_fetch_keeps_calculation_order_and_does_not_remap_fabric_target(program):
     rows = source_rows()
     repo = PDMRepository(MagicMock())
     calls = []
@@ -191,9 +191,10 @@ def test_fetch_keeps_calculation_order_and_applies_relationship_after_prices(pro
         [ITEM], "EUR", "25-Oct-2026", 1, object(), catalogue_id=658, program_code=program
     )
     # The last family's raw 77 reuses the original cache entry, as before.
-    assert calls == ["source", 148810, 136033, 290057, "relationships"]
+    # No relationship query and no remap: legacy keeps the priced Fabric Type option as the target.
+    assert calls == ["source", 148810, 136033, 290057]
     assert [(r.OptionValueId, r.OptionId, r.TargetOptionId, r.IncPrice) for r in actual] == [
-        (r.OptionValueId, 8, 28, r.IncPrice) for r in rows
+        (r.OptionValueId, 8, None, r.IncPrice) for r in rows
     ]
 
 

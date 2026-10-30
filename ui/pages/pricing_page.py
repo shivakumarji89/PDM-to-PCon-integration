@@ -37,6 +37,7 @@ from core.engines.filtering import text_match
 from core.activity.models import ActivityType, LogLevel
 from core.progress import ProgressReporter
 from models.price_record import PriceRecord
+from services.pricing_program import program_from_linked_repository, program_from_workspace_path
 from services.pricing_service import PriceParams, PricingService, pricing_requires_recompute
 from services.price_mdb_export_service import PriceMdbExportService
 from services.price_text_blocks import (
@@ -497,6 +498,23 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             self._monitor = monitor
         return monitor
 
+    def _program_code(self, snapshot) -> str:
+        """Explicit Review program first; in Maintenance, else legacy's workspace-folder program, else the package code."""
+        explicit = str(getattr(snapshot, "generation_program", "") or "")
+        if explicit.strip():
+            return explicit
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE:
+            return explicit
+        state = self._context.maintenance_snapshot
+        info = self._context.maintenance_repository_info or {}
+        # Legacy PDM derives its program from the workspace folder (never blank); only trust a link that is
+        # aligned to this snapshot, as for the package code below.
+        if state is not None and getattr(state, "pdm_snapshot", None) is snapshot:
+            workspace = program_from_workspace_path(info.get("path"))
+            if workspace:
+                return workspace
+        return program_from_linked_repository(state, snapshot)
+
     def _params(self) -> PriceParams:
         d = self._date.date()
         sel = self._currency.currentText()
@@ -507,7 +525,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             site_id=self._site.value(),
             valid_from=d.toString("yyyy-MM-dd"),
             valid_to="",
-            program_code=str(getattr(snapshot, "generation_program", "") or ""),
+            program_code=self._program_code(snapshot),
         )
 
     def _on_compute(self) -> None:

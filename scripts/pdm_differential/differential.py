@@ -55,8 +55,9 @@ class Mdb:
         if not res.ok:
             raise RuntimeError(res.first_error())
 
-    def state(self, path: Path) -> dict[str, Any]:
+    def state(self, path: Path, global_lists: tuple[int, ...] = (21, 22, 23, 24)) -> dict[str, Any]:
         """Normalised rows of every table PDM/Pricing may touch (ids stripped)."""
+        in_lists = ",".join(str(int(i)) for i in global_lists)
         r = self.read(
             path,
             lists="SELECT com_PriceListID, com_PriceListLabel, sys_ISOCurrencyCode, com_PriceValidFrom, com_PriceValidTo FROM tCOMd_PriceList2",
@@ -67,7 +68,7 @@ class Mdb:
             glob="SELECT l.com_PriceListLabel, l.com_PriceListID, g.com_GlobalPriceID, g.com_VariantCondition, g.com_PriceLevelCode, "
                  "g.com_PriceTypeCode, g.com_PriceValue, g.sys_ISOCurrencyCode, g.com_PriceValidFrom, g.com_PriceValidTo, g.com_TextID "
                  "FROM tCOMd_GlobalPrice g INNER JOIN tCOMd_PriceList2 l ON g.com_PriceListID=l.com_PriceListID "
-                 "WHERE l.com_PriceListID IN (21,22,23,24)",
+                 f"WHERE l.com_PriceListID IN ({in_lists})",
             gagg="SELECT com_PriceListID, COUNT(*) AS n, SUM(com_PriceValue) AS v FROM tCOMd_GlobalPrice GROUP BY com_PriceListID",
             texts="SELECT * FROM tCOMd_Text",
         )
@@ -149,12 +150,13 @@ def _msub(a, b):
 
 # ---- PDM ---------------------------------------------------------------------------------------------
 def run_pdm(work: Path, pdm_dir: Path, tag: str, mode: str, items, currency, list_id, label, catalogue=1,
-            variableincs=None, item_filter="", timeout=300) -> dict[str, Any]:
+            variableincs=None, item_filter="", timeout=300, program_code=PROGRAM,
+            workspace=WORKSPACE, package_id=PACKAGE_ID) -> dict[str, Any]:
     job = {
-        "pconRoot": str(work / tag / "root") + "\\", "workspace": WORKSPACE, "mode": mode, "items": list(items),
-        "itemFilter": item_filter, "programCode": PROGRAM, "siteId": 1, "catalogueId": catalogue,
+        "pconRoot": str(work / tag / "root") + "\\", "workspace": workspace, "mode": mode, "items": list(items),
+        "itemFilter": item_filter, "programCode": program_code, "siteId": 1, "catalogueId": catalogue,
         "mydate": MYDATE, "prevdate": PREVDATE, "currency": currency, "priceListId": list_id, "pricelist": label,
-        "variableincsFromProgram": variableincs is None, "variableincs": bool(variableincs), "packageId": PACKAGE_ID, "resetToZero": False,
+        "variableincsFromProgram": variableincs is None, "variableincs": bool(variableincs), "packageId": package_id, "resetToZero": False,
     }
     job_path, out_path = work / tag / "job.json", work / tag / "out.json"
     job_path.write_text(json.dumps(job), encoding="utf-8")
@@ -171,14 +173,18 @@ def run_pdm(work: Path, pdm_dir: Path, tag: str, mode: str, items, currency, lis
              "-OutPath", str(out_path), "-PdmDir", str(pdm_dir)],
             capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return {"executed": False, "error": f"PDM run exceeded {timeout}s", "dialogs": _dialogs(dialog_log)}
+        return {"executed": False, "returncode": None, "error": f"PDM run exceeded {timeout}s",
+                "dialogs": _dialogs(dialog_log)}
     finally:
         watcher.kill()
     if not out_path.is_file():
-        return {"executed": False, "error": (proc.stderr or proc.stdout or "no output")[:800],
-                "dialogs": _dialogs(dialog_log)}
+        return {"executed": False, "returncode": proc.returncode,
+                "error": (proc.stderr or proc.stdout or "no output")[:800], "dialogs": _dialogs(dialog_log)}
     out = json.loads(out_path.read_text(encoding="utf-8-sig"))
-    out["executed"] = bool(out.get("finished"))
+    out["returncode"] = proc.returncode
+    out["stderr"] = (proc.stderr or "")[:800]
+    out["log_dir"] = str(work / tag)
+    out["executed"] = bool(out.get("finished")) and proc.returncode == 0
     out["dialogs"] = _dialogs(dialog_log)
     return out
 
@@ -196,34 +202,64 @@ def _dialogs(path: Path) -> list[str]:
 
 
 # ---- Pricing -----------------------------------------------------------------------------------------
-def pricing_records(ctx, items, currency, super_codes=frozenset(), prefix_from_notes=True):
+def pricing_records(
+    ctx, items, currency, super_codes=frozenset(), prefix_from_notes=True,
+    catalogue_id=CAT_GLOBAL, program_code=PROGRAM,
+):
+    """Build expected records using the same distinct PDM fetch paths as Maintenance.
+
+    Article items use the same inline increment query as PricingService.
+    Super-products use the
+    UpdatePriceThread global query (including its secondary price calculation,
+    lookup-code construction, and Fabric Type -> Colour target routing). Using
+    the article procedure for both paths can produce plausible but invalid
+    global comparisons, so keep the two sources separate.
+    """
     repo = PDMRepository(ctx)
     conn = repo.get_connection()
     try:
-        params = PriceParams(currency=currency, mydate=MYDATE, site_id=1, valid_from=VALID_FROM, valid_to="")
+        item_codes = [str(item) for item in items if item]
+        super_set = set(super_codes)
+        article_items = [item for item in item_codes if item not in super_set]
+        global_items = [item for item in item_codes if item in super_set]
+        params = PriceParams(
+            currency=currency, mydate=MYDATE, site_id=1,
+            valid_from=VALID_FROM, valid_to="",
+            program_code=program_code, catalogue_id=catalogue_id,
+        )
         prefix = {}
         if prefix_from_notes:  # PDM's prefix length rule: Item.Notes up to the comma
             cur = conn.cursor()
-            for it in items:
+            for it in item_codes:
                 cur.execute("SELECT Notes FROM Item WHERE Item = ?", (it,))
                 row = cur.fetchone()
                 notes = (row[0] or "") if row else ""
                 head = notes.split(",")[0].strip()
-                if head.isdigit() and 0 < int(head) <= 20 and it not in super_codes:
+                if head.isdigit() and 0 < int(head) <= 20 and it not in super_set:
                     prefix[it] = it[:int(head)]
-        base = repo.fetch_item_base_prices(items, currency, MYDATE, conn, site_id=1)
-        inc = repo.fetch_item_option_increment_prices(items, currency, MYDATE, 1, conn)
-        records, unresolved = PricingService.build_records(base, inc, set(super_codes), prefix, params)
+        base = repo.fetch_item_base_prices(item_codes, currency, MYDATE, conn, site_id=1)
+        inc = []
+        if article_items:
+            inc.extend(repo.fetch_article_option_increment_prices(
+                article_items, currency, MYDATE, 1, conn,
+                program_code=program_code,
+            ))
+        if global_items:
+            inc.extend(repo.fetch_global_option_increment_prices(
+                global_items, currency, MYDATE, 1, conn,
+                catalogue_id=catalogue_id, program_code=program_code,
+            ))
+        records, unresolved = PricingService.build_records(base, inc, super_set, prefix, params)
         PricingService._attach_product_codes(records, repo, conn, 1)
         return records, unresolved
     finally:
         conn.close()
 
 
-def run_pricing(ctx, mdb_path: Path, records, currency, dry_first=True):
+def run_pricing(ctx, mdb_path: Path, records, currency, dry_first=True, lists=None):
     snap = Snapshot()
     snap.price_records = list(records)
-    name = LISTS[currency][0]
+    name = (lists or LISTS)[currency][0]
     svc = PriceMdbExportService(ctx)
     plan = svc.export(snap, mdb_path, dry_run=True, list_targets={currency: name})
     if not plan.get("ok") or not plan.get("export_allowed"):
@@ -437,6 +473,13 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "currency": "GBP", "super": ["GE2HDF."],
         "setup": _setup_global(delete_variants=("GE2HDF.%",), delete_text="GE2HDF.", delete_all_lists=True),
     },
+    "S14_revive_fabric_family_target": {
+        "title": "Revive component fabric-family price source vs mapped colour-option export target",
+        "covers": [3, 6],
+        "steps": [{"mode": "global", "items": ["RY3SNNB.105512F"], "catalogue": CAT_GLOBAL}],
+        "currency": "GBP", "super": ["RY3SNNB.105512F"], "program_code": "revive",
+        "setup": None,
+    },
 }
 
 
@@ -468,13 +511,19 @@ def run_scenario(name, spec, ctx, backup: Path, pdm_dir: Path, work: Path) -> di
         outs = []
         for n, st in enumerate(spec["steps"]):
             outs.append(run_pdm(work, pdm_dir, f"{name}_pdm", st["mode"], st["items"], ccy, list_id, label,
-                                catalogue=st.get("catalogue", 1), variableincs=st.get("variableincs")))
+                                catalogue=st.get("catalogue", 1), variableincs=st.get("variableincs"),
+                                program_code=spec.get("program_code", PROGRAM)))
             if not outs[-1].get("executed"):
                 break
         return outs
 
     report["pdm"] = pdm_all()
-    records, unresolved = pricing_records(ctx, all_items, ccy, spec.get("super", ()))
+    global_step = next((st for st in spec["steps"] if st["mode"] == "global"), None)
+    catalogue_id = global_step.get("catalogue", CAT_GLOBAL) if global_step else CAT_GLOBAL
+    records, unresolved = pricing_records(
+        ctx, all_items, ccy, spec.get("super", ()),
+        catalogue_id=catalogue_id, program_code=spec.get("program_code", PROGRAM),
+    )
     report["pricing_inputs"] = {"records": len(records), "unresolved": unresolved}
     report["pricing"] = run_pricing(ctx, b_mdb, records, ccy)
     if not all(o.get("executed") for o in report["pdm"]):

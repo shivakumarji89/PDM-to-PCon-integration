@@ -303,17 +303,30 @@ class SifValidationService(BaseService):
         return max(matches, key=len) if matches else None
 
     @classmethod
-    def _verify_selected_options(cls, option_rows, codes: list[str]) -> str | None:
-        """Validate selected order codes against active PDM option groups."""
+    def _verify_selected_options(
+        cls, option_rows, codes: list[str], *,
+        catalogue_option_value_ids: set[int] | None = None,
+    ) -> str | None:
+        """Validate active PDM groups, optionally scoped to one OBX catalogue."""
         groups: dict[str, dict[str, object]] = {}
         order: list[str] = []
         dependent_colours: list[object] = []
+        catalogue_colour_codes: set[str] = set()
         selected_codes = {(code or "").strip().upper() for code in codes}
         for row in option_rows:
             try:
                 if int(getattr(row, "Status", None)) != 1:
                     continue
-                if int(getattr(row, "IsFabric", 0) or 0) == 2:
+                is_colour = int(getattr(row, "IsFabric", 0) or 0) == 2
+                if catalogue_option_value_ids is not None:
+                    # A known colour must use its eligible parent, not another band's prefix.
+                    if is_colour:
+                        catalogue_colour_codes.add(
+                            str(getattr(row, "OrderCodeValue2", "") or "").strip().upper()
+                        )
+                    if getattr(row, "OptionValueId", None) not in catalogue_option_value_ids:
+                        continue
+                if is_colour:
                     dependent_colours.append(row)
                     continue
             except (TypeError, ValueError):
@@ -366,6 +379,10 @@ class SifValidationService(BaseService):
                 (
                     group for group in order
                     if group not in used
+                    and (
+                        code not in catalogue_colour_codes
+                        or code in groups[group]
+                    )
                     and cls._increment_key_match(code, groups[group]) is not None
                 ),
                 None,
@@ -1067,6 +1084,19 @@ class SifValidationService(BaseService):
             for row in option_rows:
                 option_rows_by_item.setdefault(str(getattr(row, "Item", "")), []).append(row)
 
+            obx_catalogue_values = (
+                repo.fetch_obx_catalogue_option_values(
+                    [item for item in option_data_items if item not in skipped_option_items],
+                    catalogue_ids,
+                    sorted({
+                        row.OptionValueId for row in option_rows
+                        if row.OptionValueId is not None
+                    }),
+                    connection=conn,
+                )
+                if obx and option_rows
+                else {}
+            )
             option_errors_by_seq: dict[int, str] = {}
             valid_pricing_items: set[str] = set()
             for line in chunk:
@@ -1080,6 +1110,21 @@ class SifValidationService(BaseService):
                     option_rows_by_item.get(str(line.base), []),
                     [option.code for option in line.options],
                 )
+                if obx and line.options:
+                    for catalogue_id in valid_catalogues_by_item.get(line.base, []):
+                        checkpoint()
+                        catalogue_error = self._verify_selected_options(
+                            option_rows_by_item.get(str(line.base), []),
+                            [option.code for option in line.options],
+                            catalogue_option_value_ids=obx_catalogue_values.get(
+                                (line.base, catalogue_id), set()
+                            ),
+                        )
+                        if catalogue_error is None:
+                            option_error = None
+                            break
+                        if option_error is None:
+                            option_error = catalogue_error
                 if option_error:
                     option_errors_by_seq[line.seq] = option_error
                 else:

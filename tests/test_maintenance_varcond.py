@@ -362,11 +362,40 @@ def _panel_page(module, monkeypatch):
     return page, live_calls, loads
 
 
+def _select_relation(page):
+    """Select the first relation the way a user does and wait for any PDM load.
+
+    Opening the workflow only builds the local relation list; generation (and the
+    Maintenance background PDM read) starts on selection.
+    """
+    panel = page._varcond_panel
+    if panel._relations.currentRow() == 0:
+        # Already selected (list rebuilt with the selection kept): no change signal.
+        panel._generate_selected()
+    else:
+        panel._relations.setCurrentRow(0)
+    _wait_for_load(panel)
+
+
+def _wait_for_load(panel):
+    import time
+    from PySide6.QtWidgets import QApplication
+
+    deadline = time.monotonic() + 10
+    while panel._maintenance_load_task is not None:
+        assert time.monotonic() < deadline, "Maintenance PDM load did not finish"
+        QApplication.processEvents()
+        time.sleep(0.01)
+    QApplication.processEvents()
+
+
 def test_development_keeps_generate_live_and_never_uses_maintenance_service(monkeypatch):
     from core.modules import WorkbenchModule
 
     page, live_calls, loads = _panel_page(WorkbenchModule.DEVELOPMENT, monkeypatch)
     panel = page._varcond_panel
+    assert live_calls == [], "Opening the workflow must not generate until a relation is selected"
+    _select_relation(page)
     assert live_calls, "Development must still call VarCondService.generate_live"
     panel._on_generate_clicked()
     assert panel._maintenance_service is None and loads == []
@@ -377,6 +406,8 @@ def test_maintenance_uses_cached_service_not_generate_live(monkeypatch):
 
     page, live_calls, loads = _panel_page(WorkbenchModule.MAINTENANCE, monkeypatch)
     panel = page._varcond_panel
+    assert live_calls == [] and loads == [], "Opening the workflow must not read PDM"
+    _select_relation(page)
     assert live_calls == [] and loads == [["GESCRNNU.105508F"]]
     assert "8=' + Fabric_Type" in panel._output.toPlainText()
     # prefix / exclusion / substitution edits are local transformations
@@ -391,8 +422,12 @@ def test_maintenance_uses_cached_service_not_generate_live(monkeypatch):
     # re-entering the workspace with the same snapshot keeps the cache
     page.on_enter()
     assert len(loads) == 1
+    # length changes drop the selection; reselecting is served from the cache
+    _select_relation(page)
+    assert len(loads) == 1
     # explicit Generate / Refresh re-reads PDM
     panel._on_generate_clicked()
+    _wait_for_load(panel)
     assert len(loads) == 2
 
 
@@ -400,9 +435,12 @@ def test_maintenance_cache_replaced_when_snapshot_changes(monkeypatch):
     from core.modules import WorkbenchModule
 
     page, live_calls, loads = _panel_page(WorkbenchModule.MAINTENANCE, monkeypatch)
+    _select_relation(page)
+    assert len(loads) == 1
     ctx = page._varcond_panel._context
     new_ctx = _context_with_bom()
     ctx.register_pdm_snapshot(new_ctx.pdm_snapshot)
     ctx.activate_snapshot_source("pdm")
     page._varcond_panel.refresh_from_snapshot()
+    _select_relation(page)
     assert len(loads) == 2

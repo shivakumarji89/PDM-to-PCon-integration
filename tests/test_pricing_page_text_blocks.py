@@ -204,6 +204,8 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
                                 PriceBand=None) for r in rows]
 
     monkeypatch.setattr(PDMRepository, "_execute", execute)
+    shown = []  # compute warnings open a modal information box; capture it instead of blocking
+    monkeypatch.setattr(pp.QMessageBox, "information", lambda *args: shown.append(args[-1]))
     batches = []
     append = page._append_batch
 
@@ -216,7 +218,10 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     monkeypatch.setattr(page, "_append_batch", append_and_refresh)
     page._on_compute()
     assert not page._pricing_running
-    option = 28 if mapped else 8
+    # A blank Program that routed fabric rows to their colour option is reported to the user, never silent.
+    # Legacy has no Fabric Type -> colour mapping: even with a colour relationship in PDM the target stays 8.
+    assert not any("because no Program is set" in message for message in shown)
+    option = 8
     expected = [f"{ITEM} {option}={f[0]}" for _ in ("EUR", "GBP") for f in FAMILIES]
     assert [r[1] for r in _rows(page)] == expected
     assert [r.value for r in snap.price_records] == [89, 44, 133, 89] * 2
@@ -393,3 +398,71 @@ def test_refresh_during_stream_preserves_accumulated_records():
     assert len(_rows(page)) == 1
     assert page._context.active_snapshot.price_records == [stored]
     assert page._summary.text().startswith("Computing prices...")
+
+
+def test_maintenance_compute_with_blank_program_is_not_blocked(monkeypatch):
+    """A blank Program keeps the previous workflow: compute starts (with the routing warning path)."""
+    page = _old_fabric_page()
+    assert page._context.active_snapshot.generation_program == ""
+    assert page._params().require_program is False
+    warnings = []
+    monkeypatch.setattr(pp.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    started = []
+    monkeypatch.setattr(PricingService, "compute_streaming", lambda *a, **k: started.append(1))
+    monkeypatch.setattr(pp.QThreadPool, "globalInstance", staticmethod(lambda: SimpleNamespace(start=lambda t: None)))
+    page._on_compute()
+    assert not warnings
+
+
+@pytest.mark.parametrize("explicit,linked,module,expected", [
+    ("", "layout_studio", WorkbenchModule.MAINTENANCE, "layout_studio"),
+    ("", "nevi_enhanced", WorkbenchModule.MAINTENANCE, "nevi_enhanced"),
+    ("", "revive", WorkbenchModule.MAINTENANCE, "revive"),
+    ("", "aeron", WorkbenchModule.MAINTENANCE, ""),              # unknown series: previous behaviour
+    ("", "", WorkbenchModule.MAINTENANCE, ""),                   # no link: previous behaviour
+    ("revive", "layout_studio", WorkbenchModule.MAINTENANCE, "revive"),   # explicit Review choice wins
+    ("", "layout_studio", WorkbenchModule.DEVELOPMENT, ""),      # Development unchanged
+])
+def test_pricing_page_program_for_blank_and_explicit_programs(explicit, linked, module, expected):
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.generation_program = explicit
+    page._active_module = module
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=snap, mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=linked))))
+    params = page._params()
+    assert params.program_code == expected
+    assert params.require_program is False
+    assert snap.generation_program == explicit  # never mutated
+
+
+@pytest.mark.parametrize("explicit,path,module,expected", [
+    ("", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "layout_studio"),
+    ("", r"C:\x\WS\Nevi_enhanced\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "nevi_enhanced"),
+    ("", r"C:\x\WS\Revive\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "revive"),
+    ("revive", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "revive"),  # explicit wins
+    ("", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.DEVELOPMENT, ""),  # Development unchanged
+    ("", "", WorkbenchModule.MAINTENANCE, ""),  # no link: previous behaviour
+])
+def test_pricing_page_program_follows_legacy_workspace_folder(explicit, path, module, expected):
+    """Legacy PDM's program is the workspace folder (PConPriceUpdate.InitWorkspace), never blank."""
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.generation_program = explicit
+    page._active_module = module
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=snap, mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=""))))
+    page._context.register_maintenance_repository_info({"path": path} if path else None)
+    params = page._params()
+    assert params.program_code == expected
+    assert params.require_program is False
+    assert snap.generation_program == explicit  # never mutated
+
+
+def test_workspace_program_ignored_when_maintenance_state_not_aligned_to_snapshot():
+    page = _old_fabric_page()
+    page._active_module = WorkbenchModule.MAINTENANCE
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=object(), mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=""))))
+    page._context.register_maintenance_repository_info({"path": r"C:\x\WS\Layout_Studio\p.mdb"})
+    assert page._params().program_code == ""

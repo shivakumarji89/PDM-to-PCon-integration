@@ -1,0 +1,3263 @@
+{
+ "scenarios": [
+  {
+   "scenario": "X4_layout_screen_global",
+   "title": "Layout Studio screen super product: global base + Fabric Type surcharges (component GESNNU.105508F)",
+   "series": "Layout",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "GESCRNNU.",
+    "product_id": "121563",
+    "catalogue": 660,
+    "workspace": "Layout_Studio",
+    "package": 375,
+    "program": "layout_studio",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 22,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "GESNNU.105508F",
+     "GESG.",
+     "GESU.",
+     "GESNNU.105509F",
+     "GESNNU.105510F",
+     "GESNNU.105512F",
+     "GESNNU.105514F",
+     "GESNNU.105515F",
+     "GESNNU.105516F",
+     "GESNNU.105518F",
+     "GESNNU.105520F",
+     "GESNNU.110508F",
+     "GESNNU.110509F",
+     "GESNNU.110510F",
+     "GESNNU.110512F",
+     "GESNNU.110514F",
+     "GESNNU.110515F",
+     "GESNNU.110516F",
+     "GESNNU.110518F",
+     "GESNNU.110520F",
+     "GESNNU.120508F",
+     "GESNNU.120509F",
+     "GESNNU.120510F",
+     "GESNNU.120512F",
+     "GESNNU.120514F",
+     "GESNNU.120515F",
+     "GESNNU.120516F",
+     "GESNNU.120518F",
+     "GESNNU.120520F"
+    ],
+    "snapshot_articles": 27
+   },
+   "pdm": [
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (29) ...",
+      "Updating: GESNNU.105508F (1 of 29)",
+      "Updating: GESNNU.105508F (1 of 29) ...",
+      "Updating: GESG. (2 of 29)",
+      "Updating: GESG. (2 of 29) ...",
+      "Updating: GESU. (3 of 29)",
+      "Updating: GESU. (3 of 29) ...",
+      "Updating: GESNNU.105509F (4 of 29)",
+      "Updating: GESNNU.105509F (4 of 29) ...",
+      "Updating: GESNNU.105510F (5 of 29)",
+      "Updating: GESNNU.105510F (5 of 29) ...",
+      "Updating: GESNNU.105512F (6 of 29)",
+      "Updating: GESNNU.105512F (6 of 29) ...",
+      "Updating: GESNNU.105514F (7 of 29)",
+      "Updating: GESNNU.105514F (7 of 29) ...",
+      "Updating: GESNNU.105515F (8 of 29)",
+      "Updating: GESNNU.105515F (8 of 29) ...",
+      "Updating: GESNNU.105516F (9 of 29)",
+      "Updating: GESNNU.105516F (9 of 29) ...",
+      "Updating: GESNNU.105518F (10 of 29)",
+      "Updating: GESNNU.105518F (10 of 29) ...",
+      "Updating: GESNNU.105520F (11 of 29)",
+      "Updating: GESNNU.105520F (11 of 29) ...",
+      "Updating: GESNNU.110508F (12 of 29)",
+      "Updating: GESNNU.110508F (12 of 29) ...",
+      "Updating: GESNNU.110509F (13 of 29)",
+      "Updating: GESNNU.110509F (13 of 29) ...",
+      "Updating: GESNNU.110510F (14 of 29)",
+      "Updating: GESNNU.110510F (14 of 29) ...",
+      "Updating: GESNNU.110512F (15 of 29)",
+      "Updating: GESNNU.110512F (15 of 29) ...",
+      "Updating: GESNNU.110514F (16 of 29)",
+      "Updating: GESNNU.110514F (16 of 29) ...",
+      "Updating: GESNNU.110515F (17 of 29)",
+      "Updating: GESNNU.110515F (17 of 29) ...",
+      "Updating: GESNNU.110516F (18 of 29)",
+      "Updating: GESNNU.110516F (18 of 29) ...",
+      "Updating: GESNNU.110518F (19 of 29)",
+      "Updating: GESNNU.110518F (19 of 29) ...",
+      "Updating: GESNNU.110520F (20 of 29)",
+      "Updating: GESNNU.110520F (20 of 29) ...",
+      "Updating: GESNNU.120508F (21 of 29)",
+      "Updating: GESNNU.120508F (21 of 29) ...",
+      "Updating: GESNNU.120509F (22 of 29)",
+      "Updating: GESNNU.120509F (22 of 29) ...",
+      "Updating: GESNNU.120510F (23 of 29)",
+      "Updating: GESNNU.120510F (23 of 29) ...",
+      "Updating: GESNNU.120512F (24 of 29)",
+      "Updating: GESNNU.120512F (24 of 29) ...",
+      "Updating: GESNNU.120514F (25 of 29)",
+      "Updating: GESNNU.120514F (25 of 29) ...",
+      "Updating: GESNNU.120515F (26 of 29)",
+      "Updating: GESNNU.120515F (26 of 29) ...",
+      "Updating: GESNNU.120516F (27 of 29)",
+      "Updating: GESNNU.120516F (27 of 29) ...",
+      "Updating: GESNNU.120518F (28 of 29)",
+      "Updating: GESNNU.120518F (28 of 29) ...",
+      "Updating: GESNNU.120520F (29 of 29)",
+      "Updating: GESNNU.120520F (29 of 29) ...",
+      "Update complete (731 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "INCOMPLETE",
+     "records": 380,
+     "option_ids_in_conditions": {
+      "-": 29,
+      "28": 351
+     },
+     "routed_source_ne_target": 351,
+     "sample_records": [
+      {
+       "variant_condition": "GESG.",
+       "pdm_lookup_code": "GESG.",
+       "value": 29.0
+      },
+      {
+       "variant_condition": "GESNNU.105508F",
+       "pdm_lookup_code": "GESNNU.105508F",
+       "value": 246.0
+      },
+      {
+       "variant_condition": "GESNNU.105509F",
+       "pdm_lookup_code": "GESNNU.105509F",
+       "value": 256.0
+      }
+     ],
+     "export": {
+      "ok": false,
+      "error": null,
+      "inserted_prices": null,
+      "inserted_global_prices": null,
+      "updated_prices": null,
+      "updated_global_prices": null,
+      "skipped_existing": null,
+      "skipped_text_blocked": null,
+      "text_summary": null,
+      "text_result": null
+     },
+     "export_blocking_errors": [
+      "Fabric family target 'GESNNU.105508F 28=1FD': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False",
+      "Fabric family target 'GESNNU.105508F 28=1HA': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False",
+      "Fabric family target 'GESNNU.105508F 28=4MT': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False"
+     ],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "layout_studio": {
+     "generation_program": "layout_studio",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 380,
+     "option_ids_in_conditions": {
+      "-": 29,
+      "8": 351
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "GESG.",
+       "pdm_lookup_code": "GESG.",
+       "value": 29.0
+      },
+      {
+       "variant_condition": "GESNNU.105508F",
+       "pdm_lookup_code": "GESNNU.105508F",
+       "value": 246.0
+      },
+      {
+       "variant_condition": "GESNNU.105509F",
+       "pdm_lookup_code": "GESNNU.105509F",
+       "value": 256.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 380,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 380,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 380,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X3_nevi_screen_global",
+   "title": "Nevi screen super product: global base + Fabric Type surcharges (component DWE3VNNS.105516F)",
+   "series": "Nevi",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "DWE3SCRNNS.",
+    "product_id": "112605",
+    "catalogue": 764,
+    "workspace": "Nevi_enhanced",
+    "package": 1,
+    "program": "nevi_enhanced",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 35,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "DWE3VNNS.105512F",
+     "RY3SM.",
+     "DWE3VNNS.105514F",
+     "DWE3VNNS.105515F",
+     "DWE3VNNS.105516F",
+     "DWE3VNNS.105518F",
+     "DWE3VNNS.110512F",
+     "DWE3VNNS.110514F",
+     "DWE3VNNS.110515F",
+     "DWE3VNNS.110516F",
+     "DWE3VNNS.110518F",
+     "DWE3VNNS.120512F",
+     "DWE3VNNS.120514F",
+     "DWE3VNNS.120515F",
+     "DWE3VNNS.120516F",
+     "DWE3VNNS.120518F",
+     "DWE3VNNS.130012F",
+     "DWE3VNNS.130014F",
+     "DWE3VNNS.130015F",
+     "DWE3VNNS.130016F",
+     "DWE3VNNS.130018F"
+    ],
+    "snapshot_articles": 20
+   },
+   "pdm": [
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (21) ...",
+      "Updating: DWE3VNNS.105512F (1 of 21)",
+      "Updating: DWE3VNNS.105512F (1 of 21) ...",
+      "Updating: RY3SM. (2 of 21)",
+      "Updating: RY3SM. (2 of 21) ...",
+      "Updating: DWE3VNNS.105514F (3 of 21)",
+      "Updating: DWE3VNNS.105514F (3 of 21) ...",
+      "Updating: DWE3VNNS.105515F (4 of 21)",
+      "Updating: DWE3VNNS.105515F (4 of 21) ...",
+      "Updating: DWE3VNNS.105516F (5 of 21)",
+      "Updating: DWE3VNNS.105516F (5 of 21) ...",
+      "Updating: DWE3VNNS.105518F (6 of 21)",
+      "Updating: DWE3VNNS.105518F (6 of 21) ...",
+      "Updating: DWE3VNNS.110512F (7 of 21)",
+      "Updating: DWE3VNNS.110512F (7 of 21) ...",
+      "Updating: DWE3VNNS.110514F (8 of 21)",
+      "Updating: DWE3VNNS.110514F (8 of 21) ...",
+      "Updating: DWE3VNNS.110515F (9 of 21)",
+      "Updating: DWE3VNNS.110515F (9 of 21) ...",
+      "Updating: DWE3VNNS.110516F (10 of 21)",
+      "Updating: DWE3VNNS.110516F (10 of 21) ...",
+      "Updating: DWE3VNNS.110518F (11 of 21)",
+      "Updating: DWE3VNNS.110518F (11 of 21) ...",
+      "Updating: DWE3VNNS.120512F (12 of 21)",
+      "Updating: DWE3VNNS.120512F (12 of 21) ...",
+      "Updating: DWE3VNNS.120514F (13 of 21)",
+      "Updating: DWE3VNNS.120514F (13 of 21) ...",
+      "Updating: DWE3VNNS.120515F (14 of 21)",
+      "Updating: DWE3VNNS.120515F (14 of 21) ...",
+      "Updating: DWE3VNNS.120516F (15 of 21)",
+      "Updating: DWE3VNNS.120516F (15 of 21) ...",
+      "Updating: DWE3VNNS.120518F (16 of 21)",
+      "Updating: DWE3VNNS.120518F (16 of 21) ...",
+      "Updating: DWE3VNNS.130012F (17 of 21)",
+      "Updating: DWE3VNNS.130012F (17 of 21) ...",
+      "Updating: DWE3VNNS.130014F (18 of 21)",
+      "Updating: DWE3VNNS.130014F (18 of 21) ...",
+      "Updating: DWE3VNNS.130015F (19 of 21)",
+      "Updating: DWE3VNNS.130015F (19 of 21) ...",
+      "Updating: DWE3VNNS.130016F (20 of 21)",
+      "Updating: DWE3VNNS.130016F (20 of 21) ...",
+      "Updating: DWE3VNNS.130018F (21 of 21)",
+      "Updating: DWE3VNNS.130018F (21 of 21) ...",
+      "Update complete (261 price(s) updated, 20 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 261,
+   "pdm_rows_removed": 261,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "INCOMPLETE",
+     "records": 301,
+     "option_ids_in_conditions": {
+      "-": 21,
+      "28": 280
+     },
+     "routed_source_ne_target": 280,
+     "sample_records": [
+      {
+       "variant_condition": "DWE3VNNS.105512F",
+       "pdm_lookup_code": "DWE3VNNS.105512F",
+       "value": 286.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105514F",
+       "pdm_lookup_code": "DWE3VNNS.105514F",
+       "value": 307.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105515F",
+       "pdm_lookup_code": "DWE3VNNS.105515F",
+       "value": 317.0
+      }
+     ],
+     "export": {
+      "ok": false,
+      "error": null,
+      "inserted_prices": null,
+      "inserted_global_prices": null,
+      "updated_prices": null,
+      "updated_global_prices": null,
+      "skipped_existing": null,
+      "skipped_text_blocked": null,
+      "text_summary": null,
+      "text_result": null
+     },
+     "export_blocking_errors": [
+      "Fabric family target 'DWE3VNNS.105512F 28=1FD': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False",
+      "Fabric family target 'DWE3VNNS.105512F 28=1HA': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False",
+      "Fabric family target 'DWE3VNNS.105512F 28=1RE': expected at most one linked existing row, found 0; legacy/canonical conflicts=False, priced source conflicts=True, duplicate input=False"
+     ],
+     "only_in_pdm_result": {
+      "count": 261,
+      "rows": [
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1FD\", \"X\", \"S\", 48.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1HA\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1RE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4MT\", \"X\", \"S\", 71.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4SC\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4TE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=TI\", \"X\", \"S\", 71.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=V26\", \"X\", \"S\", 48.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=Z1C\", \"X\", \"S\", 48.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=Z1G\", \"X\", \"S\", 48.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZC5\", \"X\", \"S\", 71.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZM2\", \"X\", \"S\", 48.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZMA\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1FD\", \"X\", \"S\", 55.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1HA\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1RE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4MT\", \"X\", \"S\", 83.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4SC\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4TE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=TI\", \"X\", \"S\", 83.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=V26\", \"X\", \"S\", 55.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=Z1C\", \"X\", \"S\", 55.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=Z1G\", \"X\", \"S\", 55.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZC5\", \"X\", \"S\", 83.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZM2\", \"X\", \"S\", 55.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZMA\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1FD\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1HA\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1RE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4MT\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4SC\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4TE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=TI\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=V26\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=Z1C\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=Z1G\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZC5\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZM2\", \"X\", \"S\", 58.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZMA\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1FD\", \"X\", \"S\", 62.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1HA\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1RE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4MT\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4SC\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4TE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=TI\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=V26\", \"X\", \"S\", 62.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=Z1C\", \"X\", \"S\", 62.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=Z1G\", \"X\", \"S\", 62.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZC5\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZM2\", \"X\", \"S\", 62.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZMA\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1FD\", \"X\", \"S\", 70.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1HA\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1RE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4MT\", \"X\", \"S\", 105.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4SC\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4TE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=TI\", \"X\", \"S\", 105.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=V26\", \"X\", \"S\", 70.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]"
+      ]
+     },
+     "only_in_pricing_result": {
+      "count": 261,
+      "rows": [
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1FD\", \"X\", \"S\", 77.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1HA\", \"X\", \"S\", 38.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=1RE\", \"X\", \"S\", 38.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4MT\", \"X\", \"S\", 115.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4SC\", \"X\", \"S\", 38.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=4TE\", \"X\", \"S\", 38.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=TI\", \"X\", \"S\", 115.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=V26\", \"X\", \"S\", 77.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=Z1C\", \"X\", \"S\", 77.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=Z1G\", \"X\", \"S\", 77.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZC5\", \"X\", \"S\", 115.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZM2\", \"X\", \"S\", 77.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=ZMA\", \"X\", \"S\", 38.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1FD\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1HA\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=1RE\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4MT\", \"X\", \"S\", 132.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4SC\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=4TE\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=TI\", \"X\", \"S\", 132.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=V26\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=Z1C\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=Z1G\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZC5\", \"X\", \"S\", 132.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZM2\", \"X\", \"S\", 88.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=ZMA\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1FD\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1HA\", \"X\", \"S\", 47.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=1RE\", \"X\", \"S\", 47.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4MT\", \"X\", \"S\", 141.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4SC\", \"X\", \"S\", 47.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=4TE\", \"X\", \"S\", 47.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=TI\", \"X\", \"S\", 141.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=V26\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=Z1C\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=Z1G\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZC5\", \"X\", \"S\", 141.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZM2\", \"X\", \"S\", 92.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=ZMA\", \"X\", \"S\", 47.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1FD\", \"X\", \"S\", 100.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1HA\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=1RE\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4MT\", \"X\", \"S\", 148.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4SC\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=4TE\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=TI\", \"X\", \"S\", 148.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=V26\", \"X\", \"S\", 100.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=Z1C\", \"X\", \"S\", 100.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=Z1G\", \"X\", \"S\", 100.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZC5\", \"X\", \"S\", 148.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZM2\", \"X\", \"S\", 100.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=ZMA\", \"X\", \"S\", 49.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1FD\", \"X\", \"S\", 112.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1HA\", \"X\", \"S\", 56.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=1RE\", \"X\", \"S\", 56.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4MT\", \"X\", \"S\", 169.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4SC\", \"X\", \"S\", 56.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=4TE\", \"X\", \"S\", 56.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=TI\", \"X\", \"S\", 169.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=V26\", \"X\", \"S\", 112.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]"
+      ]
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "nevi_enhanced": {
+     "generation_program": "nevi_enhanced",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "FAIL",
+     "records": 301,
+     "option_ids_in_conditions": {
+      "-": 21,
+      "8": 280
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "DWE3VNNS.105512F",
+       "pdm_lookup_code": "DWE3VNNS.105512F",
+       "value": 286.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105514F",
+       "pdm_lookup_code": "DWE3VNNS.105514F",
+       "value": 307.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105515F",
+       "pdm_lookup_code": "DWE3VNNS.105515F",
+       "value": 317.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 20,
+      "updated_prices": 0,
+      "updated_global_prices": 261,
+      "skipped_existing": 20,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 261,
+       "price_rows_to_insert": 20,
+       "text_reuse": 20,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 281,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 20,
+       "rows_linked": 20,
+       "links_preserved": 281,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 20,
+      "rows": [
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F 8=T2RE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F 8=T2RE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F 8=T2RE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F 8=T2RE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F 8=T2RE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110512F 8=T2RE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110514F 8=T2RE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110515F 8=T2RE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110516F 8=T2RE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110518F 8=T2RE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120512F 8=T2RE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120514F 8=T2RE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120515F 8=T2RE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120516F 8=T2RE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120518F 8=T2RE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130012F 8=T2RE\", \"X\", \"S\", 24.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130014F 8=T2RE\", \"X\", \"S\", 28.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130015F 8=T2RE\", \"X\", \"S\", 29.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130016F 8=T2RE\", \"X\", \"S\", 31.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130018F 8=T2RE\", \"X\", \"S\", 35.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"8\", \"Surcharge fabric type\", \"Aufpreis f\\u00fcr Stoff\", \"Surco\\u00fbt type de tissu\", \"Meerprijs stoftype\"]]"
+      ]
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X1_aeron_article",
+   "title": "Aeron ordinary article with base price and option increments (no super products in this series)",
+   "series": "Aeron",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "AER1A11PW",
+    "product_id": "52673",
+    "catalogue": 518,
+    "workspace": "Aeron",
+    "package": 369,
+    "program": "aeron",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026",
+    "price_list_id": 30,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "AER1A11PW"
+    ],
+    "global_items": [],
+    "snapshot_articles": 1
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: AER1A11PW (1 of 1)",
+      "Update complete (18 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 18,
+   "pdm_rows_removed": 18,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 20,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "6430": 3,
+      "6431": 7,
+      "6435": 1,
+      "6436": 6,
+      "6432": 2
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "PW",
+       "pdm_lookup_code": "",
+       "value": 1532.0
+      },
+      {
+       "variant_condition": "PW 6430=SZS",
+       "pdm_lookup_code": "",
+       "value": -69.0
+      },
+      {
+       "variant_condition": "PW 6430=AJ",
+       "pdm_lookup_code": "",
+       "value": 69.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 18,
+      "updated_global_prices": 0,
+      "skipped_existing": 2,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 18,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "aeron": {
+     "generation_program": "aeron",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 20,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "6430": 3,
+      "6431": 7,
+      "6435": 1,
+      "6436": 6,
+      "6432": 2
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "PW",
+       "pdm_lookup_code": "",
+       "value": 1532.0
+      },
+      {
+       "variant_condition": "PW 6430=SZS",
+       "pdm_lookup_code": "",
+       "value": -69.0
+      },
+      {
+       "variant_condition": "PW 6430=AJ",
+       "pdm_lookup_code": "",
+       "value": 69.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 18,
+      "updated_global_prices": 0,
+      "skipped_existing": 2,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 18,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X2_always_article",
+   "title": "Always ordinary article with base price and option increments",
+   "series": "Always",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "NOALE181",
+    "product_id": "62692",
+    "catalogue": 381,
+    "workspace": "Always",
+    "package": 375,
+    "program": "always",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026",
+    "price_list_id": 30,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "NOALE181"
+    ],
+    "global_items": [],
+    "snapshot_articles": 1
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: NOALE181 (1 of 1)",
+      "Update complete (1 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 68,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3344": 49,
+      "6530": 18
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "1",
+       "pdm_lookup_code": "",
+       "value": 1240.0
+      },
+      {
+       "variant_condition": "1 3344=TF",
+       "pdm_lookup_code": "",
+       "value": 220.0
+      },
+      {
+       "variant_condition": "1 3344=TG",
+       "pdm_lookup_code": "",
+       "value": 306.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 68,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "always": {
+     "generation_program": "always",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 68,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3344": 49,
+      "6530": 18
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "1",
+       "pdm_lookup_code": "",
+       "value": 1240.0
+      },
+      {
+       "variant_condition": "1 3344=TF",
+       "pdm_lookup_code": "",
+       "value": 220.0
+      },
+      {
+       "variant_condition": "1 3344=TG",
+       "pdm_lookup_code": "",
+       "value": 306.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 68,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X5_layout_article",
+   "title": "Layout Studio ordinary article with option increments",
+   "series": "Layout",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "GEWQ.",
+    "product_id": "52618",
+    "catalogue": 660,
+    "workspace": "Layout_Studio",
+    "package": 375,
+    "program": "layout_studio",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 22,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "GEWQ."
+    ],
+    "global_items": [],
+    "snapshot_articles": 1
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GEWQ. (1 of 1)",
+      "Update complete (1 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 5,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3827": 4
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": ".",
+       "pdm_lookup_code": "",
+       "value": 171.0
+      },
+      {
+       "variant_condition": ". 3827=DB3",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      },
+      {
+       "variant_condition": ". 3827=DN2",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 5,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "layout_studio": {
+     "generation_program": "layout_studio",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 5,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3827": 4
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": ".",
+       "pdm_lookup_code": "",
+       "value": 171.0
+      },
+      {
+       "variant_condition": ". 3827=DB3",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      },
+      {
+       "variant_condition": ". 3827=DN2",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 5,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X6_nevi_article",
+   "title": "Nevi ordinary article with base price",
+   "series": "Nevi",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "DWE3WLES.",
+    "product_id": "114911",
+    "catalogue": 764,
+    "workspace": "Nevi_enhanced",
+    "package": 1,
+    "program": "nevi_enhanced",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 35,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "DWE3WLES."
+    ],
+    "global_items": [],
+    "snapshot_articles": 1
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": null,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: DWE3WLES. (1 of 1)",
+      "Update complete (1 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": null,
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 1,
+     "option_ids_in_conditions": {
+      "-": 1
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "S.",
+       "pdm_lookup_code": "",
+       "value": 93.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 1,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "nevi_enhanced": {
+     "generation_program": "nevi_enhanced",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 1,
+     "option_ids_in_conditions": {
+      "-": 1
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "S.",
+       "pdm_lookup_code": "",
+       "value": 93.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 1,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X7_revive_screen_global",
+   "title": "Revive (reference) screen super product: legacy writes Fabric Type -> Colour 28= rows",
+   "series": "Revive",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "RY3SCRNNB.",
+    "product_id": "121590",
+    "catalogue": 658,
+    "workspace": "Revive",
+    "package": 240,
+    "program": "revive",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 27,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "RY3SNNB.105512F",
+     "GFCHBT.",
+     "DWE3EP.",
+     "RY3SNNB.105514F",
+     "RY3SNNB.105515F",
+     "RY3SNNB.105516F",
+     "RY3SNNB.105518F",
+     "RY3SNNB.105520F",
+     "RY3SNNB.110512F",
+     "RY3SNNB.110514F",
+     "RY3SNNB.110515F",
+     "RY3SNNB.110516F",
+     "RY3SNNB.110518F",
+     "RY3SNNB.110520F",
+     "RY3SNNB.120512F",
+     "RY3SNNB.120514F",
+     "RY3SNNB.120515F",
+     "RY3SNNB.120516F",
+     "RY3SNNB.120518F",
+     "RY3SNNB.120520F",
+     "RY3SNNB.125012F",
+     "RY3SNNB.125014F",
+     "RY3SNNB.125015F",
+     "RY3SNNB.125016F",
+     "RY3SNNB.125018F",
+     "RY3SNNB.125020F"
+    ],
+    "snapshot_articles": 24,
+    "perturbed_rows": []
+   },
+   "pdm": [
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (26) ...",
+      "Updating: RY3SNNB.105512F (1 of 26)",
+      "Updating: RY3SNNB.105512F (1 of 26) ...",
+      "Updating: GFCHBT. (2 of 26)",
+      "Updating: GFCHBT. (2 of 26) ...",
+      "Updating: DWE3EP. (3 of 26)",
+      "Updating: DWE3EP. (3 of 26) ...",
+      "Updating: RY3SNNB.105514F (4 of 26)",
+      "Updating: RY3SNNB.105514F (4 of 26) ...",
+      "Updating: RY3SNNB.105515F (5 of 26)",
+      "Updating: RY3SNNB.105515F (5 of 26) ...",
+      "Updating: RY3SNNB.105516F (6 of 26)",
+      "Updating: RY3SNNB.105516F (6 of 26) ...",
+      "Updating: RY3SNNB.105518F (7 of 26)",
+      "Updating: RY3SNNB.105518F (7 of 26) ...",
+      "Updating: RY3SNNB.105520F (8 of 26)",
+      "Updating: RY3SNNB.105520F (8 of 26) ...",
+      "Updating: RY3SNNB.110512F (9 of 26)",
+      "Updating: RY3SNNB.110512F (9 of 26) ...",
+      "Updating: RY3SNNB.110514F (10 of 26)",
+      "Updating: RY3SNNB.110514F (10 of 26) ...",
+      "Updating: RY3SNNB.110515F (11 of 26)",
+      "Updating: RY3SNNB.110515F (11 of 26) ...",
+      "Updating: RY3SNNB.110516F (12 of 26)",
+      "Updating: RY3SNNB.110516F (12 of 26) ...",
+      "Updating: RY3SNNB.110518F (13 of 26)",
+      "Updating: RY3SNNB.110518F (13 of 26) ...",
+      "Updating: RY3SNNB.110520F (14 of 26)",
+      "Updating: RY3SNNB.110520F (14 of 26) ...",
+      "Updating: RY3SNNB.120512F (15 of 26)",
+      "Updating: RY3SNNB.120512F (15 of 26) ...",
+      "Updating: RY3SNNB.120514F (16 of 26)",
+      "Updating: RY3SNNB.120514F (16 of 26) ...",
+      "Updating: RY3SNNB.120515F (17 of 26)",
+      "Updating: RY3SNNB.120515F (17 of 26) ...",
+      "Updating: RY3SNNB.120516F (18 of 26)",
+      "Updating: RY3SNNB.120516F (18 of 26) ...",
+      "Updating: RY3SNNB.120518F (19 of 26)",
+      "Updating: RY3SNNB.120518F (19 of 26) ...",
+      "Updating: RY3SNNB.120520F (20 of 26)",
+      "Updating: RY3SNNB.120520F (20 of 26) ...",
+      "Updating: RY3SNNB.125012F (21 of 26)",
+      "Updating: RY3SNNB.125012F (21 of 26) ...",
+      "Updating: RY3SNNB.125014F (22 of 26)",
+      "Updating: RY3SNNB.125014F (22 of 26) ...",
+      "Updating: RY3SNNB.125015F (23 of 26)",
+      "Updating: RY3SNNB.125015F (23 of 26) ...",
+      "Updating: RY3SNNB.125016F (24 of 26)",
+      "Updating: RY3SNNB.125016F (24 of 26) ...",
+      "Updating: RY3SNNB.125018F (25 of 26)",
+      "Updating: RY3SNNB.125018F (25 of 26) ...",
+      "Updating: RY3SNNB.125020F (26 of 26)",
+      "Updating: RY3SNNB.125020F (26 of 26) ...",
+      "Update complete (26 price(s) already up to date, 312 item(s) unresolved)"
+     ],
+     "noPDMprice": [
+      "RY3SNNB.105512F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105512F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105514F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105515F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105516F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105518F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.105520F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110512F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110514F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110515F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110516F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110518F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.110520F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120512F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120514F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120515F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120516F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120518F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.120520F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 115 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 77 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125012F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 38 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 132 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 88 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125014F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 44 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 141 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 92 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125015F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 47 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 148 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 100 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125016F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 49 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 169 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 112 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125018F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 56 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=1FD  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=1HA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=4MT  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=4SC  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=4TE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=T2RE  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=TI  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=V26  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=Z1C  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=Z1G  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=ZC5  did not match (variable: True)\r\ncurrent pCon inc price: 190 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=ZM2  did not match (variable: True)\r\ncurrent pCon inc price: 124 (expected prev: 0, new value: 0)",
+      "RY3SNNB.125020F 28=ZMA  did not match (variable: True)\r\ncurrent pCon inc price: 63 (expected prev: 0, new value: 0)"
+     ],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X7_revive_screen_global_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 312,
+     "status": "INCOMPLETE",
+     "records": 338,
+     "option_ids_in_conditions": {
+      "-": 26,
+      "28": 312
+     },
+     "routed_source_ne_target": 312,
+     "sample_records": [
+      {
+       "variant_condition": "DWE3EP.",
+       "pdm_lookup_code": "DWE3EP.",
+       "value": 6.0
+      },
+      {
+       "variant_condition": "GFCHBT.",
+       "pdm_lookup_code": "GFCHBT.",
+       "value": 48.0
+      },
+      {
+       "variant_condition": "RY3SNNB.105512F",
+       "pdm_lookup_code": "RY3SNNB.105512F",
+       "value": 286.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 338,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 338,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 338,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "revive": {
+     "generation_program": "revive",
+     "compute_error": null,
+     "legacy_unresolved": 312,
+     "status": "INCOMPLETE",
+     "records": 338,
+     "option_ids_in_conditions": {
+      "-": 26,
+      "28": 312
+     },
+     "routed_source_ne_target": 312,
+     "sample_records": [
+      {
+       "variant_condition": "DWE3EP.",
+       "pdm_lookup_code": "DWE3EP.",
+       "value": 6.0
+      },
+      {
+       "variant_condition": "GFCHBT.",
+       "pdm_lookup_code": "GFCHBT.",
+       "value": 48.0
+      },
+      {
+       "variant_condition": "RY3SNNB.105512F",
+       "pdm_lookup_code": "RY3SNNB.105512F",
+       "value": 286.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 0,
+      "skipped_existing": 338,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 0,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 338,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": null,
+       "links_preserved": 338,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": false
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X8_layout_screen_pdm_as_revive",
+   "title": "DIAGNOSTIC: compiled PDM run on the Layout screen with programCode=revive (does legacy route by program?)",
+   "series": "Layout",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "GESCRNNU.",
+    "product_id": "121563",
+    "catalogue": 660,
+    "workspace": "Layout_Studio",
+    "package": 375,
+    "program": "layout_studio",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 22,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "GESNNU.105508F",
+     "GESG.",
+     "GESU.",
+     "GESNNU.105509F",
+     "GESNNU.105510F",
+     "GESNNU.105512F",
+     "GESNNU.105514F",
+     "GESNNU.105515F",
+     "GESNNU.105516F",
+     "GESNNU.105518F",
+     "GESNNU.105520F",
+     "GESNNU.110508F",
+     "GESNNU.110509F",
+     "GESNNU.110510F",
+     "GESNNU.110512F",
+     "GESNNU.110514F",
+     "GESNNU.110515F",
+     "GESNNU.110516F",
+     "GESNNU.110518F",
+     "GESNNU.110520F",
+     "GESNNU.120508F",
+     "GESNNU.120509F",
+     "GESNNU.120510F",
+     "GESNNU.120512F",
+     "GESNNU.120514F",
+     "GESNNU.120515F",
+     "GESNNU.120516F",
+     "GESNNU.120518F",
+     "GESNNU.120520F"
+    ],
+    "snapshot_articles": 27,
+    "perturbed_rows": []
+   },
+   "pdm": [
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (29) ...",
+      "Updating: GESNNU.105508F (1 of 29)",
+      "Updating: GESNNU.105508F (1 of 29) ...",
+      "Updating: GESG. (2 of 29)",
+      "Updating: GESG. (2 of 29) ...",
+      "Updating: GESU. (3 of 29)",
+      "Updating: GESU. (3 of 29) ...",
+      "Updating: GESNNU.105509F (4 of 29)",
+      "Updating: GESNNU.105509F (4 of 29) ...",
+      "Updating: GESNNU.105510F (5 of 29)",
+      "Updating: GESNNU.105510F (5 of 29) ...",
+      "Updating: GESNNU.105512F (6 of 29)",
+      "Updating: GESNNU.105512F (6 of 29) ...",
+      "Updating: GESNNU.105514F (7 of 29)",
+      "Updating: GESNNU.105514F (7 of 29) ...",
+      "Updating: GESNNU.105515F (8 of 29)",
+      "Updating: GESNNU.105515F (8 of 29) ...",
+      "Updating: GESNNU.105516F (9 of 29)",
+      "Updating: GESNNU.105516F (9 of 29) ...",
+      "Updating: GESNNU.105518F (10 of 29)",
+      "Updating: GESNNU.105518F (10 of 29) ...",
+      "Updating: GESNNU.105520F (11 of 29)",
+      "Updating: GESNNU.105520F (11 of 29) ...",
+      "Updating: GESNNU.110508F (12 of 29)",
+      "Updating: GESNNU.110508F (12 of 29) ...",
+      "Updating: GESNNU.110509F (13 of 29)",
+      "Updating: GESNNU.110509F (13 of 29) ...",
+      "Updating: GESNNU.110510F (14 of 29)",
+      "Updating: GESNNU.110510F (14 of 29) ...",
+      "Updating: GESNNU.110512F (15 of 29)",
+      "Updating: GESNNU.110512F (15 of 29) ...",
+      "Updating: GESNNU.110514F (16 of 29)",
+      "Updating: GESNNU.110514F (16 of 29) ...",
+      "Updating: GESNNU.110515F (17 of 29)",
+      "Updating: GESNNU.110515F (17 of 29) ...",
+      "Updating: GESNNU.110516F (18 of 29)",
+      "Updating: GESNNU.110516F (18 of 29) ...",
+      "Updating: GESNNU.110518F (19 of 29)",
+      "Updating: GESNNU.110518F (19 of 29) ...",
+      "Updating: GESNNU.110520F (20 of 29)",
+      "Updating: GESNNU.110520F (20 of 29) ...",
+      "Updating: GESNNU.120508F (21 of 29)",
+      "Updating: GESNNU.120508F (21 of 29) ...",
+      "Updating: GESNNU.120509F (22 of 29)",
+      "Updating: GESNNU.120509F (22 of 29) ...",
+      "Updating: GESNNU.120510F (23 of 29)",
+      "Updating: GESNNU.120510F (23 of 29) ...",
+      "Updating: GESNNU.120512F (24 of 29)",
+      "Updating: GESNNU.120512F (24 of 29) ...",
+      "Updating: GESNNU.120514F (25 of 29)",
+      "Updating: GESNNU.120514F (25 of 29) ...",
+      "Updating: GESNNU.120515F (26 of 29)",
+      "Updating: GESNNU.120515F (26 of 29) ...",
+      "Updating: GESNNU.120516F (27 of 29)",
+      "Updating: GESNNU.120516F (27 of 29) ...",
+      "Updating: GESNNU.120518F (28 of 29)",
+      "Updating: GESNNU.120518F (28 of 29) ...",
+      "Updating: GESNNU.120520F (29 of 29)",
+      "Updating: GESNNU.120520F (29 of 29) ...",
+      "Update complete (1 price(s) already up to date, 28 item(s) not found)"
+     ],
+     "noPDMprice": [],
+     "notfound": [
+      "GESNNU.105508F",
+      "GESU.",
+      "GESNNU.105509F",
+      "GESNNU.105510F",
+      "GESNNU.105512F",
+      "GESNNU.105514F",
+      "GESNNU.105515F",
+      "GESNNU.105516F",
+      "GESNNU.105518F",
+      "GESNNU.105520F",
+      "GESNNU.110508F",
+      "GESNNU.110509F",
+      "GESNNU.110510F",
+      "GESNNU.110512F",
+      "GESNNU.110514F",
+      "GESNNU.110515F",
+      "GESNNU.110516F",
+      "GESNNU.110518F",
+      "GESNNU.110520F",
+      "GESNNU.120508F",
+      "GESNNU.120509F",
+      "GESNNU.120510F",
+      "GESNNU.120512F",
+      "GESNNU.120514F",
+      "GESNNU.120515F",
+      "GESNNU.120516F",
+      "GESNNU.120518F",
+      "GESNNU.120520F"
+     ],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X8_layout_screen_pdm_as_revive_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 0,
+   "pdm_rows_removed": 0,
+   "variants": {}
+  },
+  {
+   "scenario": "X2p_always_article_stale",
+   "title": "Always article with three stale values (base '1', '1 3344=622', '1 6530=R39') forced into both copies",
+   "series": "Always",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "NOALE181",
+    "product_id": "62692",
+    "catalogue": 381,
+    "workspace": "Always",
+    "package": 375,
+    "program": "always",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026",
+    "price_list_id": 30,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "NOALE181"
+    ],
+    "global_items": [],
+    "snapshot_articles": 1,
+    "perturbed_rows": [
+     [
+      "article",
+      "NOALE18",
+      "1"
+     ],
+     [
+      "article",
+      "NOALE18",
+      "1 3344=622"
+     ],
+     [
+      "article",
+      "NOALE18",
+      "1 6530=R39"
+     ]
+    ]
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: NOALE181 (1 of 1)",
+      "Update complete (3 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X2p_always_article_stale_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 3,
+   "pdm_rows_removed": 3,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 68,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3344": 49,
+      "6530": 18
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "1",
+       "pdm_lookup_code": "",
+       "value": 1240.0
+      },
+      {
+       "variant_condition": "1 3344=TF",
+       "pdm_lookup_code": "",
+       "value": 220.0
+      },
+      {
+       "variant_condition": "1 3344=TG",
+       "pdm_lookup_code": "",
+       "value": 306.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 3,
+      "updated_global_prices": 0,
+      "skipped_existing": 65,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 3,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "always": {
+     "generation_program": "always",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 68,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3344": 49,
+      "6530": 18
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "1",
+       "pdm_lookup_code": "",
+       "value": 1240.0
+      },
+      {
+       "variant_condition": "1 3344=TF",
+       "pdm_lookup_code": "",
+       "value": 220.0
+      },
+      {
+       "variant_condition": "1 3344=TG",
+       "pdm_lookup_code": "",
+       "value": 306.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 3,
+      "updated_global_prices": 0,
+      "skipped_existing": 65,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 3,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X5p_layout_article_stale",
+   "title": "Layout Studio article with stale base '.' and option-increment '. 3827=DB3' values forced into both copies",
+   "series": "Layout",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "GEWQ.",
+    "product_id": "52618",
+    "catalogue": 660,
+    "workspace": "Layout_Studio",
+    "package": 375,
+    "program": "layout_studio",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 22,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "GEWQ."
+    ],
+    "global_items": [],
+    "snapshot_articles": 1,
+    "perturbed_rows": [
+     [
+      "article",
+      "GEWQ",
+      "."
+     ],
+     [
+      "article",
+      "GEWQ",
+      ". 3827=DB3"
+     ]
+    ]
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: GEWQ. (1 of 1)",
+      "Update complete (2 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X5p_layout_article_stale_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 2,
+   "pdm_rows_removed": 2,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 5,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3827": 4
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": ".",
+       "pdm_lookup_code": "",
+       "value": 171.0
+      },
+      {
+       "variant_condition": ". 3827=DB3",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      },
+      {
+       "variant_condition": ". 3827=DN2",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 2,
+      "updated_global_prices": 0,
+      "skipped_existing": 3,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 2,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "layout_studio": {
+     "generation_program": "layout_studio",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 5,
+     "option_ids_in_conditions": {
+      "-": 1,
+      "3827": 4
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": ".",
+       "pdm_lookup_code": "",
+       "value": 171.0
+      },
+      {
+       "variant_condition": ". 3827=DB3",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      },
+      {
+       "variant_condition": ". 3827=DN2",
+       "pdm_lookup_code": "",
+       "value": 17.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 2,
+      "updated_global_prices": 0,
+      "skipped_existing": 3,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 2,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X6p_nevi_article_stale",
+   "title": "Nevi article with a stale base value forced into both copies",
+   "series": "Nevi",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "DWE3WLES.",
+    "product_id": "114911",
+    "catalogue": 764,
+    "workspace": "Nevi_enhanced",
+    "package": 1,
+    "program": "nevi_enhanced",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 35,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": false,
+    "article_items": [
+     "DWE3WLES."
+    ],
+    "global_items": [],
+    "snapshot_articles": 1,
+    "perturbed_rows": [
+     [
+      "article",
+      "DWE3WLE",
+      "S."
+     ]
+    ]
+   },
+   "pdm": [
+    {
+     "mode": "article",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (1) ...",
+      "Updating: DWE3WLES. (1 of 1)",
+      "Update complete (1 price(s) updated)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X6p_nevi_article_stale_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 1,
+   "pdm_rows_removed": 1,
+   "variants": {
+    "blank": {
+     "generation_program": "",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 1,
+     "option_ids_in_conditions": {
+      "-": 1
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "S.",
+       "pdm_lookup_code": "",
+       "value": 93.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 1,
+      "updated_global_prices": 0,
+      "skipped_existing": 0,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 1,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    },
+    "nevi_enhanced": {
+     "generation_program": "nevi_enhanced",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 1,
+     "option_ids_in_conditions": {
+      "-": 1
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "S.",
+       "pdm_lookup_code": "",
+       "value": 93.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 1,
+      "updated_global_prices": 0,
+      "skipped_existing": 0,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 1,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 0,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 0,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  },
+  {
+   "scenario": "X3b_nevi_screen_placeholders_then_global",
+   "title": "Nevi screen with PDM's placeholders step before the global step: does legacy create the 8=T2RE rows?",
+   "series": "Nevi",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "DWE3SCRNNS.",
+    "product_id": "112605",
+    "catalogue": 764,
+    "workspace": "Nevi_enhanced",
+    "package": 1,
+    "program": "nevi_enhanced",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 35,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "DWE3VNNS.105512F",
+     "RY3SM.",
+     "DWE3VNNS.105514F",
+     "DWE3VNNS.105515F",
+     "DWE3VNNS.105516F",
+     "DWE3VNNS.105518F",
+     "DWE3VNNS.110512F",
+     "DWE3VNNS.110514F",
+     "DWE3VNNS.110515F",
+     "DWE3VNNS.110516F",
+     "DWE3VNNS.110518F",
+     "DWE3VNNS.120512F",
+     "DWE3VNNS.120514F",
+     "DWE3VNNS.120515F",
+     "DWE3VNNS.120516F",
+     "DWE3VNNS.120518F",
+     "DWE3VNNS.130012F",
+     "DWE3VNNS.130014F",
+     "DWE3VNNS.130015F",
+     "DWE3VNNS.130016F",
+     "DWE3VNNS.130018F"
+    ],
+    "snapshot_articles": 20,
+    "perturbed_rows": []
+   },
+   "pdm": [
+    {
+     "mode": "placeholders",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Preparing Item data (21) ...",
+      "Adding: DWE3VNNS.105512F (1 of 21)",
+      "Adding: RY3SM. (2 of 21)",
+      "Adding: DWE3VNNS.105514F (3 of 21)",
+      "Adding: DWE3VNNS.105515F (4 of 21)",
+      "Adding: DWE3VNNS.105516F (5 of 21)",
+      "Adding: DWE3VNNS.105518F (6 of 21)",
+      "Adding: DWE3VNNS.110512F (7 of 21)",
+      "Adding: DWE3VNNS.110514F (8 of 21)",
+      "Adding: DWE3VNNS.110515F (9 of 21)",
+      "Adding: DWE3VNNS.110516F (10 of 21)",
+      "Adding: DWE3VNNS.110518F (11 of 21)",
+      "Adding: DWE3VNNS.120512F (12 of 21)",
+      "Adding: DWE3VNNS.120514F (13 of 21)",
+      "Adding: DWE3VNNS.120515F (14 of 21)",
+      "Adding: DWE3VNNS.120516F (15 of 21)",
+      "Adding: DWE3VNNS.120518F (16 of 21)",
+      "Adding: DWE3VNNS.130012F (17 of 21)",
+      "Adding: DWE3VNNS.130014F (18 of 21)",
+      "Adding: DWE3VNNS.130015F (19 of 21)",
+      "Adding: DWE3VNNS.130016F (20 of 21)",
+      "Adding: DWE3VNNS.130018F (21 of 21)",
+      "Update complete (21 record(s) already existed, 20 record(s) inserted)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": false,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X3b_nevi_screen_placeholders_then_global_pdm",
+     "error": null
+    },
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (21) ...",
+      "Updating: DWE3VNNS.105512F (1 of 21)",
+      "Updating: DWE3VNNS.105512F (1 of 21) ...",
+      "Updating: RY3SM. (2 of 21)",
+      "Updating: RY3SM. (2 of 21) ...",
+      "Updating: DWE3VNNS.105514F (3 of 21)",
+      "Updating: DWE3VNNS.105514F (3 of 21) ...",
+      "Updating: DWE3VNNS.105515F (4 of 21)",
+      "Updating: DWE3VNNS.105515F (4 of 21) ...",
+      "Updating: DWE3VNNS.105516F (5 of 21)",
+      "Updating: DWE3VNNS.105516F (5 of 21) ...",
+      "Updating: DWE3VNNS.105518F (6 of 21)",
+      "Updating: DWE3VNNS.105518F (6 of 21) ...",
+      "Updating: DWE3VNNS.110512F (7 of 21)",
+      "Updating: DWE3VNNS.110512F (7 of 21) ...",
+      "Updating: DWE3VNNS.110514F (8 of 21)",
+      "Updating: DWE3VNNS.110514F (8 of 21) ...",
+      "Updating: DWE3VNNS.110515F (9 of 21)",
+      "Updating: DWE3VNNS.110515F (9 of 21) ...",
+      "Updating: DWE3VNNS.110516F (10 of 21)",
+      "Updating: DWE3VNNS.110516F (10 of 21) ...",
+      "Updating: DWE3VNNS.110518F (11 of 21)",
+      "Updating: DWE3VNNS.110518F (11 of 21) ...",
+      "Updating: DWE3VNNS.120512F (12 of 21)",
+      "Updating: DWE3VNNS.120512F (12 of 21) ...",
+      "Updating: DWE3VNNS.120514F (13 of 21)",
+      "Updating: DWE3VNNS.120514F (13 of 21) ...",
+      "Updating: DWE3VNNS.120515F (14 of 21)",
+      "Updating: DWE3VNNS.120515F (14 of 21) ...",
+      "Updating: DWE3VNNS.120516F (15 of 21)",
+      "Updating: DWE3VNNS.120516F (15 of 21) ...",
+      "Updating: DWE3VNNS.120518F (16 of 21)",
+      "Updating: DWE3VNNS.120518F (16 of 21) ...",
+      "Updating: DWE3VNNS.130012F (17 of 21)",
+      "Updating: DWE3VNNS.130012F (17 of 21) ...",
+      "Updating: DWE3VNNS.130014F (18 of 21)",
+      "Updating: DWE3VNNS.130014F (18 of 21) ...",
+      "Updating: DWE3VNNS.130015F (19 of 21)",
+      "Updating: DWE3VNNS.130015F (19 of 21) ...",
+      "Updating: DWE3VNNS.130016F (20 of 21)",
+      "Updating: DWE3VNNS.130016F (20 of 21) ...",
+      "Updating: DWE3VNNS.130018F (21 of 21)",
+      "Updating: DWE3VNNS.130018F (21 of 21) ...",
+      "Update complete (281 price(s) updated, 20 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X3b_nevi_screen_placeholders_then_global_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 322,
+   "pdm_rows_removed": 302,
+   "variants": {
+    "nevi_enhanced": {
+     "generation_program": "nevi_enhanced",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "FAIL",
+     "records": 301,
+     "option_ids_in_conditions": {
+      "-": 21,
+      "8": 280
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "DWE3VNNS.105512F",
+       "pdm_lookup_code": "DWE3VNNS.105512F",
+       "value": 286.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105514F",
+       "pdm_lookup_code": "DWE3VNNS.105514F",
+       "value": 307.0
+      },
+      {
+       "variant_condition": "DWE3VNNS.105515F",
+       "pdm_lookup_code": "DWE3VNNS.105515F",
+       "value": 317.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 20,
+      "updated_prices": 0,
+      "updated_global_prices": 261,
+      "skipped_existing": 20,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 261,
+       "price_rows_to_insert": 20,
+       "text_reuse": 20,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 281,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 20,
+       "rows_linked": 20,
+       "links_preserved": 281,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 42,
+      "rows": [
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105512F\", \"X\", \"S\", 331.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105512F\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105514F\", \"X\", \"S\", 356.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105514F\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105515F\", \"X\", \"S\", 368.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105515F\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105516F\", \"X\", \"S\", 379.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105516F\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105518F\", \"X\", \"S\", 403.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105518F\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110512F\", \"X\", \"S\", 340.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110512F\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110514F\", \"X\", \"S\", 364.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110514F\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110515F\", \"X\", \"S\", 378.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110515F\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110516F\", \"X\", \"S\", 389.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110516F\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110518F\", \"X\", \"S\", 413.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110518F\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120512F\", \"X\", \"S\", 368.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120512F\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120514F\", \"X\", \"S\", 392.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120514F\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120515F\", \"X\", \"S\", 406.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120515F\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120516F\", \"X\", \"S\", 417.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120516F\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120518F\", \"X\", \"S\", 441.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120518F\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130012F\", \"X\", \"S\", 402.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130012F\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130014F\", \"X\", \"S\", 427.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130014F\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130015F\", \"X\", \"S\", 440.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130015F\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130016F\", \"X\", \"S\", 451.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130016F\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130018F\", \"X\", \"S\", 475.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130018F\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"RY3SM.\", \"X\", \"S\", 57.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"RY3SM.\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F\", \"X\", \"S\", 286.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105512F\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\", \"DWE3VNNS.105512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F\", \"X\", \"S\", 307.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105514F\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\", \"DWE3VNNS.105514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F\", \"X\", \"S\", 317.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105515F\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\", \"DWE3VNNS.105515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F\", \"X\", \"S\", 327.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105516F\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\", \"DWE3VNNS.105516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F\", \"X\", \"S\", 348.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105518F\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\", \"DWE3VNNS.105518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110512F\", \"X\", \"S\", 293.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110512F\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\", \"DWE3VNNS.110512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110514F\", \"X\", \"S\", 314.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110514F\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\", \"DWE3VNNS.110514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110515F\", \"X\", \"S\", 326.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110515F\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\", \"DWE3VNNS.110515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110516F\", \"X\", \"S\", 335.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110516F\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\", \"DWE3VNNS.110516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110518F\", \"X\", \"S\", 356.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110518F\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\", \"DWE3VNNS.110518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120512F\", \"X\", \"S\", 317.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120512F\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\", \"DWE3VNNS.120512F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120514F\", \"X\", \"S\", 338.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120514F\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\", \"DWE3VNNS.120514F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120515F\", \"X\", \"S\", 350.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120515F\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\", \"DWE3VNNS.120515F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120516F\", \"X\", \"S\", 359.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120516F\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\", \"DWE3VNNS.120516F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120518F\", \"X\", \"S\", 380.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120518F\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\", \"DWE3VNNS.120518F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130012F\", \"X\", \"S\", 347.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130012F\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\", \"DWE3VNNS.130012F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130014F\", \"X\", \"S\", 368.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130014F\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\", \"DWE3VNNS.130014F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130015F\", \"X\", \"S\", 379.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130015F\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\", \"DWE3VNNS.130015F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130016F\", \"X\", \"S\", 389.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130016F\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\", \"DWE3VNNS.130016F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130018F\", \"X\", \"S\", 410.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130018F\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\", \"DWE3VNNS.130018F  (FR-FS-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"RY3SM.\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"RY3SM.\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\", \"RY3SM.  (FR-ID-US)\"]]"
+      ]
+     },
+     "only_in_pricing_result": {
+      "count": 42,
+      "rows": [
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105512F\", \"X\", \"S\", 331.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105512F\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105514F\", \"X\", \"S\", 356.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105514F\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105515F\", \"X\", \"S\", 368.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105515F\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105516F\", \"X\", \"S\", 379.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105516F\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.105518F\", \"X\", \"S\", 403.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105518F\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110512F\", \"X\", \"S\", 340.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110512F\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110514F\", \"X\", \"S\", 364.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110514F\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110515F\", \"X\", \"S\", 378.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110515F\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110516F\", \"X\", \"S\", 389.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110516F\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.110518F\", \"X\", \"S\", 413.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110518F\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120512F\", \"X\", \"S\", 368.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120512F\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120514F\", \"X\", \"S\", 392.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120514F\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120515F\", \"X\", \"S\", 406.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120515F\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120516F\", \"X\", \"S\", 417.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120516F\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.120518F\", \"X\", \"S\", 441.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120518F\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130012F\", \"X\", \"S\", 402.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130012F\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130014F\", \"X\", \"S\", 427.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130014F\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130015F\", \"X\", \"S\", 440.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130015F\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130016F\", \"X\", \"S\", 451.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130016F\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"DWE3VNNS.130018F\", \"X\", \"S\", 475.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130018F\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\"]]",
+       "[\"global\", \"EURO_2026_2\", \"\", \"RY3SM.\", \"X\", \"S\", 57.0, \"EUR\", \"20260907\", \"99991231\", [\"price\", \"RY3SM.\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105512F\", \"X\", \"S\", 286.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105512F\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\", \"DWE3VNNS.105512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105514F\", \"X\", \"S\", 307.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105514F\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\", \"DWE3VNNS.105514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105515F\", \"X\", \"S\", 317.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105515F\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\", \"DWE3VNNS.105515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105516F\", \"X\", \"S\", 327.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105516F\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\", \"DWE3VNNS.105516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.105518F\", \"X\", \"S\", 348.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.105518F\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\", \"DWE3VNNS.105518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110512F\", \"X\", \"S\", 293.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110512F\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\", \"DWE3VNNS.110512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110514F\", \"X\", \"S\", 314.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110514F\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\", \"DWE3VNNS.110514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110515F\", \"X\", \"S\", 326.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110515F\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\", \"DWE3VNNS.110515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110516F\", \"X\", \"S\", 335.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110516F\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\", \"DWE3VNNS.110516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.110518F\", \"X\", \"S\", 356.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.110518F\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\", \"DWE3VNNS.110518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120512F\", \"X\", \"S\", 317.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120512F\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\", \"DWE3VNNS.120512F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120514F\", \"X\", \"S\", 338.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120514F\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\", \"DWE3VNNS.120514F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120515F\", \"X\", \"S\", 350.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120515F\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\", \"DWE3VNNS.120515F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120516F\", \"X\", \"S\", 359.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120516F\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\", \"DWE3VNNS.120516F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.120518F\", \"X\", \"S\", 380.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.120518F\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\", \"DWE3VNNS.120518F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130012F\", \"X\", \"S\", 347.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130012F\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\", \"DWE3VNNS.130012F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130014F\", \"X\", \"S\", 368.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130014F\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\", \"DWE3VNNS.130014F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130015F\", \"X\", \"S\", 379.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130015F\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\", \"DWE3VNNS.130015F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130016F\", \"X\", \"S\", 389.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130016F\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\", \"DWE3VNNS.130016F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"DWE3VNNS.130018F\", \"X\", \"S\", 410.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"DWE3VNNS.130018F\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\", \"DWE3VNNS.130018F  (FR-ID-SC)\"]]",
+       "[\"global\", \"GBP_2026_2\", \"\", \"RY3SM.\", \"X\", \"S\", 44.0, \"GBP\", \"20260907\", \"99991231\", [\"price\", \"RY3SM.\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\", \"RY3SM.  (FR-RA-US)\"]]"
+      ]
+     },
+     "lists_equal": true,
+     "texts_equal": false
+    }
+   }
+  },
+  {
+   "scenario": "X4p_layout_screen_global_stale",
+   "title": "Layout screen global with stale base and two Fabric Type surcharge rows forced into both copies",
+   "series": "Layout",
+   "status": "COMPARED",
+   "reason": null,
+   "error": null,
+   "inputs": {
+    "product": "GESCRNNU.",
+    "product_id": "121563",
+    "catalogue": 660,
+    "workspace": "Layout_Studio",
+    "package": 375,
+    "program": "layout_studio",
+    "site": 1,
+    "currency": "GBP",
+    "price_list": "GBP_2026_2",
+    "price_list_id": 22,
+    "date": "2026-10-16",
+    "mydate": "16-Oct-2026",
+    "is_super_product": true,
+    "article_items": [],
+    "global_items": [
+     "GESNNU.105508F",
+     "GESG.",
+     "GESU.",
+     "GESNNU.105509F",
+     "GESNNU.105510F",
+     "GESNNU.105512F",
+     "GESNNU.105514F",
+     "GESNNU.105515F",
+     "GESNNU.105516F",
+     "GESNNU.105518F",
+     "GESNNU.105520F",
+     "GESNNU.110508F",
+     "GESNNU.110509F",
+     "GESNNU.110510F",
+     "GESNNU.110512F",
+     "GESNNU.110514F",
+     "GESNNU.110515F",
+     "GESNNU.110516F",
+     "GESNNU.110518F",
+     "GESNNU.110520F",
+     "GESNNU.120508F",
+     "GESNNU.120509F",
+     "GESNNU.120510F",
+     "GESNNU.120512F",
+     "GESNNU.120514F",
+     "GESNNU.120515F",
+     "GESNNU.120516F",
+     "GESNNU.120518F",
+     "GESNNU.120520F"
+    ],
+    "snapshot_articles": 27,
+    "perturbed_rows": [
+     [
+      "global",
+      "",
+      "GESNNU.105508F"
+     ],
+     [
+      "global",
+      "",
+      "GESNNU.105508F 8=1FD"
+     ],
+     [
+      "global",
+      "",
+      "GESNNU.105508F 8=TI"
+     ]
+    ]
+   },
+   "pdm": [
+    {
+     "mode": "global",
+     "executed": true,
+     "returncode": 0,
+     "status": [
+      "Processing Item data (29) ...",
+      "Updating: GESNNU.105508F (1 of 29)",
+      "Updating: GESNNU.105508F (1 of 29) ...",
+      "Updating: GESG. (2 of 29)",
+      "Updating: GESG. (2 of 29) ...",
+      "Updating: GESU. (3 of 29)",
+      "Updating: GESU. (3 of 29) ...",
+      "Updating: GESNNU.105509F (4 of 29)",
+      "Updating: GESNNU.105509F (4 of 29) ...",
+      "Updating: GESNNU.105510F (5 of 29)",
+      "Updating: GESNNU.105510F (5 of 29) ...",
+      "Updating: GESNNU.105512F (6 of 29)",
+      "Updating: GESNNU.105512F (6 of 29) ...",
+      "Updating: GESNNU.105514F (7 of 29)",
+      "Updating: GESNNU.105514F (7 of 29) ...",
+      "Updating: GESNNU.105515F (8 of 29)",
+      "Updating: GESNNU.105515F (8 of 29) ...",
+      "Updating: GESNNU.105516F (9 of 29)",
+      "Updating: GESNNU.105516F (9 of 29) ...",
+      "Updating: GESNNU.105518F (10 of 29)",
+      "Updating: GESNNU.105518F (10 of 29) ...",
+      "Updating: GESNNU.105520F (11 of 29)",
+      "Updating: GESNNU.105520F (11 of 29) ...",
+      "Updating: GESNNU.110508F (12 of 29)",
+      "Updating: GESNNU.110508F (12 of 29) ...",
+      "Updating: GESNNU.110509F (13 of 29)",
+      "Updating: GESNNU.110509F (13 of 29) ...",
+      "Updating: GESNNU.110510F (14 of 29)",
+      "Updating: GESNNU.110510F (14 of 29) ...",
+      "Updating: GESNNU.110512F (15 of 29)",
+      "Updating: GESNNU.110512F (15 of 29) ...",
+      "Updating: GESNNU.110514F (16 of 29)",
+      "Updating: GESNNU.110514F (16 of 29) ...",
+      "Updating: GESNNU.110515F (17 of 29)",
+      "Updating: GESNNU.110515F (17 of 29) ...",
+      "Updating: GESNNU.110516F (18 of 29)",
+      "Updating: GESNNU.110516F (18 of 29) ...",
+      "Updating: GESNNU.110518F (19 of 29)",
+      "Updating: GESNNU.110518F (19 of 29) ...",
+      "Updating: GESNNU.110520F (20 of 29)",
+      "Updating: GESNNU.110520F (20 of 29) ...",
+      "Updating: GESNNU.120508F (21 of 29)",
+      "Updating: GESNNU.120508F (21 of 29) ...",
+      "Updating: GESNNU.120509F (22 of 29)",
+      "Updating: GESNNU.120509F (22 of 29) ...",
+      "Updating: GESNNU.120510F (23 of 29)",
+      "Updating: GESNNU.120510F (23 of 29) ...",
+      "Updating: GESNNU.120512F (24 of 29)",
+      "Updating: GESNNU.120512F (24 of 29) ...",
+      "Updating: GESNNU.120514F (25 of 29)",
+      "Updating: GESNNU.120514F (25 of 29) ...",
+      "Updating: GESNNU.120515F (26 of 29)",
+      "Updating: GESNNU.120515F (26 of 29) ...",
+      "Updating: GESNNU.120516F (27 of 29)",
+      "Updating: GESNNU.120516F (27 of 29) ...",
+      "Updating: GESNNU.120518F (28 of 29)",
+      "Updating: GESNNU.120518F (28 of 29) ...",
+      "Updating: GESNNU.120520F (29 of 29)",
+      "Updating: GESNNU.120520F (29 of 29) ...",
+      "Update complete (3 price(s) updated, 728 price(s) already up to date)"
+     ],
+     "noPDMprice": [],
+     "notfound": [],
+     "dialogs": [],
+     "variableincs": true,
+     "pdmVersion": "1.0.9686.24988",
+     "log_dir": "C:\\Users\\siaoca\\AppData\\Local\\Temp\\claude\\c--01-Projects-mk-product-workbench\\83ddb8e1-e22a-4d32-bd50-d68d034d82f0\\scratchpad\\work\\X4p_layout_screen_global_stale_pdm",
+     "error": null
+    }
+   ],
+   "pdm_rows_added": 3,
+   "pdm_rows_removed": 3,
+   "variants": {
+    "layout_studio": {
+     "generation_program": "layout_studio",
+     "compute_error": null,
+     "legacy_unresolved": 0,
+     "status": "PASS",
+     "records": 380,
+     "option_ids_in_conditions": {
+      "-": 29,
+      "8": 351
+     },
+     "routed_source_ne_target": 0,
+     "sample_records": [
+      {
+       "variant_condition": "GESG.",
+       "pdm_lookup_code": "GESG.",
+       "value": 29.0
+      },
+      {
+       "variant_condition": "GESNNU.105508F",
+       "pdm_lookup_code": "GESNNU.105508F",
+       "value": 246.0
+      },
+      {
+       "variant_condition": "GESNNU.105509F",
+       "pdm_lookup_code": "GESNNU.105509F",
+       "value": 256.0
+      }
+     ],
+     "export": {
+      "ok": true,
+      "error": null,
+      "inserted_prices": 0,
+      "inserted_global_prices": 0,
+      "updated_prices": 0,
+      "updated_global_prices": 3,
+      "skipped_existing": 377,
+      "skipped_text_blocked": 0,
+      "text_summary": {
+       "price_rows_to_update": 3,
+       "price_rows_to_insert": 0,
+       "text_reuse": 0,
+       "text_create": 0,
+       "text_link_new": 0,
+       "text_preserve": 380,
+       "text_unlinked_existing": 0,
+       "text_missing_or_ambiguous": 0,
+       "rows_blocked": 0
+      },
+      "text_result": {
+       "texts_created": 0,
+       "texts_reused": 0,
+       "rows_linked": 0,
+       "links_preserved": 380,
+       "text_operations_skipped": 0,
+       "text_operations_failed": 0,
+       "readback_verified": true
+      }
+     },
+     "export_blocking_errors": [],
+     "only_in_pdm_result": {
+      "count": 0,
+      "rows": []
+     },
+     "only_in_pricing_result": {
+      "count": 0,
+      "rows": []
+     },
+     "lists_equal": true,
+     "texts_equal": true
+    }
+   }
+  }
+ ]
+}

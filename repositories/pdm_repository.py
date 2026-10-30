@@ -1271,6 +1271,46 @@ class PDMRepository(BaseRepository):
             for item, matched in allowed.items()
         }
 
+    def fetch_obx_catalogue_option_values(
+        self,
+        items: Sequence[str],
+        catalogue_ids: Sequence[int],
+        option_value_ids: Sequence[int],
+        connection: Any = None,
+    ) -> dict[tuple[str, int], set[int]]:
+        """Return OBX option membership minus catalogue product/item exclusions."""
+        allowed: dict[tuple[str, int], set[int]] = {}
+        for item_chunk in self._chunked(list(dict.fromkeys(items)), self._IN_CHUNK):
+            for catalogue_chunk in self._chunked(
+                list(dict.fromkeys(catalogue_ids)), self._IN_CHUNK
+            ):
+                for value_chunk in self._chunked(
+                    list(dict.fromkeys(option_value_ids)), self._IN_CHUNK
+                ):
+                    checkpoint()
+                    rows = self._execute(
+                        "SELECT DISTINCT i.Item, cov.CatalogueId, cov.OptionValueId "
+                        "FROM Item i CROSS JOIN CatalogueOptionValues cov "
+                        f"WHERE i.Item IN ({self._placeholders(len(item_chunk))}) "
+                        f"AND cov.CatalogueId IN ({self._placeholders(len(catalogue_chunk))}) "
+                        f"AND cov.OptionValueId IN ({self._placeholders(len(value_chunk))}) "
+                        "AND NOT EXISTS (SELECT 1 FROM CatalogueProductOptionExclusions pe "
+                        "WHERE pe.ProductId = i.ProductId "
+                        "AND pe.CatalogueId = cov.CatalogueId "
+                        "AND pe.OptionValueId = cov.OptionValueId) "
+                        "AND NOT EXISTS (SELECT 1 FROM CatalogueItemOptionExclusions ie "
+                        "WHERE ie.ItemId = i.ItemId "
+                        "AND ie.CatalogueId = cov.CatalogueId "
+                        "AND ie.OptionValueId = cov.OptionValueId)",
+                        tuple(item_chunk) + tuple(catalogue_chunk) + tuple(value_chunk),
+                        connection=connection,
+                    )
+                    for row in rows:
+                        allowed.setdefault(
+                            (str(row.Item), int(row.CatalogueId)), set()
+                        ).add(int(row.OptionValueId))
+        return allowed
+
     def find_normal_items(
         self, items: Sequence[Any], connection: Any = None
     ) -> set[str]:
@@ -1620,8 +1660,8 @@ class PDMRepository(BaseRepository):
                         source_item, row.OptionValueId, row.OptionId, code,
                         source_code, lookup, raw, row.PriceBand, price,
                     ))
-            if program_code.strip().casefold() in ("", "revive") and result:
-                self._resolve_global_fabric_targets(result, catalogue_id, conn)
+            # Legacy PDM (PriceMaintenance.UpdatePConItemIncrementalPrice) keeps the priced Fabric Type option id
+            # as the target; it has no Fabric Type -> colour (e.g. 8 -> 28) mapping, so none is applied here.
         finally:
             if owns_connection:
                 conn.close()
