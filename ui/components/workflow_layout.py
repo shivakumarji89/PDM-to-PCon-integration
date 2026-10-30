@@ -42,18 +42,44 @@ class StatusPill(QLabel):
 
 # A distinct symbol for each named workflow; text glyphs remain crisp at any DPI.
 _WORKFLOW_GLYPHS = {
+    # Core product workflows
     "product": "⬡",
     "articles": "▤",
     "class creation": "▦",
     "text": "T",
     "relation object": "⛓",
     "pricing": "＄",
+    "pricing relation": "⇄",
     "pricing relations": "⇄",
-    "validate": "✓",
-    "validation": "✓",
-    "export": "⇧",
+    "review": "✓",
+    "generate": "⚙",
+    "engineering": "⌘",
+    # Maintenance and data operations
+    "maintenance": "✎",
     "pdm / mdb comparison": "⇄",
     "comparison": "⇄",
+    "bulk update": "▥",
+    # QA and generated deliverables
+    "obx validation": "✓",
+    "cet sif validation": "✓",
+    "article obx generator": "◇",
+    "article obx generator (pcon sdk)": "⬡",
+    "pcon article obx generator": "⬡",
+    "export pdm data": "⇧",
+    "syteline export": "⇧",
+    # Metatype workflows
+    "create metatype": "▦",
+    "repository analysis": "⌕",
+    "metatype articles": "▤",
+    "metatype properties": "▦",
+    "metatype values": "◈",
+    "metatype texts": "T",
+    "metatype setup": "⚙",
+    "metatype relations": "⛓",
+    "metatype review": "✓",
+    # OAP and supporting workspaces
+    "oap": "◉",
+    "oap setup": "⚙",
 }
 
 def workflow_glyph(title: str) -> str:
