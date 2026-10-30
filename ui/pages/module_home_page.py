@@ -186,12 +186,19 @@ class ModuleHomePage(QWidget):
             f"QFrame#frontModuleCard:hover {{ border:1px solid {accent}; background:#FCFDFE; }}"
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 11, 14, 12)
+        layout.setContentsMargins(14, 0, 14, 12)
         layout.setSpacing(6)
 
+        accent_bar = QFrame(card)
+        accent_bar.setFixedHeight(4)
+        accent_bar.setStyleSheet(f"background:{accent}; border:0; border-top-left-radius:3px; border-top-right-radius:3px;")
+        layout.addWidget(accent_bar)
+        layout.addSpacing(7)
+
+        accent_soft = "#EFF7E8" if accent == "#70B52B" else "#FCECE9"
         top = QHBoxLayout()
         number_label = QLabel(number)
-        number_label.setStyleSheet(f"color:{accent}; background:#F2F7ED; border-radius:6px; padding:4px 7px; font-size:10px; font-weight:800;")
+        number_label.setStyleSheet(f"color:{accent}; background:" + accent_soft + "; border-radius:6px; padding:4px 7px; font-size:10px; font-weight:800;")
         top.addWidget(number_label)
         top.addStretch(1)
         category_label = QLabel(category)
@@ -203,7 +210,7 @@ class ModuleHomePage(QWidget):
         icon = QLabel(glyph)
         icon.setFixedSize(42, 42)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet(f"color:{accent}; background:#F2F7ED; border-radius:10px; font-size:23px; font-weight:700;")
+        icon.setStyleSheet(f"color:{accent}; background:" + accent_soft + "; border-radius:10px; font-size:23px; font-weight:700;")
         middle.addWidget(icon)
 
         text_block = QVBoxLayout()
