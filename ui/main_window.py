@@ -691,11 +691,26 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
         layout.setSpacing(theme.SECTION_SPACING)
-        # Keep the page stack itself in the expanding centre region. The
-        # individual data controls (tree/table/detail panes) own their scroll
-        # bars; a second, page-wide scroll area makes the Product explorer and
-        # footer compete for height and can push the footer out of alignment.
-        layout.addWidget(self._stack, 1)
+        # Keep the footer fixed while allowing the active workflow page to
+        # scroll inside the workspace when its content minimum exceeds the
+        # available screen height. The scroll area wraps only the page stack;
+        # the footer is deliberately outside it.
+        from PySide6.QtWidgets import QScrollArea
+        self._page_scroll = QScrollArea(container)
+        self._page_scroll.setObjectName("workflowPageScroll")
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setMinimumSize(0, 0)
+        self._page_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._page_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._page_scroll.viewport().setAutoFillBackground(False)
+        self._page_scroll.setStyleSheet(
+            "QScrollArea#workflowPageScroll { background: transparent; border: 0; }"
+        )
+        self._stack.setMinimumSize(0, 0)
+        self._stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._page_scroll.setWidget(self._stack)
+        layout.addWidget(self._page_scroll, 1)
 
         footer_widget = QWidget(container)
         footer = QHBoxLayout(footer_widget)
