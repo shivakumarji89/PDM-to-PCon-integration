@@ -153,10 +153,18 @@ class AppHeaderBar(QFrame):
         row.addStretch(1)
 
         self._indicators: dict[str, StatusIndicator] = {}
+        self._pdm_database_slot = QWidget(self)
+        self._pdm_database_layout = QHBoxLayout(self._pdm_database_slot)
+        self._pdm_database_layout.setContentsMargins(0, 0, 0, 0)
+        self._pdm_database_layout.setSpacing(0)
+        self._pdm_database_slot.setVisible(False)
+
         for key, name, icon in (("pdm", "PDM", "db"), ("repository", "Repository", "folder"), ("mdb", "MDB", "doc")):
             ind = StatusIndicator(name, self, icon)
             self._indicators[key] = ind
             row.addWidget(ind)
+            if key == "pdm":
+                row.addWidget(self._pdm_database_slot)
             row.addWidget(self._sep(f"wfHeaderSep_{key}"))
 
         self.settings_button = QPushButton("⚙  Settings", self)
@@ -180,6 +188,30 @@ class AppHeaderBar(QFrame):
     def indicator(self, key: str) -> StatusIndicator:
         return self._indicators[key]
 
+
+    def set_database_selector(self, selector: QWidget | None) -> None:
+        """Place the existing PDM database selector beside the PDM header status."""
+        while self._pdm_database_layout.count():
+            item = self._pdm_database_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        if selector is None:
+            self._pdm_database_slot.setVisible(False)
+            return
+        selector.setParent(self._pdm_database_slot)
+        selector.setMinimumWidth(112)
+        selector.setMaximumWidth(150)
+        selector.setFixedHeight(28)
+        selector.setToolTip("Select the active PDM database")
+        selector.setStyleSheet(
+            f"QComboBox {{ background: {theme.WB_SURFACE}; color: {theme.WB_NAVY}; "
+            f"border: 1px solid {theme.WB_BORDER}; border-radius: 6px; "
+            "padding: 3px 8px; min-height: 20px; } "
+            f"QComboBox:hover {{ border-color: {theme.WB_GREEN}; }}"
+        )
+        self._pdm_database_layout.addWidget(selector)
+        self._pdm_database_slot.setVisible(True)
 
 # --------------------------------------------------------------------------
 # Sidebar: module identity, vertical steps, tips
