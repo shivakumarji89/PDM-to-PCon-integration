@@ -433,3 +433,35 @@ def test_pricing_page_program_for_blank_and_explicit_programs(explicit, linked, 
     assert params.program_code == expected
     assert params.require_program is False
     assert snap.generation_program == explicit  # never mutated
+
+
+@pytest.mark.parametrize("explicit,path,module,expected", [
+    ("", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "layout_studio"),
+    ("", r"C:\x\WS\Nevi_enhanced\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "nevi_enhanced"),
+    ("", r"C:\x\WS\Revive\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "revive"),
+    ("revive", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.MAINTENANCE, "revive"),  # explicit wins
+    ("", r"C:\x\WS\Layout_Studio\pcr_data_com_ocd.mdb", WorkbenchModule.DEVELOPMENT, ""),  # Development unchanged
+    ("", "", WorkbenchModule.MAINTENANCE, ""),  # no link: previous behaviour
+])
+def test_pricing_page_program_follows_legacy_workspace_folder(explicit, path, module, expected):
+    """Legacy PDM's program is the workspace folder (PConPriceUpdate.InitWorkspace), never blank."""
+    page = _old_fabric_page()
+    snap = page._context.active_snapshot
+    snap.generation_program = explicit
+    page._active_module = module
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=snap, mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=""))))
+    page._context.register_maintenance_repository_info({"path": path} if path else None)
+    params = page._params()
+    assert params.program_code == expected
+    assert params.require_program is False
+    assert snap.generation_program == explicit  # never mutated
+
+
+def test_workspace_program_ignored_when_maintenance_state_not_aligned_to_snapshot():
+    page = _old_fabric_page()
+    page._active_module = WorkbenchModule.MAINTENANCE
+    page._context.register_maintenance_snapshot(SimpleNamespace(
+        pdm_snapshot=object(), mdb_import_snapshot=SimpleNamespace(product=SimpleNamespace(code=""))))
+    page._context.register_maintenance_repository_info({"path": r"C:\x\WS\Layout_Studio\p.mdb"})
+    assert page._params().program_code == ""

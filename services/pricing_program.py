@@ -6,6 +6,8 @@ blank program must never reach the repository in Maintenance: it is rejected her
 """
 from __future__ import annotations
 
+from pathlib import PureWindowsPath
+
 PROGRAM_LAYOUT = "layout_studio"
 PROGRAM_NEVI = "nevi_enhanced"
 PROGRAM_REVIVE = "revive"
@@ -64,3 +66,19 @@ def program_from_linked_repository(maintenance_state, snapshot) -> str:
         return validate_pricing_program(code)
     except PricingProgramError:
         return ""
+
+
+def program_from_workspace_path(repository_path: str | None) -> str:
+    """Legacy PDM's default program: the workspace folder name, lower-cased, spaces as ``_``.
+
+    ``PConPriceUpdate.InitWorkspace`` fills ``text_programcode`` from the ``WS/<Workspace>`` folder and passes
+    it to ``UpdatePriceThread`` as both ``programCode`` and ``actualProgramCode`` (the latter must equal the
+    MDB package ``reg_ProgramCode``), so legacy never prices with a blank program. ``repository_path`` is the
+    linked ``pcr_data_com_ocd.mdb``; its parent folder is the workspace. Anything that is not an ``.mdb``
+    file path inside a folder yields ``""``.
+    """
+    text = str(repository_path or "").strip()
+    if not text.lower().endswith(".mdb"):
+        return ""
+    folder = PureWindowsPath(text.replace("/", "\\")).parent.name
+    return folder.strip().lower().replace(" ", "_")

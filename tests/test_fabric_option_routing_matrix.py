@@ -71,3 +71,11 @@ def test_blank_program_routing_is_reported_and_explicit_program_is_silent():
 def test_blank_program_is_not_made_mandatory():
     assert PriceParams().require_program is False
     assert PricingService._resolve_program(PriceParams(), SimpleNamespace(generation_program="")) == ""
+
+
+def test_workspace_folder_program_matches_legacy_rule():
+    from services.pricing_program import program_from_workspace_path as derive
+    assert derive(r"C:\H\WS\Layout_Studio\pcr_data_com_ocd.mdb") == "layout_studio"
+    assert derive(r"C:\H\WS\Nevi Enhanced\pcr_data_com_ocd.mdb") == "nevi_enhanced"
+    assert derive("C:/H/WS/Revive/pcr_data_com_ocd.mdb") == "revive"
+    assert derive("") == derive(None) == derive("not-an-mdb") == ""
