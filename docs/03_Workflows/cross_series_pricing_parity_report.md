@@ -256,14 +256,19 @@ Explicit Review program first; in Maintenance, else the workspace folder of the 
 previous package-code lookup. No mandatory validation, snapshot not mutated, Development unchanged. Layout_Studio ->
 `layout_studio` -> `8=`; Nevi_enhanced -> `nevi_enhanced` -> `8=`; Revive -> `revive` (28 target retained, see below).
 
-**Still not 100 % parity (stated, not hidden).**
-* **Revive `8`->`28` routing is a Workbench policy, not legacy.** Legacy cannot update those rows (reports them unresolved).
-  Removing it would make Revive exports insert/block on `8=` rows, so it was left; removing it is an owner decision.
+**Revive routing removed (owner decision, 2026-10-30).** `PDMRepository.fetch_global_option_increment_prices` no longer calls
+`_resolve_global_fabric_targets`, so no program (blank, `revive`, `layout_studio`, `nevi_enhanced`) remaps Fabric Type `8` to a
+colour option: records are `<item> 8=<code>` exactly as legacy builds them. The helper and `TargetOptionId` support remain in the
+code but are unused by the fetch. The blank-program routing warning can no longer fire.
+
+**Consequences / remaining differences (not hidden).**
+* **Revive MDBs hold `28=` rows.** With `8=` records the export preview will not find those rows; it will plan inserts of `8=` rows
+  (or block) instead of updating the `28=` ones. This is the legacy outcome ("did not match"), but review the **preview** before
+  any Revive write. Not exercised against a Revive MDB in this change.
 * The legacy-derived program is applied for any workspace name (as legacy does); only Layout, Nevi, Revive, Aeron and Always
-  workspaces have compiled-PDM evidence. Article and 8= global parity under explicit programs is from the 10-27/28 runs.
-* No new compiled-PDM run was made for this change; tests are mocked (`tests/test_pricing_page_text_blocks.py`,
-  `tests/test_fabric_option_routing_matrix.py`). Legacy VARCOND parity remains NOT RUN.
-* Full suite: 4573 passed, 11 skipped, 0 failed.
+  workspaces have compiled-PDM evidence. Article and `8=` global parity under explicit programs is from the 10-27/28 runs.
+* No new compiled-PDM run was made for this change; tests are mocked. Legacy VARCOND parity remains NOT RUN.
+* Superseded: the earlier "Revive `8`->`28`" statements above describe the behaviour before this change.
 
 ## Limitations
 * One representative product per case, GBP and site 1 only; EUR not run. Existing-row parity is shown only for

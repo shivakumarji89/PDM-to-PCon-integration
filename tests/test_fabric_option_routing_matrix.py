@@ -46,12 +46,13 @@ def test_explicit_layout_and_nevi_keep_fabric_type_8_target(program):
     assert all(r.pdm_lookup_code.startswith(f"{ITEM} 8=") for r in recs)
 
 
-@pytest.mark.parametrize("program", ["revive", ""])
-def test_revive_and_blank_program_route_target_to_colour_28_but_keep_8_source(program):
+@pytest.mark.parametrize("program", ["layout_studio", "nevi_enhanced", "revive", ""])
+def test_every_program_keeps_fabric_type_8_as_source_and_target(program):
+    """Legacy has no Fabric Type -> colour mapping: the priced option id is the target (also Revive / blank)."""
     recs = _records(program)
-    assert [r.variant_condition for r in recs] == [f"{ITEM} 28={f[0]}" for f in FAMILIES]
-    # The priced source option stays 8 (source lookup), only the target changes.
+    assert [r.variant_condition for r in recs] == [f"{ITEM} 8={f[0]}" for f in FAMILIES]
     assert all(r.pdm_lookup_code.startswith(f"{ITEM} 8=") for r in recs)
+    assert all(getattr(row, "TargetOptionId", None) is None for row in _fetch(program))
 
 
 def test_source_prices_are_identical_whatever_the_program():
@@ -61,11 +62,9 @@ def test_source_prices_are_identical_whatever_the_program():
     assert {option for _, option, _ in prices[""]} == {8}
 
 
-def test_blank_program_routing_is_reported_and_explicit_program_is_silent():
+def test_no_routing_warning_for_any_program():
     warn = PricingService._blank_program_routing_warning
-    assert "because no Program is set" in warn(_records(""), "")
-    assert warn(_records("revive"), "revive") == ""
-    assert warn(_records("layout_studio"), "layout_studio") == ""
+    assert all(warn(_records(p), p) == "" for p in ("", "revive", "layout_studio", "nevi_enhanced"))
 
 
 def test_blank_program_is_not_made_mandatory():

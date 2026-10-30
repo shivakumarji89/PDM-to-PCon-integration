@@ -219,8 +219,9 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     page._on_compute()
     assert not page._pricing_running
     # A blank Program that routed fabric rows to their colour option is reported to the user, never silent.
-    assert any("because no Program is set" in message for message in shown) is mapped
-    option = 28 if mapped else 8
+    # Legacy has no Fabric Type -> colour mapping: even with a colour relationship in PDM the target stays 8.
+    assert not any("because no Program is set" in message for message in shown)
+    option = 8
     expected = [f"{ITEM} {option}={f[0]}" for _ in ("EUR", "GBP") for f in FAMILIES]
     assert [r[1] for r in _rows(page)] == expected
     assert [r.value for r in snap.price_records] == [89, 44, 133, 89] * 2

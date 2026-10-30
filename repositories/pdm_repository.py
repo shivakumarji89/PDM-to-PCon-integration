@@ -1620,8 +1620,8 @@ class PDMRepository(BaseRepository):
                         source_item, row.OptionValueId, row.OptionId, code,
                         source_code, lookup, raw, row.PriceBand, price,
                     ))
-            if program_code.strip().casefold() in ("", "revive") and result:
-                self._resolve_global_fabric_targets(result, catalogue_id, conn)
+            # Legacy PDM (PriceMaintenance.UpdatePConItemIncrementalPrice) keeps the priced Fabric Type option id
+            # as the target; it has no Fabric Type -> colour (e.g. 8 -> 28) mapping, so none is applied here.
         finally:
             if owns_connection:
                 conn.close()
