@@ -40,6 +40,27 @@ class StatusPill(QLabel):
         )
 
 
+# A distinct symbol for each named workflow; text glyphs remain crisp at any DPI.
+_WORKFLOW_GLYPHS = {
+    "product": "⬡",
+    "articles": "▤",
+    "class creation": "▦",
+    "text": "T",
+    "relation object": "⛓",
+    "pricing": "＄",
+    "pricing relations": "⇄",
+    "validate": "✓",
+    "validation": "✓",
+    "export": "⇧",
+    "pdm / mdb comparison": "⇄",
+    "comparison": "⇄",
+}
+
+def workflow_glyph(title: str) -> str:
+    """Return the dedicated visual symbol for a workflow/page title."""
+    key = " ".join(title.casefold().replace("&", " ").split())
+    return _WORKFLOW_GLYPHS.get(key, "◇")
+
 class WorkflowHeader(QWidget):
     """Title, green accent rule, description, optional status pill and actions."""
 
@@ -51,6 +72,7 @@ class WorkflowHeader(QWidget):
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(theme.SPACE_3)
+        glyph = glyph or workflow_glyph(title)
         if glyph:
             from ui.components.workflow_cards import IconBadge
 
