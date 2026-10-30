@@ -84,7 +84,7 @@ class MainWindow(QMainWindow):
         self._navigator = WorkflowNavigator(self)
         self._active_module: WorkbenchModule | None = None
         self._stack = QStackedWidget(self)
-        self._module_home = ModuleHomePage(self)
+        self._module_home = ModuleHomePage(self._context, self)
         self._module_placeholder = ModulePlaceholderPage(self)
         self._stack.addWidget(self._module_home)
         self._stack.addWidget(self._module_placeholder)
