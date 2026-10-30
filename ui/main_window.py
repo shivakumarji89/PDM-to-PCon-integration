@@ -408,6 +408,7 @@ class MainWindow(QMainWindow):
 
         left = self._build_left_panel()
         center = self._build_center_panel()
+        self._center_panel = center
 
         # Minimum widths keep panels usable while remaining freely resizable.
         left.setMinimumWidth(250)
@@ -578,6 +579,17 @@ class MainWindow(QMainWindow):
                 theme.PANEL_INSET, theme.PANEL_INSET,
                 theme.PANEL_INSET, theme.PANEL_INSET
             )
+
+        # The workspace has its own standard 8 px inset. In the Maintenance
+        # shell, remove that extra left inset so the page card sits closer to
+        # the sidebar; keep the other three workspace margins unchanged.
+        center_margins = self._center_panel.layout().contentsMargins()
+        self._center_panel.layout().setContentsMargins(
+            0 if shell else theme.PANEL_INSET,
+            center_margins.top(),
+            center_margins.right(),
+            center_margins.bottom(),
+        )
 
         # Shell look: panels become transparent so the sidebar and page cards sit
         # on the window canvas; the menu bar blends into the white header.
