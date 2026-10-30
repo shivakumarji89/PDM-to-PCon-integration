@@ -153,10 +153,11 @@ class MaintenanceSourceTabs(QWidget):
     source_changed = Signal(str)
 
     _STYLE = (
-        "QTabBar::tab { padding: 5px 22px; border: 1px solid #b8bec8;"
-        " border-bottom: none; background: #eef1f5; color: #44505e; }"
-        "QTabBar::tab:selected { background: #2f6fed; color: white;"
-        " font-weight: bold; }"
+        "QTabBar::tab { padding: 5px 22px; border: 1px solid #E3E7EC;"
+        " border-bottom: none; background: #F6F8FA; color: #5E6B7D;"
+        " border-top-left-radius: 6px; border-top-right-radius: 6px; }"
+        "QTabBar::tab:selected { background: #6DAE1F; color: white;"
+        " font-weight: bold; border-color: #6DAE1F; }"
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:

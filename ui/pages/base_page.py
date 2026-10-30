@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui import theme
+from ui.components.workflow_layout import WorkflowPageLayout
 
 
 class BasePage(QWidget):
@@ -30,18 +31,33 @@ class BasePage(QWidget):
         parent: QWidget | None = None,
         show_placeholder: bool = True,
         content_stretch: bool = False,
+        workflow_layout: bool = False,
+        header_glyph: str = "",
     ) -> None:
         super().__init__(parent)
         self.setObjectName("workspacePage")
 
         self._title = title
         self._description = description
+        #: Shared workflow layout (header/toolbar/summary/main/footer) when the
+        #: page opted in with ``workflow_layout=True``; ``None`` otherwise.
+        self.wf: WorkflowPageLayout | None = None
 
         root = QVBoxLayout(self)
         # The center panel owns the outer padding; the page adds none, so page
         # content aligns with the left panel's content (a single PANEL_INSET).
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(theme.SECTION_SPACING)
+
+        if workflow_layout:
+            # Opt-in: the shared layout replaces the legacy title block. Pages
+            # keep calling add_content(); it lands in the layout's main area.
+            self.wf = WorkflowPageLayout(title, description, self, header_glyph)
+            self._content = self.wf.main_layout
+            root.addWidget(self.wf, 1 if content_stretch else 0)
+            if not content_stretch:
+                root.addStretch(1)
+            return
 
         header = QLabel(title, self)
         header.setObjectName("pageTitle")

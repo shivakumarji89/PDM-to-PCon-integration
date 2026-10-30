@@ -12,11 +12,16 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QFrame,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QLineEdit,
     QStyledItemDelegate,
     QGroupBox,
@@ -41,6 +46,9 @@ from core.engines.filtering import text_match
 from core.modules import WorkbenchModule
 from core.engines.status import warnings_text
 from ui import theme
+from ui.components.flow_layout import FlowFrame
+from ui.components import CardRow, DataCard, DetailTabs, KpiCard, WorkflowHeader
+from ui.components.workflow_styles import set_button_role, style_table
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     SOURCE_PDM,
@@ -139,6 +147,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._last_module = None
         # Maintenance PDM view: derived MDB base lengths (None = not applicable).
         self._mdb_mapping: tuple[dict[str, int], list[tuple[str, str]]] | None = None
+        # Workflow-shell look (Maintenance only); see _apply_shell.
+        self._shell_on = False
+        self._shell_built = False
 
         # Debounce search typing: validation is snapshot-scoped
         # (term-independent), so coalesce keystrokes into one filter pass.
@@ -148,6 +159,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._filter_timer.timeout.connect(self._apply_filter)
 
         self.add_content(self._build_body())
+        # Runs after the page's own selection handler (connection order).
+        self._table.itemSelectionChanged.connect(self._sync_shell)
 
         self.refresh()
 
@@ -261,8 +274,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        self._body_layout = layout
         top_row = QWidget(container)
+        self._top_row = top_row
         top_layout = QHBoxLayout(top_row)
+        self._top_layout = top_layout
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.addWidget(self._build_family_panel(), 1)
         self._sets_box = self._build_sets_panel()
@@ -272,7 +288,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         top_layout.addWidget(self._build_details_panel(), 1)
 
         layout.addWidget(top_row, 0)
-        layout.addWidget(self._build_toolbar(), 0)
+        self._toolbar_box = self._build_toolbar()
+        layout.addWidget(self._toolbar_box, 0)
         layout.addWidget(self._build_table(), 1)
         return container
 
@@ -478,8 +495,282 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         form.addRow("Super Product:", self._d_super)
         form.addRow("Source:", self._d_source)
         form.addRow("Validation:", self._d_validation)
+        self._details_form = form
         self._details_box = box
         return box
+
+    # -- workflow shell look (Maintenance only; presentation only) ----------
+    def _apply_shell(self, on: bool) -> None:
+        """Switch between the legacy layout and the workflow-shell layout.
+
+        The same page instance serves Development and Maintenance, so the
+        shell look is applied only while Maintenance is active and fully
+        reverted otherwise. Only widget placement and styling change; every
+        control, signal and data path is the existing one.
+        """
+        if on == self._shell_on:
+            return
+        if on and not self._shell_built:
+            self._build_shell()
+        self._shell_on = on
+        for w in self._legacy_header:
+            w.setVisible(not on)
+        self._shell_header.setVisible(on)
+        self._kpi_row.setVisible(on)
+        body, top = self._body_layout, self._top_layout
+        toolbar = self._toolbar_box
+        buttons = (
+            (self._apply_len_btn, "secondary"), (self._dot_base_btn, "secondary"),
+            (self._copy_long_btn, "secondary"), (self._components_btn, "secondary"),
+            (self._clear_btn, "danger"), (self._export_mdb_btn, "primary"),
+        )
+        if on:
+            body.removeWidget(self._table)
+            top.removeWidget(self._family_box)
+            top.removeWidget(self._details_box)
+            self._top_row.hide()
+            self._shell_hsplit.insertWidget(0, self._family_box)
+            self._shell_hsplit.insertWidget(1, self._table)
+            self._shell_hsplit.setSizes([190, 900])
+            self._detail_layout.insertWidget(1, self._details_box)
+            self._shell_card.show()
+            body.addWidget(self._shell_card, 1)
+            for widget, _stretch in self._toolbar_widgets:
+                self._toolbar_legacy_layout.removeWidget(widget)
+            for group_layout, widgets in self._toolbar_groups:
+                for widget in widgets:
+                    group_layout.addWidget(widget)
+            self._search.setMinimumWidth(170)
+            self._search.setFixedWidth(200)
+            self._base_len_spin.setMaximumWidth(72)
+            # Details: label/value pairs move into a balanced two-column grid.
+            self._arrange_details(True)
+            header = self._table.horizontalHeader()
+            self._table_header_alignment = header.defaultAlignment()
+            header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self._table_alternating = self._table.alternatingRowColors()
+            self._table.setAlternatingRowColors(True)
+            self._table.verticalHeader().setDefaultSectionSize(30)
+            toolbar.hide()
+            body.insertWidget(body.indexOf(toolbar) + 1, self._shell_toolbar)
+            self._shell_toolbar.show()
+            self._table.setMinimumHeight(150)
+            # The table's content-based size hint must not size the page: the
+            # splitter/scroll area give it the room that is actually available.
+            self._table_policy = self._table.sizePolicy()
+            self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+            self._details_box.setTitle("")
+            self._details_box.setStyleSheet(
+                "QGroupBox { border: none; background: transparent; margin: 0; padding: 0; } "
+                f"QLabel {{ background: transparent; color: {theme.WB_NAVY}; }}"
+            )
+            style_table(self._table)
+            for button, role in buttons:
+                set_button_role(button, role)
+        else:
+            body.removeWidget(self._shell_card)
+            self._shell_card.hide()
+            top.insertWidget(0, self._family_box, 1)
+            top.addWidget(self._details_box, 1)
+            body.addWidget(self._table, 1)
+            self._top_row.show()
+            self._shell_toolbar.hide()
+            body.removeWidget(self._shell_toolbar)
+            for group_layout, widgets in self._toolbar_groups:
+                for widget in widgets:
+                    group_layout.removeWidget(widget)
+            for widget, stretch in self._toolbar_widgets:
+                self._toolbar_legacy_layout.addWidget(widget, stretch)
+            self._arrange_details(False)
+            header = self._table.horizontalHeader()
+            header.setDefaultAlignment(self._table_header_alignment)
+            self._table.setAlternatingRowColors(self._table_alternating)
+            self._table.verticalHeader().setDefaultSectionSize(28)
+            self._search.setFixedWidth(16777215)
+            self._base_len_spin.setMaximumWidth(16777215)
+            self._search.setMinimumWidth(240)
+            toolbar.show()
+            self._table.setMinimumHeight(280)
+            if getattr(self, "_table_policy", None) is not None:
+                self._table.setSizePolicy(self._table_policy)
+            self._details_box.setTitle("Article Details")
+            self._details_box.setStyleSheet("")
+            self._table.setStyleSheet("")
+            for button, _role in buttons:
+                button.setStyleSheet("")
+        self._sync_shell()
+
+    def _build_shell(self) -> None:
+        self._shell_built = True
+        self._legacy_header = [
+            w for w in (
+                self.findChild(QLabel, "pageTitle"),
+                self.findChild(QLabel, "pageSubtitle"),
+                self.findChild(QFrame, "pageDivider"),
+            ) if w is not None
+        ]
+        self._shell_header = WorkflowHeader(self._title, self._description, self, "\u2630")
+        self.layout().insertWidget(0, self._shell_header)
+
+        self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="\u2630", parent=self)
+        self._kpi_shown = KpiCard("Shown", "0", "neutral", glyph="\u2315", parent=self)
+        self._kpi_selected = KpiCard("Selected", "0", "neutral", glyph="\u2713", parent=self)
+        self._kpi_issues = KpiCard("Issue Groups", "-", "neutral", glyph="!", parent=self)
+        self._kpi_row = CardRow(170, self)
+        for card in (self._kpi_loaded, self._kpi_shown, self._kpi_selected, self._kpi_issues):
+            self._kpi_row.add_card(card)
+        self._content.insertWidget(1, self._kpi_row)
+
+        self._shell_hsplit = QSplitter(Qt.Orientation.Horizontal, self)
+        self._shell_hsplit.setChildrenCollapsible(False)
+        # Shell toolbar: the same widgets re-parented into a wrapping card so
+        # every control stays reachable at any width (see _apply_shell).
+        self._toolbar_legacy_layout = self._toolbar_box.layout()
+        self._toolbar_widgets = [
+            (self._toolbar_legacy_layout.itemAt(i).widget(), self._toolbar_legacy_layout.stretch(i))
+            for i in range(self._toolbar_legacy_layout.count())
+        ]
+        self._shell_toolbar = FlowFrame(self, theme.SPACE_2)
+        self._shell_toolbar.setObjectName("wfShellToolbar")
+        self._shell_toolbar.setStyleSheet(
+            f"QFrame#wfShellToolbar {{ background: {theme.WB_SURFACE}; border: 1px solid {theme.WB_BORDER}; "
+            f"border-radius: {theme.RADIUS_LG}px; }} "
+            "QLabel, QCheckBox { background: transparent; } "
+            f"QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {theme.LINE_STRONG}; "
+            f"border-radius: 4px; background: {theme.WB_SURFACE}; }} "
+            f"QCheckBox::indicator:checked {{ background: {theme.WB_GREEN}; border-color: {theme.WB_GREEN}; }}"
+        )
+        self._shell_toolbar_flow = self._shell_toolbar.flow
+        self._shell_toolbar_flow.setContentsMargins(theme.SPACE_3, 6, theme.SPACE_3, 6)
+        self._shell_toolbar.flow._spacing = theme.SPACE_2
+        # Related controls travel together when the toolbar wraps.
+        loose = [w for w, _ in self._toolbar_widgets]
+        base_label = loose[loose.index(self._base_len_spin) - 1]
+        group_defs = (
+            [self._search],
+            [base_label, self._base_len_spin, self._apply_len_btn],
+            [self._dot_base_btn, self._copy_long_btn, self._components_btn],
+            [self._clear_btn, self._group_check],
+            [self._export_mdb_btn],
+        )
+        self._toolbar_groups = []
+        for index, widgets in enumerate(group_defs):
+            host = QWidget(self._shell_toolbar)
+            host.setObjectName(f"wfToolGroup{index}")
+            host.setStyleSheet(
+                f"QWidget#wfToolGroup{index} {{ background: transparent; "
+                + (f"border-left: 1px solid {theme.WB_DIVIDER}; " if index else "") + "}"
+            )
+            lay = QHBoxLayout(host)
+            lay.setContentsMargins(theme.SPACE_3 if index else 0, 0, 0, 0)
+            lay.setSpacing(theme.SPACE_2)
+            self._toolbar_groups.append((lay, widgets))
+            self._shell_toolbar_flow.addWidget(host)
+        # Article details: two-column host inside the existing details box.
+        self._detail_keys = {}
+        self._details_host = QWidget(self._details_box)
+        self._details_grid = QGridLayout(self._details_host)
+        self._details_grid.setContentsMargins(0, 0, 0, 0)
+        self._details_grid.setHorizontalSpacing(theme.SPACE_3)
+        self._details_grid.setVerticalSpacing(6)
+        self._details_host.hide()
+        self._details_form.addRow(self._details_host)
+        self._detail_sel = None
+        self._shell_toolbar.hide()
+        self._detail_tabs = DetailTabs(self)
+        page = QWidget()
+        self._detail_layout = QVBoxLayout(page)
+        self._detail_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2, theme.SPACE_3, theme.SPACE_2)
+        self._detail_placeholder = QLabel("Select an article to see its details.", page)
+        self._detail_placeholder.setStyleSheet(
+            f"background: transparent; color: {theme.WB_TEXT_SECONDARY};"
+        )
+        self._detail_layout.addWidget(self._detail_placeholder)
+        self._detail_layout.addStretch(1)
+        # Scrolls instead of squashing rows when the panel is short.
+        detail_scroll = QScrollArea(self._detail_tabs)
+        detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        detail_scroll.setWidgetResizable(True)
+        detail_scroll.setStyleSheet("QScrollArea { background: transparent; border: 0; }")
+        detail_scroll.setWidget(page)
+        self._detail_tabs.addTab(detail_scroll, "Article Details")
+        self._shell_vsplit = QSplitter(Qt.Orientation.Vertical, self)
+        self._shell_vsplit.setChildrenCollapsible(False)
+        self._shell_vsplit.addWidget(self._shell_hsplit)
+        self._shell_vsplit.addWidget(self._detail_tabs)
+        self._shell_vsplit.setStretchFactor(0, 3)
+        self._shell_vsplit.setStretchFactor(1, 2)
+        self._shell_vsplit.setSizes([330, 200])
+        self._detail_tabs.setMinimumHeight(88)
+        self._shell_card = DataCard("Articles", "", parent=self)
+        # The count line replaces the card title; the KPI cards already name the table.
+        self._shell_card.title_label.setVisible(False)
+        self._shell_card.body.setContentsMargins(theme.SPACE_2, 6, theme.SPACE_2, theme.SPACE_2)
+        self._shell_card.body.setSpacing(4)
+        self._shell_card.set_content(self._shell_vsplit)
+
+    _DETAIL_FIELDS = (
+        "_d_code", "_d_description", "_d_id", "_d_status", "_d_super", "_d_source", "_d_validation",
+    )
+
+    def _arrange_details(self, shell: bool) -> None:
+        """Move the existing detail labels between the legacy form and the grid."""
+        form, grid = self._details_form, self._details_grid
+        half = (len(self._DETAIL_FIELDS) + 1) // 2
+        for row, attr in enumerate(self._DETAIL_FIELDS):
+            field = getattr(self, attr)
+            if shell:
+                key = form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget()
+                self._detail_keys[attr] = key
+                left = row < half
+                grid.addWidget(key, row if left else row - half, 0 if left else 3, Qt.AlignmentFlag.AlignTop)
+                grid.addWidget(field, row if left else row - half, 1 if left else 4)
+                key.setStyleSheet(
+                    f"background: transparent; color: {theme.WB_TEXT_SECONDARY}; font-weight: 600;"
+                )
+                field.setStyleSheet(f"background: transparent; color: {theme.WB_NAVY};")
+            else:
+                key = self._detail_keys[attr]
+                form.setWidget(row, QFormLayout.ItemRole.LabelRole, key)
+                form.setWidget(row, QFormLayout.ItemRole.FieldRole, field)
+                key.setStyleSheet("")
+                field.setStyleSheet("")
+        if shell:
+            grid.setColumnStretch(1, 1)
+            grid.setColumnStretch(4, 1)
+            grid.setColumnMinimumWidth(2, 32)
+        self._details_host.setVisible(shell)
+
+    def _sync_shell(self) -> None:
+        """Refresh KPI cards and the detail placeholder from existing state."""
+        if not self._shell_on:
+            return
+        validation = self._validation
+        if validation is not None:
+            total, selected = int(validation.total), int(validation.selected)
+            shown = len(self._filtered)
+            issues = len(validation.warnings)
+            self._kpi_loaded.set_value(f"{total:,}")
+            self._kpi_loaded.set_tone("success" if total else "neutral")
+            self._kpi_shown.set_value(f"{shown:,}")
+            self._kpi_shown.set_meter(shown / total if total else None)
+            self._kpi_selected.set_value(f"{selected:,}")
+            self._kpi_issues.set_value(str(issues) if total else "-")
+            self._kpi_issues.set_tone(
+                "neutral" if not total else ("danger" if issues else "success"),
+                "!" if issues else "\u2713",
+            )
+            self._shell_card.set_subtitle(f"{shown:,} of {total:,} articles shown")
+        selected = self._details_box.isVisibleTo(self._detail_tabs)
+        self._detail_placeholder.setVisible(not selected)
+        if selected != self._detail_sel:
+            # Give the table the room until an article is selected, then split
+            # the column roughly 60 / 40 between table and details.
+            self._detail_sel = selected
+            sizes = self._shell_vsplit.sizes()
+            total = max(sum(sizes), 1)
+            detail = max(150, int(total * 0.34)) if selected else self._detail_tabs.minimumHeight()
+            self._shell_vsplit.setSizes([max(total - detail, 1), detail])
 
     def _build_status_group(self) -> QWidget:
         box = QGroupBox("Workspace Status", self)
@@ -515,6 +806,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # Keep their data/reduction logic intact, but remove them from the
         # Maintenance layout so the article workspace stays focused.
         maintenance = module == WorkbenchModule.MAINTENANCE
+        self._apply_shell(maintenance)
         if hasattr(self, "_sets_box"):
             self._sets_box.setVisible(not maintenance)
         if hasattr(self, "_status_box"):
@@ -1483,6 +1775,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._apply_reduction_status()
         # Article Details is shown only when a row is selected.
         self._details_box.setVisible(False)
+        self._sync_shell()
 
     def _reduction_warning(self) -> str:
         """Warn when the shown reduced set won't slice consistently.

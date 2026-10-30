@@ -42,6 +42,46 @@ ERROR_SOFT = "#fbecea"
 INFO_SOFT = "#eaf1fe"
 
 # --------------------------------------------------------------------------
+# Workbench visual language (front-page palette) for internal workflow pages.
+# Additive: pages that have not adopted ``ui.components.workflow`` keep using
+# the tokens above. Meaning: green = ready/valid, red = failed/attention,
+# amber = pending/caution, neutral = informational/inactive.
+# --------------------------------------------------------------------------
+WB_GREEN = "#6DAE1F"
+WB_GREEN_DARK = "#4D941D"
+WB_GREEN_SOFT = "#F1F7E8"      # light green background
+WB_GREEN_BORDER = "#CFE3B0"
+WB_RED = "#E8341C"
+WB_RED_DARK = "#C42A15"
+WB_RED_SOFT = "#FFF1EE"        # light red background
+WB_RED_BORDER = "#F5C2BA"
+WB_AMBER = "#D9822B"
+WB_AMBER_SOFT = "#FFF6E8"
+WB_AMBER_BORDER = "#F2D5A8"
+WB_NAVY = "#1B2433"            # primary text
+WB_TEXT_SECONDARY = "#5E6B7D"
+WB_BORDER = "#E3E7EC"
+WB_DIVIDER = "#DCE2E8"
+WB_SURFACE = "#FFFFFF"
+WB_SURFACE_ALT = "#F6F8FA"     # light grey surface
+WB_NEUTRAL = "#8A94A3"         # inactive / unknown / not started
+WB_NEUTRAL_SOFT = "#F1F3F6"
+
+# tone -> (accent, soft background, border)
+WB_TONES: dict[str, tuple[str, str, str]] = {
+    "success": (WB_GREEN, WB_GREEN_SOFT, WB_GREEN_BORDER),
+    "danger": (WB_RED, WB_RED_SOFT, WB_RED_BORDER),
+    "warning": (WB_AMBER, WB_AMBER_SOFT, WB_AMBER_BORDER),
+    "neutral": (WB_NEUTRAL, WB_NEUTRAL_SOFT, WB_BORDER),
+}
+
+
+def tone_colors(tone: str) -> tuple[str, str, str]:
+    """Return ``(accent, soft background, border)`` for a tone name."""
+    return WB_TONES.get(tone, WB_TONES["neutral"])
+
+
+# --------------------------------------------------------------------------
 # Spacing (pixels) - use these instead of ad-hoc numbers
 # --------------------------------------------------------------------------
 PAGE_MARGIN = 16         # outer margin of a workspace page
@@ -103,6 +143,11 @@ _ROLES: dict[str, tuple[int, QFont.Weight]] = {
     "metric_value": (20, WEIGHT_BOLD),
     "metric_label": (11, WEIGHT_SEMIBOLD),
     "percent": (20, WEIGHT_BOLD),
+    # Workflow-page roles (front-page language).
+    "wf_title": (22, WEIGHT_BOLD),
+    "wf_kpi_value": (20, WEIGHT_BOLD),
+    "wf_kpi_label": (12, WEIGHT_NORMAL),
+    "wf_card_title": (14, WEIGHT_BOLD),
 }
 
 

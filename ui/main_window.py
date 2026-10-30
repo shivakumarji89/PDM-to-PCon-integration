@@ -12,14 +12,13 @@ behavior is page navigation.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSettings, QProcess
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QDockWidget,
     QLabel,
     QMainWindow,
     QMenuBar,
     QSplitter,
-    QStackedWidget,
     QStatusBar,
     QTableWidget,
     QTreeWidget,
@@ -30,7 +29,7 @@ from core.application_context import ApplicationContext
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
-from core.modules import WorkbenchModule, module_title, module_workflows
+from core.modules import MODULE_ITEMS, WorkbenchModule, module_title, module_workflows
 from ui.pages.articles_page import ArticlesPage
 from ui.pages.base_page import BasePage
 from ui.pages.class_creation_page import ClassCreationPage
@@ -55,8 +54,11 @@ from ui.pages.syteline_export_page import SyteLineExportPage
 from workflow.host import WorkspaceHost
 from workflow.manager import WorkflowManager
 from ui.widgets.activity_panel import ActivityPanel
+from ui.widgets.page_viewport import CurrentPageStack, scrollable
 from ui.widgets.assistant_panel import AssistantPanel
 from ui.widgets.background_status import BackgroundStatusIndicator
+from ui.components.workflow_shell import AppHeaderBar, WorkflowSidebar
+from ui.components.workflow_styles import set_button_role
 from ui.widgets.data_table import standardize_table
 from ui.widgets.explorer_tree import standardize_tree
 
@@ -65,7 +67,7 @@ class MainWindow(QMainWindow):
     """Top-level window hosting the workbench shell and workflow framework."""
 
     #: Default horizontal sizes for [navigator, workspace] when no saved layout.
-    _DEFAULT_SPLITTER_SIZES = [260, 1040]
+    _DEFAULT_SPLITTER_SIZES = [290, 1010]
     #: Default width of the Engineering Assistant dock.
     _DEFAULT_ASSISTANT_WIDTH = 300
 
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
         self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
         self._active_module: WorkbenchModule | None = None
-        self._stack = QStackedWidget(self)
+        self._stack = CurrentPageStack(self)
         self._module_home = ModuleHomePage(self._context, self)
         self._module_placeholder = ModulePlaceholderPage(self)
         self._stack.addWidget(self._module_home)
@@ -112,10 +114,43 @@ class MainWindow(QMainWindow):
         # Restore the user's saved layout (panel sizes, dock positions,
         # collapse state) before activating the first workspace.
         self._restore_layout()
+        self._geometry_fitted = False
 
         # Start at Level 1. No workflow is shown until a module is selected.
         self._show_module_home()
 
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().showEvent(event)
+        if not self._geometry_fitted:
+            self._geometry_fitted = True
+            self._fit_window_to_screen()
+
+    def _fit_window_to_screen(self) -> None:
+        """Keep the window (frame included) inside the available screen area.
+
+        Covers the default size and a geometry saved on a larger or since
+        disconnected display. Maximised / full-screen windows are left to the
+        window manager; the saved geometry itself is not discarded.
+        """
+        if self.isMaximized() or self.isFullScreen():
+            return
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+        frame = self.frameGeometry()
+        extra_w = frame.width() - self.width()
+        extra_h = frame.height() - self.height()
+        width = min(self.width(), max(self.minimumWidth(), avail.width() - extra_w))
+        height = min(self.height(), max(self.minimumHeight(), avail.height() - extra_h))
+        if (width, height) != (self.width(), self.height()):
+            self.resize(width, height)
+        frame = self.frameGeometry()
+        x = min(max(frame.x(), avail.left()), max(avail.left(), avail.right() + 1 - frame.width()))
+        y = min(max(frame.y(), avail.top()), max(avail.top(), avail.bottom() + 1 - frame.height()))
+        if (x, y) != (frame.x(), frame.y()):
+            self.move(x, y)
 
     def _on_step_changed(self, step: WorkflowStep) -> None:
         title = self._manager.title(step)
@@ -387,7 +422,23 @@ class MainWindow(QMainWindow):
 
         self._left_panel = left
         self._main_splitter = splitter
-        self.setCentralWidget(splitter)
+
+        # Workbench status header (Maintenance shell). Hidden elsewhere, so the
+        # other modules keep their existing chrome until they are migrated.
+        from PySide6.QtWidgets import QVBoxLayout
+
+        self._app_header = AppHeaderBar(self)
+        self._app_header.settings_clicked.connect(self._on_header_settings)
+        self._app_header.hide()
+        central = QWidget(self)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self._app_header)
+        central_layout.addWidget(splitter, 1)
+        self.setCentralWidget(central)
+        self._manager.state_changed.connect(self._refresh_app_header)
+        self._manager.step_changed.connect(lambda *_: self._refresh_app_header())
 
     def _build_left_panel(self) -> QWidget:
         from PySide6.QtWidgets import QComboBox, QPushButton, QVBoxLayout
@@ -407,6 +458,7 @@ class MainWindow(QMainWindow):
         # come from that database.
         db_label = QLabel("Database:", container)
         db_label.setObjectName("databaseSelectorLabel")
+        self._database_label = db_label
         layout.addWidget(db_label)
 
         self._database_selector = QComboBox(container)
@@ -431,6 +483,13 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(theme.SECTION_SPACING)
         layout.addWidget(self._navigator, 1)
+
+        # Workflow shell sidebar (module identity + vertical steps + tips). It
+        # reads state from the same manager and navigates via manager.jump_to.
+        self._sidebar = WorkflowSidebar(container)
+        self._sidebar.bind_manager(self._manager)
+        self._sidebar.hide()
+        layout.addWidget(self._sidebar, 1)
         return container
 
     def _on_module_selected(self, module: WorkbenchModule) -> None:
@@ -451,6 +510,7 @@ class MainWindow(QMainWindow):
         self._toggle_navigator_action.setEnabled(True)
 
         if not steps:
+            self._apply_shell_chrome(module, [])
             self._left_panel.hide()
             self._nav_footer.hide()
             self._module_placeholder.set_module(module)
@@ -467,14 +527,86 @@ class MainWindow(QMainWindow):
             items_by_step[step] for step in steps if step in items_by_step
         ))
         self._manager.set_steps(steps)
+        self._apply_shell_chrome(module, steps)
         self._left_panel.show()
         self._nav_footer.show()
         self._stack.setCurrentWidget(self._pages[self._manager.current_step()])
         self.statusBar().showMessage(f"Module: {module_title(module)}", 4000)
 
+    #: Modules that use the new workflow shell (header + sidebar + styled pages).
+    _SHELL_MODULES = (WorkbenchModule.MAINTENANCE,)
+
+    def _apply_shell_chrome(self, module, steps) -> None:
+        """Show the workflow shell chrome for migrated modules, the legacy
+        navigator for the rest. Presentation only."""
+        shell = module in self._SHELL_MODULES and bool(steps)
+        self._app_header.setVisible(shell)
+        self._sidebar.setVisible(shell)
+        self._navigator.setVisible(not shell)
+        self._active_module_label.setVisible(not shell)
+        # Shell look: panels become transparent so the sidebar and page cards sit
+        # on the window canvas; the menu bar blends into the white header.
+        self._left_panel.setStyleSheet(
+            "#leftPanel { background: transparent; border: none; }" if shell else "")
+        self.centralWidget().findChild(QWidget, "centerPanel").setStyleSheet(
+            "#centerPanel { background: transparent; border: none; }" if shell else "")
+        self.menuBar().setStyleSheet(
+            f"QMenuBar {{ background: {theme.WB_SURFACE}; color: {theme.WB_NAVY}; padding: 0 6px; }} "
+            f"QMenuBar::item {{ background: transparent; padding: 3px 10px; border-radius: 4px; }} "
+            f"QMenuBar::item:selected {{ background: {theme.WB_GREEN_SOFT}; }}" if shell else "")
+        self._database_selector.setStyleSheet(
+            "QComboBox { min-height: 20px; padding: 2px 8px; }" if shell else "")
+        self._database_label.setStyleSheet(
+            f"background: transparent; color: {theme.WB_TEXT_SECONDARY}; font-size: 12px; "
+            "font-weight: 600; padding: 0;" if shell else "")
+        for button, role in ((self._continue_btn, "primary"), (self._back_btn, "secondary"),
+                             (self._modules_btn, "secondary")):
+            if shell:
+                set_button_role(button, role)
+            else:
+                button.setStyleSheet("")
+        if shell:
+            items_by_step = {item.step: item for item in WORKFLOW_ITEMS}
+            description = next(
+                (item.description for item in MODULE_ITEMS if item.module == module), ""
+            )
+            self._sidebar.set_module(
+                module_title(module), description,
+                [items_by_step[step] for step in steps if step in items_by_step],
+            )
+            self._refresh_app_header()
+
+    def _refresh_app_header(self) -> None:
+        """Header indicators from existing application state (no new queries)."""
+        if not self._app_header.isVisibleTo(self):
+            return
+        ctx = self._context
+        preset = ctx.config.active_pdm_preset() or "PDM"
+        loaded = ctx.pdm_snapshot is not None
+        self._app_header.set_indicator(
+            "pdm", "Loaded" if loaded else "Not loaded", "success" if loaded else "neutral",
+            f"PDM database: {preset}",
+        )
+        repo = ctx.maintenance_repository_info is not None
+        self._app_header.set_indicator(
+            "repository", "Linked" if repo else "Not linked", "success" if repo else "neutral",
+        )
+        mdb = ctx.mdb_import_snapshot is not None
+        self._app_header.set_indicator(
+            "mdb", "Loaded" if mdb else "Not loaded", "success" if mdb else "neutral",
+        )
+
+    def _on_header_settings(self) -> None:
+        """Open the existing Settings menu under the header button."""
+        menu = getattr(self, "_settings_menu", None)
+        if menu is not None:
+            button = self._app_header.settings_button
+            menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
     def _show_module_home(self) -> None:
         """Return to Level 1 and hide all workflow-specific UI."""
         self._active_module = None
+        self._apply_shell_chrome(None, [])
         self._pdm_monitor_btn.setVisible(False)
         self._left_panel.hide()
         self._nav_footer.hide()
@@ -514,7 +646,7 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
         layout.setSpacing(theme.SECTION_SPACING)
-        layout.addWidget(self._stack, 1)
+        layout.addWidget(scrollable(self._stack, container), 1)
 
         footer_widget = QWidget(container)
         footer = QHBoxLayout(footer_widget)
@@ -612,6 +744,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self._make_action("Options..."))
 
         settings_menu = menu_bar.addMenu("&Settings")
+        self._settings_menu = settings_menu
         settings_menu.addAction(self._make_action("Preferences..."))
 
         generate_menu = menu_bar.addMenu("&Generate")
