@@ -336,8 +336,6 @@ class OcdArticleGenerator:
             raise GenerationError("Select at least one article.")
         if not ymd(price_date):
             raise GenerationError("A price date is required.")
-        if max_configurations is not None and max_configurations <= 0:
-            raise GenerationError("The maximum number of SKUs must be positive.")
         currency = self.resolve_currency(currency)
         calculator = self._price_calculator()
         dataset = self.dataset
@@ -380,9 +378,6 @@ class OcdArticleGenerator:
                 if final in seen:
                     outcome.duplicates += 1
                     continue
-                if max_configurations is not None and len(outcome.skus) >= max_configurations:
-                    outcome.truncated = True
-                    break
                 seen.add(final)
                 outcome.skus.append(self._sku(
                     len(outcome.skus) + 1, article_number, series, label, final, variant, model, config, result,
@@ -397,12 +392,8 @@ class OcdArticleGenerator:
                 outcome.warnings.append(f"{article_number}: {engine.stats.reason}; the result is incomplete.")
             if reporter is not None:
                 reporter.advance(f"{article_number}: {produced} valid SKU(s)")
-            if outcome.truncated and max_configurations is not None and len(outcome.skus) >= max_configurations:
-                break
         outcome.warnings.extend(str(d) for d in sink if d.severity is not dg.Severity.INFO
                                 and d.code != dg.ENUMERATION_TRUNCATED)
-        if outcome.truncated and max_configurations is not None and len(outcome.skus) >= max_configurations:
-            outcome.warnings.append(f"Stopped at the limit of {max_configurations} SKU(s).")
         if outcome.unpriced:
             outcome.warnings.append(
                 f"{outcome.unpriced} SKU(s) have no price in {currency} on {price_date}; they are not exported.")
