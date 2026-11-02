@@ -191,50 +191,14 @@ class PconArticleObxGeneratorPage(BasePage):
         return box
 
     def _build_properties_box(self) -> QGroupBox:
-        box = QGroupBox("Configuration Scope (optional)", self)
+        box = QGroupBox("Automatic Permutation", self)
         layout = QVBoxLayout(box)
-        row = QHBoxLayout()
-        self._inspect_button = self._button("Inspect Properties", self._inspect_properties)
-        self._inspect_button.setToolTip(
-            "Read the properties, values and relations of the first selected article from the OCD "
-            "data, to pin a value. Without this, every property is varied.")
-        row.addWidget(self._inspect_button)
-        self._inspected_label = QLabel(
-            "All properties are varied automatically. Inspect an article to pin a value or see its relations.",
-            self)
-        self._inspected_label.setWordWrap(True)
-        row.addWidget(self._inspected_label, 1)
-        row.addWidget(QLabel("Max SKUs:"))
-        self._max_configurations = QSpinBox(self)
-        self._max_configurations.setRange(1, _MAX_CONFIGURATIONS_LIMIT)
-        self._max_configurations.setValue(int(self._settings.value(_SETTINGS_PREFIX + "maxConfigurations", 500)))
-        self._max_configurations.valueChanged.connect(self._update_estimate)
-        row.addWidget(self._max_configurations)
-        layout.addLayout(row)
-
-        self._property_table = QTableWidget(self)
-        self._property_table.setColumnCount(7)
-        self._property_table.setHorizontalHeaderLabels(
-            ["Key", "Name", "Default Value", "Mode", "Fixed Value", "Choices", "Relations"])
-        self._property_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._property_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._property_table.setAlternatingRowColors(True)
-        self._property_table.verticalHeader().setVisible(False)
-        header = self._property_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self._property_table.setMinimumHeight(160)
-        self._property_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self._property_table, 1)
-
-        self._estimate_label = QLabel("", self)
-        self._estimate_label.setWordWrap(True)
-        layout.addWidget(self._estimate_label)
+        message = QLabel(
+            "The backend enumerates valid, unique SKUs from repository properties, relations, "
+            "and constraints. No property inspection or SKU-count setting is required.",
+            box)
+        message.setWordWrap(True)
+        layout.addWidget(message)
         return box
 
     def _build_generation_box(self) -> QGroupBox:
@@ -328,7 +292,6 @@ class PconArticleObxGeneratorPage(BasePage):
 
     def _save_settings(self) -> None:
         self._settings.setValue(_SETTINGS_PREFIX + "outputPath", self._output_path.text())
-        self._settings.setValue(_SETTINGS_PREFIX + "maxConfigurations", self._max_configurations.value())
 
     # ------------------------------------------------------------- lifecycle
     def refresh(self) -> None:
@@ -714,16 +677,7 @@ class PconArticleObxGeneratorPage(BasePage):
         if program is None or not articles:
             QMessageBox.information(self, "Generate OBX", "Select a program and at least one article.")
             return
-        rules = self._current_rules()
-        if self._inspected_article is not None and rules:
-            inspected = self._inspected_article.article_number
-            if any(a.article_number != inspected for a in articles):
-                answer = QMessageBox.question(
-                    self, "Generate Valid SKUs",
-                    f"Pinned properties were inspected on {inspected} but other articles are selected. "
-                    "Rules for properties an article does not offer are skipped. Continue?")
-                if answer != QMessageBox.StandardButton.Yes:
-                    return
+        rules = []  # all repository properties are varied by the backend engine
         self._save_settings()
         self._outcome = None
         self._exported_path = ""
@@ -736,13 +690,12 @@ class PconArticleObxGeneratorPage(BasePage):
         numbers = [a.article_number for a in articles]
         currency = self._currency.currentText().strip()
         price_date = self._price_date.date().toString("yyyy-MM-dd")
-        limit = self._max_configurations.value()
 
         def work(reporter):
             reporter.note("Reading the OCD data")
             _ = generator.dataset
             return generator.generate(numbers, rules, currency=currency, price_date=price_date,
-                                      max_configurations=limit, reporter=reporter)
+                                      max_configurations=None, reporter=reporter)
 
         def finished(outcome):
             self._outcome_program, self._outcome_price_date = program, price_date
