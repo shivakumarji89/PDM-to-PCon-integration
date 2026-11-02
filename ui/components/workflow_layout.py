@@ -63,7 +63,6 @@ _WORKFLOW_GLYPHS = {
     # QA and generated deliverables
     "obx validation": "✔",
     "cet sif validation": "⊙",
-    "article obx generator": "❖",
     "article obx generator (ocd engine)": "◈",
     "pcon article obx generator": "◈",
     "export pdm data": "↗",
