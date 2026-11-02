@@ -96,7 +96,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._scan: CatalogueScan | None = None
         self._catalogue_reader: OcdCatalogueService | None = None
         self._catalogue_poll = QTimer(self)
-        self._catalogue_poll.setInterval(60_000)
+        self._catalogue_poll.setInterval(300_000)
         self._catalogue_poll.timeout.connect(self._load_catalogue)
 
         self._programs: list[OcdProgram] = []
@@ -119,7 +119,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self.add_content(self._build_catalogue_box())
         properties = self._build_properties_box()
         self._normalize_group_boxes(properties)
-        self._content.addWidget(properties, 1)
+        self._content.addWidget(properties, 0)
         results = self._build_generation_box()
         self._normalize_group_boxes(results)
         self._content.addWidget(results, 1)
@@ -197,7 +197,9 @@ class PconArticleObxGeneratorPage(BasePage):
             "and constraints. No property inspection or SKU-count setting is required.",
             box)
         message.setWordWrap(True)
+        message.setMaximumHeight(36)
         layout.addWidget(message)
+        box.setMaximumHeight(78)
         return box
 
     def _build_generation_box(self) -> QGroupBox:
@@ -325,18 +327,19 @@ class PconArticleObxGeneratorPage(BasePage):
         return dialog
 
     def _start(self, title: str, work, finished, *, steps: int = 1, subject: str = "",
-               status: QLabel | None = None) -> None:
-        """Run ``work(reporter)`` off the GUI thread with the shared progress dialog."""
+               status: QLabel | None = None, show_progress: bool = True) -> None:
+        """Run work off the GUI thread; catalogue refreshes can be silent."""
         if self._run is not None and self._run.active:
             return
         run = ReportedTask(self)
         self._run = run
         reporter = run.reporter
-        dialog = self._progress_monitor()
-        dialog.bind(reporter)
         reporter.begin(max(1, steps), title=title, subject=subject)
-        dialog.show()
-        dialog.raise_()
+        if show_progress:
+            dialog = self._progress_monitor()
+            dialog.bind(reporter)
+            dialog.show()
+            dialog.raise_()
         self._update_controls()
 
         def _done(result) -> None:
@@ -434,7 +437,8 @@ class PconArticleObxGeneratorPage(BasePage):
             return scan
 
         self._start("Loading catalogue", work, self._on_catalogue_loaded,
-                    subject=str(service.root or ""), status=self._catalogue_status)
+                    subject=str(service.root or ""), status=self._catalogue_status,
+                    show_progress=False)
 
     def _on_catalogue_loaded(self, scan: CatalogueScan) -> None:
         previous = self._scan
