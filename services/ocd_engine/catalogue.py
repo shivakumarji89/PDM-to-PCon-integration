@@ -80,6 +80,7 @@ class OcdCatalogueService:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root) if str(root or "").strip() else None
         self._loader = OcdCsvLoader()
+        self._scan_cache: dict[str, tuple[tuple[str, int, int], list[OcdProgram], tuple[str, str] | None]] = {}
 
     def _checked_root(self) -> Path:
         if self.root is None:
@@ -89,11 +90,7 @@ class OcdCatalogueService:
         return self.root
 
     def scan(self, progress=None) -> CatalogueScan:
-        """Read the article table of every range under the root.
-
-        ``progress(done, total, name)`` is called per range when given. Ranges
-        without OCD data are reported in ``skipped`` rather than failing the scan.
-        """
+        """Read changed catalogue article tables only; reuse unchanged parsed entries."""
         root = self._checked_root()
         try:
             folders = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
@@ -101,34 +98,45 @@ class OcdCatalogueService:
         except OSError as exc:
             raise CatalogueError(f"Cannot read {root}: {exc}") from exc
         result = CatalogueScan(root=root)
+        next_cache: dict[str, tuple[tuple[str, int, int], list[OcdProgram], tuple[str, str] | None]] = {}
         for index, folder in enumerate(folders):
             if progress is not None:
                 progress(index, len(folders), folder.name)
             try:
                 db = find_db_dir(folder)
                 if db is None:
-                    result.skipped.append((folder.name, "no OCD data (ocd_article.csv)"))
-                    continue
-                rows = self._loader.read_table(db, "article")
+                    signature = ("", 0, 0)
+                    skipped = (folder.name, "no OCD data (ocd_article.csv)")
+                    programs: list[OcdProgram] = []
+                else:
+                    stat = (db / "ocd_article.csv").stat()
+                    signature = (str(db), stat.st_mtime_ns, stat.st_size)
+                    cached = self._scan_cache.get(folder.name)
+                    if cached is not None and cached[0] == signature:
+                        programs, skipped = cached[1], cached[2]
+                    else:
+                        rows = self._loader.read_table(db, "article")
+                        by_manufacturer: dict[str, dict[str, int]] = {}
+                        for row in rows:
+                            manufacturer = (row.get("manufacturer") or "").strip()
+                            if not manufacturer or not (row.get("article_nr") or "").strip():
+                                continue
+                            counts = by_manufacturer.setdefault(manufacturer, {})
+                            series = (row.get("series") or "").strip()
+                            counts[series] = counts.get(series, 0) + 1
+                        programs = [OcdProgram(folder.name, manufacturer,
+                            tuple(sorted(series for series in counts if series)), db,
+                            sum(counts.values())) for manufacturer, counts in by_manufacturer.items()]
+                        skipped = (folder.name, "no articles") if not programs else None
             except OSError as exc:
-                result.skipped.append((folder.name, f"unreadable: {exc}"))
-                continue
-            by_manufacturer: dict[str, dict[str, int]] = {}
-            for row in rows:
-                manufacturer = (row.get("manufacturer") or "").strip()
-                if not manufacturer or not (row.get("article_nr") or "").strip():
-                    continue
-                counts = by_manufacturer.setdefault(manufacturer, {})
-                series = (row.get("series") or "").strip()
-                counts[series] = counts.get(series, 0) + 1
-            if not by_manufacturer:
-                result.skipped.append((folder.name, "no articles"))
-            for manufacturer, counts in by_manufacturer.items():
-                result.programs.append(OcdProgram(
-                    program=folder.name, manufacturer_id=manufacturer,
-                    series_ids=tuple(sorted(s for s in counts if s)), db_dir=db,
-                    article_count=sum(counts.values()),
-                ))
+                signature = ("", 0, 0)
+                programs = []
+                skipped = (folder.name, f"unreadable: {exc}")
+            next_cache[folder.name] = (signature, programs, skipped)
+            result.programs.extend(programs)
+            if skipped is not None:
+                result.skipped.append(skipped)
+        self._scan_cache = next_cache
         return result
 
     def _short_texts(self, db_dir: Path) -> dict[str, str]:
