@@ -102,7 +102,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._programs: list[OcdProgram] = []
         self._articles: list[OcdArticle] = []
         self._properties: list[PropertyInfo] = []
-        self._inspected_article: OcdArticle | None = None
         self._outcome: GenerationOutcome | None = None
         self._outcome_program: OcdProgram | None = None
         self._outcome_price_date = ""
@@ -310,7 +309,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._series.setEnabled(idle and self._series.count() > 1)
         self._load_articles_button.setEnabled(idle and has_program)
         self._article_filter.setEnabled(bool(self._articles))
-        self._inspect_button.setEnabled(idle and has_selection)
         self._generate_button.setEnabled(idle and has_selection)
         self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
         self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
@@ -572,96 +570,6 @@ class PconArticleObxGeneratorPage(BasePage):
                 self._article_table.setItem(row, column, item)
         self._article_count.setText(f"{len(rows)} of {len(self._articles)} articles")
         self._update_controls()
-
-    # ------------------------------------------------------------- properties
-    def _inspect_properties(self) -> None:
-        program = self._selected_program()
-        selected = self._selected_articles()
-        if program is None or not selected:
-            QMessageBox.information(self, "Inspect Properties", "Select at least one article first.")
-            return
-        article = selected[0]
-        generator = self._generator_for(program)
-
-        def work(reporter):
-            reporter.note(f"Reading {article.article_number} from the OCD data")
-            description = generator.describe(article.article_number)
-            reporter.advance("Properties read")
-            return description
-
-        self._start("Inspecting properties", work,
-                    lambda description: self._on_properties_loaded(article, description),
-                    subject=article.article_number)
-
-    def _on_properties_loaded(self, article: OcdArticle, description: ArticleDescription) -> None:
-        self._inspected_article = article
-        self._properties = list(description.properties)
-        configurable = [p for p in description.properties if p.values]
-        notes = f" {len(description.relations)} article relation(s)." if description.relations else ""
-        warning = f" {len(description.warnings)} data warning(s)." if description.warnings else ""
-        self._inspected_label.setText(
-            f"Inspected {article.article_number}: scheme {description.scheme_id or '—'}, "
-            f"{len(description.properties)} properties, {len(configurable)} with values "
-            f"(varied unless pinned).{notes}{warning}")
-        self._inspected_label.setToolTip("\n".join(
-            [f"{r.kind} {r.name}: {r.text}" for r in description.relations] + list(description.warnings)))
-        self._property_table.setRowCount(len(description.properties))
-        for row, prop in enumerate(description.properties):
-            key_item = QTableWidgetItem(prop.key)
-            key_item.setData(Qt.ItemDataRole.UserRole, prop)
-            self._property_table.setItem(row, 0, key_item)
-            self._property_table.setItem(row, 1, QTableWidgetItem(prop.label or prop.name))
-            self._property_table.setItem(row, 2, QTableWidgetItem(prop.default_value or ""))
-            has_values = bool(prop.values)
-            mode = QComboBox(self._property_table)
-            for mode_key, label in _MODE_LABELS.items():
-                mode.addItem(label, mode_key)
-            if prop.default_value is None:
-                mode.model().item(mode.findData(MODE_DEFAULT)).setEnabled(False)
-            mode.setEnabled(has_values)
-            mode.currentIndexChanged.connect(self._update_estimate)
-            self._property_table.setCellWidget(row, 3, mode)
-            value = QComboBox(self._property_table)
-            for choice in prop.values:
-                value.addItem(f"{choice.value} — {choice.label}" if choice.label else choice.value, choice.value)
-            if prop.default_value:
-                index = value.findData(prop.default_value)
-                if index >= 0:
-                    value.setCurrentIndex(index)
-            value.setEnabled(has_values)
-            self._property_table.setCellWidget(row, 4, value)
-            self._property_table.setItem(row, 5, QTableWidgetItem(str(len(prop.values))))
-            relations = list(prop.relations) + [r for v in prop.values for r in v.relations]
-            relation_item = QTableWidgetItem(str(len(relations)) if relations else "")
-            relation_item.setToolTip("\n".join(
-                f"{r.kind} {r.name}: {r.text}" for r in prop.relations) + "".join(
-                f"\n[{v.value}] {r.kind} {r.name}: {r.text}" for v in prop.values for r in v.relations))
-            self._property_table.setItem(row, 6, relation_item)
-        self._update_estimate()
-
-    def _current_rules(self) -> list[PropertyRule]:
-        rules: list[PropertyRule] = []
-        for row in range(self._property_table.rowCount()):
-            key_item = self._property_table.item(row, 0)
-            mode_widget = self._property_table.cellWidget(row, 3)
-            value_widget = self._property_table.cellWidget(row, 4)
-            if key_item is None or mode_widget is None or not mode_widget.isEnabled():
-                continue
-            mode = mode_widget.currentData() or MODE_VARY
-            if mode == MODE_VARY:
-                continue  # automatic mode varies it anyway
-            value = (value_widget.currentData() or "") if mode == MODE_FIXED and value_widget is not None else ""
-            rules.append(PropertyRule(key=key_item.text(), mode=mode, value=value))
-        return rules
-
-    def _update_estimate(self) -> None:
-        rules = self._current_rules()
-        varied, per_article = OcdArticleGenerator.estimate(self._properties, rules)
-        articles = max(1, len(self._selected_articles()))
-        self._estimate_label.setText(
-            f"{varied} varied propert{'y' if varied == 1 else 'ies'}; naive upper bound "
-            f"{per_article * articles} configuration(s) for {articles} article(s). The OCD Engine prunes values "
-            f"its relations exclude; generation stops at {self._max_configurations.value()} SKU(s).")
 
     # ------------------------------------------------------------- generation
     def _browse_output(self) -> None:
