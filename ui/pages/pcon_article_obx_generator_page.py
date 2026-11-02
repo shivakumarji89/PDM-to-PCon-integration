@@ -557,7 +557,6 @@ class PconArticleObxGeneratorPage(BasePage):
 
     def _on_article_selection_changed(self) -> None:
         self._update_controls()
-        self._update_estimate()
 
     def _populate_articles(self) -> None:
         needle = self._article_filter.text().strip().lower()
