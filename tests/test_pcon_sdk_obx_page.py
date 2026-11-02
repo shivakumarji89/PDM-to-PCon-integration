@@ -188,13 +188,12 @@ def _generate(widget, currency="EUR"):
 def test_page_has_no_plugin_connection_controls(no_plugin):
     widget = PconArticleObxGeneratorPage(context=None)
     assert widget.is_ready()
-    assert widget._load_catalog_button.isEnabled()
     assert not widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
     for removed in ("_connection_status", "_job_dir_label", "_check_button", "_install_button",
                     "_bridge", "_catalog", "_generation", "_discard_planning"):
         assert not hasattr(widget, removed)
     texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
-    assert {"Launch pCon.planner", "Load Catalogue", "Load Articles", "Inspect Properties",
+    assert {"Launch pCon.planner", "Load Articles", "Inspect Properties",
             "Generate Valid SKUs", "Export OBX"} <= texts
     assert not {"Check Connection", "Install Plugin"} & texts
     assert widget.header.title_label.text() == "Article OBX Generator (OCD Engine)"
@@ -489,11 +488,10 @@ def _names(table, column=0):
 
 def test_controls_wait_for_their_prerequisites(page):
     widget = page
-    assert widget._load_catalog_button.isEnabled()
     for control in (widget._manufacturer, widget._program, widget._series, widget._load_articles_button,
                     widget._article_filter, widget._inspect_button, widget._generate_button):
         assert not control.isEnabled()
-    assert "Load Catalogue" in widget._catalogue_status.text()
+    assert "automatically" in widget._catalogue_status.text().lower()
     _loaded(page)
     assert widget._manufacturer.isEnabled() and widget._program.isEnabled()
     assert widget._load_articles_button.isEnabled()
@@ -613,7 +611,6 @@ def test_missing_repository_is_reported_as_a_failure(tmp_path, monkeypatch):
     text = widget._catalogue_status.text()
     assert "Loading catalogue failed" in text and str(missing) in text
     page_module.QMessageBox.critical.assert_called_once()
-    assert widget._load_catalog_button.isEnabled()            # can be retried
     dispose(widget)
 
 
