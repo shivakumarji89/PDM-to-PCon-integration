@@ -119,11 +119,9 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.BULK_UPDATE: (
         WorkflowStep.MAINTENANCE,
     ),
-    # QA owns the complete OBX validation flow: build the article
-    # permutations/OBX first, then validate the generated deliverable.
+    # QA owns the OCD-backed Article OBX generator and validation flow.
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLE_OBX_GENERATOR,
         WorkflowStep.PCON_ARTICLE_OBX_GENERATOR,
         WorkflowStep.OBX_VALIDATION,
         WorkflowStep.CET_SIF_VALIDATION,
