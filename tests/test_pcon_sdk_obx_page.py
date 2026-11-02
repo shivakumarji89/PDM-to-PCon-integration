@@ -193,8 +193,9 @@ def test_page_has_no_plugin_connection_controls(no_plugin):
                     "_bridge", "_catalog", "_generation", "_discard_planning"):
         assert not hasattr(widget, removed)
     texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
-    assert {"Launch pCon.planner", "Load Articles", "Inspect Properties",
+    assert {"Launch pCon.planner", "Load Articles",
             "Generate Valid SKUs", "Export OBX"} <= texts
+    assert "Inspect Properties" not in texts and "Max SKUs:" not in texts
     assert not {"Check Connection", "Install Plugin"} & texts
     assert widget.header.title_label.text() == "Article OBX Generator (OCD Engine)"
     dispose(widget)
@@ -275,12 +276,11 @@ def test_selected_program_series_and_articles_reach_the_generator(tmp_path, monk
         context=None, catalogue=OcdCatalogueService(generation_root), generator_factory=Spy)
     _open_demo(widget)
     _pick(widget, "chair1")
-    widget._max_configurations.setValue(7)
     widget._price_date.setDate(QDate.fromString("2026-02-03", "yyyy-MM-dd"))
     _generate(widget, "GBP")
     assert seen["db_dir"] == generation_root / "demo" / "ANY" / "1" / "db"
     assert seen["articles"] == ["CHAIR1"]
-    assert (seen["currency"], seen["price_date"], seen["max_configurations"]) == ("GBP", "2026-02-03", 7)
+    assert (seen["currency"], seen["price_date"], seen["max_configurations"]) == ("GBP", "2026-02-03", None)
     dispose(widget)
 
 
@@ -489,7 +489,7 @@ def _names(table, column=0):
 def test_controls_wait_for_their_prerequisites(page):
     widget = page
     for control in (widget._manufacturer, widget._program, widget._series, widget._load_articles_button,
-                    widget._article_filter, widget._inspect_button, widget._generate_button):
+                    widget._article_filter, widget._generate_button):
         assert not control.isEnabled()
     assert "automatically" in widget._catalogue_status.text().lower()
     _loaded(page)
