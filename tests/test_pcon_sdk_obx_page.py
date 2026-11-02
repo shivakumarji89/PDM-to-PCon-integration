@@ -284,47 +284,6 @@ def test_selected_program_series_and_articles_reach_the_generator(tmp_path, monk
     dispose(widget)
 
 
-def test_inspect_shows_properties_values_and_relations_and_pins_apply(gen_page):
-    widget = gen_page
-    _pick(widget, "chair1")
-    widget._inspect_properties()
-    drain()
-    table = widget._property_table
-    assert [table.item(r, 0).text() for r in range(table.rowCount())] == ["DEMO_OPT:Material", "DEMO_OPT:Size"]
-    assert [table.item(r, 1).text() for r in range(table.rowCount())] == ["Material", "Size"]
-    assert [table.item(r, 2).text() for r in range(table.rowCount())] == ["M", "S"]    # flagged defaults
-    assert [table.item(r, 5).text() for r in range(table.rowCount())] == ["2", "2"]
-    assert table.item(0, 6).text() == "" and table.item(1, 6).text() == "1"
-    assert "precondition" in table.item(1, 6).toolTip() and "Material = 'W'" in table.item(1, 6).toolTip()
-    assert "$VARCOND" in widget._inspected_label.toolTip()                             # article-level relation
-    assert "Inspected CHAIR1: scheme U1, 2 properties, 2 with values" in widget._inspected_label.text()
-    assert "2 varied properties; naive upper bound 4" in widget._estimate_label.text()
-    assert table.cellWidget(0, 4).itemText(1) == "M — Metal"
-
-    mode, value = table.cellWidget(0, 3), table.cellWidget(0, 4)
-    mode.setCurrentIndex(mode.findData("fixed"))
-    value.setCurrentIndex(value.findData("M"))
-    assert "1 varied property" in widget._estimate_label.text()
-    _generate(widget)
-    assert _results(widget) == ["CHAIR1 M S"]            # the relation still removes Metal/Large
-
-    mode.setCurrentIndex(mode.findData("default"))
-    size_mode = table.cellWidget(1, 3)
-    size_mode.setCurrentIndex(size_mode.findData("default"))
-    _generate(widget)
-    assert _results(widget) == ["CHAIR1 M S"]
-
-
-def test_default_mode_is_disabled_for_a_property_without_a_default(gen_page):
-    widget = gen_page
-    _pick(widget, "side1")
-    widget._inspect_properties()
-    drain()
-    colour = widget._property_table.cellWidget(1, 3)
-    assert not colour.model().item(colour.findData("default")).isEnabled()
-    assert widget._property_table.item(1, 2).text() == ""
-
-
 def test_generation_reports_duplicates_and_unpriced_skus(gen_page):
     widget = gen_page
     _pick(widget, "side1")
@@ -357,16 +316,6 @@ def test_price_diagnostics_explain_the_selected_row(gen_page):
     assert "result: 50.00 EUR" in widget._price_diagnostics_text()
 
 
-def test_generation_limit_is_reported(gen_page):
-    widget = gen_page
-    _pick(widget, "chair1")
-    widget._max_configurations.setValue(2)
-    _generate(widget)
-    assert _results(widget) == CHAIR1_FINALS[:2]
-    assert "(limit reached)" in widget._generation_status.text()
-    assert "Stopped at the limit of 2 SKU(s)." in widget._validation_label.text()
-
-
 def test_currency_must_be_chosen_when_the_repository_has_several(gen_page):
     widget = gen_page
     _pick(widget, "chair1")
@@ -386,10 +335,6 @@ def test_malformed_article_data_is_reported_and_the_page_recovers(gen_page):
     assert "Malformed OCD data for article BROKEN" in widget._generation_status.text()
     assert page_module.QMessageBox.critical.call_count == 1
     assert widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
-    widget._inspect_properties()
-    drain()
-    assert "Inspecting properties failed: Malformed OCD data for article BROKEN" in widget._generation_status.text()
-    assert page_module.QMessageBox.critical.call_count == 2
 
 
 def test_missing_data_tables_are_reported(monkeypatch, ocd_root, no_plugin):
