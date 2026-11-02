@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QDate, QSettings, Qt
+from PySide6.QtCore import QDate, QSettings, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -94,6 +94,10 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generator_factory = generator_factory or OcdArticleGenerator
         self._generators: dict[Path, OcdArticleGenerator] = {}
         self._scan: CatalogueScan | None = None
+        self._catalogue_reader: OcdCatalogueService | None = None
+        self._catalogue_poll = QTimer(self)
+        self._catalogue_poll.setInterval(60_000)
+        self._catalogue_poll.timeout.connect(self._load_catalogue)
 
         self._programs: list[OcdProgram] = []
         self._articles: list[OcdArticle] = []
@@ -106,8 +110,10 @@ class PconArticleObxGeneratorPage(BasePage):
         self._run: ReportedTask | None = None
 
         self._build_content()
-        self._set_status(self._catalogue_status, "Click Load Catalogue to read the OCD repository.")
+        self._set_status(self._catalogue_status, "Loading OCD catalogue automatically…")
         self.refresh()
+        QTimer.singleShot(0, self._load_catalogue)
+        self._catalogue_poll.start()
 
     # ------------------------------------------------------------------ build
     def _build_content(self) -> None:
@@ -147,9 +153,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._series.currentIndexChanged.connect(self._on_series_changed)
         row.addWidget(self._series)
         row.addStretch(1)
-        self._load_catalog_button = self._button("Load Catalogue", self._load_catalogue)
         self._load_articles_button = self._button("Load Articles", self._load_articles)
-        row.addWidget(self._load_catalog_button)
         row.addWidget(self._load_articles_button)
         layout.addLayout(row)
 
@@ -338,7 +342,6 @@ class PconArticleObxGeneratorPage(BasePage):
         idle = self._run is None
         has_program = self._selected_program() is not None
         has_selection = bool(self._article_table.selectedIndexes())
-        self._load_catalog_button.setEnabled(idle)
         self._manufacturer.setEnabled(idle and self._manufacturer.count() > 0)
         self._program.setEnabled(idle and self._program.count() > 0)
         self._series.setEnabled(idle and self._series.count() > 1)
@@ -403,10 +406,14 @@ class PconArticleObxGeneratorPage(BasePage):
         label.setStyleSheet(f"color: {color};" if color else "")
 
     def _catalogue_service(self) -> OcdCatalogueService:
-        if self._catalogue_override is not None:
-            return self._catalogue_override
-        config = getattr(self._context, "config", None)
-        return OcdCatalogueService(getattr(config, "metatype_repository_root", "") or "")
+        if self._catalogue_reader is None:
+            if self._catalogue_override is not None:
+                self._catalogue_reader = self._catalogue_override
+            else:
+                config = getattr(self._context, "config", None)
+                self._catalogue_reader = OcdCatalogueService(
+                    getattr(config, "metatype_repository_root", "") or "")
+        return self._catalogue_reader
 
     def _selected_program(self) -> OcdProgram | None:
         return self._program.currentData()
@@ -450,6 +457,8 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # -------------------------------------------------------------- catalogue
     def _load_catalogue(self) -> None:
+        if self._run is not None and self._run.active:
+            return
         service = self._catalogue_service()
         self._set_status(self._catalogue_status, "Loading catalogue…")
 
@@ -467,24 +476,42 @@ class PconArticleObxGeneratorPage(BasePage):
                     subject=str(service.root or ""), status=self._catalogue_status)
 
     def _on_catalogue_loaded(self, scan: CatalogueScan) -> None:
+        previous = self._scan
+        if previous is not None and previous.root == scan.root and previous.programs == scan.programs and previous.skipped == scan.skipped:
+            self._set_status(self._catalogue_status,
+                             f"Catalogue up to date ({len(scan.programs)} program(s)); checking automatically.",
+                             theme.COLOR_OK)
+            return
+        manufacturer_id = self._manufacturer.currentData()
+        old_program = self._selected_program()
+        program_name = old_program.program if old_program is not None else ""
+        series_id = self._series.currentData() or ""
         self._scan = scan
         self._programs = scan.programs
         self._manufacturer.blockSignals(True)
         self._manufacturer.clear()
-        for manufacturer_id in scan.manufacturers():
-            self._manufacturer.addItem(manufacturer_id, manufacturer_id)
+        for item in scan.manufacturers():
+            self._manufacturer.addItem(item, item)
+        index = self._manufacturer.findData(manufacturer_id)
+        self._manufacturer.setCurrentIndex(index if index >= 0 else (0 if self._manufacturer.count() else -1))
         self._manufacturer.blockSignals(False)
         self._on_manufacturer_changed()
+        if program_name:
+            index = next((i for i in range(self._program.count())
+                          if self._program.itemData(i).program == program_name), -1)
+            if index >= 0:
+                self._program.setCurrentIndex(index)
+                series_index = self._series.findData(series_id)
+                if series_index >= 0:
+                    self._series.setCurrentIndex(series_index)
         skipped = f" {len(scan.skipped)} folder(s) without OCD data skipped." if scan.skipped else ""
         if not scan.programs:
-            self._set_status(
-                self._catalogue_status,
-                f"No OCD catalogue data found under {scan.root}.{skipped}", theme.COLOR_WARNING)
+            self._set_status(self._catalogue_status,
+                             f"No OCD catalogue data found under {scan.root}.{skipped}", theme.COLOR_WARNING)
             return
-        self._set_status(
-            self._catalogue_status,
-            f"Catalogue loaded: {len(scan.programs)} program(s), "
-            f"{self._manufacturer.count()} manufacturer(s).{skipped}", theme.COLOR_OK)
+        self._set_status(self._catalogue_status,
+                         f"Catalogue updated automatically: {len(scan.programs)} program(s), "
+                         f"{self._manufacturer.count()} manufacturer(s).{skipped}", theme.COLOR_OK)
 
     def _on_manufacturer_changed(self) -> None:
         manufacturer_id = self._manufacturer.currentData()
