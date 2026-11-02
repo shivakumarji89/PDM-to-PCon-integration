@@ -19,6 +19,10 @@ class WorkspaceHost:
         self._pages = pages
         self._current: WorkflowStep | None = None
 
+    def has_page(self, step: WorkflowStep) -> bool:
+        """Return whether a workflow step has a registered workspace."""
+        return step in self._pages
+
     def get(self, step: WorkflowStep):
         return self._pages[step]
 
