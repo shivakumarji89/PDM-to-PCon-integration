@@ -153,7 +153,7 @@ def test_every_registered_workflow_has_a_distinct_glyph():
         "PDM ↔ MDB Comparison", "Bulk Update", "SyteLine Export",
         "Create Metatype", "Property Values", "Texts", "Setup",
         "Relations / Ordering", "Final Review", "Repository Analysis",
-        "CET SIF Validation", "OBX Validation", "Article OBX Generator",
+        "CET SIF Validation", "OBX Validation",
         "Article OBX Generator (OCD Engine)", "Export PDM Data", "OAP",
     )
     glyphs = [workflow_glyph(title) for title in titles]
