@@ -111,7 +111,6 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # ------------------------------------------------------------------ build
     def _build_content(self) -> None:
-        self.add_content(self._build_connection_box())
         self.add_content(self._build_catalogue_box())
         properties = self._build_properties_box()
         self._normalize_group_boxes(properties)
@@ -127,14 +126,6 @@ class PconArticleObxGeneratorPage(BasePage):
         button.setStyleSheet(primary_button_qss(name) if primary else secondary_button_qss(name))
         button.clicked.connect(slot)
         return button
-
-    def _build_connection_box(self) -> QGroupBox:
-        box = QGroupBox("pCon.planner (optional)", self)
-        layout = QHBoxLayout(box)
-        layout.addStretch(1)
-        self._launch_button = self._button("Launch pCon.planner", self._launch_planner)
-        layout.addWidget(self._launch_button)
-        return box
 
     def _build_catalogue_box(self) -> QGroupBox:
         box = QGroupBox("Catalogue", self)
