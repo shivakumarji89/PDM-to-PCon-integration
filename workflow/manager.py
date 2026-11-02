@@ -39,7 +39,9 @@ class WorkflowManager(QObject):
         super().__init__()
         self._context = context
         self._host = host
-        self._steps = list(steps)
+        self._steps = [step for step in steps if self._host.has_page(step)]
+        if not self._steps:
+            raise ValueError("WorkflowManager requires at least one registered workspace step")
         self._session = WorkflowSession(current_step=self._steps[0])
         self._last_product_id: str | None = None
         self.refresh()
@@ -61,11 +63,12 @@ class WorkflowManager(QObject):
         yet; the current workflow is then left unchanged until a real set is
         selected.
         """
-        if not steps:
+        available_steps = [step for step in steps if self._host.has_page(step)]
+        if not available_steps:
             return False
-        if steps == self._steps:
+        if available_steps == self._steps:
             return True
-        self._steps = list(steps)
+        self._steps = available_steps
         self._session = WorkflowSession(current_step=self._steps[0])
         self._last_product_id = None
         self.refresh()
