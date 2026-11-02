@@ -74,8 +74,6 @@ if CET_SIF_VALIDATION_ENABLED:
                      "Validate CET-generated SIF files (standalone tool)."),
         WorkflowItem(WorkflowStep.OBX_VALIDATION, "OBX Validation",
                      "Validate OBX files against PDM (standalone tool)."),
-        WorkflowItem(WorkflowStep.ARTICLE_OBX_GENERATOR, "Article OBX Generator",
-                     "Build article permutations, resolve repository prices, and generate an OBX for a specified date."),
     )
 
 # --- Article OBX Generator (pCon SDK) (self-contained, easily disconnectable) --
