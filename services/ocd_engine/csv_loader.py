@@ -95,6 +95,14 @@ class OcdCsvLoader:
                                  dg.Severity.ERROR)
         return dataset
 
+    def read_table(self, db_dir: str | Path, name: str) -> list[dict]:
+        """Rows of one table (e.g. ``"article"``) of an OCD folder; ``[]`` if it is absent."""
+        folder = Path(db_dir)
+        schema = load_schemas(folder).get(name)
+        if schema is None or not (folder / schema.file).is_file():
+            return []
+        return self._read(folder / schema.file, schema, dg.DiagnosticSink())
+
     def _read(self, path: Path, schema: TableSchema, sink: dg.DiagnosticSink) -> list[dict]:
         rows: list[dict] = []
         numeric = [any(t.startswith(p) for p in _NUMERIC) for t in schema.types] or \

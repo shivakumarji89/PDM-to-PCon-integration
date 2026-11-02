@@ -64,10 +64,18 @@ def test_currency_fallback_follows_spec_text_when_enabled():
     assert calc.price("A1", price_date="20260101", currency="EUR").total == D("100.00")
 
 
-def test_missing_base_price_means_no_total_and_error_diagnostic():
-    result = price([row("K", "X", "5")], ["K"])
-    assert result.total is None and result.diagnostics[0].code == dg.NO_BASE_PRICE
-    assert result.diagnostics[0].severity is dg.Severity.ERROR
+def test_base_rows_that_do_not_apply_mean_no_total_and_error_diagnostic():
+    result = price([row(currency="GBP"), row("K", "X", "5")], ["K"])
+    assert result.total is None and result.diagnostics[-1].code == dg.NO_BASE_PRICE
+    assert result.diagnostics[-1].severity is dg.Severity.ERROR
+
+
+def test_no_base_row_anywhere_prices_the_extra_charges_and_says_so():
+    # pCon prices these programs (Layout Studio, Bay Work Pod ...) as the sum of their X items
+    result = price([row("K", "X", "5"), row("J", "X", "7")], ["K", "J"])
+    assert result.total == D("12.00") and result.base is None
+    assert dg.PRICE_FROM_EXTRA_CHARGES in [d.code for d in result.diagnostics]
+    assert not any(d.severity in (dg.Severity.WARNING, dg.Severity.ERROR) for d in result.diagnostics)
 
 
 def test_percentage_base_is_ignored_and_percentage_extra_is_of_base():

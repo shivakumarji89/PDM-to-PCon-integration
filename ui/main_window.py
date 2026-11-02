@@ -180,9 +180,7 @@ class MainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("Ready - Article OBX Generator workspace")
         elif step == WorkflowStep.PCON_ARTICLE_OBX_GENERATOR:
-            self.statusBar().showMessage(
-                "Ready - Article OBX Generator (pCon SDK) workspace (requires pCon.planner)"
-            )
+            self.statusBar().showMessage("Ready - Article OBX Generator (OCD Engine) workspace")
         elif step == WorkflowStep.METATYPE_REPOSITORY_ANALYSIS:
             self.statusBar().showMessage("Ready - Repository Analysis workspace")
         elif step in metatype_steps:

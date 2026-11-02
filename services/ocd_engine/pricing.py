@@ -137,6 +137,67 @@ class PriceResult:
             return [(c.key, c.amount / self.total * 100) for c in self.components]
 
 
+@dataclass
+class KeyLookup:
+    """One (level, variant-condition) lookup and what became of its candidate rows."""
+    level: str
+    key: str                          # '' = unconditioned
+    candidates: int = 0               # rows of the article (or joker) for this level and key
+    joker: bool = False               # the candidates came from the joker article '*'
+    after_fixed: int = 0              # base prices must be fixed amounts
+    after_date: int = 0
+    after_scale: int = 0
+    after_currency: int = 0
+    chosen: PriceRow | None = None
+    reason: str = ""                  # why no row was usable ('' when one was chosen)
+
+
+@dataclass
+class PriceDiagnosis:
+    """What the price table holds for one article and how a lookup treated it (never the whole table)."""
+    article: str
+    price_type: str
+    price_date: str
+    currency: str
+    quantity: int
+    table_rows: int = 0               # rows in the whole price table
+    article_rows: int = 0             # rows keyed by the article
+    joker_rows: int = 0               # rows keyed by '*'
+    types: tuple[str, ...] = ()       # price types present for the article (own and joker rows)
+    levels: tuple[str, ...] = ()      # price levels present for the requested type (own and joker rows)
+    currencies: tuple[str, ...] = ()  # currencies present for the requested type (own and joker rows)
+    date_windows: tuple[str, ...] = ()  # "<from>-<to>" windows of the requested type (own and joker rows)
+    expected_keys: tuple[str, ...] = ()
+    has_base_rows: bool = False       # the article itself holds B rows of this type (the joker never does)
+    lookups: list[KeyLookup] = field(default_factory=list)
+
+    def lines(self) -> list[str]:
+        out = [
+            f"article {self.article!r}: {self.article_rows} row(s) of {self.table_rows} in the price table"
+            f" ({self.joker_rows} joker '*' row(s))",
+            f"price types {list(self.types)}; for type {self.price_type}: levels {list(self.levels)}, "
+            f"currencies {list(self.currencies)}, {len(self.date_windows)} date window(s)",
+            f"lookup: date {self.price_date}, currency {self.currency}, quantity {self.quantity}; "
+            f"keys {list(self.expected_keys)}",
+        ]
+        empty = []
+        for look in self.lookups:
+            label = f"{look.level}:{look.key or '(none)'}"
+            if not look.candidates and not (look.level == "B" and not look.key):
+                empty.append(label)                      # nothing to filter: listed once, below
+            elif look.chosen is not None:
+                out.append(f"  {label}: {look.chosen.value} {look.chosen.currency} "
+                           f"({look.chosen.date_from}-{look.chosen.date_to})"
+                           f"{' [joker *]' if look.joker else ''}")
+            else:
+                out.append(f"  {label}: {look.candidates} candidate(s) -> fixed {look.after_fixed} -> date "
+                           f"{look.after_date} -> scale {look.after_scale} -> currency {look.after_currency}; "
+                           f"{look.reason}")
+        if empty:
+            out.append(f"  no row of any kind for: {', '.join(empty)}")
+        return out
+
+
 class PriceCalculator:
     def __init__(self, rows: Iterable[PriceRow], rounding: Mapping[str, Sequence[RoundingStep]] | None = None,
                  *, currency_fallback: bool = False) -> None:
@@ -147,14 +208,34 @@ class PriceCalculator:
         self._currency_fallback = currency_fallback
 
     # ------------------------------------------------------------------ row choice (3.3)
-    def _choose(self, rows: list[PriceRow], *, price_date: str, currency: str, quantity: int,
-                result: PriceResult, label: str) -> PriceRow | None:
-        valid = [r for r in rows if r.date_from <= price_date <= r.date_to and r.scale_quantity <= quantity]
-        in_currency = [r for r in valid if r.currency == currency or not r.is_fix and not r.currency]
+    def _narrow(self, rows: list[PriceRow], *, level: str, price_date: str, currency: str, quantity: int):
+        """The 3.3 filters in order; returns the surviving rows after each stage."""
+        fixed = [r for r in rows if r.is_fix] if level == "B" else list(rows)   # 3.3(1)
+        dated = [r for r in fixed if r.date_from <= price_date <= r.date_to]
+        scaled = [r for r in dated if r.scale_quantity <= quantity]
+        in_currency = [r for r in scaled if r.currency == currency or not r.is_fix and not r.currency]
         if not in_currency and self._currency_fallback:
-            in_currency = valid
-        if not in_currency:
-            return None
+            in_currency = scaled
+        return fixed, dated, scaled, in_currency
+
+    @staticmethod
+    def _rejection(rows, fixed, dated, scaled, in_currency, *, level, price_date, currency, quantity) -> str:
+        """The first filter that emptied the candidate list, in words an author can act on."""
+        if not rows:
+            return f"no {level}-level row exists for this key (any date or currency)"
+        if not fixed:
+            return f"all {len(rows)} {level}-level row(s) are percentages; a base price must be a fixed amount"
+        if not dated:
+            windows = sorted({f"{r.date_from}-{r.date_to}" for r in fixed})
+            return f"no row is valid on {price_date}; valid windows: {', '.join(windows[:4])}" \
+                   + (" ..." if len(windows) > 4 else "")
+        if not scaled:
+            return f"no row has a scale quantity of at most {quantity}"
+        available = sorted({r.currency or "(none)" for r in scaled})
+        return f"no row in {currency} on {price_date}; currencies valid then: {', '.join(available)}"
+
+    def _choose(self, in_currency: list[PriceRow], *, result: PriceResult, label: str) -> PriceRow:
+        """Most appropriate of the rows that survived every 3.3 filter."""
         latest = max(r.date_from for r in in_currency)
         best = [r for r in in_currency if r.date_from == latest]
         # largest applicable scale quantity is the most specific entry
@@ -165,6 +246,28 @@ class PriceCalculator:
                 dg.AMBIGUOUS_PRICE_WINDOW, f"{len(best)} different price rows valid for {label}",
                 dg.Severity.WARNING, article=result.article, value=label))
         return best[0]
+
+    @staticmethod
+    def _candidates(own: list[PriceRow], joker: list[PriceRow], level: str, key: str) -> tuple[list[PriceRow], bool]:
+        rows = [r for r in own if r.level == level and r.var_cond == key]
+        if not rows and level in ("X", "D") and key:
+            # joker article: only if the article has no row of its own for this key
+            rows = [r for r in joker if r.level == level and r.var_cond == key]
+            return rows, bool(rows)
+        return rows, False
+
+    def _lookup(self, own: list[PriceRow], joker: list[PriceRow], level: str, key: str, *, price_date: str,
+                currency: str, quantity: int, result: PriceResult) -> KeyLookup:
+        rows, from_joker = self._candidates(own, joker, level, key)
+        fixed, dated, scaled, in_currency = self._narrow(rows, level=level, price_date=price_date,
+                                                         currency=currency, quantity=quantity)
+        look = KeyLookup(level, key, len(rows), from_joker, len(fixed), len(dated), len(scaled), len(in_currency))
+        if in_currency:
+            look.chosen = self._choose(in_currency, result=result, label=f"{level}:{key or '-'}")
+        else:
+            look.reason = self._rejection(rows, fixed, dated, scaled, in_currency, level=level,
+                                          price_date=price_date, currency=currency, quantity=quantity)
+        return look
 
     def _round(self, amount: Decimal, row: PriceRow) -> Decimal:
         steps = self._rounding.get(row.rounding_id) if row.rounding_id else None
@@ -188,26 +291,23 @@ class PriceCalculator:
         keys = [""] + [k.upper() for k in dict.fromkeys(varconds) if k]
         factors = {k.upper(): Decimal(str(v)) for k, v in (factors or {}).items()}
 
+        has_base = any(r.level == "B" for r in own)
         total = Decimal(0)
-        base: Decimal | None = None
+        base: Decimal | None = None                  # sum of the level-B items found (keyed or not)
+        base_misses: list[tuple[str, KeyLookup]] = []
         for level in ("B", "X", "D"):
             for key in keys:
-                rows = [r for r in own if r.level == level and r.var_cond == key]
-                if not rows and level in ("X", "D") and key:
-                    # joker article: only if the article has no row of its own for this key
-                    rows = [r for r in joker if r.level == level and r.var_cond == key]
-                label = f"{level}:{key or '-'}"
-                if level == "B":
-                    rows = [r for r in rows if r.is_fix]          # 3.3(1): a base price must be fixed
-                row = self._choose(rows, price_date=date, currency=cur, quantity=quantity,
-                                   result=result, label=label) if rows else None
+                look = self._lookup(own, joker, level, key, price_date=date, currency=cur, quantity=quantity,
+                                    result=result)
+                row = look.chosen
                 if row is None:
-                    if rows or (level == "B" and key == ""):
-                        code = dg.NO_BASE_PRICE if level == "B" and key == "" else dg.NO_PRICE_FOR_KEY
+                    if level == "B":
+                        base_misses.append((key, look))
+                    if look.candidates:
                         result.diagnostics.append(dg.Diagnostic(
-                            code, f"no usable {level} price row for key {key or '(none)'} on {date} in {cur}",
-                            dg.Severity.ERROR if code == dg.NO_BASE_PRICE else dg.Severity.WARNING,
-                            article=article, value=key))
+                            dg.NO_PRICE_FOR_KEY,
+                            f"no usable {level} price row for key {key or '(none)'} on {date} in {cur}: "
+                            f"{look.reason}", dg.Severity.WARNING, article=article, value=key))
                     elif level in ("X", "D") and key:
                         result.diagnostics.append(dg.Diagnostic(
                             dg.NO_PRICE_FOR_KEY, f"variant condition {key} has no price row",
@@ -231,10 +331,71 @@ class PriceCalculator:
                         "discount (level D) applied by the specification text only; unverified against data",
                         dg.Severity.WARNING, article=article, value=key))
                 total += amount
-                if level == "B" and key == "":
-                    base = amount
+                if level == "B":
+                    base = (base or Decimal(0)) + amount
                 result.components.append(PriceComponent(key, level, amount, row, factor))
-        if base is None:
-            return result                                          # NO_BASE_PRICE already reported
-        result.base, result.total = base, total
+        if base is not None:
+            result.base, result.total = base, total
+            return result
+        if has_base:
+            # The article has base prices, but none applies to this configuration/date/currency.
+            key, look = next(((k, lk) for k, lk in base_misses if lk.candidates), base_misses[0])
+            reason = look.reason
+            if not look.candidates:
+                held = sorted({r.var_cond or "(none)" for r in own if r.level == "B"})
+                shown = f"({', '.join(held[:5])}{' ...' if len(held) > 5 else ''})"
+                assigned = [k for k in keys if k]
+                if assigned:
+                    reason = (f"the price relations assigned {', '.join(assigned[:3])}"
+                              f"{' ...' if len(assigned) > 3 else ''}, but the article's base prices are keyed by "
+                              f"other variant conditions {shown}")
+                else:
+                    reason = ("the article's base prices are keyed by other variant conditions "
+                              f"{shown} and the price relations assigned none of them")
+            result.diagnostics.append(dg.Diagnostic(
+                dg.NO_BASE_PRICE, f"no usable B price row for key {key or '(none)'} on {date} in {cur}: {reason}",
+                dg.Severity.ERROR, article=article, value=key))
+            return result
+        # The repository gives this article no base price at all (typical of programs that price every
+        # configuration through variant conditions). Only real rows are summed, and only when at least one
+        # matched and the sum is not zero.
+        if result.components and total != 0:
+            result.total = total
+            result.diagnostics.append(dg.Diagnostic(
+                dg.PRICE_FROM_EXTRA_CHARGES,
+                "the repository has no base (B) price row for this article; the price is the sum of "
+                f"{len(result.components)} extra-charge (X) item(s)", dg.Severity.INFO, article=article))
+            return result
+        reason = ("no extra-charge (X) item matched the configuration's variant conditions"
+                  if not result.components else "the matching extra-charge items sum to zero")
+        result.diagnostics.append(dg.Diagnostic(
+            dg.NO_BASE_PRICE,
+            f"no usable price on {date} in {cur}: the repository has no base (B) row for this article and {reason}",
+            dg.Severity.ERROR, article=article))
         return result
+
+    def diagnose(self, article: str, varconds: Sequence[str] = (), *, price_date: str, currency: str,
+                 price_type: str = "S", quantity: int = 1) -> PriceDiagnosis:
+        """The same lookups as :meth:`price`, with every stage's survivor count and the rejection reason."""
+        if not currency.strip() or not ymd(price_date):
+            raise ValueError("price_date and currency are required for price determination")
+        date, cur, ptype = ymd(price_date), currency.strip().upper(), price_type.upper()
+        everything = self._by_article.get(article, [])
+        joker_all = self._by_article.get("*", [])
+        own = [r for r in everything if r.price_type == ptype]
+        joker = [r for r in joker_all if r.price_type == ptype]
+        keys = [""] + [k.upper() for k in dict.fromkeys(varconds) if k]
+        scratch = PriceResult(article, cur, date)
+        diagnosis = PriceDiagnosis(
+            article=article, price_type=ptype, price_date=date, currency=cur, quantity=quantity,
+            table_rows=sum(len(v) for v in self._by_article.values()), article_rows=len(everything),
+            joker_rows=len(joker_all), types=tuple(sorted({r.price_type for r in everything + joker_all})),
+            levels=tuple(sorted({r.level for r in own + joker})),
+            currencies=tuple(sorted({r.currency for r in own + joker} - {""})),
+            date_windows=tuple(sorted({f"{r.date_from}-{r.date_to}" for r in own + joker})),
+            expected_keys=tuple(keys), has_base_rows=any(r.level == "B" for r in own))
+        for level in ("B", "X", "D"):
+            for key in keys:
+                diagnosis.lookups.append(self._lookup(own, joker, level, key, price_date=date, currency=cur,
+                                                      quantity=quantity, result=scratch))
+        return diagnosis

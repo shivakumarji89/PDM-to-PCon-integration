@@ -43,6 +43,11 @@ class ArticlePermutation:
     is_super_item: bool = False
     properties: tuple[ArticleConfigurationValue, ...] = ()
     options: tuple[ArticleConfigurationValue, ...] = ()
+    #: Ready-made ``Class.Property=Value;...`` string (OCD repository path). When set the
+    #: serializer writes it verbatim instead of deriving it from the series and class suffix.
+    ofml_varcode: str = ""
+    #: Series of this article; overrides the serializer's single ``series_id`` when set.
+    series_id: str = ""
 
     @property
     def all_values(self) -> tuple[ArticleConfigurationValue, ...]:

@@ -4,6 +4,7 @@ This folder holds pCon/OFML **reference material**, split strictly into two kind
 
 - **[Specifications/](./Specifications/)** — external, vendor-authored EasternGraphics/pCon specifications (OFML, OCD, ODB, OAP, Metatype, GO, app notes), auto-converted from the original PDFs for AI/text consumption. These are normative external documents — cite them, never paraphrase them into MK Workbench conclusions.
 - **[SDK_Article_OBX_Generator.md](./SDK_Article_OBX_Generator.md)** — evidence-based investigation of the pCon.planner Plugin SDK 8.15 (catalogue, article configuration, basket/OBX export APIs, limitations) and the implementation reference for `QA → Article OBX Generator (pCon SDK)`, including the `tools/pcon_obx_plugin` plugin.
+- **[Article_OBX_Generator/](./Article_OBX_Generator/)** — the standalone `QA → Article OBX Generator (OCD Engine)`: package investigation (`p-bk_1.14.4_Installer.zip` is a binary installer with no reusable code), the OCD repository data model as read, and the architecture (no pCon plugin involved).
 - **[Investigation/](./Investigation/)** — MK Workbench's own forensic findings from investigating pCon.creator, PDM↔pCon mapping, and the overall canonical model. These are MK Workbench conclusions, evidence-backed but our own, not vendor text.
 
 ## Documentation scope note

@@ -78,6 +78,18 @@ class ArticleObxService(BaseService):
         )
         return result
 
+    def render(self, rows, *, manufacturer_id: str, series_id: str = "", ofml_class_suffix: str = "_OPT",
+               exclude_features: set[str] | None = None,
+               final_article_mode: str = FINAL_PREDICTED) -> str:
+        """Serialize already generated and priced rows (no snapshot, no PDM)."""
+        if final_article_mode not in {FINAL_PREDICTED, FINAL_OMIT, FINAL_SENTINEL}:
+            raise ValueError(f"unknown final_article_mode {final_article_mode!r}")
+        exclusions = set(exclude_features) if exclude_features is not None else set(_DEFAULT_EXCLUSIONS)
+        return self._render_xml(
+            rows, manufacturer_id=manufacturer_id, series_id=series_id,
+            ofml_class_suffix=ofml_class_suffix, exclusions=exclusions, final_mode=final_article_mode,
+        )
+
     @staticmethod
     def _pcon_name(name: str) -> str:
         qualifier = name.find(" (")
@@ -95,9 +107,11 @@ class ArticleObxService(BaseService):
         })
         items = ET.SubElement(root, "items")
 
+        default_series = series_id
         for row in rows:
             p = row.permutation
             price = row.price
+            series_id = p.series_id or default_series
             bsk = ET.SubElement(items, "bskArticle", {"itemType": "BasketAggregate", "updateState": "Migratable"})
             ET.SubElement(bsk, "manufacturer", {"id": manufacturer_id})
             ET.SubElement(bsk, "series", {"id": series_id})
@@ -141,6 +155,8 @@ class ArticleObxService(BaseService):
         return "<?xml version='1.0' encoding='utf-8'?>\n" + ET.tostring(root, encoding="unicode")
 
     def _varcode(self, permutation, series_id, suffix, exclusions):
+        if permutation.ofml_varcode:
+            return permutation.ofml_varcode
         parts = []
         ofml_class = series_id + suffix
         for value in permutation.all_values:

@@ -1,24 +1,23 @@
-"""QA → Article OBX Generator (pCon SDK) workspace.
+"""QA → Article OBX Generator (OCD Engine) workspace.
 
-Automatic valid-SKU generation: the user picks manufacturer, program and base
-articles and clicks *Generate Valid SKUs*. The MK OBX Generator plugin hosted
-in pCon.planner then enumerates every configuration pCon's own product data
-accepts (live value sets after each selection), creates the configured article
-instances and exports them to one OBX. Inspecting properties is optional and
-only serves to pin or exclude properties. See
-``docs/04_Reference/pCon/SDK_Article_OBX_Generator.md``.
+Fully standalone: the OCD repository folder is read directly (``OcdCatalogueService``), valid SKUs
+are enumerated by the OCD Engine (``OcdArticleGenerator``) and exported with the existing OBX
+serializer (``ocd_repository_obx``). No pCon plugin, job folder or running pCon.planner is needed;
+*Launch pCon.planner* is only a convenience for opening the generated OBX afterwards.
+See ``docs/04_Reference/pCon/Article_OBX_Generator/``.
 """
 from __future__ import annotations
 
 import os
 import subprocess
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QDate, QSettings, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
+    QDateEdit,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -35,43 +35,52 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services.pcon_sdk_obx import (
-    BridgeSettings,
-    PconCatalogService,
-    PconConfigurationService,
-    PconObxGenerationService,
-    PconPluginBridge,
-    PlanValidationError,
-    ReferenceObxComparer,
+from services.article_obx.ocd_repository_obx import compare_with_reference, export_obx
+from services.ocd_engine.catalogue import (
+    CatalogueScan,
+    OcdArticle,
+    OcdCatalogueService,
+    OcdProgram,
 )
-from services.pcon_sdk_obx.configuration_service import MODE_DEFAULT, MODE_FIXED, MODE_VARY
-from services.pcon_sdk_obx.protocol import (
-    ArticleProperty,
-    CatalogArticle,
-    CatalogPackage,
+from services.ocd_engine.generator import (
+    MODE_DEFAULT,
+    MODE_FIXED,
+    MODE_VARY,
+    ArticleDescription,
+    GenerationError,
+    GenerationOutcome,
+    OcdArticleGenerator,
+    PropertyInfo,
     PropertyRule,
 )
 from ui import theme
-from ui.components import SectionHeader
 from ui.components._styles import primary_button_qss, secondary_button_qss
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
 from ui.workers.background_task import ReportedTask
 
-_MODE_LABELS = {MODE_VARY: "Vary (auto)", MODE_FIXED: "Fixed value", MODE_DEFAULT: "Keep pCon default"}
+_MODE_LABELS = {MODE_VARY: "Vary (auto)", MODE_FIXED: "Fixed value", MODE_DEFAULT: "Default value"}
+_MAX_CONFIGURATIONS_LIMIT = 20000
 _SETTINGS_PREFIX = "pcon_sdk_obx/"
 
 
+
 class PconArticleObxGeneratorPage(BasePage):
-    """Standalone QA workspace; needs pCon.planner, not a PDM product."""
+    """Standalone QA workspace; needs neither pCon.planner nor a PDM product.
+
+    ``bridge`` is only the optional launcher used by *Launch pCon.planner*; ``catalogue`` and
+    ``generator_factory`` let callers substitute the repository readers.
+    """
 
     def __init__(self, context, parent: QWidget | None = None,
-                 bridge: PconPluginBridge | None = None) -> None:
+                 bridge=None,
+                 catalogue: OcdCatalogueService | None = None,
+                 generator_factory: Callable[[Path], OcdArticleGenerator] | None = None) -> None:
         super().__init__(
-            title="Article OBX Generator (pCon SDK)",
+            title="Article OBX Generator (OCD Engine)",
             description=(
-                "Select base articles and generate every valid SKU automatically. pCon.planner "
-                "evaluates relations, dependent properties and constraints through the Plugin SDK; "
+                "Select base articles and generate every valid SKU automatically. The standalone "
+                "OCD Engine evaluates relations, dependent properties and constraints; "
                 "the valid configured articles are exported to one OBX."
             ),
             parent=parent,
@@ -80,20 +89,24 @@ class PconArticleObxGeneratorPage(BasePage):
         )
         self._context = context
         self._settings = QSettings()
-        self._bridge = bridge or PconPluginBridge(self._load_bridge_settings())
-        self._catalog = PconCatalogService(self._bridge)
-        self._configuration = PconConfigurationService()
-        self._generation = PconObxGenerationService(self._bridge)
-        self._comparer = ReferenceObxComparer()
+        self._launcher = bridge                    # only ever used by Launch pCon.planner
+        self._catalogue_override = catalogue
+        self._generator_factory = generator_factory or OcdArticleGenerator
+        self._generators: dict[Path, OcdArticleGenerator] = {}
+        self._scan: CatalogueScan | None = None
 
-        self._packages: list[CatalogPackage] = []
-        self._articles: list[CatalogArticle] = []
-        self._properties: list[ArticleProperty] = []
-        self._inspected_article: CatalogArticle | None = None
-        self._outcome = None
+        self._programs: list[OcdProgram] = []
+        self._articles: list[OcdArticle] = []
+        self._properties: list[PropertyInfo] = []
+        self._inspected_article: OcdArticle | None = None
+        self._outcome: GenerationOutcome | None = None
+        self._outcome_program: OcdProgram | None = None
+        self._outcome_price_date = ""
+        self._exported_path = ""
         self._run: ReportedTask | None = None
 
         self._build_content()
+        self._set_status(self._catalogue_status, "Click Load Catalogue to read the OCD repository.")
         self.refresh()
 
     # ------------------------------------------------------------------ build
@@ -116,28 +129,11 @@ class PconArticleObxGeneratorPage(BasePage):
         return button
 
     def _build_connection_box(self) -> QGroupBox:
-        box = QGroupBox("pCon.planner Connection", self)
-        layout = QVBoxLayout(box)
-        layout.addWidget(SectionHeader(
-            "Plugin status",
-            "The MK OBX Generator plugin must be installed in pCon.planner and pCon.planner must be running.",
-        ))
-        self._connection_status = QLabel("", self)
-        self._connection_status.setWordWrap(True)
-        layout.addWidget(self._connection_status)
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Job folder:"))
-        self._job_dir_label = QLabel(str(self._bridge.job_dir), self)
-        self._job_dir_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        row.addWidget(self._job_dir_label, 1)
-        self._check_button = self._button("Check Connection", self._check_connection)
+        box = QGroupBox("pCon.planner (optional)", self)
+        layout = QHBoxLayout(box)
+        layout.addStretch(1)
         self._launch_button = self._button("Launch pCon.planner", self._launch_planner)
-        self._install_button = self._button("Install Plugin", self._install_plugin)
-        row.addWidget(self._check_button)
-        row.addWidget(self._launch_button)
-        row.addWidget(self._install_button)
-        layout.addLayout(row)
+        layout.addWidget(self._launch_button)
         return box
 
     def _build_catalogue_box(self) -> QGroupBox:
@@ -157,6 +153,7 @@ class PconArticleObxGeneratorPage(BasePage):
         row.addWidget(QLabel("Series:"))
         self._series = QComboBox(self)
         self._series.setMinimumWidth(90)
+        self._series.currentIndexChanged.connect(self._on_series_changed)
         row.addWidget(self._series)
         row.addStretch(1)
         self._load_catalog_button = self._button("Load Catalogue", self._load_catalogue)
@@ -164,6 +161,10 @@ class PconArticleObxGeneratorPage(BasePage):
         row.addWidget(self._load_catalog_button)
         row.addWidget(self._load_articles_button)
         layout.addLayout(row)
+
+        self._catalogue_status = QLabel("", self)
+        self._catalogue_status.setWordWrap(True)
+        layout.addWidget(self._catalogue_status)
 
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("Filter:"))
@@ -190,6 +191,7 @@ class PconArticleObxGeneratorPage(BasePage):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self._article_table.setMinimumHeight(140)
         self._article_table.setMaximumHeight(220)
+        self._article_table.itemSelectionChanged.connect(self._on_article_selection_changed)
         layout.addWidget(self._article_table)
         return box
 
@@ -199,26 +201,26 @@ class PconArticleObxGeneratorPage(BasePage):
         row = QHBoxLayout()
         self._inspect_button = self._button("Inspect Properties", self._inspect_properties)
         self._inspect_button.setToolTip(
-            "Optional: read the live properties of the first selected article to pin a value "
-            "or exclude a property. Without this, every configurable property is varied.")
+            "Read the properties, values and relations of the first selected article from the OCD "
+            "data, to pin a value. Without this, every property is varied.")
         row.addWidget(self._inspect_button)
         self._inspected_label = QLabel(
-            "All configurable properties are varied automatically. Inspect to pin or exclude properties.",
+            "All properties are varied automatically. Inspect an article to pin a value or see its relations.",
             self)
         self._inspected_label.setWordWrap(True)
         row.addWidget(self._inspected_label, 1)
-        row.addWidget(QLabel("Max configurations:"))
+        row.addWidget(QLabel("Max SKUs:"))
         self._max_configurations = QSpinBox(self)
-        self._max_configurations.setRange(1, PconConfigurationService.MAX_CONFIGURATIONS_LIMIT)
+        self._max_configurations.setRange(1, _MAX_CONFIGURATIONS_LIMIT)
         self._max_configurations.setValue(int(self._settings.value(_SETTINGS_PREFIX + "maxConfigurations", 500)))
         self._max_configurations.valueChanged.connect(self._update_estimate)
         row.addWidget(self._max_configurations)
         layout.addLayout(row)
 
         self._property_table = QTableWidget(self)
-        self._property_table.setColumnCount(6)
+        self._property_table.setColumnCount(7)
         self._property_table.setHorizontalHeaderLabels(
-            ["Key", "Name", "Current Value", "Mode", "Fixed Value", "Choices"])
+            ["Key", "Name", "Default Value", "Mode", "Fixed Value", "Choices", "Relations"])
         self._property_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._property_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._property_table.setAlternatingRowColors(True)
@@ -230,6 +232,7 @@ class PconArticleObxGeneratorPage(BasePage):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self._property_table.setMinimumHeight(160)
         self._property_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self._property_table, 1)
@@ -249,16 +252,37 @@ class PconArticleObxGeneratorPage(BasePage):
         self._output_path.setPlaceholderText("C:\\path\\to\\generated.obx")
         row.addWidget(self._output_path, 1)
         row.addWidget(self._button("Browse…", self._browse_output))
-        self._discard_planning = QCheckBox("Discard unsaved pCon.planner planning", self)
-        self._discard_planning.setToolTip(
-            "Generation starts a new planning in pCon.planner. Tick to allow discarding unsaved work.")
-        row.addWidget(self._discard_planning)
+        layout.addLayout(row)
+
+        action_row = QHBoxLayout()
+        action_row.addWidget(QLabel("Currency:"))
+        self._currency = QComboBox(self)
+        self._currency.setEditable(True)
+        self._currency.setMinimumWidth(80)
+        self._currency.setToolTip("Currencies found in the repository price table; filled once articles are read.")
+        action_row.addWidget(self._currency)
+        action_row.addWidget(QLabel("Price date:"))
+        self._price_date = QDateEdit(QDate.currentDate(), self)
+        self._price_date.setCalendarPopup(True)
+        self._price_date.setDisplayFormat("yyyy-MM-dd")
+        action_row.addWidget(self._price_date)
+        action_row.addStretch(1)
         self._generate_button = self._button("Generate Valid SKUs", self._generate, primary=True)
         self._generate_button.setToolTip(
-            "Enumerate every valid configuration of the selected base articles in pCon.planner, "
-            "create the configured articles and export them to the OBX file.")
-        row.addWidget(self._generate_button)
-        layout.addLayout(row)
+            "Enumerate every valid configuration of the selected base articles with the OCD Engine "
+            "(relations, conditions, ArtBase restrictions) and price it.")
+        action_row.addWidget(self._generate_button)
+        self._export_button = self._button("Export OBX", self._export_obx)
+        self._export_button.setEnabled(False)
+        self._export_button.setToolTip("Write the priced SKUs to the output OBX file.")
+        action_row.addWidget(self._export_button)
+        self._diagnostics_button = self._button("Price Diagnostics…", self._show_price_diagnostics)
+        self._diagnostics_button.setEnabled(False)
+        self._diagnostics_button.setToolTip(
+            "Explain the price lookup of the selected result row (or the first row): price file, key, "
+            "candidate rows and why each was rejected.")
+        action_row.addWidget(self._diagnostics_button)
+        layout.addLayout(action_row)
 
         self._generation_status = QLabel("No generation run yet.", self)
         self._generation_status.setWordWrap(True)
@@ -296,15 +320,16 @@ class PconArticleObxGeneratorPage(BasePage):
         return box
 
     # --------------------------------------------------------------- settings
-    def _load_bridge_settings(self) -> BridgeSettings:
-        settings = BridgeSettings()
-        job_dir = self._settings.value(_SETTINGS_PREFIX + "jobDir", "", type=str)
-        if job_dir:
-            settings.job_dir = Path(job_dir)
-        planner = self._settings.value(_SETTINGS_PREFIX + "plannerExe", "", type=str)
-        if planner:
-            settings.planner_exe = planner
-        return settings
+    def _launcher_bridge(self):
+        """The pCon.planner launcher, created only when *Launch pCon.planner* is clicked."""
+        if self._launcher is None:
+            from services.pcon_sdk_obx import BridgeSettings, PconPluginBridge
+            settings = BridgeSettings()
+            planner = self._settings.value(_SETTINGS_PREFIX + "plannerExe", "", type=str)
+            if planner:
+                settings.planner_exe = planner
+            self._launcher = PconPluginBridge(settings)
+        return self._launcher
 
     def _save_settings(self) -> None:
         self._settings.setValue(_SETTINGS_PREFIX + "outputPath", self._output_path.text())
@@ -312,22 +337,26 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # ------------------------------------------------------------- lifecycle
     def refresh(self) -> None:
-        self._update_connection_status()
+        self._update_controls()
 
     def is_ready(self) -> bool:
         return True
 
-    def _update_connection_status(self) -> None:
-        alive = self._bridge.is_plugin_alive()
-        text = self._bridge.describe_status()
-        if not self._bridge.plugin_installed():
-            text += " Plugin is not installed in the user plugin folder."
-        self._connection_status.setText(text)
-        self._connection_status.setStyleSheet(
-            f"color: {theme.COLOR_OK if alive else theme.COLOR_WARNING};")
-        for button in (self._load_catalog_button, self._load_articles_button,
-                       self._inspect_button, self._generate_button):
-            button.setEnabled(alive and self._run is None)
+    def _update_controls(self) -> None:
+        """Enable every control only when its prerequisites are met."""
+        idle = self._run is None
+        has_program = self._selected_program() is not None
+        has_selection = bool(self._article_table.selectedIndexes())
+        self._load_catalog_button.setEnabled(idle)
+        self._manufacturer.setEnabled(idle and self._manufacturer.count() > 0)
+        self._program.setEnabled(idle and self._program.count() > 0)
+        self._series.setEnabled(idle and self._series.count() > 1)
+        self._load_articles_button.setEnabled(idle and has_program)
+        self._article_filter.setEnabled(bool(self._articles))
+        self._inspect_button.setEnabled(idle and has_selection)
+        self._generate_button.setEnabled(idle and has_selection)
+        self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
+        self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
 
     # --------------------------------------------------------------- helpers
     def _progress_monitor(self) -> ProgressDialog:
@@ -340,7 +369,8 @@ class PconArticleObxGeneratorPage(BasePage):
             self._progress_dialog = dialog
         return dialog
 
-    def _start(self, title: str, work, finished, *, steps: int = 1, subject: str = "") -> None:
+    def _start(self, title: str, work, finished, *, steps: int = 1, subject: str = "",
+               status: QLabel | None = None) -> None:
         """Run ``work(reporter)`` off the GUI thread with the shared progress dialog."""
         if self._run is not None and self._run.active:
             return
@@ -352,32 +382,63 @@ class PconArticleObxGeneratorPage(BasePage):
         reporter.begin(max(1, steps), title=title, subject=subject)
         dialog.show()
         dialog.raise_()
-        self._update_connection_status()
+        self._update_controls()
 
         def _done(result) -> None:
             self._run = None
             try:
                 finished(result)
             finally:
-                self._update_connection_status()
+                self._update_controls()
+
+        target = status or self._generation_status
 
         def _failed(message: str) -> None:
             self._run = None
-            self._update_connection_status()
-            self._generation_status.setText(f"{title} failed: {message}")
+            self._update_controls()
+            self._set_status(target, f"{title} failed: {message}", theme.COLOR_ERROR)
             QMessageBox.critical(self, title, f"{title} failed:\n\n{message}")
 
         def _cancelled(message: str) -> None:
             self._run = None
-            self._update_connection_status()
-            self._generation_status.setText(message)
+            self._update_controls()
+            self._set_status(target, message, theme.COLOR_WARNING)
 
         run.start(lambda emit: work(reporter), finished=_done, failed=_failed, cancelled=_cancelled)
 
-    def _selected_package(self) -> CatalogPackage | None:
+    @staticmethod
+    def _set_status(label: QLabel, text: str, color: str | None = None) -> None:
+        label.setText(text)
+        label.setStyleSheet(f"color: {color};" if color else "")
+
+    def _catalogue_service(self) -> OcdCatalogueService:
+        if self._catalogue_override is not None:
+            return self._catalogue_override
+        config = getattr(self._context, "config", None)
+        return OcdCatalogueService(getattr(config, "metatype_repository_root", "") or "")
+
+    def _selected_program(self) -> OcdProgram | None:
         return self._program.currentData()
 
-    def _selected_articles(self) -> list[CatalogArticle]:
+    def _generator_for(self, program: OcdProgram) -> OcdArticleGenerator:
+        """One generator (and so one loaded dataset) per program folder."""
+        key = Path(program.db_dir)
+        if key not in self._generators:
+            self._generators[key] = self._generator_factory(key)
+        return self._generators[key]
+
+    def _fill_currencies(self, currencies: list[str]) -> None:
+        current = self._currency.currentText().strip()
+        self._currency.clear()
+        self._currency.addItems(currencies)
+        if current:
+            self._currency.setCurrentText(current)
+        elif len(currencies) == 1:
+            self._currency.setCurrentIndex(0)
+        else:
+            self._currency.setCurrentIndex(-1)
+
+    def _selected_articles(self) -> list[OcdArticle]:
         rows = sorted({index.row() for index in self._article_table.selectedIndexes()})
         selected = []
         for row in rows:
@@ -388,100 +449,130 @@ class PconArticleObxGeneratorPage(BasePage):
         return selected
 
     # ------------------------------------------------------------- connection
-    def _check_connection(self) -> None:
-        self._update_connection_status()
-        if self._bridge.is_plugin_alive():
-            try:
-                info = self._bridge.ping()
-            except Exception as exc:  # noqa: BLE001 - shown to the user
-                QMessageBox.warning(self, "Check Connection", str(exc))
-                return
-            languages = ", ".join(info.get("languages", []) or []) or "n/a"
-            self._connection_status.setText(
-                f"{self._bridge.describe_status()} Article languages: {languages}.")
-
     def _launch_planner(self) -> None:
         try:
-            self._bridge.launch_planner()
+            self._launcher_bridge().launch_planner()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Launch pCon.planner", str(exc))
             return
-        self._generation_status.setText(
-            "pCon.planner is starting. Use Check Connection once it is ready (the plugin "
-            "reports after the application finishes loading).")
-
-    def _install_plugin(self) -> None:
-        try:
-            target = self._bridge.install_plugin()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, "Install Plugin", str(exc))
-            return
-        QMessageBox.information(
-            self, "Install Plugin",
-            f"Plugin copied to:\n{target}\n\nRestart pCon.planner to load it. The plugin only loads "
-            "with a registered hash or a Plugin SDK developer licence (see the SDK reference document).")
-        self._update_connection_status()
+        self._generation_status.setText("pCon.planner is starting.")
 
     # -------------------------------------------------------------- catalogue
     def _load_catalogue(self) -> None:
+        service = self._catalogue_service()
+        self._set_status(self._catalogue_status, "Loading catalogue…")
+
         def work(reporter):
-            reporter.note("Reading registered OFML packages from pCon.planner")
-            packages = self._catalog.list_packages()
-            reporter.advance("Packages loaded")
-            return packages
+            reporter.note("Reading the OCD repository")
 
-        self._start("Loading catalogue", work, self._on_catalogue_loaded)
+            def progress(done: int, total: int, name: str) -> None:
+                reporter.note(f"Reading {name} ({done + 1}/{total})")
 
-    def _on_catalogue_loaded(self, packages: list[CatalogPackage]) -> None:
-        self._packages = packages
+            scan = service.scan(progress)
+            reporter.advance("Catalogue loaded")
+            return scan
+
+        self._start("Loading catalogue", work, self._on_catalogue_loaded,
+                    subject=str(service.root or ""), status=self._catalogue_status)
+
+    def _on_catalogue_loaded(self, scan: CatalogueScan) -> None:
+        self._scan = scan
+        self._programs = scan.programs
         self._manufacturer.blockSignals(True)
         self._manufacturer.clear()
-        for manufacturer_id, name in self._catalog.manufacturers(packages):
-            self._manufacturer.addItem(f"{name} ({manufacturer_id})", manufacturer_id)
+        for manufacturer_id in scan.manufacturers():
+            self._manufacturer.addItem(manufacturer_id, manufacturer_id)
         self._manufacturer.blockSignals(False)
         self._on_manufacturer_changed()
-        self._generation_status.setText(
-            f"Catalogue loaded: {len(packages)} package(s), "
-            f"{self._manufacturer.count()} manufacturer(s).")
+        skipped = f" {len(scan.skipped)} folder(s) without OCD data skipped." if scan.skipped else ""
+        if not scan.programs:
+            self._set_status(
+                self._catalogue_status,
+                f"No OCD catalogue data found under {scan.root}.{skipped}", theme.COLOR_WARNING)
+            return
+        self._set_status(
+            self._catalogue_status,
+            f"Catalogue loaded: {len(scan.programs)} program(s), "
+            f"{self._manufacturer.count()} manufacturer(s).{skipped}", theme.COLOR_OK)
 
     def _on_manufacturer_changed(self) -> None:
         manufacturer_id = self._manufacturer.currentData()
         self._program.blockSignals(True)
         self._program.clear()
-        for package in self._catalog.programs_for(self._packages, manufacturer_id or ""):
-            self._program.addItem(package.label, package)
+        if self._scan is not None and manufacturer_id:
+            for program in self._scan.programs_for(manufacturer_id):
+                self._program.addItem(f"{program.program} ({program.article_count})", program)
         self._program.blockSignals(False)
         self._on_program_changed()
 
     def _on_program_changed(self) -> None:
-        package = self._selected_package()
+        program = self._selected_program()
+        self._series.blockSignals(True)
         self._series.clear()
-        if package is not None:
-            self._series.addItem("(by package)", "")
-            for program_id in package.program_ids:
-                self._series.addItem(program_id, program_id)
-            if len(package.program_ids) == 1:
+        if program is not None:
+            self._series.addItem("(all series)", "")
+            for series_id in program.series_ids:
+                self._series.addItem(series_id, series_id)
+            if len(program.series_ids) == 1:
                 self._series.setCurrentIndex(1)
+        self._series.blockSignals(False)
+        self._on_series_changed()
+
+    def _on_series_changed(self) -> None:
+        """Any change upstream invalidates the loaded articles; they must be loaded again."""
+        had_articles = bool(self._articles)
         self._articles = []
+        self._article_filter.clear()
         self._populate_articles()
+        if had_articles:
+            self._set_status(self._catalogue_status, "Selection changed - load the articles again.")
+        elif self._selected_program() is not None:
+            self._set_status(self._catalogue_status, "Choose a series and click Load Articles.")
+        self._update_controls()
 
     def _load_articles(self) -> None:
-        package = self._selected_package()
-        if package is None:
+        program = self._selected_program()
+        if program is None:
             QMessageBox.information(self, "Load Articles", "Load the catalogue and choose a program first.")
             return
+        series_id = self._series.currentData() or ""
+        service = self._catalogue_service()
+        label = f"{program.program}" + (f" / {series_id}" if series_id else "")
+        self._set_status(self._catalogue_status, f"Loading articles of {label}…")
+
+        generator = self._generator_for(program)
 
         def work(reporter):
-            reporter.note(f"Reading catalogue items of {package.label}")
-            articles = self._catalog.list_articles(package)
+            reporter.note(f"Reading catalogue articles of {label}")
+            articles = service.list_articles(program, series_id)
+            try:
+                currencies = generator.currencies()     # prices are optional until a SKU run needs them
+            except GenerationError:
+                currencies = []
             reporter.advance("Articles loaded")
-            return articles
+            return articles, currencies
 
-        self._start("Loading articles", work, self._on_articles_loaded, subject=package.label)
+        def finished(result):
+            articles, currencies = result
+            self._fill_currencies(currencies)
+            self._on_articles_loaded(articles, label)
 
-    def _on_articles_loaded(self, articles: list[CatalogArticle]) -> None:
-        self._articles = articles
+        self._start("Loading articles", work, finished, subject=label, status=self._catalogue_status)
+
+    def _on_articles_loaded(self, articles: list[OcdArticle], label: str = "") -> None:
+        self._articles = list(articles)
         self._populate_articles()
+        if self._articles:
+            self._set_status(self._catalogue_status,
+                             f"Loaded {len(self._articles)} article(s) of {label}.", theme.COLOR_OK)
+        else:
+            self._set_status(self._catalogue_status,
+                             f"No articles found for {label}.", theme.COLOR_WARNING)
+        self._update_controls()
+
+    def _on_article_selection_changed(self) -> None:
+        self._update_controls()
+        self._update_estimate()
 
     def _populate_articles(self) -> None:
         needle = self._article_filter.text().strip().lower()
@@ -491,66 +582,80 @@ class PconArticleObxGeneratorPage(BasePage):
         ]
         self._article_table.setRowCount(len(rows))
         for row, article in enumerate(rows):
-            values = [article.article_number, article.variant_code or "—", article.label, article.package_name]
+            values = [article.article_number, "—", article.label, article.program]   # OCD has no variant code
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                item.setToolTip(article.description or value)
+                item.setToolTip(article.label or value)
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, article)
                 self._article_table.setItem(row, column, item)
         self._article_count.setText(f"{len(rows)} of {len(self._articles)} articles")
+        self._update_controls()
 
     # ------------------------------------------------------------- properties
     def _inspect_properties(self) -> None:
-        package = self._selected_package()
+        program = self._selected_program()
         selected = self._selected_articles()
-        if package is None or not selected:
+        if program is None or not selected:
             QMessageBox.information(self, "Inspect Properties", "Select at least one article first.")
             return
         article = selected[0]
-        series_id = self._series.currentData() or ""
+        generator = self._generator_for(program)
 
         def work(reporter):
-            reporter.note(f"Instantiating {article.article_number} in pCon.planner")
-            info, properties = self._catalog.describe_article(package, article, series_id)
+            reporter.note(f"Reading {article.article_number} from the OCD data")
+            description = generator.describe(article.article_number)
             reporter.advance("Properties read")
-            return info, properties
+            return description
 
         self._start("Inspecting properties", work,
-                     lambda result: self._on_properties_loaded(article, *result),
-                     subject=article.article_number)
+                    lambda description: self._on_properties_loaded(article, description),
+                    subject=article.article_number)
 
-    def _on_properties_loaded(self, article: CatalogArticle, info, properties: list[ArticleProperty]) -> None:
+    def _on_properties_loaded(self, article: OcdArticle, description: ArticleDescription) -> None:
         self._inspected_article = article
-        self._properties = properties
-        selectable = {p.key for p in self._configuration.selectable_properties(properties)}
+        self._properties = list(description.properties)
+        configurable = [p for p in description.properties if p.values]
+        notes = f" {len(description.relations)} article relation(s)." if description.relations else ""
+        warning = f" {len(description.warnings)} data warning(s)." if description.warnings else ""
         self._inspected_label.setText(
-            f"Inspected {article.article_number}: default final article {info.final_number or '—'}, "
-            f"{len(properties)} properties, {len(selectable)} configurable (varied unless pinned/excluded)."
-        )
-        self._property_table.setRowCount(len(properties))
-        for row, prop in enumerate(properties):
+            f"Inspected {article.article_number}: scheme {description.scheme_id or '—'}, "
+            f"{len(description.properties)} properties, {len(configurable)} with values "
+            f"(varied unless pinned).{notes}{warning}")
+        self._inspected_label.setToolTip("\n".join(
+            [f"{r.kind} {r.name}: {r.text}" for r in description.relations] + list(description.warnings)))
+        self._property_table.setRowCount(len(description.properties))
+        for row, prop in enumerate(description.properties):
             key_item = QTableWidgetItem(prop.key)
             key_item.setData(Qt.ItemDataRole.UserRole, prop)
             self._property_table.setItem(row, 0, key_item)
-            self._property_table.setItem(row, 1, QTableWidgetItem(prop.name or prop.key))
-            self._property_table.setItem(row, 2, QTableWidgetItem(prop.value_text or prop.value_key))
+            self._property_table.setItem(row, 1, QTableWidgetItem(prop.label or prop.name))
+            self._property_table.setItem(row, 2, QTableWidgetItem(prop.default_value or ""))
+            has_values = bool(prop.values)
             mode = QComboBox(self._property_table)
             for mode_key, label in _MODE_LABELS.items():
                 mode.addItem(label, mode_key)
-            mode.setEnabled(prop.key in selectable)
+            if prop.default_value is None:
+                mode.model().item(mode.findData(MODE_DEFAULT)).setEnabled(False)
+            mode.setEnabled(has_values)
             mode.currentIndexChanged.connect(self._update_estimate)
             self._property_table.setCellWidget(row, 3, mode)
             value = QComboBox(self._property_table)
-            for choice in prop.choices:
-                value.addItem(choice.text or choice.key, choice.key)
-            if prop.value_key:
-                index = value.findData(prop.value_key)
+            for choice in prop.values:
+                value.addItem(f"{choice.value} — {choice.label}" if choice.label else choice.value, choice.value)
+            if prop.default_value:
+                index = value.findData(prop.default_value)
                 if index >= 0:
                     value.setCurrentIndex(index)
-            value.setEnabled(prop.key in selectable)
+            value.setEnabled(has_values)
             self._property_table.setCellWidget(row, 4, value)
-            self._property_table.setItem(row, 5, QTableWidgetItem(str(len(prop.choices))))
+            self._property_table.setItem(row, 5, QTableWidgetItem(str(len(prop.values))))
+            relations = list(prop.relations) + [r for v in prop.values for r in v.relations]
+            relation_item = QTableWidgetItem(str(len(relations)) if relations else "")
+            relation_item.setToolTip("\n".join(
+                f"{r.kind} {r.name}: {r.text}" for r in prop.relations) + "".join(
+                f"\n[{v.value}] {r.kind} {r.name}: {r.text}" for v in prop.values for r in v.relations))
+            self._property_table.setItem(row, 6, relation_item)
         self._update_estimate()
 
     def _current_rules(self) -> list[PropertyRule]:
@@ -559,33 +664,23 @@ class PconArticleObxGeneratorPage(BasePage):
             key_item = self._property_table.item(row, 0)
             mode_widget = self._property_table.cellWidget(row, 3)
             value_widget = self._property_table.cellWidget(row, 4)
-            if key_item is None or mode_widget is None:
+            if key_item is None or mode_widget is None or not mode_widget.isEnabled():
                 continue
-            if not mode_widget.isEnabled():
-                continue  # not configurable: pCon keeps it, no instruction needed
             mode = mode_widget.currentData() or MODE_VARY
             if mode == MODE_VARY:
                 continue  # automatic mode varies it anyway
-            value_key = value_widget.currentData() if value_widget is not None else ""
-            rules.append(PropertyRule(key=key_item.text(), mode=mode,
-                                      value_key=value_key or "" if mode == MODE_FIXED else ""))
+            value = (value_widget.currentData() or "") if mode == MODE_FIXED and value_widget is not None else ""
+            rules.append(PropertyRule(key=key_item.text(), mode=mode, value=value))
         return rules
 
     def _update_estimate(self) -> None:
-        try:
-            rules = tuple(self._current_rules())
-        except ValueError as exc:
-            self._estimate_label.setText(str(exc))
-            return
-        estimate = self._configuration.estimate(self._properties, rules, vary_all=True)
+        rules = self._current_rules()
+        varied, per_article = OcdArticleGenerator.estimate(self._properties, rules)
         articles = max(1, len(self._selected_articles()))
-        bound = estimate.upper_bound * articles
         self._estimate_label.setText(
-            f"{estimate.varied} varied propert{'y' if estimate.varied == 1 else 'ies'}; naive upper bound "
-            f"{bound} configuration(s) for {articles} article(s). pCon.planner prunes values its relations "
-            f"exclude and may reveal further dependent properties; generation stops at "
-            f"{self._max_configurations.value()}."
-        )
+            f"{varied} varied propert{'y' if varied == 1 else 'ies'}; naive upper bound "
+            f"{per_article * articles} configuration(s) for {articles} article(s). The OCD Engine prunes values "
+            f"its relations exclude; generation stops at {self._max_configurations.value()} SKU(s).")
 
     # ------------------------------------------------------------- generation
     def _browse_output(self) -> None:
@@ -596,9 +691,9 @@ class PconArticleObxGeneratorPage(BasePage):
             self._output_path.setText(path)
 
     def _generate(self) -> None:
-        package = self._selected_package()
+        program = self._selected_program()
         articles = self._selected_articles()
-        if package is None or not articles:
+        if program is None or not articles:
             QMessageBox.information(self, "Generate OBX", "Select a program and at least one article.")
             return
         rules = self._current_rules()
@@ -607,107 +702,147 @@ class PconArticleObxGeneratorPage(BasePage):
             if any(a.article_number != inspected for a in articles):
                 answer = QMessageBox.question(
                     self, "Generate Valid SKUs",
-                    f"Pinned/excluded properties were inspected on {inspected} but other articles are "
-                    "selected. Rules for properties an article does not offer are skipped. Continue?")
-                if answer != QMessageBox.StandardButton.Yes:
-                    return
-        try:
-            plan = self._configuration.build_plan(
-                package=package, series_id=self._series.currentData() or "",
-                articles=articles, properties=self._properties, rules=rules,
-                output_path=self._output_path.text().strip(),
-                max_configurations=self._max_configurations.value(),
-                discard_unsaved_planning=self._discard_planning.isChecked(),
-                vary_all=True, deduplicate=True,
-            )
-        except (PlanValidationError, ValueError) as exc:
-            QMessageBox.warning(self, "Generate Valid SKUs", str(exc))
-            return
-        if self._properties and self._inspected_article is not None:
-            estimate = self._configuration.estimate(self._properties, plan.rules, vary_all=True)
-            bound = estimate.upper_bound * len(articles)
-            if bound > plan.max_configurations:
-                answer = QMessageBox.question(
-                    self, "Generate Valid SKUs",
-                    f"The naive upper bound is {bound} configuration(s) but generation stops at "
-                    f"{plan.max_configurations}. pCon.planner usually prunes far below the bound. "
-                    "Continue with the current limit?")
+                    f"Pinned properties were inspected on {inspected} but other articles are selected. "
+                    "Rules for properties an article does not offer are skipped. Continue?")
                 if answer != QMessageBox.StandardButton.Yes:
                     return
         self._save_settings()
+        self._outcome = None
+        self._exported_path = ""
         self._result_table.setRowCount(0)
         self._validation_label.setText("")
         self._open_folder_button.setEnabled(False)
         self._compare_button.setEnabled(False)
-        self._generation_status.setText("Enumerating valid SKUs in pCon.planner…")
+        self._generation_status.setText("Enumerating valid SKUs with the OCD Engine…")
+        generator = self._generator_for(program)
+        numbers = [a.article_number for a in articles]
+        currency = self._currency.currentText().strip()
+        price_date = self._price_date.date().toString("yyyy-MM-dd")
+        limit = self._max_configurations.value()
 
         def work(reporter):
-            reporter.note("Waiting for pCon.planner to configure articles")
-            return self._generation.generate(plan, reporter=reporter)
+            reporter.note("Reading the OCD data")
+            _ = generator.dataset
+            return generator.generate(numbers, rules, currency=currency, price_date=price_date,
+                                      max_configurations=limit, reporter=reporter)
 
-        self._start("Generating valid SKUs", work, self._on_generated,
-                     steps=plan.max_configurations,
-                     subject=", ".join(a.article_number for a in articles)[:80])
+        def finished(outcome):
+            self._outcome_program, self._outcome_price_date = program, price_date
+            self._on_generated(outcome)
 
-    def _on_generated(self, outcome) -> None:
+        self._start("Generating valid SKUs", work, finished, steps=len(numbers),
+                    subject=", ".join(numbers)[:80])
+
+    def _on_generated(self, outcome: GenerationOutcome) -> None:
         self._outcome = outcome
-        result = outcome.result
-        self._result_table.setRowCount(len(result.configurations))
-        for row, config in enumerate(result.configurations):
-            price = ""
-            if config.sales_price is not None:
-                price = f"{config.sales_price:.2f} {config.currency}".strip()
-            elif config.purchase_price is not None:
-                price = f"{config.purchase_price:.2f} {config.currency}".strip()
-            values = [str(config.index), config.base_article, config.final_article,
-                      config.variant_code or "—", config.configuration_text, price,
-                      config.status if not config.message else f"{config.status}: {config.message}"]
+        self._result_table.setRowCount(len(outcome.skus))
+        for row, sku in enumerate(outcome.skus):
+            price = f"{sku.price:.2f} {sku.currency}" if sku.price is not None else ""
+            values = [str(sku.index), sku.base_article, sku.final_article, sku.variant_code or "—",
+                      sku.configuration_text, price,
+                      sku.status if not sku.message else f"{sku.status}: {sku.message}"]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                item.setToolTip(value)
+                item.setToolTip(sku.ofml_varcode if column == 4 else value)
                 self._result_table.setItem(row, column, item)
 
         summary = (
-            f"Generated {result.generated} valid unique SKU(s) from {result.visited} evaluated node(s)"
-            f"{', ' + str(result.skipped) + ' invalid/skipped' if result.skipped else ''}"
-            f"{', ' + str(result.duplicates) + ' duplicate SKU(s) removed' if result.duplicates else ''}"
-            f"{' (limit reached)' if result.truncated else ''}"
-            f"{' (cancelled)' if result.cancelled else ''}; "
-            f"basket items reported by pCon: {result.basket_items}."
+            f"Generated {len(outcome.skus)} valid unique SKU(s) from {outcome.nodes} evaluated node(s)"
+            f", {outcome.pruned} value(s) pruned"
+            f"{', ' + str(outcome.invalid) + ' invalid configuration(s) rejected' if outcome.invalid else ''}"
+            f"{', ' + str(outcome.duplicates) + ' duplicate SKU(s) removed' if outcome.duplicates else ''}"
+            f"{' (limit reached)' if outcome.truncated else ''}."
         )
-        if result.exported:
-            summary += f" OBX: {result.output_path}"
+        if outcome.unpriced:
+            summary += f" {outcome.unpriced} without price."
         self._generation_status.setText(summary)
         self._generation_status.setStyleSheet(
-            f"color: {theme.COLOR_OK if outcome.success else theme.COLOR_ERROR};")
+            f"color: {theme.COLOR_OK if outcome.skus and not outcome.truncated else theme.COLOR_WARNING};")
+        self._validation_label.setText(" ".join(outcome.warnings[:5]))
+        self._update_controls()
 
-        parts: list[str] = []
-        validation = outcome.validation
-        if validation is not None:
-            parts.append(
-                f"Validation: {validation.article_lines} article line(s) parsed, "
-                f"{validation.expected_articles} expected"
-                f"{', well-formed XML' if validation.well_formed else ', XML not well-formed'}."
-            )
-            if validation.missing_final_articles:
-                parts.append("Missing: " + ", ".join(validation.missing_final_articles[:10]))
-            if validation.lines_without_price:
-                parts.append(f"{validation.lines_without_price} line(s) have no sale price.")
-        parts.extend(outcome.errors)
-        parts.extend(result.warnings[:5])
-        self._validation_label.setText(" ".join(parts))
-        exists = bool(result.output_path) and Path(result.output_path).exists()
-        self._open_folder_button.setEnabled(exists)
-        self._compare_button.setEnabled(exists)
+    def _price_diagnostics_text(self) -> str:
+        """Diagnostics for the selected result row, or the first one; empty when nothing was generated."""
+        outcome, program = self._outcome, self._outcome_program
+        if outcome is None or program is None or not outcome.skus:
+            return ""
+        rows = self._result_table.selectionModel().selectedRows() if self._result_table.selectionModel() else []
+        sku = outcome.skus[rows[0].row()] if rows else outcome.skus[0]
+        try:
+            lines = self._generator_for(program).price_diagnostics(
+                sku.base_article, varconds=sku.varconds, currency=sku.currency,
+                price_date=self._outcome_price_date, factors=dict(sku.pricing_factors))
+        except GenerationError as exc:
+            lines = [str(exc)]
+        return "\n".join([f"selected: {program.program} / {sku.base_article} / {sku.final_article}",
+                          f"price key(s) derived for this SKU: {list(sku.varconds) or '(none)'}", *lines])
+
+    def _show_price_diagnostics(self) -> None:
+        text = self._price_diagnostics_text()
+        if not text:
+            QMessageBox.information(self, "Price Diagnostics", "Generate valid SKUs first.")
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Price Diagnostics")
+        box.setText("Price lookup for the selected SKU")
+        view = QPlainTextEdit(text, box)
+        view.setReadOnly(True)
+        view.setMinimumSize(720, 320)
+        box.layout().addWidget(view, 1, 0, 1, box.layout().columnCount())
+        box.exec()
+
+    # ------------------------------------------------------------------ export
+    def _export_obx(self) -> None:
+        outcome, program = self._outcome, self._outcome_program
+        if outcome is None or program is None or not outcome.exportable:
+            QMessageBox.information(self, "Export OBX", "Generate valid SKUs with a price first.")
+            return
+        path = self._output_path.text().strip()
+        if not path:
+            self._browse_output()
+            path = self._output_path.text().strip()
+            if not path:
+                return
+        if Path(path).exists():
+            answer = QMessageBox.question(self, "Export OBX", f"{path} exists. Overwrite it?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._save_settings()
+        skus, price_date = list(outcome.exportable), self._outcome_price_date
+        series = self._series.currentData() or ""
+
+        def work(reporter):
+            reporter.note(f"Writing {len(skus)} SKU(s)")
+            summary = export_obx(skus, path, manufacturer_id=program.manufacturer_id,
+                                 price_date=price_date, series_id=series)
+            reporter.advance("OBX written")
+            return summary
+
+        self._start("Exporting OBX", work, self._on_exported, subject=Path(path).name)
+
+    def _on_exported(self, summary) -> None:
+        text = (f"Exported {summary.exported} SKU(s) to {summary.path}; "
+                f"{summary.article_lines} article line(s) read back")
+        if summary.skipped_unpriced:
+            text += f", {summary.skipped_unpriced} unpriced SKU(s) not exported"
+        self._generation_status.setText(text + ".")
+        self._generation_status.setStyleSheet(f"color: {theme.COLOR_OK if summary.ok else theme.COLOR_ERROR};")
+        problems = list(summary.problems)
+        if summary.missing_final_articles:
+            problems.append("Missing: " + ", ".join(summary.missing_final_articles[:10]))
+        self._validation_label.setText(" ".join(problems))
+        self._exported_path = summary.path
+        self._open_folder_button.setEnabled(Path(summary.path).exists())
+        self._compare_button.setEnabled(Path(summary.path).exists())
 
     def _compare_reference(self) -> None:
-        if self._outcome is None or not self._outcome.result.output_path:
+        if not self._exported_path:
             return
         path, _ = QFileDialog.getOpenFileName(
             self, "Reference OBX generated by pCon.planner", "", "OBX files (*.obx);;All files (*.*)")
         if not path:
             return
-        comparison = self._comparer.compare(self._outcome.result.output_path, path)
+        comparison = compare_with_reference(self._exported_path, path)
         self._last_comparison = comparison
         if comparison.problems:
             text = " ".join(comparison.problems)
@@ -725,7 +860,7 @@ class PconArticleObxGeneratorPage(BasePage):
             f"color: {theme.COLOR_OK if comparison.identical else theme.COLOR_WARNING};")
 
     def _open_output_folder(self) -> None:
-        path = self._outcome.result.output_path if self._outcome else self._output_path.text()
+        path = self._exported_path or self._output_path.text()
         folder = Path(path).parent if path else None
         if folder is None or not folder.is_dir():
             return

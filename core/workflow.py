@@ -85,6 +85,6 @@ PCON_SDK_OBX_GENERATOR_ENABLED = True
 
 if PCON_SDK_OBX_GENERATOR_ENABLED:
     WORKFLOW_ITEMS = WORKFLOW_ITEMS + (
-        WorkflowItem(WorkflowStep.PCON_ARTICLE_OBX_GENERATOR, "Article OBX Generator (pCon SDK)",
-                     "Configure catalogue articles in pCon.planner through the Plugin SDK and export an OBX."),
+        WorkflowItem(WorkflowStep.PCON_ARTICLE_OBX_GENERATOR, "Article OBX Generator (OCD Engine)",
+                     "Enumerate valid SKUs with the standalone OCD Engine and export an OBX."),
     )
