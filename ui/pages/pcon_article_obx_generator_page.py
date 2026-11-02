@@ -546,6 +546,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._articles = list(articles)
         self._populate_articles()
         if self._articles:
+            # Default to the complete article set so Generate covers the loaded catalogue scope.
+            self._article_table.selectAll()
             self._set_status(self._catalogue_status,
                              f"Loaded {len(self._articles)} article(s) of {label}.", theme.COLOR_OK)
         else:
