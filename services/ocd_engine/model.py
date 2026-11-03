@@ -37,6 +37,7 @@ class ValueDef:
     display: str = ""
     order: int = 0
     relations: tuple[RelationRef, ...] = ()
+    is_default: bool = False         # OCD ``ocd_propertyvalue.is_default``
 
     @property
     def encoded(self) -> str:

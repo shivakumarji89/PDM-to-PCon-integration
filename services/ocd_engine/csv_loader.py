@@ -189,6 +189,7 @@ def build_article_model(dataset: OcdDataset, article_nr: str) -> m.ArticleModel 
                 values.append(m.ValueDef(
                     key=f"{key}:{value_row['value_from']}", value=value_row["value_from"],
                     code=value_row["value_from"], order=int(value_row["pos_pval"] or 0),
+                    is_default=(value_row.get("is_default") or "").strip() == "1",
                     relations=_relations(dataset, value_row["rel_obj"], article_nr,
                                          f"value {key}={value_row['value_from']}"),
                 ))

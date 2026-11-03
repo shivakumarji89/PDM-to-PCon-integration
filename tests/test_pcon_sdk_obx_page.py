@@ -176,7 +176,8 @@ def _pick(widget, article):
 
 
 def _results(widget, column=2):
-    return [widget._result_table.item(r, column).text() for r in range(widget._result_table.rowCount())]
+    model = widget._result_model
+    return [model.text(r, column) for r in range(model.rowCount())]
 
 
 def _generate(widget, currency="EUR"):
@@ -185,7 +186,8 @@ def _generate(widget, currency="EUR"):
     drain()
 
 
-def test_page_has_no_plugin_connection_controls(no_plugin):
+def test_page_has_no_plugin_connection_controls(no_plugin, monkeypatch):
+    _boxes(monkeypatch)      # the page loads its catalogue itself; with no repository configured that reports an error
     widget = PconArticleObxGeneratorPage(context=None)
     assert widget.is_ready()
     assert not widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
@@ -193,7 +195,7 @@ def test_page_has_no_plugin_connection_controls(no_plugin):
                     "_bridge", "_catalog", "_generation", "_discard_planning"):
         assert not hasattr(widget, removed)
     texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
-    assert {"Launch pCon.planner", "Load Articles",
+    assert {"Load Articles",
             "Generate Valid SKUs", "Export OBX"} <= texts
     assert "Inspect Properties" not in texts and "Max SKUs:" not in texts
     assert not {"Check Connection", "Install Plugin"} & texts
@@ -210,29 +212,6 @@ def test_page_module_reaches_the_plugin_package_only_to_launch_the_planner():
     assert source.count("from services.pcon_sdk_obx import") == 1
 
 
-def test_launch_button_does_not_need_a_connection():
-    launched = Mock()
-
-    class Launcher:
-        launch_planner = launched
-
-    widget = PconArticleObxGeneratorPage(context=None, bridge=Launcher())
-    widget._launch_button.click()
-    launched.assert_called_once()
-    dispose(widget)
-
-
-def test_launch_failure_is_reported(monkeypatch):
-    monkeypatch.setattr(page_module.QMessageBox, "warning", Mock())
-
-    class Launcher:
-        def launch_planner(self):
-            raise RuntimeError("pCon.planner executable not found")
-
-    widget = PconArticleObxGeneratorPage(context=None, bridge=Launcher())
-    widget._launch_button.click()
-    page_module.QMessageBox.warning.assert_called_once()
-    dispose(widget)
 
 
 # ---- the standalone workflow: catalogue -> articles -> properties -> SKUs -> OBX ----
@@ -448,7 +427,7 @@ def test_load_catalogue_populates_manufacturers_from_repository(page):
     widget = _loaded(page)
     manufacturers = [widget._manufacturer.itemData(i) for i in range(widget._manufacturer.count())]
     assert manufacturers == ["EG", "MK"]
-    assert "Catalogue loaded: 3 program(s), 2 manufacturer(s)" in widget._catalogue_status.text()
+    assert "Catalogue updated automatically: 3 program(s), 2 manufacturer(s)" in widget._catalogue_status.text()
     assert "1 folder(s) without OCD data skipped" in widget._catalogue_status.text()
 
 

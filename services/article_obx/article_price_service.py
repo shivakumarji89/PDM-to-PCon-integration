@@ -13,6 +13,7 @@ from decimal import Decimal
 from services.base_service import BaseService
 from services.article_obx.article_obx_models import ArticlePermutation, ArticlePrice
 from services.ocd_engine.pricing import PriceCalculator, PriceRow, ymd
+from services.ocd_engine.resolved import ResolvedConfiguration
 
 
 @dataclass(frozen=True)
@@ -97,11 +98,9 @@ class ArticlePriceService(BaseService):
                 results.append(unresolved(
                     permutation, "Repository price could not be resolved for article/date/currency"))
                 continue
-            factors = dict(getattr(permutation, "pricing_factors", ()) or ())
-            priced = calculator.price(
-                permutation.base_code, self._keys(permutation),
-                price_date=request.effective_date, currency=currency, factors=factors,
-            )
+            resolved = ResolvedConfiguration.of(
+                permutation.base_code, self._keys(permutation), getattr(permutation, "pricing_factors", ()) or ())
+            priced = calculator.price_resolved(resolved, price_date=request.effective_date, currency=currency)
             if priced.total is None:
                 results.append(unresolved(permutation, "Repository base price could not be resolved"))
                 continue

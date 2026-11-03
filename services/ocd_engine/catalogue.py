@@ -13,6 +13,7 @@ pCon variant code, so articles have none.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,6 +52,7 @@ class CatalogueScan:
     root: Path
     programs: list[OcdProgram] = field(default_factory=list)
     skipped: list[tuple[str, str]] = field(default_factory=list)   # (range folder, reason)
+    fingerprint: str = ""             # content fingerprint of the repository this scan read (see ``fingerprint``)
 
     def manufacturers(self) -> list[str]:
         return sorted({p.manufacturer_id for p in self.programs}, key=str.lower)
@@ -76,10 +78,38 @@ def find_db_dir(program_dir: Path) -> Path | None:
     return None
 
 
+#: Files whose content the catalogue (manufacturer/program/series/article list and labels) is built from.
+CATALOGUE_FILES = ("ocd_article.csv", "pdata.ocd_article.inp_descr",
+                   "ocd_artshorttext.csv", "pdata.ocd_artshorttext.inp_descr")
+
+#: Process-wide record of the last catalogue each repository root was loaded with, so a second page instance
+#: (or a re-initialised page) starts from it instead of reloading unchanged data.
+_LOADED: dict[str, tuple[str, "CatalogueScan"]] = {}
+
+
+def remember_loaded(scan: "CatalogueScan") -> None:
+    _LOADED[str(scan.root)] = (scan.fingerprint, scan)
+
+
+def recall_loaded(root: str | Path) -> "CatalogueScan | None":
+    found = _LOADED.get(str(root))
+    return found[1] if found else None
+
+
+def forget_loaded(root: str | Path | None = None) -> None:
+    if root is None:
+        _LOADED.clear()
+    else:
+        _LOADED.pop(str(root), None)
+
+
 class OcdCatalogueService:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root) if str(root or "").strip() else None
         self._loader = OcdCsvLoader()
+        self._digests: dict[Path, tuple[int, int, str]] = {}     # file -> (size, mtime_ns, sha256 of content)
+        self.scans = 0                                            # catalogue reads performed (for diagnostics/tests)
+        self.fingerprints = 0
         self._scan_cache: dict[str, tuple[tuple[str, int, int], list[OcdProgram], tuple[str, str] | None]] = {}
 
     def _checked_root(self) -> Path:
@@ -89,8 +119,52 @@ class OcdCatalogueService:
             raise CatalogueError(f"OCD repository folder not found: {self.root}")
         return self.root
 
+    def _digest(self, path: Path) -> str:
+        """sha256 of a file's content, re-read only when its size or modification time changed."""
+        try:
+            stat = path.stat()
+        except OSError:
+            return "-"
+        cached = self._digests.get(path)
+        if cached is not None and cached[:2] == (stat.st_size, stat.st_mtime_ns):
+            return cached[2]
+        sha = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                sha.update(block)
+        self._digests[path] = (stat.st_size, stat.st_mtime_ns, sha.hexdigest())
+        return sha.hexdigest()
+
+    def fingerprint(self) -> str:
+        """Deterministic content fingerprint of everything the catalogue is built from.
+
+        For every range folder (name, in sorted order) the sha256 of each of :data:`CATALOGUE_FILES` in the range's
+        chosen ``db`` folder (``-`` when absent; a range without OCD data contributes ``-``). The fingerprint
+        contains no absolute path, timestamp or object identity, so the same data in another folder, a touched file
+        or a new service instance gives the same value; any change to an article row, a label or a column layout
+        gives a different one. Files are hashed once and re-hashed only when their size or mtime changes, so a
+        repeated check is a directory listing plus one ``stat`` per file - no catalogue is loaded.
+        """
+        root = self._checked_root()
+        self.fingerprints += 1
+        lines: list[str] = []
+        try:
+            folders = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
+                             key=lambda d: d.name.lower())
+        except OSError as exc:
+            raise CatalogueError(f"Cannot read {root}: {exc}") from exc
+        for folder in folders:
+            try:
+                db = find_db_dir(folder)
+            except OSError:
+                db = None
+            parts = ["-"] if db is None else [f"{name}={self._digest(db / name)}" for name in CATALOGUE_FILES]
+            lines.append(f"{folder.name}" + ";".join(parts))
+        return hashlib.sha256(chr(10).join(lines).encode("utf-8")).hexdigest()
+
     def scan(self, progress=None) -> CatalogueScan:
         """Read changed catalogue article tables only; reuse unchanged parsed entries."""
+        self.scans += 1
         root = self._checked_root()
         try:
             folders = sorted((d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")),
@@ -137,6 +211,7 @@ class OcdCatalogueService:
             if skipped is not None:
                 result.skipped.append(skipped)
         self._scan_cache = next_cache
+        result.fingerprint = self.fingerprint()
         return result
 
     def _short_texts(self, db_dir: Path) -> dict[str, str]:
@@ -189,5 +264,5 @@ def texts_by_number(rows) -> dict[str, str]:
     return labels
 
 
-__all__ = ["CatalogueError", "CatalogueScan", "OcdArticle", "OcdCatalogueService", "OcdProgram", "find_db_dir",
+__all__ = ["CATALOGUE_FILES", "forget_loaded", "recall_loaded", "remember_loaded", "CatalogueError", "CatalogueScan", "OcdArticle", "OcdCatalogueService", "OcdProgram", "find_db_dir",
            "texts_by_number"]

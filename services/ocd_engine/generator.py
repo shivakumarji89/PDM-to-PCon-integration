@@ -28,7 +28,9 @@ from services.ocd_engine.codescheme_engine import CodeSchemeEncoder
 from services.ocd_engine.configuration_engine import ConfigurationEngine, EnumerationLimits
 from services.ocd_engine.csv_loader import OcdCsvLoader, OcdDataset, build_article_model
 from services.ocd_engine.obx_serialization import ofml_varcode
-from services.ocd_engine.pricing import PriceCalculator, PriceRow, ymd
+from services.ocd_engine.pricing import PriceCalculator, PriceResult, PriceRow, ymd
+from services.ocd_engine.resolved import ResolvedConfiguration
+from services.ocd_engine.structure import ArticleStructure, trace_article
 
 MODE_VARY = "vary"
 MODE_FIXED = "fixed"
@@ -124,6 +126,10 @@ class GenerationOutcome:
     pruned: int = 0
     invalid: int = 0                  # complete configurations rejected by the final relation check
     duplicates: int = 0               # valid configurations whose final article was already produced
+    price_evaluations: int = 0        # distinct price keys looked up in the price table
+    price_reused: int = 0             # SKUs priced from an earlier lookup with the same price key
+    configurations: int = 0           # complete configurations the engine produced (before validation/dedup)
+    inert_properties: tuple[str, ...] = ()   # read-only properties enumerated with one value only
     truncated: bool = False
     warnings: list[str] = field(default_factory=list)
 
@@ -139,6 +145,17 @@ class GenerationOutcome:
 def _relation_infos(relations) -> tuple[RelationInfo, ...]:
     return tuple(RelationInfo(r.name, _RELATION_TYPES.get(r.rel_type, str(r.rel_type)), r.domain, r.text)
                  for r in relations)
+
+
+def price_key(article_number: str, varconds: Sequence[str], factors: Mapping[str, float]) -> tuple:
+    """Everything a price lookup reads from a configuration, normalised exactly as ``PriceCalculator.price`` does.
+
+    The price is a function of the article, the variant conditions its price relations assigned and their
+    factors; the date, currency, type and quantity are fixed for one generation. Configurations that differ
+    only in values the price relations do not read (e.g. a colour) share this key, so their price is looked up
+    once. The key comes from the evaluated relations, never from property or value names.
+    """
+    return ResolvedConfiguration.of(article_number, varconds, factors).price_key
 
 
 def configuration_text(assignments) -> str:
@@ -219,6 +236,14 @@ class OcdArticleGenerator:
         return model
 
     # -------------------------------------------------------------- inspection
+    def structure(self, article_number: str) -> ArticleStructure:
+        """Base article -> encoding -> classes -> properties -> values, without enumerating."""
+        self.dataset
+        found = trace_article(self._dataset, article_number)
+        if found is None:
+            raise GenerationError(f"Article {article_number} is not in {self.db_dir}.")
+        return found
+
     def describe(self, article_number: str) -> ArticleDescription:
         model = self._build_model(article_number)
         dataset = self.dataset
@@ -329,9 +354,15 @@ class OcdArticleGenerator:
             "Choose a currency" + (f" ({', '.join(available)})." if available else "; the repository has no prices."))
 
     def generate(self, article_numbers: Sequence[str], rules: Sequence[PropertyRule] = (), *,
-                 currency: str = "", price_date: str, max_configurations: int | None = None,
-                 reporter=None) -> GenerationOutcome:
-        """Every valid, unique SKU of ``article_numbers``; ``OperationCancelled`` propagates on cancel."""
+                 currency: str = "", price_date: str,
+                 max_configurations: None = None, fabric_default_only: bool = True, reporter=None) -> GenerationOutcome:
+        """Every valid, unique SKU of ``article_numbers``; ``OperationCancelled`` propagates on cancel.
+
+        There is no SKU cap: ``max_configurations`` exists so callers state "unlimited" explicitly and
+        anything but ``None`` is refused rather than silently ignored.
+        """
+        if max_configurations is not None:
+            raise GenerationError("SKU generation is not capped; max_configurations must be None.")
         if not article_numbers:
             raise GenerationError("Select at least one article.")
         if not ymd(price_date):
@@ -340,7 +371,9 @@ class OcdArticleGenerator:
         calculator = self._price_calculator()
         dataset = self.dataset
         outcome = GenerationOutcome()
-        seen: set[str] = set()
+        seen: dict[str, tuple] = {}        # final article -> price key of the configuration that produced it
+        priced_by_key: dict[tuple, PriceResult] = {}
+        conflicting: set[str] = set()
         sink = dg.DiagnosticSink()
 
         for article_number in article_numbers:
@@ -352,7 +385,13 @@ class OcdArticleGenerator:
             if encoder is None:
                 outcome.warnings.append(
                     f"{article_number}: no code scheme ({model.scheme_id or 'none'}); the base number is the final number.")
-            engine = ConfigurationEngine(model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES))
+            identity = None if scheme is not None and scheme.is_predefined else                 ([scheme.scheme] if scheme is not None else [])
+            engine = ConfigurationEngine(
+                model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES), identity_texts=identity,
+                fabric_default_only=fabric_default_only,
+                progress=(lambda st, a=article_number: reporter.note(
+                    f"Enumerating {a}: {st.emitted:,} configuration(s), {st.nodes:,} node(s) evaluated, "
+                    f"{len(outcome.skus):,} valid SKU(s)")) if reporter is not None else None)
             series = (dataset.articles[article_number].get("series") or "").strip()
             label = self._text("artshorttext", dataset.articles[article_number].get("short_textnr", ""))
             produced = 0
@@ -375,17 +414,35 @@ class OcdArticleGenerator:
                     final, variant = encoded.final_article, encoded.variant_code
                 else:
                     final, variant = article_number, ""
+                resolved = ResolvedConfiguration.of(article_number, result.varconds, result.pricing_factors)
+                key = resolved.price_key
                 if final in seen:
                     outcome.duplicates += 1
+                    if seen[final] != key and final not in conflicting:
+                        # One number, two price states: the kept SKU's price is not the other's.
+                        conflicting.add(final)
+                        outcome.warnings.append(
+                            f"{final}: configurations that share this final article have different price "
+                            f"conditions ({seen[final][1]} vs {key[1]}); the first one is kept.")
                     continue
-                seen.add(final)
+                seen[final] = key
+                priced = priced_by_key.get(key)
+                if priced is None:
+                    priced = priced_by_key[key] = calculator.price_resolved(
+                        resolved, price_date=price_date, currency=currency)
+                    outcome.price_evaluations += 1
+                else:
+                    outcome.price_reused += 1
                 outcome.skus.append(self._sku(
                     len(outcome.skus) + 1, article_number, series, label, final, variant, model, config, result,
-                    calculator, currency, price_date))
+                    priced))
                 produced += 1
-                if reporter is not None and produced % 50 == 0:
-                    reporter.note(f"{article_number}: {produced} valid SKU(s)")
+                if reporter is not None and produced % 500 == 0:
+                    reporter.note(f"Enumerating {article_number}: {engine.stats.emitted:,} configuration(s), "
+                                  f"{produced:,} valid SKU(s)")
             outcome.nodes += engine.stats.nodes
+            outcome.configurations += engine.stats.emitted
+            outcome.inert_properties = tuple(dict.fromkeys(outcome.inert_properties + engine.stats.inert))
             outcome.pruned += engine.stats.pruned
             if engine.stats.truncated:
                 outcome.truncated = True
@@ -401,9 +458,7 @@ class OcdArticleGenerator:
 
     @staticmethod
     def _sku(index, article_number, series, label, final, variant, model, config, result,
-             calculator, currency, price_date) -> GeneratedSku:
-        priced = calculator.price(article_number, result.varconds, price_date=price_date, currency=currency,
-                                  factors=dict(result.pricing_factors))
+             priced: PriceResult) -> GeneratedSku:
         message = ""
         if priced.total is None:
             reasons = [d.message for d in priced.diagnostics if d.severity is dg.Severity.ERROR]
@@ -420,7 +475,7 @@ class OcdArticleGenerator:
             configuration_text=configuration_text(config.assignments), label=label, values=values,
             varconds=tuple(dict.fromkeys(x for x in result.varconds if x)),
             pricing_factors=tuple(result.pricing_factors.items()), scheme_id=model.scheme_id,
-            price=priced.total, currency=currency, status="ok" if priced.total is not None else "unpriced",
+            price=priced.total, currency=priced.currency, status="ok" if priced.total is not None else "unpriced",
             message=message,
         )
 

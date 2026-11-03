@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -40,6 +41,8 @@ from services.ocd_engine.catalogue import (
     CatalogueScan,
     OcdArticle,
     OcdCatalogueService,
+    recall_loaded,
+    remember_loaded,
     OcdProgram,
 )
 from services.ocd_engine.generator import (
@@ -57,10 +60,10 @@ from ui import theme
 from ui.components._styles import primary_button_qss, secondary_button_qss
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.base_page import BasePage
+from ui.pages.sku_results_model import SkuResultsModel
 from ui.workers.background_task import ReportedTask
 
 _MODE_LABELS = {MODE_VARY: "Vary (auto)", MODE_FIXED: "Fixed value", MODE_DEFAULT: "Default value"}
-_MAX_CONFIGURATIONS_LIMIT = 20000
 _SETTINGS_PREFIX = "pcon_sdk_obx/"
 
 
@@ -97,7 +100,9 @@ class PconArticleObxGeneratorPage(BasePage):
         self._catalogue_reader: OcdCatalogueService | None = None
         self._catalogue_poll = QTimer(self)
         self._catalogue_poll.setInterval(300_000)
-        self._catalogue_poll.timeout.connect(self._load_catalogue)
+        self._catalogue_poll.timeout.connect(self._poll_catalogue)
+        self._loaded_key: tuple[str, str] | None = None    # (root, fingerprint) of the catalogue now shown
+        self._check_run: ReportedTask | None = None        # the silent "has the repository changed?" check
 
         self._programs: list[OcdProgram] = []
         self._articles: list[OcdArticle] = []
@@ -111,7 +116,12 @@ class PconArticleObxGeneratorPage(BasePage):
         self._build_content()
         self._set_status(self._catalogue_status, "Loading OCD catalogue automatically…")
         self.refresh()
-        QTimer.singleShot(0, self._load_catalogue)
+        recalled = recall_loaded(self._catalogue_service().root) if self._catalogue_service().root else None
+        if recalled is not None:
+            # Another page instance already loaded this repository: show it without reading anything.
+            self._loaded_key = (str(recalled.root), recalled.fingerprint)
+            self._apply_scan(recalled, "Catalogue up to date")
+        QTimer.singleShot(0, self._check_catalogue)
         self._catalogue_poll.start()
 
     # ------------------------------------------------------------------ build
@@ -248,10 +258,12 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generation_status.setWordWrap(True)
         layout.addWidget(self._generation_status)
 
-        self._result_table = QTableWidget(self)
-        self._result_table.setColumnCount(7)
-        self._result_table.setHorizontalHeaderLabels(
-            ["#", "Base Article", "Final Article", "Variant Code", "Configuration", "Price", "Status"])
+        # Virtual model: hundreds of thousands of SKUs are shown without building a widget item per cell.
+        self._result_model = SkuResultsModel(self)
+        self._result_table = QTableView(self)
+        self._result_table.setModel(self._result_model)
+        self._result_table.horizontalHeader().setResizeContentsPrecision(200)
+        self._result_table.verticalHeader().setDefaultSectionSize(24)
         self._result_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._result_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._result_table.setAlternatingRowColors(True)
@@ -420,6 +432,48 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generation_status.setText("pCon.planner is starting.")
 
     # -------------------------------------------------------------- catalogue
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(event)
+        self._check_catalogue()           # a check skipped while hidden happens when the page is shown
+
+    def _poll_catalogue(self) -> None:
+        if self.isVisible():              # other workflows are not interrupted by this page's housekeeping
+            self._check_catalogue()
+
+    def _check_catalogue(self) -> None:
+        """Decide silently whether the loaded catalogue still matches the repository.
+
+        Only the content fingerprint is computed (no catalogue is read, no popup shown). The catalogue is loaded -
+        with its progress popup - only when the repository differs from what is shown, or nothing is shown yet.
+        A failed check changes nothing, so the next check simply tries again.
+        """
+        if (self._run is not None and self._run.active) or (self._check_run is not None and self._check_run.active):
+            return
+        service = self._catalogue_service()
+        if service.root is None:
+            self._load_catalogue()        # surfaces "no repository configured" once, as a normal load error
+            return
+        run = ReportedTask(self)
+        self._check_run = run
+
+        def finished(fingerprint: str) -> None:
+            self._check_run = None
+            if self._scan is not None and self._loaded_key == (str(service.root), fingerprint):
+                self._set_status(self._catalogue_status,
+                                 f"Catalogue up to date ({len(self._scan.programs)} program(s)); checking automatically.",
+                                 theme.COLOR_OK)
+                return
+            QTimer.singleShot(0, self._load_catalogue)    # not from inside this task's completion callback
+
+        def failed(message: str) -> None:
+            self._check_run = None
+            self._set_status(self._catalogue_status, f"Catalogue check failed: {message}", theme.COLOR_WARNING)
+
+        def cancelled(_message: str) -> None:
+            self._check_run = None
+
+        run.start(lambda _emit: service.fingerprint(), finished=finished, failed=failed, cancelled=cancelled)
+
     def _load_catalogue(self) -> None:
         if self._run is not None and self._run.active:
             return
@@ -437,16 +491,23 @@ class PconArticleObxGeneratorPage(BasePage):
             return scan
 
         self._start("Loading catalogue", work, self._on_catalogue_loaded,
-                    subject=str(service.root or ""), status=self._catalogue_status,
-                    show_progress=False)
+                    subject=str(service.root or ""), status=self._catalogue_status)
 
     def _on_catalogue_loaded(self, scan: CatalogueScan) -> None:
         previous = self._scan
+        # Recorded only after a successful load: a failed or cancelled load leaves the old key, so it is retried.
+        if self._loaded_key is not None and self._loaded_key[1] != scan.fingerprint:
+            self._generators.clear()      # their datasets were read from the data that has now changed
+        self._loaded_key = (str(scan.root), scan.fingerprint)
+        remember_loaded(scan)
         if previous is not None and previous.root == scan.root and previous.programs == scan.programs and previous.skipped == scan.skipped:
             self._set_status(self._catalogue_status,
                              f"Catalogue up to date ({len(scan.programs)} program(s)); checking automatically.",
                              theme.COLOR_OK)
             return
+        self._apply_scan(scan, "Catalogue updated automatically")
+
+    def _apply_scan(self, scan: CatalogueScan, headline: str) -> None:
         manufacturer_id = self._manufacturer.currentData()
         old_program = self._selected_program()
         program_name = old_program.program if old_program is not None else ""
@@ -475,7 +536,7 @@ class PconArticleObxGeneratorPage(BasePage):
                              f"No OCD catalogue data found under {scan.root}.{skipped}", theme.COLOR_WARNING)
             return
         self._set_status(self._catalogue_status,
-                         f"Catalogue updated automatically: {len(scan.programs)} program(s), "
+                         f"{headline}: {len(scan.programs)} program(s), "
                          f"{self._manufacturer.count()} manufacturer(s).{skipped}", theme.COLOR_OK)
 
     def _on_manufacturer_changed(self) -> None:
@@ -594,7 +655,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._save_settings()
         self._outcome = None
         self._exported_path = ""
-        self._result_table.setRowCount(0)
+        self._result_model.clear()
         self._validation_label.setText("")
         self._open_folder_button.setEnabled(False)
         self._compare_button.setEnabled(False)
@@ -607,8 +668,12 @@ class PconArticleObxGeneratorPage(BasePage):
         def work(reporter):
             reporter.note("Reading the OCD data")
             _ = generator.dataset
-            return generator.generate(numbers, rules, currency=currency, price_date=price_date,
-                                      max_configurations=None, reporter=reporter)
+            outcome = generator.generate(numbers, rules, currency=currency, price_date=price_date,
+                                         max_configurations=None, reporter=reporter)
+            # Everything proportional to the result size happens here, off the GUI thread; the GUI only
+            # swaps a reference (see ``_on_generated``).
+            reporter.note(f"Preparing {len(outcome.skus):,} valid SKU(s) for display")
+            return outcome
 
         def finished(outcome):
             self._outcome_program, self._outcome_price_date = program, price_date
@@ -619,19 +684,11 @@ class PconArticleObxGeneratorPage(BasePage):
 
     def _on_generated(self, outcome: GenerationOutcome) -> None:
         self._outcome = outcome
-        self._result_table.setRowCount(len(outcome.skus))
-        for row, sku in enumerate(outcome.skus):
-            price = f"{sku.price:.2f} {sku.currency}" if sku.price is not None else ""
-            values = [str(sku.index), sku.base_article, sku.final_article, sku.variant_code or "—",
-                      sku.configuration_text, price,
-                      sku.status if not sku.message else f"{sku.status}: {sku.message}"]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setToolTip(sku.ofml_varcode if column == 4 else value)
-                self._result_table.setItem(row, column, item)
+        self._result_model.set_results(outcome.skus)
 
         summary = (
-            f"Generated {len(outcome.skus)} valid unique SKU(s) from {outcome.nodes} evaluated node(s)"
+            f"Generated {len(outcome.skus):,} valid unique SKU(s) from {outcome.configurations:,} configuration(s), "
+            f"{outcome.nodes:,} evaluated node(s)"
             f", {outcome.pruned} value(s) pruned"
             f"{', ' + str(outcome.invalid) + ' invalid configuration(s) rejected' if outcome.invalid else ''}"
             f"{', ' + str(outcome.duplicates) + ' duplicate SKU(s) removed' if outcome.duplicates else ''}"

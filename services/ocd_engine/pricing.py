@@ -23,6 +23,7 @@ from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP, D
 from typing import Iterable, Mapping, Sequence
 
 from services.ocd_engine import diagnostics as dg
+from services.ocd_engine.resolved import ResolvedConfiguration
 
 _CENT = Decimal("0.01")
 
@@ -373,6 +374,12 @@ class PriceCalculator:
             f"no usable price on {date} in {cur}: the repository has no base (B) row for this article and {reason}",
             dg.Severity.ERROR, article=article))
         return result
+
+    def price_resolved(self, resolved: ResolvedConfiguration, *, price_date: str, currency: str,
+                       price_type: str = "S", quantity: int = 1) -> PriceResult:
+        """Price the state the relations resolved; the single entry point shared by every caller."""
+        return self.price(resolved.article, resolved.varconds, price_date=price_date, currency=currency,
+                          price_type=price_type, quantity=quantity, factors=dict(resolved.pricing_factors))
 
     def diagnose(self, article: str, varconds: Sequence[str] = (), *, price_date: str, currency: str,
                  price_type: str = "S", quantity: int = 1) -> PriceDiagnosis:

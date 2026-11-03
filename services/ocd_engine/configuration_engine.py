@@ -12,11 +12,13 @@ Every rejection is counted and, within the sink's bounds, explained.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Mapping, Sequence
 
 from core.cancellation import checkpoint
 from services.ocd_engine import diagnostics as dg
+from services.ocd_engine import fabric
 from services.ocd_engine import model as m
 from services.ocd_engine import relation_parser as rp
 from services.ocd_engine.codescheme_engine import EncodedValue
@@ -43,6 +45,12 @@ class EnumerationStats:
     pruned: int = 0
     truncated: bool = False
     reason: str = ""
+    inert: tuple[str, ...] = ()      # read-only properties offered one value only (see ``inert_properties``)
+
+
+#: OCD scopes of properties the user cannot configure: ``R`` read-only, ``RG`` read-only group,
+#: ``RV`` read-only value. Configurable (``C``) properties are never collapsed.
+READ_ONLY_SCOPES = frozenset({"R", "RG", "RV"})
 
 
 @dataclass(frozen=True)
@@ -109,7 +117,15 @@ class ConfigurationEngine:
                  limits: EnumerationLimits | None = None,
                  progress: Callable[[EnumerationStats], None] | None = None,
                  rhs_values_factory: Callable[[Mapping[str, str], Sequence[m.Assignment]], dict] | None = None,
-                 progress_every: int = 5000) -> None:
+                 progress_every: int = 5000,
+                 identity_texts: Sequence[str] | None = None,
+                 fabric_default_only: bool = True) -> None:
+        """``fabric_default_only``: a fabric colour is offered as its ``is_default`` value only (OBX output uses
+        the default colour of each fabric type); where no value is flagged all valid colours stay.
+
+        ``identity_texts``: every text outside the model's relations that reads property values to build the
+        final article (the code scheme body). ``None`` disables the inert-property optimisation because the
+        engine cannot know what else reads the configuration."""
         self.model = model
         self.sink = sink if sink is not None else dg.DiagnosticSink()
         self.limits = limits or EnumerationLimits()
@@ -124,6 +140,46 @@ class ConfigurationEngine:
         self._computed_engine = ComputedPropertyEngine(model, self.sink)
         self._varcond_engine = VarcondEngine(model, self.sink)
         self._constraints = self._collect_constraints()
+        self._candidate_refs: dict[str, tuple[str, ...]] = {}     # dimension key -> properties its value filter reads
+        self._candidate_cache: dict[tuple, list[m.ValueDef]] = {}
+        self._fabric_colours = frozenset(p.name_upper for p in fabric.fabric_colours(model))             if fabric_default_only else frozenset()
+        self._fabric_types = frozenset(p.name_upper for p in fabric.fabric_types(model))
+        self._inert = self.inert_properties(model, identity_texts) if identity_texts is not None else frozenset()
+
+    # ------------------------------------------------------------ inert properties
+    @staticmethod
+    def inert_properties(model: m.ArticleModel, identity_texts: Sequence[str]) -> frozenset[str]:
+        """Upper-case names of read-only properties whose value cannot change anything.
+
+        A property is inert when it is read-only (scope R/RG/RV, so it is not in the OBX ``ofmlvarcode``,
+        which lists configurable properties only), no relation of the article - precondition, selection,
+        action, constraint, reaction, any domain, on the article, its classes, properties or values - and no
+        identity text (the code scheme) mentions it, and none of its values carries an action or constraint.
+        Offering it more than one value then yields configurations that differ only in that value: the same
+        validity, final article, variant conditions and price. Only its first offered value is enumerated;
+        the first value is the one the full enumeration reached first, so the result is unchanged.
+        An unparsable relation does not disable the check: the scan is textual, so it over- rather than
+        under-reports references.
+        """
+        texts = [ref.text for ref in model.article_relations]
+        for cls in model.classes:
+            texts.extend(ref.text for ref in cls.relations)
+        for prop in model.properties:
+            texts.extend(ref.text for ref in prop.relations)
+            for value in prop.values:
+                texts.extend(ref.text for ref in value.relations)
+        texts.extend(identity_texts)
+        haystack = chr(10).join(texts)
+        found = set()
+        for prop in model.properties:
+            if prop.scope.upper() not in READ_ONLY_SCOPES or len(prop.values) < 2:
+                continue
+            if any(r.rel_type in (m.ACTION, m.CONSTRAINT) for v in prop.values for r in v.relations):
+                continue
+            if re.search(rf"(?<![A-Za-z0-9_]){re.escape(prop.name)}(?![A-Za-z0-9_])", haystack, re.IGNORECASE):
+                continue
+            found.add(prop.name_upper)
+        return frozenset(found)
 
     # ------------------------------------------------------------ relation helpers
     def _tri(self, ref: m.RelationRef, ctx: EvalContext, owner: str) -> Tri:
@@ -168,8 +224,10 @@ class ConfigurationEngine:
     def _prepare(self, dimensions: Sequence[m.PropertyDef]):
         names = {d.name_upper: i for i, d in enumerate(dimensions)}
         deps: list[set[str]] = []
+        self._candidate_refs, self._candidate_cache = {}, {}
         for dim in dimensions:
             refs: set[str] = set()
+            readable = True
             relations = list(self._of_type(dim.relations, m.PRECONDITION)) + \
                 list(self._of_type(dim.relations, m.SELECTION))
             cls = self._classes.get(dim.class_name.upper())
@@ -181,6 +239,10 @@ class ConfigurationEngine:
             for ref in relations:
                 compiled = rp.compile_relation(m.PRECONDITION, ref.text)
                 refs |= {_tail(r) for r in compiled.refs}
+                readable = readable and not compiled.error
+            if readable:
+                # What this dimension's value filter (``_candidates``) can depend on; see there.
+                self._candidate_refs[dim.key] = tuple(sorted(refs))
             refs.discard(dim.name_upper)
             deps.append({r for r in refs if r in names})
         order: list[int] = []
@@ -231,7 +293,7 @@ class ConfigurationEngine:
         dims = [d for d in (dimensions if dimensions is not None else self.model.properties) if d.values]
         ordered = self._prepare(dims)
         schedule = self._constraint_schedule(ordered)
-        self.stats = EnumerationStats()
+        self.stats = EnumerationStats(inert=tuple(sorted(d.name for d in ordered if d.name_upper in self._inert)))
         values: dict[str, object] = {str(k).upper(): v for k, v in (base_values or {}).items()}
         ctx = EvalContext(values=values, ban=self.model.base_code, tables=self.model.tables)
         chosen: list[m.Assignment] = []
@@ -267,6 +329,16 @@ class ConfigurationEngine:
                 chosen.pop()
                 return
             candidates = self._candidates(dim, ctx)
+            if not candidates and dim.name_upper in self._fabric_colours and self._fabric_type_selected(ctx):
+                # A fabric is chosen but none of its colours is valid here: not a configuration.
+                self.stats.pruned += 1
+                if dim.name_upper not in self._no_value_reported:
+                    self._no_value_reported.add(dim.name_upper)
+                    self.sink.add(dg.NO_FABRIC_COLOUR,
+                                  f"no colour of {dim.name} is valid for the selected fabric type under some "
+                                  f"selections; those configurations are rejected", dg.Severity.WARNING,
+                                  article=self.model.base_code, property=dim.name)
+                return
             if not candidates:
                 self._note_no_value(dim)
                 chosen.append(m.Assignment(dim, None, False))
@@ -274,6 +346,8 @@ class ConfigurationEngine:
                 chosen.pop()
                 return
             name = dim.name_upper
+            if name in self._inert:
+                candidates = candidates[:1]
             for value in candidates:
                 values[name] = value.value
                 chosen.append(m.Assignment(dim, value, False))
@@ -292,6 +366,9 @@ class ConfigurationEngine:
         if self.progress is not None:
             self.progress(self.stats)
 
+    def _fabric_type_selected(self, ctx: EvalContext) -> bool:
+        return any(name in ctx.values for name in self._fabric_types)
+
     def _is_hidden(self, dim: m.PropertyDef, ctx: EvalContext) -> bool:
         cls = self._classes.get(dim.class_name.upper())
         if cls is not None:
@@ -304,6 +381,22 @@ class ConfigurationEngine:
         return False
 
     def _candidates(self, dim: m.PropertyDef, ctx: EvalContext) -> list[m.ValueDef]:
+        """The values of ``dim`` whose preconditions hold now.
+
+        The result is a function of the properties those preconditions read, so it is computed once per
+        distinct state of just those properties instead of once per node (a colour list of hundreds of
+        values depends on the fabric type alone, not on every finish chosen before it).
+        """
+        refs = self._candidate_refs.get(dim.key)
+        if refs is None:
+            return self._filter_values(dim, ctx)
+        key = (dim.key, tuple(ctx.values.get(name) for name in refs))
+        found = self._candidate_cache.get(key)
+        if found is None:
+            found = self._candidate_cache[key] = self._filter_values(dim, ctx)
+        return found
+
+    def _filter_values(self, dim: m.PropertyDef, ctx: EvalContext) -> list[m.ValueDef]:
         out = []
         for value in dim.values:
             if dim.allowed_keys is not None and value.key not in dim.allowed_keys:
@@ -316,6 +409,8 @@ class ConfigurationEngine:
                     break
             if ok:
                 out.append(value)
+        if out and dim.name_upper in self._fabric_colours:
+            out = fabric.constrained_to_default(out)
         return out
 
     def _note_no_value(self, dim: m.PropertyDef) -> None:

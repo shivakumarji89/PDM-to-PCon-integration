@@ -108,12 +108,11 @@ def test_duplicate_final_numbers_are_removed_and_counted(generator):
     assert finals(both) == CHAIR1_FINALS and both.duplicates == 3      # a repeated base article adds nothing
 
 
-def test_limit_truncates_and_reports(generator):
-    outcome = generator.generate(["CHAIR1"], currency="EUR", price_date=DATE, max_configurations=2)
-    assert finals(outcome) == CHAIR1_FINALS[:2] and outcome.truncated
-    assert "Stopped at the limit of 2 SKU(s)." in outcome.warnings
-    exact = generator.generate(["CHAIR1"], currency="EUR", price_date=DATE, max_configurations=3)
-    assert len(exact.skus) == 3 and not exact.truncated        # flagged only when one more SKU exists
+def test_there_is_no_sku_cap_every_valid_sku_is_generated(generator):
+    outcome = generator.generate(["CHAIR1"], currency="EUR", price_date=DATE)
+    assert finals(outcome) == CHAIR1_FINALS and not outcome.truncated
+    with pytest.raises(GenerationError, match="not capped"):
+        generator.generate(["CHAIR1"], currency="EUR", price_date=DATE, max_configurations=2)
 
 
 def test_cancellation_propagates_from_the_engine(tmp_path):
@@ -183,8 +182,6 @@ def test_request_validation(generator):
         generator.generate([], currency="EUR", price_date=DATE)
     with pytest.raises(GenerationError, match="price date"):
         generator.generate(["CHAIR1"], currency="EUR", price_date="")
-    with pytest.raises(GenerationError, match="positive"):
-        generator.generate(["CHAIR1"], currency="EUR", price_date=DATE, max_configurations=0)
 
 
 def test_malformed_article_data_is_a_clear_error(generator):

@@ -380,13 +380,15 @@ def test_nocus_diagnosis_reports_the_derived_key_and_chosen_row(nocus_calculator
 @pytest.mark.skipif(not (ROOT / "accessories").exists(), reason="real repository not available")
 def test_live_nocus_generation_prices_every_sku_and_the_obx_agrees(tmp_path):
     generator = OcdArticleGenerator(ROOT / "accessories" / "ANY" / "1" / "db")
-    outcome = generator.generate(["NOCUS"], currency="EUR", price_date="2026-11-02", max_configurations=500)
-    assert len(outcome.skus) == 500 and outcome.unpriced == 0
+    outcome = generator.generate(["NOCUS"], currency="EUR", price_date="2026-11-02", fabric_default_only=False)
+    assert len(outcome.skus) == 2181 and outcome.unpriced == 0 and not outcome.truncated
+    # NOCUS has fabric type/colour properties, so the default-only set is smaller (first valid colour each)
+    assert len(generator.generate(["NOCUS"], currency="EUR", price_date="2026-11-02").skus) == 49
     first = outcome.skus[0]
     assert first.final_article == "NOCUS1 1HA01" and first.price == D("162.00") and first.currency == "EUR"
     target = tmp_path / "nocus.obx"
     summary = export_obx(outcome.skus, target, manufacturer_id="HM", price_date="2026-11-02")
-    assert summary.ok and summary.exported == 500
+    assert summary.ok and summary.exported == 2181
     assert "162" in target.read_text(encoding="utf-8")
 
 

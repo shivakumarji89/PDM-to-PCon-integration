@@ -37,7 +37,7 @@ class ProgressDialog(DialogTemplate):
         self._finished = False
         self._reporter = None
         self._elapsed_str = "00:00"
-        self._eta_str = "00:00"
+        self._eta_str = "calculating…"
         # Owned, restartable dismissal: a pending auto-close from one run is
         # cancelled when the dialog is reset for the next, so it can never hide
         # a newer run's popup.
@@ -68,7 +68,7 @@ class ProgressDialog(DialogTemplate):
         self.add_content(self._progress_card)
 
         # Elapsed/ETA shown compactly right under the progress bar - no tiles.
-        self._timing_label = QLabel("Elapsed 00:00   \u00b7   ETA 00:00", self)
+        self._timing_label = QLabel("Elapsed 00:00   \u00b7   ETA calculating…", self)
         self._timing_label.setFont(theme.font("subtitle"))
         self._timing_label.setStyleSheet(label_color_qss(theme.MUTED))
         self.add_content(self._timing_label)
@@ -225,7 +225,9 @@ class ProgressDialog(DialogTemplate):
         self._render_timing()
 
     def set_remaining(self, seconds: int) -> None:
-        self._eta_str = self._format_time(seconds)
+        # 0 means "no reliable estimate yet" (see ProgressReporter); never show it as a finished 00:00 while
+        # the operation is still running.
+        self._eta_str = self._format_time(seconds) if seconds > 0 or self._finished else "calculating…"
         self._render_timing()
 
     def _render_timing(self) -> None:
@@ -237,6 +239,7 @@ class ProgressDialog(DialogTemplate):
         """Put the dialog into its terminal state, then auto-close it shortly
         after so the popup dismisses itself once the load completes."""
         self._finished = True
+        self.set_remaining(0)
         if success:
             self.set_progress(100)
         if message:
