@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from services.ocd_engine import diagnostics as dg
+from services.ocd_engine import fabric
 from services.ocd_engine import model as m
 from services.ocd_engine.catalogue import texts_by_number
 from services.ocd_engine.codescheme_engine import CodeSchemeEncoder
@@ -55,6 +56,17 @@ class PropertyRule:
     key: str                          # PropertyInfo.key (``Class:Property``)
     mode: str = MODE_VARY
     value: str = ""                   # the OCD ``value_from`` for MODE_FIXED
+
+
+@dataclass(frozen=True)
+class PropertyChoice:
+    name: str
+    label: str = ""
+    candidate: bool = False        # the fabric/upholstery keyword search finds it (name or any language text)
+
+    @property
+    def display(self) -> str:
+        return f"{self.name} - {self.label}" if self.label and self.label != self.name else self.name
 
 
 @dataclass(frozen=True)
@@ -296,6 +308,27 @@ class OcdArticleGenerator:
             bound *= len(prop.values)
         return varied, bound
 
+    def fabric_property_choices(self, article_numbers: Sequence[str]) -> list["PropertyChoice"]:
+        """Properties of the given articles for the one manual fabric-property selector.
+
+        Read from the loaded tables only (no model is built): every property of the articles' classes that has
+        values, once per name, with its Property-text label (preferred language) and whether the keyword search
+        already finds it. Nothing here decides a property's role."""
+        dataset = self.dataset
+        seen: dict[str, PropertyChoice] = {}
+        for number in article_numbers:
+            for class_row in sorted(dataset.classes.get(number, []), key=lambda r: int(r["pos_class"] or 0)):
+                for row in sorted(dataset.properties.get(class_row["prop_class"], []),
+                                  key=lambda r: int(r["pos_prop"] or 0)):
+                    name = row["property"]
+                    if name.upper() in {k.upper() for k in seen} or not dataset.values.get((class_row["prop_class"], name)):
+                        continue
+                    labels = dataset.property_labels.get((row.get("prop_textnr") or "").strip(), ())
+                    probe = m.PropertyDef(key=name, name=name, labels=tuple(labels))
+                    seen[name] = PropertyChoice(name, self._text("propertytext", row.get("prop_textnr", "")),
+                                                fabric.is_candidate(probe))
+        return list(seen.values())
+
     # ---------------------------------------------------------------- generation
     def _apply_rules(self, model: m.ArticleModel, rules: Sequence[PropertyRule], warnings: list[str]):
         """``(restricted model, keys of the pinned properties)``."""
@@ -357,8 +390,13 @@ class OcdArticleGenerator:
 
     def generate(self, article_numbers: Sequence[str], rules: Sequence[PropertyRule] = (), *,
                  currency: str = "", price_date: str,
-                 max_configurations: None = None, fabric_default_only: bool = True, reporter=None) -> GenerationOutcome:
+                 max_configurations: None = None, fabric_default_only: bool = True, fabric_property: str = "",
+                 reporter=None) -> GenerationOutcome:
         """Every valid, unique SKU of ``article_numbers``; ``OperationCancelled`` propagates on cancel.
+
+        ``fabric_property`` is the one optional manual choice (a property name, ``""`` = automatic discovery): it feeds
+        the same resolver, and a choice that cannot be resolved raises :class:`GenerationError` before anything is
+        enumerated, so every colour is never silently expanded.
 
         There is no SKU cap: ``max_configurations`` exists so callers state "unlimited" explicitly and
         anything but ``None`` is refused rather than silently ignored.
@@ -390,10 +428,16 @@ class OcdArticleGenerator:
             identity = None if scheme is not None and scheme.is_predefined else                 ([scheme.scheme] if scheme is not None else [])
             engine = ConfigurationEngine(
                 model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES), identity_texts=identity,
-                fabric_default_only=fabric_default_only,
+                fabric_default_only=fabric_default_only, fabric_property=fabric_property,
                 progress=(lambda st, a=article_number: reporter.note(
                     f"Enumerating {a}: {st.emitted:,} configuration(s), {st.nodes:,} node(s) evaluated, "
                     f"{len(outcome.skus):,} valid SKU(s)")) if reporter is not None else None)
+            if engine.fabric_override_error:
+                raise GenerationError(f"Fabric property {fabric_property!r} for {article_number}: "
+                                      f"{engine.fabric_override_error}. Choose another property or Automatic.")
+            if fabric_property and fabric_default_only and engine._fabric.override_missing:
+                outcome.warnings.append(f"{article_number}: {engine._fabric.override_error}; automatic fabric "
+                                        f"discovery was used.")
             series = (dataset.articles[article_number].get("series") or "").strip()
             label = self._text("artshorttext", dataset.articles[article_number].get("short_textnr", ""))
             produced = 0
@@ -486,6 +530,6 @@ class OcdArticleGenerator:
 
 __all__ = [
     "ArticleDescription", "GeneratedSku", "GenerationError", "GenerationOutcome", "MAX_NODES", "MODE_DEFAULT",
-    "MODE_FIXED", "MODE_VARY", "OcdArticleGenerator", "PropertyInfo", "PropertyRule", "RelationInfo", "ValueInfo",
+    "MODE_FIXED", "MODE_VARY", "OcdArticleGenerator", "PropertyChoice", "PropertyInfo", "PropertyRule", "RelationInfo", "ValueInfo",
     "configuration_text",
 ]

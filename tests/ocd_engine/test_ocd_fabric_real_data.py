@@ -219,3 +219,69 @@ def test_always_is_a_multi_type_fallback_series_with_no_colour_relations():
     structure = {t.type_value: t for t in fabric.fabric_structure(model) if t.colour_property == "Chair_Fabric_Colour"}
     assert len(structure) > 20 and all(t.default_colour is None or t.default_colour.startswith(t.type_value)
                                        for t in structure.values())
+
+
+# ------------------------------------------------------------------ the one manual property, on real data
+import hashlib  # noqa: E402
+
+from services.ocd_engine.generator import GenerationError  # noqa: E402
+
+LN10_HASH = "69e06593d7131dd994401c14ef85e43992fda8c12f62afde2a6f0ba63caaf377"
+OVERRIDE_CASES = [
+    ("lino", "MI1E3", "LINO_OPT", "Seat_Fabric_Type", "Fabric_Colour"),
+    ("tun", "NOTUN420", "TUN_OPT", "Upholstered_Base_Fabric", "Upholstered_Base_Fabric_Colour"),
+    ("bay_work_pod", "PEP100", "BAY_POD_OPT", "Exterior_Fabric_Type", "Exterior_Fabric_Colour"),
+]
+
+
+def finals(outcome):
+    return sorted(s.final_article for s in outcome.skus)
+
+
+@pytest.mark.parametrize("range_name,article,_cls,type_prop,colour_prop", OVERRIDE_CASES)
+def test_selecting_the_detected_property_leaves_the_automatic_result_unchanged(range_name, article, _cls, type_prop,
+                                                                                colour_prop):
+    if not (db(range_name) / "ocd_article.csv").is_file():
+        pytest.skip(f"{range_name} OCD data not available")
+    generator = OcdArticleGenerator(db(range_name))
+    rules = pinned_rules(generator, article, {type_prop.upper(), colour_prop.upper()})
+    kw = dict(currency=generator.currencies()[0], price_date=DATE)
+    automatic = finals(generator.generate([article], rules, **kw))
+    for choice in (type_prop, colour_prop, colour_prop.lower()):
+        assert finals(generator.generate([article], rules, fabric_property=choice, **kw)) == automatic
+    assert finals(generator.generate([article], rules, fabric_property="", **kw)) == automatic
+
+
+@pytest.mark.parametrize("range_name,article,prop", [("tun", "NOTUN420", "Power_Standard"),
+                                                     ("bay_work_pod", "PEP100", "Surface_Finish"),
+                                                     ("lino", "MI1E3", "Arms")])
+def test_selecting_a_property_that_is_not_a_fabric_is_refused_before_anything_is_enumerated(range_name, article, prop):
+    if not (db(range_name) / "ocd_article.csv").is_file():
+        pytest.skip(f"{range_name} OCD data not available")
+    generator = OcdArticleGenerator(db(range_name))
+    with pytest.raises(GenerationError, match="no fabric type/colour relationship"):
+        generator.generate([article], currency=generator.currencies()[0], price_date=DATE, fabric_property=prop)
+
+
+@needs("tun")
+def test_tun_property_choices_carry_the_translated_label_and_the_keyword_flag():
+    generator = OcdArticleGenerator(db("tun"))
+    choices = {c.name: c for c in generator.fabric_property_choices(["NOTUN420"])}
+    assert choices["Upholstered_Base_Fabric"].candidate and choices["Upholstered_Base_Fabric_Colour"].candidate
+    assert choices["Upholstered_Base_Fabric"].label and choices["Upholstered_Base_Fabric"].display.startswith(
+        "Upholstered_Base_Fabric - ")
+    assert not choices["Power_Standard"].candidate
+    assert fabric.is_candidate(next(p for p in generator._build_model("NOTUN420").properties
+                                    if p.name == "Upholstered_Base_Fabric"))
+
+
+BETWIXT = Path(REAL_OCD_ROOT) / "betwixt" / "ANY" / "1" / "db"
+
+
+@pytest.mark.skipif(not (BETWIXT / "ocd_article.csv").is_file(), reason="Betwixt OCD data not available")
+@pytest.mark.parametrize("choice", ["", "Seat_Fabric_Type", "Seat_Fabric_Colour", "Back_Fabric_Colour"])
+def test_betwixt_ln10_keeps_its_432_sku_baseline_with_or_without_a_selection(choice):
+    generator = OcdArticleGenerator(BETWIXT)
+    outcome = generator.generate(["LN10"], currency="GBP", price_date="2026-11-02", fabric_property=choice)
+    digest = hashlib.sha256(chr(10).join(finals(outcome)).encode()).hexdigest()
+    assert len(outcome.skus) == 432 and digest == LN10_HASH

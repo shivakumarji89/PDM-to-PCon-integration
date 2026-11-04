@@ -56,14 +56,20 @@ class OcdDataset:
         for r in t("relation", []):
             blocks[r["rel_name"]].append((int(r["rel_blocknr"] or 0), r["rel_block"]))
         self._blocks = blocks
-        self.value_labels = defaultdict(list)      # pval_textnr -> [(language, text)], line order
-        for r in sorted(t("propvaluetext", []), key=lambda r: (r["textnr"], r["language"], int(r["line_nr"] or 0))):
-            self.value_labels[r["textnr"]].append((r["language"].strip().lower(), r["text"].strip()))
+        self.value_labels = self._labels(t("propvaluetext", []))       # pval_textnr -> [(language, text)]
+        self.property_labels = self._labels(t("propertytext", []))     # prop_textnr -> [(language, text)]
         self.prices = defaultdict(list)
         for r in t("price", []):
             self.prices[r["article_nr"]].append(r)
         self.schemes = {r["scheme_id"]: r for r in t("codescheme", [])}
         self._built = True
+
+    @staticmethod
+    def _labels(rows) -> dict:
+        found = defaultdict(list)
+        for r in sorted(rows, key=lambda r: (r["textnr"], r["language"], int(r["line_nr"] or 0))):
+            found[r["textnr"]].append((r["language"].strip().lower(), r["text"].strip()))
+        return found
 
     def relation_text(self, rel_name: str) -> str | None:
         self._index()
@@ -135,10 +141,11 @@ class OcdCsvLoader:
 # --------------------------------------------------------------------------- model builder
 
 
-def _value_labels(dataset: OcdDataset, textnr: str) -> tuple[tuple[str, str], ...]:
-    """One ``(language, text)`` per language of a value text, multi-line texts joined; ``()`` when it has none."""
+def _value_labels(dataset: OcdDataset, textnr: str, *, of_property: bool = False) -> tuple[tuple[str, str], ...]:
+    """One ``(language, text)`` per language of a text, multi-line texts joined; ``()`` when it has none."""
     merged: dict[str, list[str]] = {}
-    for language, text in dataset.value_labels.get((textnr or "").strip(), ()):
+    source = dataset.property_labels if of_property else dataset.value_labels
+    for language, text in source.get((textnr or "").strip(), ()):
         merged.setdefault(language, []).append(text)
     return tuple((language, " ".join(t for t in lines if t)) for language, lines in merged.items())
 
@@ -218,6 +225,7 @@ def build_article_model(dataset: OcdDataset, article_nr: str) -> m.ArticleModel 
                 length=int(prop_row["digits"] or 0), optional=prop_row["need_input"] in {"", "0"},
                 restrictable=prop_row["restrictable"] == "1", multi_option=prop_row["multi_option"] == "1",
                 scope=prop_row["scope"], allowed_keys=allowed,
+                labels=_value_labels(dataset, prop_row.get("prop_textnr", ""), of_property=True),
             ))
             class_props.append(key)
             order += 1

@@ -47,6 +47,10 @@ REASON_UNMAPPED = "not mapped to the selected type"
 REASON_AMBIGUOUS = "ambiguous type prefix"
 
 
+class FabricOverrideError(ValueError):
+    """The manually selected fabric property cannot be resolved; nothing is enumerated."""
+
+
 @dataclass(frozen=True)
 class Rejection:
     value: str
@@ -85,13 +89,18 @@ class FabricResolution:
 
 class FabricColourResolver:
     def __init__(self, model: m.ArticleModel, evaluate: Evaluate,
-                 schemes: Sequence[fabric.FabricScheme] | None = None) -> None:
+                 schemes: Sequence[fabric.FabricScheme] | None = None, fabric_property: str = "") -> None:
         self.model = model
         self._evaluate = evaluate
-        found = fabric.discover_schemes(model, confirmed_only=False) if schemes is None else tuple(schemes)
-        self.schemes = tuple(s for s in found if s.evidence.name_hint)
-        #: structural pairs with no fabric word in either name: reported, never reduced
-        self.unconfirmed = tuple(s for s in found if not s.evidence.name_hint)
+        if schemes is None:
+            found = fabric.discover(model, fabric_property)
+            self.schemes, self.unconfirmed = found.schemes, found.unconfirmed
+            self.override, self.override_error, self.override_missing = (
+                found.override, found.override_error, found.override_missing)
+        else:
+            self.schemes, self.unconfirmed = tuple(schemes), ()
+            self.override = self.override_error = ""
+            self.override_missing = False
         self._by_colour: dict[str, fabric.FabricScheme] = {s.colour_upper: s for s in self.schemes}
         self._type_values: dict[str, list[str]] = {}
         props = model.property_by_key()

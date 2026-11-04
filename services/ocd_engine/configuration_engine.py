@@ -119,11 +119,16 @@ class ConfigurationEngine:
                  rhs_values_factory: Callable[[Mapping[str, str], Sequence[m.Assignment]], dict] | None = None,
                  progress_every: int = 5000,
                  identity_texts: Sequence[str] | None = None,
-                 fabric_default_only: bool = True) -> None:
+                 fabric_default_only: bool = True, fabric_property: str = "") -> None:
         """``fabric_default_only``: every fabric colour property the data shows (``fabric.discover_schemes``) is
         resolved by :class:`~services.ocd_engine.fabric_resolver.FabricColourResolver` to ONE colour per
         configuration - a valid flagged ``is_default`` colour, else the first valid colour in source order - at the
         colour's own node, so the other colours are never expanded. ``False`` keeps every valid colour.
+
+        ``fabric_property``: the one optional manual choice - the property that holds the fabric information. It
+        is an input to the same discovery/resolver (roles are still read from the data); when it cannot be
+        resolved, :meth:`enumerate` raises :class:`~services.ocd_engine.fabric_resolver.FabricOverrideError`
+        instead of offering every colour.
 
         ``identity_texts``: every text outside the model's relations that reads property values to build the
         final article (the code scheme body). ``None`` disables the inert-property optimisation because the
@@ -145,15 +150,28 @@ class ConfigurationEngine:
         self._candidate_refs: dict[str, tuple[str, ...]] = {}     # dimension key -> properties its value filter reads
         self._candidate_cache: dict[tuple, list[m.ValueDef]] = {}
         # One resolver for every fabric (type, colour) pair the data shows; off -> every valid colour stays.
-        self._fabric = fr.FabricColourResolver(model, self._tri_checked) if fabric_default_only else None
+        self._fabric = (fr.FabricColourResolver(model, self._tri_checked, fabric_property=fabric_property)
+                        if fabric_default_only else None)
         self._fabric_colours = self._fabric.colour_properties if self._fabric else frozenset()
         self.fabric_resolutions: dict[tuple, fr.FabricResolution] = {}     # first resolution per (colour, type, pick)
+        if self._fabric is not None and self._fabric.override_error:
+            self.sink.add(dg.FABRIC_OVERRIDE_UNRESOLVED, f"fabric property {self._fabric.override or fabric_property}: "
+                          f"{self._fabric.override_error}",
+                          dg.Severity.WARNING if self._fabric.override_missing else dg.Severity.ERROR,
+                          article=model.base_code, property=self._fabric.override or fabric_property)
         for pair in (self._fabric.unconfirmed if self._fabric else ()):
             self.sink.add(dg.FABRIC_PAIR_UNCONFIRMED,
                           f"{pair.type_property} -> {pair.colour_property} has the structure of a fabric type/colour "
                           f"pair ({pair.mechanism}) but no fabric name; it is not reduced to one colour",
                           dg.Severity.INFO, article=model.base_code, property=pair.colour_property)
         self._inert = self.inert_properties(model, identity_texts) if identity_texts is not None else frozenset()
+
+    @property
+    def fabric_override_error(self) -> str:
+        """Why the manual fabric property cannot be used (empty when none was chosen, it applies, or the article
+        merely lacks it - that case only warns and falls back to automatic discovery)."""
+        fab = self._fabric
+        return fab.override_error if fab is not None and not fab.override_missing else ""
 
     # ------------------------------------------------------------ inert properties
     @staticmethod
@@ -310,6 +328,8 @@ class ConfigurationEngine:
         singletons). Output order is deterministic: dependency order, values by
         their display order.
         """
+        if self.fabric_override_error:
+            raise fr.FabricOverrideError(self.fabric_override_error)
         dims = [d for d in (dimensions if dimensions is not None else self.model.properties) if d.values]
         ordered = self._prepare(dims)
         schedule = self._constraint_schedule(ordered)

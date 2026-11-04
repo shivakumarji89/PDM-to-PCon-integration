@@ -12,10 +12,17 @@ OCD has no fabric marker, so a *(type, colour)* property pair is recognised by t
                   properties. Code prefixes alone are never enough, and a colour whose code extends more than one type
                   code is *ambiguous* - it is excluded, not guessed.
 
-Structure is necessary but, on its own, not sufficient: an edge/material pair can have the same shape. A pair is
-only *confirmed* as fabric when a property name also carries a fabric word (corroboration; the name alone never
-creates a scheme). Structural pairs without that corroboration are reported by :func:`discover_schemes`
-(``confirmed_only=False``) and left unreduced. The colours a configuration
+Candidate discovery is a simple keyword search - ``fabric`` or ``upholstery`` (``upholster`` also catches
+``Upholstered``) - in the property name and in every language of its Property-text (:func:`fabric_candidates`); no
+full phrase such as "Fabric Type" is required. A keyword hit only makes a property a *candidate*. Roles come from the
+structure above, and structure is necessary but, on its own, not sufficient (an edge/material pair can have the same
+shape): a structural pair is *confirmed* when a keyword candidate is one of its two properties. Unconfirmed structural
+pairs are reported (:attr:`Discovery.unconfirmed`) and left unreduced.
+
+One manual override exists (``selected``): the user names the one property that holds the fabric information. It
+replaces the keyword corroboration for the pairs that property belongs to - the roles (type/colour/group) are still
+read from the relations and values, never from the choice - and when no valid structure involves it the result is an
+explicit :attr:`Discovery.override_error`, not an unreduced enumeration. The colours a configuration
 may use are resolved per configuration by :mod:`services.ocd_engine.fabric_resolver`; ``default_colour`` of
 :func:`fabric_structure` is only the static preview (flagged, else first in source order, ignoring relations on
 properties other than the type).
@@ -39,7 +46,8 @@ MIN_EXTENDING = 0.9
 #: Share of values of both properties whose text must end with ``- <code>`` (fallback only).
 MIN_TEXT_CONFIRMED = 0.9
 
-_NAME_HINT = re.compile(r"fabric|upholster|textile", re.IGNORECASE)
+#: Keyword discovery only ("fabric", "upholstery"); ``upholster`` also matches "Upholstered".
+_FABRIC_HINT = re.compile(r"fabric|upholstery|upholster", re.IGNORECASE)
 _LABEL_CODE = re.compile(r"\s-\s*(\S+)\s*$")
 
 
@@ -51,7 +59,7 @@ class FabricEvidence:
     prefix_only: int = 0            # fallback: values with exactly one type code as prefix
     ambiguous: int = 0              # fallback: values whose code extends several type codes
     text_confirmed: float = 0.0     # share of values (both properties) whose text ends with ``- <code>``
-    name_hint: bool = False         # a property name carries a fabric word (corroboration, never sufficient)
+    name_hint: bool = False         # a property name or Property-text carries a keyword (never sufficient)
 
 
 @dataclass(frozen=True)
@@ -101,8 +109,18 @@ def _text_share(types: m.PropertyDef, colours: list[m.ValueDef]) -> float:
     return sum(labelled_with_code(v) for v in both) / len(both) if both else 0.0
 
 
+def is_candidate(prop: m.PropertyDef) -> bool:
+    """The keyword occurs in the property name or in any language of its Property-text."""
+    return bool(_FABRIC_HINT.search(prop.name) or any(_FABRIC_HINT.search(text) for _, text in prop.labels))
+
+
+def fabric_candidates(model: m.ArticleModel) -> list[m.PropertyDef]:
+    """Properties whose name or Property-text contains a fabric keyword - discovery only, roles are not decided."""
+    return [p for p in model.properties if is_candidate(p)]
+
+
 def _hint(types: m.PropertyDef, colour: m.PropertyDef) -> bool:
-    return bool(_NAME_HINT.search(types.name) or _NAME_HINT.search(colour.name))
+    return is_candidate(types) or is_candidate(colour)
 
 
 def _relation_evidence(types: m.PropertyDef, colour: m.PropertyDef,
@@ -154,17 +172,26 @@ def _fallback_evidence(types: m.PropertyDef, colour: m.PropertyDef,
     return evidence, any(n >= 2 for n in per_type.values())
 
 
-def discover_schemes(model: m.ArticleModel, *, confirmed_only: bool = True) -> tuple[FabricScheme, ...]:
-    """Every fabric (type, colour) pair of the article, one per colour property, by the evidence above.
+@dataclass(frozen=True)
+class Discovery:
+    schemes: tuple[FabricScheme, ...]               # pairs that are reduced to one colour
+    unconfirmed: tuple[FabricScheme, ...] = ()      # structure without a keyword candidate: reported, not reduced
+    override: str = ""                              # the property the user selected ("" = automatic)
+    override_error: str = ""                        # set when the selection could not be used
+    override_missing: bool = False                  # the article simply does not have the selected property
 
-    ``confirmed_only=False`` also returns structural pairs without a fabric word in either property name."""
+
+def _structural(model: m.ArticleModel) -> tuple[list[FabricScheme], dict[str, list[str]]]:
+    """Best (type, colour) pair per colour property by structure alone, and the colours with tied types."""
     props = [p for p in model.properties if p.values]
-    schemes: list[FabricScheme] = []
+    found: list[FabricScheme] = []
+    ties: dict[str, list[str]] = {}
     for colour in props:
         values = _offered(colour)
         if len(values) < 2:
             continue
         best: tuple[tuple, FabricScheme] | None = None
+        tied: list[str] = []
         for types in props:
             if types is colour or not _offered(types):
                 continue
@@ -179,10 +206,52 @@ def discover_schemes(model: m.ArticleModel, *, confirmed_only: bool = True) -> t
                     continue
                 scheme, rank = FabricScheme(types.name, colour.name, MECH_PREFIX_TEXT, evidence), (1, evidence.prefix_only)
             if best is None or rank > best[0]:
-                best = (rank, scheme)
-        if best is not None and (best[1].evidence.name_hint or not confirmed_only):
-            schemes.append(best[1])
-    return tuple(schemes)
+                best, tied = (rank, scheme), [types.name]
+            elif rank == best[0]:
+                tied.append(types.name)
+        if best is not None:
+            found.append(best[1])
+            if len(tied) > 1:
+                ties[colour.name_upper] = tied
+    return found, ties
+
+
+def discover(model: m.ArticleModel, selected: str = "") -> Discovery:
+    """Fabric schemes of the article; ``selected`` is the one optional manual property (name, case-insensitive).
+
+    The selection is *added* to the automatic result: pairs the keyword search already confirms stay as they are, so
+    selecting an already-detected property changes nothing and a selection never switches automatic detection off.
+    """
+    structural, ties = _structural(model)
+    automatic = tuple(s for s in structural if s.evidence.name_hint)
+    unconfirmed = tuple(s for s in structural if not s.evidence.name_hint)
+    wanted = (selected or "").strip()
+    if not wanted:
+        return Discovery(automatic, unconfirmed)
+    prop = next((p for p in model.properties if wanted.upper() in (p.name_upper, p.key.upper())), None)
+    if prop is None:
+        return Discovery(automatic, unconfirmed, wanted,
+                         f"property {wanted} is not offered by article {model.base_code}", override_missing=True)
+    if prop.name_upper in ties:
+        return Discovery(automatic, unconfirmed, prop.name, (
+            f"{prop.name} fits several fabric types equally well ({', '.join(ties[prop.name_upper])}); "
+            f"the relations do not say which one it follows"))
+    involved = [s for s in structural if prop.name_upper in (s.type_upper, s.colour_upper)]
+    if not involved:
+        return Discovery(automatic, unconfirmed, prop.name, (
+            f"no fabric type/colour relationship could be established for {prop.name}: its values carry no relation "
+            f"naming another property's values, and no value-text/code-prefix pattern ties them to one"))
+    merged = {s.colour_upper: s for s in automatic}
+    merged.update({s.colour_upper: s for s in involved})
+    return Discovery(tuple(merged.values()), tuple(s for s in unconfirmed if s not in involved), prop.name)
+
+
+def discover_schemes(model: m.ArticleModel, *, confirmed_only: bool = True) -> tuple[FabricScheme, ...]:
+    """Every fabric (type, colour) pair of the article, one per colour property, by the evidence above.
+
+    ``confirmed_only=False`` also returns structural pairs without a keyword candidate."""
+    found = discover(model)
+    return found.schemes if confirmed_only else found.schemes + found.unconfirmed
 
 
 def fabric_types(model: m.ArticleModel) -> list[m.PropertyDef]:

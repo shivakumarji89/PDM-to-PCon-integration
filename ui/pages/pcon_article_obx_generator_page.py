@@ -69,6 +69,9 @@ _SETTINGS_PREFIX = "pcon_sdk_obx/"
 
 
 
+_FABRIC_AUTOMATIC = "Automatic"
+
+
 class PconArticleObxGeneratorPage(BasePage):
     """Standalone QA workspace; needs neither pCon.planner nor a PDM product.
 
@@ -238,6 +241,18 @@ class PconArticleObxGeneratorPage(BasePage):
         dialog_layout.addWidget(self._article_table, 1)
 
         dialog_actions = QHBoxLayout()
+        # The one manual fabric option: which property holds the fabric information. Automatic = keyword discovery
+        # plus the relation evidence; the type/colour/group roles are never chosen here.
+        dialog_actions.addWidget(QLabel("Fabric property:"))
+        self._fabric_property = QComboBox(self._article_dialog)
+        self._fabric_property.setMinimumWidth(260)
+        self._fabric_property.setMaximumWidth(420)
+        self._fabric_property.setToolTip(
+            "Automatic finds fabric properties by the keywords \"fabric\" / \"upholstery\" in the property name or "
+            "text and reads the type/colour relationship from the data. Choose a property only when automatic "
+            "discovery misses or misreads it; the relations are still evaluated.")
+        self._fabric_property.addItem(_FABRIC_AUTOMATIC, "")
+        dialog_actions.addWidget(self._fabric_property)
         dialog_actions.addStretch(1)
         close_button = self._button("Done", self._article_dialog.accept)
         dialog_actions.addWidget(close_button)
@@ -331,6 +346,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._series.setEnabled(idle and self._series.count() > 1)
         self._load_articles_button.setEnabled(idle and has_program)
         self._article_filter.setEnabled(bool(self._articles))
+        self._fabric_property.setEnabled(idle and self._fabric_property.count() > 1)
         self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
         self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
 
@@ -637,7 +653,32 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generate()
 
     def _on_article_selection_changed(self) -> None:
+        self._refresh_fabric_choices()
         self._update_controls()
+
+    def _refresh_fabric_choices(self) -> None:
+        """List the properties of the selected articles; keep the choice if it is still offered, else go back to Automatic."""
+        wanted = self._fabric_property.currentData() or ""
+        program = self._selected_program()
+        numbers = [a.article_number for a in self._selected_articles()]
+        choices = []
+        if program is not None and numbers:
+            try:
+                choices = self._generator_for(program).fabric_property_choices(numbers)
+            except (GenerationError, OSError, ValueError, KeyError):
+                choices = []                    # the generation run reports unreadable data
+        choices.sort(key=lambda c: not c.candidate)          # keyword candidates first, otherwise article order
+        box = self._fabric_property
+        box.blockSignals(True)
+        box.clear()
+        box.addItem(_FABRIC_AUTOMATIC, "")
+        for choice in choices:
+            box.addItem(choice.display, choice.name)
+            if choice.candidate:
+                box.setItemData(box.count() - 1, "Contains a fabric/upholstery keyword", Qt.ItemDataRole.ToolTipRole)
+        index = box.findData(wanted) if wanted else 0
+        box.setCurrentIndex(index if index >= 0 else 0)
+        box.blockSignals(False)
 
     def _populate_articles(self) -> None:
         needle = self._article_filter.text().strip().lower()
@@ -677,12 +718,14 @@ class PconArticleObxGeneratorPage(BasePage):
         numbers = [a.article_number for a in articles]
         currency = self._currency.currentText().strip()
         price_date = self._price_date.date().toString("yyyy-MM-dd")
+        fabric_property = self._fabric_property.currentData() or ""
 
         def work(reporter):
             reporter.note("Reading the OCD data")
             _ = generator.dataset
             outcome = generator.generate(numbers, rules, currency=currency, price_date=price_date,
-                                         max_configurations=None, reporter=reporter)
+                                         max_configurations=None, fabric_property=fabric_property,
+                                         reporter=reporter)
             # Everything proportional to the result size happens here, off the GUI thread; the GUI only
             # swaps a reference (see ``_on_generated``).
             reporter.note(f"Preparing {len(outcome.skus):,} valid SKU(s) for display")
@@ -713,6 +756,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generation_status.setStyleSheet(
             f"color: {theme.COLOR_OK if outcome.skus and not outcome.truncated else theme.COLOR_WARNING};")
         self._validation_label.setText(" ".join(outcome.warnings[:5]))
+        # one line per fabric colour decision: type, mechanism, candidates, rejections, chosen colour and why
+        self._generation_status.setToolTip("\n".join(outcome.fabric_notes[:40]))
         self._update_controls()
 
     def _price_diagnostics_text(self) -> str:

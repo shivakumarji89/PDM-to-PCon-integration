@@ -55,10 +55,32 @@ A (type, colour) pair is a fabric when the data shows one of
 2. `prefix_text` - no such relations, but at least half of the colour codes extend exactly one type code, some type owns
    two or more, and at least 90% of the values of both properties have a language text ending `- <their own code>`.
 
-and a fabric word occurs in a property name. The name is corroboration only: the structure is required, so
-`Upholstered_Base_Fabric` is found, and `everywhere` `Edge_Type -> Material_Type` (same relation shape, no fabric word) is
-**reported (`FABRIC_PAIR_UNCONFIRMED`, info) and left alone** rather than collapsed. Thresholds are constants in
-`fabric.py` (`MIN_MAPPED`, `MIN_EXTENDING`, `MIN_TEXT_CONFIRMED`) and were chosen against the repository, not derived from a spec.
+and a keyword candidate is one of the two properties.
+
+**Keyword discovery.** A property is a *fabric candidate* when `fabric` or `upholstery` (regex `fabric|upholstery|upholster`,
+so `Upholstered_Base_Fabric` matches) occurs in its name **or in any language of its Property-text**
+(`ocd_propertytext`, loaded into `PropertyDef.labels`). No full phrase ("Fabric Type") is needed. A keyword hit is discovery
+only: it never decides a role and never reduces values by itself (`Fabric_Care` with values X|Y stays fully enumerated). The
+structure above decides type/colour/group roles, so `Upholstered_Base_Fabric` is found and `everywhere`
+`Edge_Type -> Material_Type` (same relation shape, no keyword) is **reported (`FABRIC_PAIR_UNCONFIRMED`, info) and left alone**.
+Thresholds are constants in `fabric.py` (`MIN_MAPPED`, `MIN_EXTENDING`, `MIN_TEXT_CONFIRMED`) and were chosen against the
+repository, not derived from a spec.
+
+## The one manual option: Fabric property
+
+Article OBX Generator page, *Load Articles* dialog, next to **Done**: `Fabric property: [Automatic | <Name - Property-text label> ...]`
+(keyword candidates first). It is the only manual control - no type, colour, group, relation or direction selectors.
+
+* `Automatic` (default) = the discovery above. Choosing it again restores the automatic result exactly.
+* A chosen property is an **input to the same discovery/resolver** (`discover(model, selected)`): the structural pairs the
+  property belongs to are confirmed without needing a keyword, and the roles (type, colour, group-like chain) are read from
+  the relations, code prefixes and value texts - the choice may be either side of the pair. It is *added* to the automatic
+  result, so selecting an already-detected property changes nothing, and it never switches automatic detection off.
+* It does not bypass validation: colours are still evaluated by the engine's relation evaluator (see below).
+* If no valid structure involves the property, or it fits several types equally well, generation stops with a
+  `GenerationError` naming the property (`FABRIC_OVERRIDE_UNRESOLVED`, engine `FabricOverrideError`) **before anything is
+  enumerated** - it is never turned into "offer every colour". An article that simply lacks the chosen property (multi-article
+  runs) uses automatic discovery and gets a warning.
 
 ## Resolution per configuration
 

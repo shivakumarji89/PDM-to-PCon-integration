@@ -60,6 +60,7 @@ class PropertyDef:
     kind: str = "property"           # "property" | "option" (repository model)
     scope: str = ""                  # OCD scope: C configurable; R/RG/RV derived or read-only
     allowed_keys: frozenset[str] | None = None   # ArtBase restriction (None = unrestricted)
+    labels: tuple[tuple[str, str], ...] = ()     # (language, text) from ``ocd_propertytext``; may be empty/partial
 
     @property
     def name_upper(self) -> str:
