@@ -536,12 +536,18 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentWidget(self._pages[self._manager.current_step()])
         self.statusBar().showMessage(f"Module: {module_title(module)}", 4000)
 
-    #: Modules that use the new workflow shell (header + sidebar + styled pages).
-    _SHELL_MODULES = (WorkbenchModule.MAINTENANCE,)
+    #: Every module uses the same shell. Keep this derived from the enum so
+    #: new modules inherit the shared chrome automatically; module-specific
+    #: workflows and page behavior remain defined in core.modules.
+    _SHELL_MODULES = tuple(WorkbenchModule)
 
     def _apply_shell_chrome(self, module, steps) -> None:
-        """Show the workflow shell chrome for migrated modules, the legacy
-        navigator for the rest. Presentation only."""
+        """Apply the shared app header, workflow sidebar and page framing.
+
+        Modules with no workflow steps retain the module-selection/placeholder
+        presentation. This is presentation only; workflow readiness, page
+        controls and business behavior remain owned by their existing modules.
+        """
         shell = module in self._SHELL_MODULES and bool(steps)
         self._app_header.setVisible(shell)
         self._sidebar.setVisible(shell)
