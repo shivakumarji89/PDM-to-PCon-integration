@@ -598,12 +598,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     def _build_shell(self) -> None:
         self._shell_built = True
-        # Articles has its own richer shell header (Reload action, source tabs,
-        # KPIs and toolbar). BasePage also creates the standard header for
-        # ordinary pages; remove that one here to avoid a duplicate blank card.
+        # Articles uses the same shared page frame as every workflow, with
+        # its existing Reload action merged into the common header. Remove the
+        # base header from the shared header region before inserting this richer
+        # page-owned header into the shared main region.
         base_header = getattr(self, "header", None)
         if base_header is not None:
-            self.layout().removeWidget(base_header)
+            if self.wf is not None:
+                self.wf.layout().removeWidget(base_header)
+            else:
+                self.layout().removeWidget(base_header)
             base_header.hide()
             base_header.deleteLater()
             self.header = None
@@ -619,7 +623,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._reload_header_btn.setToolTip("Reload articles from the active PDM / MDB snapshots.")
         self._reload_header_btn.clicked.connect(self.refresh)
         self._shell_header.add_action(self._reload_header_btn, "secondary")
-        self.layout().insertWidget(0, self._shell_header)
+        self._content.insertWidget(0, self._shell_header)
 
         self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="▤", parent=self)
         self._kpi_shown = KpiCard("Shown", "0", "neutral", glyph="⌕", parent=self)
