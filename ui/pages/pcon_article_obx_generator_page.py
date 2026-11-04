@@ -800,7 +800,7 @@ class PconArticleObxGeneratorPage(BasePage):
             f"color: {theme.COLOR_OK if comparison.identical else theme.COLOR_WARNING};")
 
     def _open_output_folder(self) -> None:
-        path = self._exported_path or self._output_path.text()
+        path = self._exported_path
         folder = Path(path).parent if path else None
         if folder is None or not folder.is_dir():
             return
