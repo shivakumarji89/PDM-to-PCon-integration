@@ -14,6 +14,7 @@ pCon variant code, so articles have none.
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -62,17 +63,22 @@ class CatalogueScan:
                       key=lambda p: p.program.lower())
 
 
+def _subdirs(path: Path) -> list[str]:
+    """Names of the sub-folders of ``path``; ``os.scandir`` reports the type from the listing itself, so a
+    folder with tens of thousands of entries costs no per-entry ``stat``."""
+    with os.scandir(path) as entries:
+        return [entry.name for entry in entries if entry.is_dir()]
+
+
 def find_db_dir(program_dir: Path) -> Path | None:
     """The ``db`` folder holding ``ocd_article.csv`` (preferred region, highest version)."""
-    regions = sorted(
-        (d for d in program_dir.iterdir() if d.is_dir() and not d.name.startswith(".")),
-        key=lambda d: (d.name != _PREFERRED_REGION, d.name),
-    )
+    regions = sorted((name for name in _subdirs(program_dir) if not name.startswith(".")),
+                     key=lambda name: (name != _PREFERRED_REGION, name))
     for region in regions:
-        versions = sorted((d for d in region.iterdir() if d.is_dir() and d.name.isdigit()),
-                          key=lambda d: int(d.name), reverse=True)
+        versions = sorted((name for name in _subdirs(program_dir / region) if name.isdigit()),
+                          key=int, reverse=True)
         for version in versions:
-            db = version / "db"
+            db = program_dir / region / version / "db"
             if (db / "ocd_article.csv").is_file():
                 return db
     return None

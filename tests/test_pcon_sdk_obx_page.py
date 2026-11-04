@@ -47,7 +47,7 @@ def test_step_is_registered_under_qa_and_in_workflow_items():
     item = next(i for i in WORKFLOW_ITEMS if i.step == WorkflowStep.PCON_ARTICLE_OBX_GENERATOR)
     assert item.title == "Article OBX Generator (OCD Engine)"
     qa = module_workflows(WorkbenchModule.QA_VALIDATION)
-    assert qa.index(WorkflowStep.PCON_ARTICLE_OBX_GENERATOR) == qa.index(WorkflowStep.ARTICLE_OBX_GENERATOR) + 1
+    assert WorkflowStep.PCON_ARTICLE_OBX_GENERATOR in qa and WorkflowStep.ARTICLE_OBX_GENERATOR not in qa   # legacy removed
     # Other modules are untouched.
     for module in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE, WorkbenchModule.METATYPE,
                    WorkbenchModule.BULK_UPDATE, WorkbenchModule.SYTELINE_EXPORT, WorkbenchModule.OAP):
@@ -68,6 +68,9 @@ def test_step_is_standalone_in_workflow_manager():
             self.current = step
 
         def is_ready(self, step):
+            return True
+
+        def has_page(self, step):
             return True
 
         def refresh(self, step):
