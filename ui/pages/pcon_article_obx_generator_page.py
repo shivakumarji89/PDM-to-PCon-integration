@@ -127,9 +127,6 @@ class PconArticleObxGeneratorPage(BasePage):
     # ------------------------------------------------------------------ build
     def _build_content(self) -> None:
         self.add_content(self._build_catalogue_box())
-        properties = self._build_properties_box()
-        self._normalize_group_boxes(properties)
-        self._content.addWidget(properties, 0)
         results = self._build_generation_box()
         self._normalize_group_boxes(results)
         self._content.addWidget(results, 1)
