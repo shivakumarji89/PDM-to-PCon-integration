@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDateEdit,
+    QDialog,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -167,17 +168,23 @@ class PconArticleObxGeneratorPage(BasePage):
         self._catalogue_status.setWordWrap(True)
         layout.addWidget(self._catalogue_status)
 
+        # Article browsing/selection lives in a dialog so the generator workspace stays compact.
+        self._article_dialog = QDialog(self)
+        self._article_dialog.setWindowTitle("Load Articles")
+        self._article_dialog.setModal(False)
+        self._article_dialog.resize(900, 560)
+        dialog_layout = QVBoxLayout(self._article_dialog)
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("Filter:"))
-        self._article_filter = QLineEdit(self)
+        self._article_filter = QLineEdit(self._article_dialog)
         self._article_filter.setPlaceholderText("Article number or label")
         self._article_filter.textChanged.connect(self._populate_articles)
         filter_row.addWidget(self._article_filter, 1)
-        self._article_count = QLabel("0 articles", self)
+        self._article_count = QLabel("0 articles", self._article_dialog)
         filter_row.addWidget(self._article_count)
-        layout.addLayout(filter_row)
+        dialog_layout.addLayout(filter_row)
 
-        self._article_table = QTableWidget(self)
+        self._article_table = QTableWidget(self._article_dialog)
         self._article_table.setColumnCount(4)
         self._article_table.setHorizontalHeaderLabels(["Article", "Variant Code", "Label", "Package"])
         self._article_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -190,10 +197,16 @@ class PconArticleObxGeneratorPage(BasePage):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self._article_table.setMinimumHeight(140)
-        self._article_table.setMaximumHeight(220)
+        self._article_table.setMinimumHeight(300)
+        self._article_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._article_table.itemSelectionChanged.connect(self._on_article_selection_changed)
-        layout.addWidget(self._article_table)
+        dialog_layout.addWidget(self._article_table, 1)
+
+        dialog_actions = QHBoxLayout()
+        dialog_actions.addStretch(1)
+        close_button = self._button("Done", self._article_dialog.accept)
+        dialog_actions.addWidget(close_button)
+        dialog_layout.addLayout(dialog_actions)
         return box
 
     def _build_properties_box(self) -> QGroupBox:
@@ -597,6 +610,9 @@ class PconArticleObxGeneratorPage(BasePage):
             articles, currencies = result
             self._fill_currencies(currencies)
             self._on_articles_loaded(articles, label)
+            self._article_dialog.show()
+            self._article_dialog.raise_()
+            self._article_dialog.activateWindow()
 
         self._start("Loading articles", work, finished, subject=label, status=self._catalogue_status)
 
