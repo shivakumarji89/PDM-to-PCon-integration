@@ -127,10 +127,19 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # ------------------------------------------------------------------ build
     def _build_content(self) -> None:
-        self.add_content(self._build_catalogue_box())
+        # Catalogue selection and OBX generation are one continuous workspace.
+        workspace = QGroupBox("Article OBX Workspace", self)
+        workspace_layout = QVBoxLayout(workspace)
+        catalogue = self._build_catalogue_box()
         results = self._build_generation_box()
-        self._normalize_group_boxes(results)
-        self._content.addWidget(results, 1)
+        for section in (catalogue, results):
+            section.setTitle("")
+            section.setStyleSheet("QGroupBox { border: 0; margin: 0; padding: 0; }")
+            workspace_layout.addWidget(section)
+        workspace_layout.setContentsMargins(8, 6, 8, 6)
+        workspace_layout.setSpacing(4)
+        self._normalize_group_boxes(workspace)
+        self._content.addWidget(workspace, 1)
 
     def _button(self, text: str, slot, *, primary: bool = False) -> QPushButton:
         button = QPushButton(text, self)
