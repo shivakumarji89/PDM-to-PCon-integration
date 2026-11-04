@@ -38,6 +38,7 @@ class ValueDef:
     order: int = 0
     relations: tuple[RelationRef, ...] = ()
     is_default: bool = False         # OCD ``ocd_propertyvalue.is_default``
+    labels: tuple[tuple[str, str], ...] = ()   # (language, text) from ``ocd_propvaluetext``; may be empty/partial
 
     @property
     def encoded(self) -> str:

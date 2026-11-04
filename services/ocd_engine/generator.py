@@ -132,6 +132,8 @@ class GenerationOutcome:
     inert_properties: tuple[str, ...] = ()   # read-only properties enumerated with one value only
     truncated: bool = False
     warnings: list[str] = field(default_factory=list)
+    #: one line per fabric colour decision (selected type, mechanism, candidates, rejections, chosen colour and why)
+    fabric_notes: list[str] = field(default_factory=list)
 
     @property
     def exportable(self) -> list[GeneratedSku]:
@@ -440,6 +442,8 @@ class OcdArticleGenerator:
                 if reporter is not None and produced % 500 == 0:
                     reporter.note(f"Enumerating {article_number}: {engine.stats.emitted:,} configuration(s), "
                                   f"{produced:,} valid SKU(s)")
+            outcome.fabric_notes.extend(f"{article_number}: {r.describe()}"
+                                        for r in engine.fabric_resolutions.values() if r.selected)
             outcome.nodes += engine.stats.nodes
             outcome.configurations += engine.stats.emitted
             outcome.inert_properties = tuple(dict.fromkeys(outcome.inert_properties + engine.stats.inert))

@@ -56,6 +56,9 @@ class OcdDataset:
         for r in t("relation", []):
             blocks[r["rel_name"]].append((int(r["rel_blocknr"] or 0), r["rel_block"]))
         self._blocks = blocks
+        self.value_labels = defaultdict(list)      # pval_textnr -> [(language, text)], line order
+        for r in sorted(t("propvaluetext", []), key=lambda r: (r["textnr"], r["language"], int(r["line_nr"] or 0))):
+            self.value_labels[r["textnr"]].append((r["language"].strip().lower(), r["text"].strip()))
         self.prices = defaultdict(list)
         for r in t("price", []):
             self.prices[r["article_nr"]].append(r)
@@ -132,6 +135,14 @@ class OcdCsvLoader:
 # --------------------------------------------------------------------------- model builder
 
 
+def _value_labels(dataset: OcdDataset, textnr: str) -> tuple[tuple[str, str], ...]:
+    """One ``(language, text)`` per language of a value text, multi-line texts joined; ``()`` when it has none."""
+    merged: dict[str, list[str]] = {}
+    for language, text in dataset.value_labels.get((textnr or "").strip(), ()):
+        merged.setdefault(language, []).append(text)
+    return tuple((language, " ".join(t for t in lines if t)) for language, lines in merged.items())
+
+
 def _relations(dataset: OcdDataset, rel_obj: str, article: str, owner: str) -> tuple[m.RelationRef, ...]:
     if not rel_obj or rel_obj.strip() in {"", "0"}:
         return ()
@@ -190,6 +201,7 @@ def build_article_model(dataset: OcdDataset, article_nr: str) -> m.ArticleModel 
                     key=f"{key}:{value_row['value_from']}", value=value_row["value_from"],
                     code=value_row["value_from"], order=int(value_row["pos_pval"] or 0),
                     is_default=(value_row.get("is_default") or "").strip() == "1",
+                    labels=_value_labels(dataset, value_row.get("pval_textnr", "")),
                     relations=_relations(dataset, value_row["rel_obj"], article_nr,
                                          f"value {key}={value_row['value_from']}"),
                 ))

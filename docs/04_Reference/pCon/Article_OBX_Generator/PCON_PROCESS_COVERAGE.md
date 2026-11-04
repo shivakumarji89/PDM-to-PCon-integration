@@ -40,6 +40,10 @@ is selected rejects the configuration (`NO_FABRIC_COLOUR` warning, counted in `p
 The candidate cache is keyed on exactly the property values the colour relations read, so it never crosses configurations that differ
 in them. Switch off with `generate(..., fabric_default_only=False)`.
 
+**Superseded detection:** fabric properties are no longer recognised by name; they are discovered from the data (relation
+literals + code prefix, or code prefix + value text) by one resolver. Tun (`Upholstered_Base_Fabric`, no "Type" in the name)
+was not reduced by the name rule. See `FABRIC_COLOUR_RESOLVER.md`.
+
 Verified on LN10 (Betwixt): `pos_pval` order = file order = lexical order, **not** numeric; every colour has exactly one relation, a
 type precondition, except one withdrawn group (`1=2`, never valid); `is_default` is never set. Result: 432 SKUs (was 254,043), an
 exact subset of the old set, every colour the first of its type.

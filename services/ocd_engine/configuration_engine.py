@@ -18,7 +18,7 @@ from typing import Callable, Iterator, Mapping, Sequence
 
 from core.cancellation import checkpoint
 from services.ocd_engine import diagnostics as dg
-from services.ocd_engine import fabric
+from services.ocd_engine import fabric_resolver as fr
 from services.ocd_engine import model as m
 from services.ocd_engine import relation_parser as rp
 from services.ocd_engine.codescheme_engine import EncodedValue
@@ -120,8 +120,10 @@ class ConfigurationEngine:
                  progress_every: int = 5000,
                  identity_texts: Sequence[str] | None = None,
                  fabric_default_only: bool = True) -> None:
-        """``fabric_default_only``: a fabric colour is offered as its ``is_default`` value only (OBX output uses
-        the default colour of each fabric type); where no value is flagged all valid colours stay.
+        """``fabric_default_only``: every fabric colour property the data shows (``fabric.discover_schemes``) is
+        resolved by :class:`~services.ocd_engine.fabric_resolver.FabricColourResolver` to ONE colour per
+        configuration - a valid flagged ``is_default`` colour, else the first valid colour in source order - at the
+        colour's own node, so the other colours are never expanded. ``False`` keeps every valid colour.
 
         ``identity_texts``: every text outside the model's relations that reads property values to build the
         final article (the code scheme body). ``None`` disables the inert-property optimisation because the
@@ -142,8 +144,15 @@ class ConfigurationEngine:
         self._constraints = self._collect_constraints()
         self._candidate_refs: dict[str, tuple[str, ...]] = {}     # dimension key -> properties its value filter reads
         self._candidate_cache: dict[tuple, list[m.ValueDef]] = {}
-        self._fabric_colours = frozenset(p.name_upper for p in fabric.fabric_colours(model))             if fabric_default_only else frozenset()
-        self._fabric_types = frozenset(p.name_upper for p in fabric.fabric_types(model))
+        # One resolver for every fabric (type, colour) pair the data shows; off -> every valid colour stays.
+        self._fabric = fr.FabricColourResolver(model, self._tri_checked) if fabric_default_only else None
+        self._fabric_colours = self._fabric.colour_properties if self._fabric else frozenset()
+        self.fabric_resolutions: dict[tuple, fr.FabricResolution] = {}     # first resolution per (colour, type, pick)
+        for pair in (self._fabric.unconfirmed if self._fabric else ()):
+            self.sink.add(dg.FABRIC_PAIR_UNCONFIRMED,
+                          f"{pair.type_property} -> {pair.colour_property} has the structure of a fabric type/colour "
+                          f"pair ({pair.mechanism}) but no fabric name; it is not reduced to one colour",
+                          dg.Severity.INFO, article=model.base_code, property=pair.colour_property)
         self._inert = self.inert_properties(model, identity_texts) if identity_texts is not None else frozenset()
 
     # ------------------------------------------------------------ inert properties
@@ -182,16 +191,20 @@ class ConfigurationEngine:
         return frozenset(found)
 
     # ------------------------------------------------------------ relation helpers
-    def _tri(self, ref: m.RelationRef, ctx: EvalContext, owner: str) -> Tri:
+    def _tri_checked(self, ref: m.RelationRef, ctx: EvalContext, owner: str) -> tuple[Tri, str | None]:
+        """The relation's result and, when it could not be parsed or evaluated, why (the result is then UNDEFINED)."""
         compiled = rp.compile_relation(m.PRECONDITION if ref.rel_type in (1, 2) else ref.rel_type, ref.text)
         if compiled.error:
             self._report_bad(ref, compiled.error, owner, dg.RELATION_PARSE_ERROR)
-            return Tri.UNDEFINED
+            return Tri.UNDEFINED, compiled.error
         try:
-            return eval_cond(compiled.node, ctx)
+            return eval_cond(compiled.node, ctx), None
         except EvalError as error:
             self._report_bad(ref, str(error), owner, dg.RELATION_EVAL_ERROR)
-            return Tri.UNDEFINED
+            return Tri.UNDEFINED, str(error)
+
+    def _tri(self, ref: m.RelationRef, ctx: EvalContext, owner: str) -> Tri:
+        return self._tri_checked(ref, ctx, owner)[0]
 
     def _report_bad(self, ref: m.RelationRef, message: str, owner: str, code: str) -> None:
         self._leaf_uncertain = True
@@ -243,6 +256,13 @@ class ConfigurationEngine:
             if readable:
                 # What this dimension's value filter (``_candidates``) can depend on; see there.
                 self._candidate_refs[dim.key] = tuple(sorted(refs))
+            scheme = self._fabric.scheme_of(dim.name_upper) if self._fabric else None
+            if scheme is not None:
+                # The colour list is a function of the selected type even when no relation reads it (value-text
+                # fallback): order the type first and key the candidate cache on it.
+                refs.add(scheme.type_upper)
+                if dim.key in self._candidate_refs:
+                    self._candidate_refs[dim.key] = tuple(sorted(set(self._candidate_refs[dim.key]) | {scheme.type_upper}))
             refs.discard(dim.name_upper)
             deps.append({r for r in refs if r in names})
         order: list[int] = []
@@ -329,14 +349,15 @@ class ConfigurationEngine:
                 chosen.pop()
                 return
             candidates = self._candidates(dim, ctx)
-            if not candidates and dim.name_upper in self._fabric_colours and self._fabric_type_selected(ctx):
+            if not candidates and dim.name_upper in self._fabric_colours and self._fabric_type_selected(dim, ctx):
                 # A fabric is chosen but none of its colours is valid here: not a configuration.
                 self.stats.pruned += 1
                 if dim.name_upper not in self._no_value_reported:
                     self._no_value_reported.add(dim.name_upper)
+                    why = self._fabric.resolve(dim, ctx)[0].describe()
                     self.sink.add(dg.NO_FABRIC_COLOUR,
                                   f"no colour of {dim.name} is valid for the selected fabric type under some "
-                                  f"selections; those configurations are rejected", dg.Severity.WARNING,
+                                  f"selections; those configurations are rejected ({why})", dg.Severity.WARNING,
                                   article=self.model.base_code, property=dim.name)
                 return
             if not candidates:
@@ -366,8 +387,8 @@ class ConfigurationEngine:
         if self.progress is not None:
             self.progress(self.stats)
 
-    def _fabric_type_selected(self, ctx: EvalContext) -> bool:
-        return any(name in ctx.values for name in self._fabric_types)
+    def _fabric_type_selected(self, dim: m.PropertyDef, ctx: EvalContext) -> bool:
+        return self._fabric.type_selected(dim.name_upper, ctx.values)
 
     def _is_hidden(self, dim: m.PropertyDef, ctx: EvalContext) -> bool:
         cls = self._classes.get(dim.class_name.upper())
@@ -396,7 +417,27 @@ class ConfigurationEngine:
             found = self._candidate_cache[key] = self._filter_values(dim, ctx)
         return found
 
+    def _resolve_fabric(self, dim: m.PropertyDef, ctx: EvalContext) -> list[m.ValueDef]:
+        """The one fabric colour of ``dim`` for this configuration (none if no colour is valid), explanation recorded."""
+        resolution, chosen = self._fabric.resolve(dim, ctx)
+        self.stats.pruned += dict(resolution.rejected_counts).get(fr.REASON_PRECONDITION, 0)
+        key = (dim.name_upper, resolution.type_value, resolution.selected, resolution.mechanism)
+        if key not in self.fabric_resolutions and len(self.fabric_resolutions) < 5000:
+            self.fabric_resolutions[key] = resolution
+            if chosen:
+                self.sink.add(dg.FABRIC_COLOUR_RESOLVED, resolution.describe(), dg.Severity.INFO,
+                              article=self.model.base_code, property=dim.name)
+            if resolution.uncertain:
+                bad = next(r for r in resolution.rejected if r.reason in (fr.REASON_UNUSABLE, fr.REASON_UNSUPPORTED))
+                self.sink.add(dg.FABRIC_COLOUR_UNCERTAIN,
+                              f"{dim.name}: a colour relation cannot be interpreted safely, so the colour is not "
+                              f"offered ({bad.value}: {bad.detail})", dg.Severity.WARNING,
+                              article=self.model.base_code, property=dim.name)
+        return chosen
+
     def _filter_values(self, dim: m.PropertyDef, ctx: EvalContext) -> list[m.ValueDef]:
+        if dim.name_upper in self._fabric_colours:
+            return self._resolve_fabric(dim, ctx)
         out = []
         for value in dim.values:
             if dim.allowed_keys is not None and value.key not in dim.allowed_keys:
@@ -409,8 +450,6 @@ class ConfigurationEngine:
                     break
             if ok:
                 out.append(value)
-        if out and dim.name_upper in self._fabric_colours:
-            out = fabric.constrained_to_default(out)
         return out
 
     def _note_no_value(self, dim: m.PropertyDef) -> None:
