@@ -30,8 +30,8 @@ class BasePage(QWidget):
         description: str = "",
         parent: QWidget | None = None,
         show_placeholder: bool = True,
-        content_stretch: bool = False,
-        workflow_layout: bool = False,
+        content_stretch: bool = True,
+        workflow_layout: bool = True,
         header_glyph: str = "",
     ) -> None:
         super().__init__(parent)
@@ -51,9 +51,11 @@ class BasePage(QWidget):
         root.setSpacing(theme.SECTION_SPACING)
 
         if workflow_layout:
-            # Opt-in: the shared layout replaces the legacy title block. Pages
-            # keep calling add_content(); it lands in the layout's main area.
+            # Shared page frame is the default: header / toolbar / summary /
+            # main / footer are one reusable structure across every workflow.
+            # Keep `header` as a compatibility alias for pages that add actions.
             self.wf = WorkflowPageLayout(title, description, self, header_glyph)
+            self.header = self.wf.header
             self._content = self.wf.main_layout
             root.addWidget(self.wf, 1 if content_stretch else 0)
             if not content_stretch:
