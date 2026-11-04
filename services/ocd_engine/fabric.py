@@ -1,13 +1,12 @@
 """Fabric properties of an article: types, their colours and the default colour per type.
 
-OCD has no fabric marker. A fabric *type* property and a fabric *colour* property are recognised by name
-(``*Fabric*Type``, ``*Fabric*Colo(u)r``) and the colour is only treated as a fabric colour when the article also
-has a fabric type, so a plain ``Colour`` property is never touched. Which colours belong to which type is not a
-table either: each colour value carries a precondition on the type (``Seat_Fabric_Type = 'VZ'``), so it is read
-from the relations. The default colour is chosen per configuration by the engine, not here: the first colour valid after
-relation evaluation, in ``pos_pval`` order (a value flagged ``is_default`` wins when it is valid). The
-``default_colour`` of :func:`fabric_structure` is only the static preview: flagged, else first by source order,
-ignoring relations on properties other than the type.
+OCD has no dedicated fabric marker. First discover fabric-related property candidates by searching the simple
+keywords "fabric" or "upholstery" (not complete phrases such as "Fabric Type" or "Fabric Colour"). The current
+engine model exposes property names; translated Property-text labels must be added by the data adapter when
+available. Candidate discovery is separate from deciding which candidate is the type and which is the colour.
+The type/colour relationship and validity must be established from class association and OCD relations. The
+default colour is chosen per configuration by the engine: first valid after relation evaluation in ``pos_pval``
+order (a valid ``is_default`` value wins).
 """
 from __future__ import annotations
 
@@ -18,17 +17,28 @@ from typing import Sequence
 from services.ocd_engine import model as m
 from services.ocd_engine import relation_parser as rp
 
-_TYPE = re.compile(r"fabric.*type", re.IGNORECASE)
-_COLOUR = re.compile(r"fabric.*colou?r", re.IGNORECASE)
+# Discovery deliberately uses keyword hits only. Do not require "type", "colour", or
+# "color" in the property name; e.g. Tun's type property is Upholstered_Base_Fabric.
+_FABRIC_HINT = re.compile(r"fabric|upholstery|upholster", re.IGNORECASE)
+
+
+def fabric_candidates(model: m.ArticleModel) -> list[m.PropertyDef]:
+    """Properties whose names contain a fabric/upholstery keyword.
+
+    This is candidate discovery only. Relationship analysis must establish the
+    type/colour roles; a keyword hit alone must not force SKU reduction.
+    """
+    return [p for p in model.properties if _FABRIC_HINT.search(p.name)]
 
 
 def fabric_types(model: m.ArticleModel) -> list[m.PropertyDef]:
-    return [p for p in model.properties if _TYPE.search(p.name)]
+    """Compatibility helper for legacy callers; type role is currently name-derived."""
+    return [p for p in fabric_candidates(model) if re.search(r"type", p.name, re.IGNORECASE)]
 
 
 def fabric_colours(model: m.ArticleModel) -> list[m.PropertyDef]:
-    """Fabric colour properties; empty unless the article has a fabric type property."""
-    return [p for p in model.properties if _COLOUR.search(p.name)] if fabric_types(model) else []
+    """Compatibility helper for legacy callers; colour role is currently name-derived."""
+    return [p for p in fabric_candidates(model) if re.search(r"colou?r", p.name, re.IGNORECASE)] if fabric_types(model) else []
 
 
 @dataclass(frozen=True)
