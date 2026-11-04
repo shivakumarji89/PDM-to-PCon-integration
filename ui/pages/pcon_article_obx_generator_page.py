@@ -247,11 +247,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._price_date.setDisplayFormat("yyyy-MM-dd")
         action_row.addWidget(self._price_date)
         action_row.addStretch(1)
-        self._generate_button = self._button("Generate Valid SKUs", self._generate, primary=True)
-        self._generate_button.setToolTip(
-            "Enumerate every valid configuration of the selected base articles with the OCD Engine "
-            "(relations, conditions, ArtBase restrictions) and price it.")
-        action_row.addWidget(self._generate_button)
         self._export_button = self._button("Export OBX", self._export_obx)
         self._export_button.setEnabled(False)
         self._export_button.setToolTip("Write the priced SKUs to the output OBX file.")
@@ -334,7 +329,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._series.setEnabled(idle and self._series.count() > 1)
         self._load_articles_button.setEnabled(idle and has_program)
         self._article_filter.setEnabled(bool(self._articles))
-        self._generate_button.setEnabled(idle and has_selection)
         self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
         self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
 
@@ -416,12 +410,14 @@ class PconArticleObxGeneratorPage(BasePage):
         current = self._currency.currentText().strip()
         self._currency.clear()
         self._currency.addItems(currencies)
-        if current:
+        if current and current.upper() in {value.upper() for value in currencies}:
             self._currency.setCurrentText(current)
+        elif any(value.upper() == "EUR" for value in currencies):
+            self._currency.setCurrentText(next(value for value in currencies if value.upper() == "EUR"))
         elif len(currencies) == 1:
             self._currency.setCurrentIndex(0)
         else:
-            self._currency.setCurrentIndex(-1)
+            self._currency.setCurrentText("EUR")
 
     def _selected_articles(self) -> list[OcdArticle]:
         rows = sorted({index.row() for index in self._article_table.selectedIndexes()})
@@ -611,9 +607,10 @@ class PconArticleObxGeneratorPage(BasePage):
             articles, currencies = result
             self._fill_currencies(currencies)
             self._on_articles_loaded(articles, label)
-            self._article_dialog.show()
-            self._article_dialog.raise_()
-            self._article_dialog.activateWindow()
+            # Loading a series selects its full article set and starts SKU generation.
+            # The article picker remains available for later manual inspection.
+            if self._articles:
+                self._generate()
 
         self._start("Loading articles", work, finished, subject=label, status=self._catalogue_status)
 
