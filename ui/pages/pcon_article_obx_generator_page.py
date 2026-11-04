@@ -225,15 +225,6 @@ class PconArticleObxGeneratorPage(BasePage):
     def _build_generation_box(self) -> QGroupBox:
         box = QGroupBox("OBX Generation", self)
         layout = QVBoxLayout(box)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Output OBX:"))
-        self._output_path = QLineEdit(self)
-        self._output_path.setText(self._settings.value(_SETTINGS_PREFIX + "outputPath", "", type=str))
-        self._output_path.setPlaceholderText("C:\\path\\to\\generated.obx")
-        row.addWidget(self._output_path, 1)
-        row.addWidget(self._button("Browse…", self._browse_output))
-        layout.addLayout(row)
-
         action_row = QHBoxLayout()
         action_row.addWidget(QLabel("Currency:"))
         self._currency = QComboBox(self)
@@ -314,7 +305,8 @@ class PconArticleObxGeneratorPage(BasePage):
         return self._launcher
 
     def _save_settings(self) -> None:
-        self._settings.setValue(_SETTINGS_PREFIX + "outputPath", self._output_path.text())
+        # Export destination is selected interactively each time Export OBX is clicked.
+        return
 
     # ------------------------------------------------------------- lifecycle
     def refresh(self) -> None:
@@ -651,13 +643,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._update_controls()
 
     # ------------------------------------------------------------- generation
-    def _browse_output(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save generated OBX", self._output_path.text() or "generated.obx",
-            "OBX files (*.obx)")
-        if path:
-            self._output_path.setText(path)
-
     def _generate(self) -> None:
         program = self._selected_program()
         articles = self._selected_articles()
@@ -751,17 +736,18 @@ class PconArticleObxGeneratorPage(BasePage):
         if outcome is None or program is None or not outcome.exportable:
             QMessageBox.information(self, "Export OBX", "Generate valid SKUs with a price first.")
             return
-        path = self._output_path.text().strip()
+        suggested = self._settings.value(_SETTINGS_PREFIX + "outputPath", "generated.obx", type=str)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export OBX", suggested or "generated.obx", "OBX files (*.obx)")
         if not path:
-            self._browse_output()
-            path = self._output_path.text().strip()
-            if not path:
-                return
+            return
+        if not path.lower().endswith(".obx"):
+            path += ".obx"
         if Path(path).exists():
             answer = QMessageBox.question(self, "Export OBX", f"{path} exists. Overwrite it?")
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        self._save_settings()
+        self._settings.setValue(_SETTINGS_PREFIX + "outputPath", path)
         skus, price_date = list(outcome.exportable), self._outcome_price_date
         series = self._series.currentData() or ""
 
