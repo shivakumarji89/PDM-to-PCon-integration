@@ -180,7 +180,7 @@ class PconArticleObxGeneratorPage(BasePage):
         # Article browsing/selection lives in a dialog so the generator workspace stays compact.
         self._article_dialog = QDialog(self)
         self._article_dialog.setWindowTitle("Load Articles")
-        self._article_dialog.setModal(False)
+        self._article_dialog.setModal(True)
         self._article_dialog.resize(900, 560)
         dialog_layout = QVBoxLayout(self._article_dialog)
         filter_row = QHBoxLayout()
@@ -216,6 +216,7 @@ class PconArticleObxGeneratorPage(BasePage):
         close_button = self._button("Done", self._article_dialog.accept)
         dialog_actions.addWidget(close_button)
         dialog_layout.addLayout(dialog_actions)
+        self._article_dialog.accepted.connect(self._on_article_dialog_done)
         return box
 
     def _build_properties_box(self) -> QGroupBox:
@@ -607,10 +608,11 @@ class PconArticleObxGeneratorPage(BasePage):
             articles, currencies = result
             self._fill_currencies(currencies)
             self._on_articles_loaded(articles, label)
-            # Loading a series selects its full article set and starts SKU generation.
-            # The article picker remains available for later manual inspection.
-            if self._articles:
-                self._generate()
+            # Let the user choose articles; SKU generation begins after Done.
+            self._article_filter.clear()
+            self._article_dialog.show()
+            self._article_dialog.raise_()
+            self._article_dialog.activateWindow()
 
         self._start("Loading articles", work, finished, subject=label, status=self._catalogue_status)
 
@@ -618,14 +620,20 @@ class PconArticleObxGeneratorPage(BasePage):
         self._articles = list(articles)
         self._populate_articles()
         if self._articles:
-            # Default to the complete article set so Generate covers the loaded catalogue scope.
-            self._article_table.selectAll()
+            self._article_table.clearSelection()
             self._set_status(self._catalogue_status,
                              f"Loaded {len(self._articles)} article(s) of {label}.", theme.COLOR_OK)
         else:
             self._set_status(self._catalogue_status,
                              f"No articles found for {label}.", theme.COLOR_WARNING)
         self._update_controls()
+
+    def _on_article_dialog_done(self) -> None:
+        selected = self._selected_articles()
+        if not selected:
+            self._set_status(self._generation_status, "Select at least one article to generate SKUs.", theme.COLOR_WARNING)
+            return
+        self._generate()
 
     def _on_article_selection_changed(self) -> None:
         self._update_controls()
