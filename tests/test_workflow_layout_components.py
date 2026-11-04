@@ -136,12 +136,13 @@ def test_card_row_reflows_without_clipping(app):
     assert row.width() >= 150
 
 
-def test_basepage_uses_shared_headline_for_standard_pages(app):
+def test_basepage_uses_shared_page_frame_by_default(app):
     page = BasePage("T", "D", show_placeholder=False)
-    assert page.wf is None
-    assert page.header is not None
+    assert page.wf is not None
+    assert page.header is page.wf.header
     assert page.header.title_label.text() == "T"
     assert page.header.description_label.text() == "D"
+    assert page.wf._main.isVisible()
 
 
 def test_every_registered_workflow_has_a_distinct_glyph():
