@@ -164,6 +164,11 @@ class ConfigurationEngine:
                           f"{pair.type_property} -> {pair.colour_property} has the structure of a fabric type/colour "
                           f"pair ({pair.mechanism}) but no fabric name; it is not reduced to one colour",
                           dg.Severity.INFO, article=model.base_code, property=pair.colour_property)
+        for colour_name, types in (self._fabric.ambiguous if self._fabric else ()):
+            self.sink.add(dg.FABRIC_PAIR_AMBIGUOUS,
+                          f"{colour_name} fits several fabric types equally well ({', '.join(types)}); the data does "
+                          f"not say which one it follows, so it is not paired and not reduced to one colour",
+                          dg.Severity.WARNING, article=model.base_code, property=colour_name)
         self._inert = self.inert_properties(model, identity_texts) if identity_texts is not None else frozenset()
 
     @property

@@ -94,11 +94,11 @@ class FabricColourResolver:
         self._evaluate = evaluate
         if schemes is None:
             found = fabric.discover(model, fabric_property)
-            self.schemes, self.unconfirmed = found.schemes, found.unconfirmed
+            self.schemes, self.unconfirmed, self.ambiguous = found.schemes, found.unconfirmed, found.ambiguous
             self.override, self.override_error, self.override_missing = (
                 found.override, found.override_error, found.override_missing)
         else:
-            self.schemes, self.unconfirmed = tuple(schemes), ()
+            self.schemes, self.unconfirmed, self.ambiguous = tuple(schemes), (), ()
             self.override = self.override_error = ""
             self.override_missing = False
         self._by_colour: dict[str, fabric.FabricScheme] = {s.colour_upper: s for s in self.schemes}

@@ -101,6 +101,24 @@ The colour node therefore offers one value, so colours are never expanded and th
 first-valid), `GenerationOutcome.fabric_notes`, and sink codes `FABRIC_COLOUR_RESOLVED` (info), `FABRIC_COLOUR_UNCERTAIN`
 and `NO_FABRIC_COLOUR` (warning). `generate(..., fabric_default_only=False)` keeps every valid colour.
 
+## Several independent fabric sets in one article
+
+Discovery yields at most one `(type, colour)` scheme per colour property, and the engine resolves each colour property
+on its own: at that colour node it reads *its* type from the configuration, evaluates only *its* colours' relations and
+keeps one colour (flagged default, else first valid in source order) before any other colour is expanded. Sets are
+therefore multiplied, not merged: Seat type x Back type x ... with one colour each (Hush NOHUE2: 2,471,839 SKUs
+unreduced, 2,304 = 48 x 48 reduced). Direct, value-level and group-chain relations, the value-text fallback, the
+manual Fabric property (it only *adds* its own pair; the other sets stay as they are) and `fabric_default_only=False`
+all work per set (`tests/ocd_engine/test_ocd_fabric_multi_set.py`).
+
+**No guessing between types.** If a colour property fits two or more type properties equally well (same evidence rank,
+e.g. Always: `Chair_Fabric_Colour` and `Seat_Pad_Fabric_Colour` share one 3,241-value code space with two identical type
+lists and no colour relations; Pinch: `Fabric_Colour` fits three types), no pair is built. The colour property keeps all
+its valid colours and the engine reports `FABRIC_PAIR_AMBIGUOUS` (warning); `Discovery.ambiguous` lists the tied
+types. Earlier versions took the first tied type, which cross-paired `Seat_Pad_Fabric_Colour` with `Chair_Fabric_Type`.
+Selecting a tied property as the manual Fabric property is refused, as before. Consequence: such articles are
+enumerated unreduced until the data (or an owner decision) says which type each colour set follows.
+
 ## AND/OR semantics
 
 Not decided by the resolver. A colour's relations are separate relation objects; the evaluator (three-valued, a

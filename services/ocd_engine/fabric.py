@@ -179,10 +179,14 @@ class Discovery:
     override: str = ""                              # the property the user selected ("" = automatic)
     override_error: str = ""                        # set when the selection could not be used
     override_missing: bool = False                  # the article simply does not have the selected property
+    ambiguous: tuple[tuple[str, tuple[str, ...]], ...] = ()   # (colour property, tied type properties): not reduced
 
 
 def _structural(model: m.ArticleModel) -> tuple[list[FabricScheme], dict[str, list[str]]]:
-    """Best (type, colour) pair per colour property by structure alone, and the colours with tied types."""
+    """Best (type, colour) pair per colour property by structure alone, and the colours with tied types.
+
+    A colour property whose best type is tied between several type properties yields no pair (``ties`` only): which
+    type it follows is not decided by the data, so it is neither paired with the first one nor reduced."""
     props = [p for p in model.properties if p.values]
     found: list[FabricScheme] = []
     ties: dict[str, list[str]] = {}
@@ -210,9 +214,10 @@ def _structural(model: m.ArticleModel) -> tuple[list[FabricScheme], dict[str, li
             elif rank == best[0]:
                 tied.append(types.name)
         if best is not None:
-            found.append(best[1])
             if len(tied) > 1:
-                ties[colour.name_upper] = tied
+                ties[colour.name_upper] = tied      # equally good types: the pair is never guessed
+            else:
+                found.append(best[1])
     return found, ties
 
 
@@ -225,25 +230,32 @@ def discover(model: m.ArticleModel, selected: str = "") -> Discovery:
     structural, ties = _structural(model)
     automatic = tuple(s for s in structural if s.evidence.name_hint)
     unconfirmed = tuple(s for s in structural if not s.evidence.name_hint)
+    names = {p.name_upper: p.name for p in model.properties}
+    ambiguous = tuple((names[c], tuple(names[t.upper()] for t in types)) for c, types in ties.items())
     wanted = (selected or "").strip()
     if not wanted:
-        return Discovery(automatic, unconfirmed)
+        return Discovery(automatic, unconfirmed, ambiguous=ambiguous)
     prop = next((p for p in model.properties if wanted.upper() in (p.name_upper, p.key.upper())), None)
     if prop is None:
         return Discovery(automatic, unconfirmed, wanted,
-                         f"property {wanted} is not offered by article {model.base_code}", override_missing=True)
-    if prop.name_upper in ties:
+                         f"property {wanted} is not offered by article {model.base_code}", override_missing=True,
+                         ambiguous=ambiguous)
+    tied = ties.get(prop.name_upper) or next(
+        ([c] + t for c, t in ties.items() if prop.name_upper in {x.upper() for x in t}), None)
+    if tied:
         return Discovery(automatic, unconfirmed, prop.name, (
-            f"{prop.name} fits several fabric types equally well ({', '.join(ties[prop.name_upper])}); "
-            f"the relations do not say which one it follows"))
+            f"{prop.name} fits several fabric types equally well ({', '.join(tied)}); "
+            f"the relations do not say which one it follows"), ambiguous=ambiguous)
     involved = [s for s in structural if prop.name_upper in (s.type_upper, s.colour_upper)]
     if not involved:
         return Discovery(automatic, unconfirmed, prop.name, (
             f"no fabric type/colour relationship could be established for {prop.name}: its values carry no relation "
-            f"naming another property's values, and no value-text/code-prefix pattern ties them to one"))
+            f"naming another property's values, and no value-text/code-prefix pattern ties them to one"),
+            ambiguous=ambiguous)
     merged = {s.colour_upper: s for s in automatic}
     merged.update({s.colour_upper: s for s in involved})
-    return Discovery(tuple(merged.values()), tuple(s for s in unconfirmed if s not in involved), prop.name)
+    return Discovery(tuple(merged.values()), tuple(s for s in unconfirmed if s not in involved), prop.name,
+                     ambiguous=ambiguous)
 
 
 def discover_schemes(model: m.ArticleModel, *, confirmed_only: bool = True) -> tuple[FabricScheme, ...]:

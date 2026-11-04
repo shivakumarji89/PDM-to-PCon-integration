@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from services.ocd_engine import diagnostics as dg
 from services.ocd_engine import fabric
 from services.ocd_engine import fabric_resolver as fr
 from services.ocd_engine.configuration_engine import ConfigurationEngine
@@ -211,14 +212,20 @@ def test_comma_has_no_colour_relations_and_uses_the_code_and_text_fallback():
 
 
 @needs("always")
-def test_always_is_a_multi_type_fallback_series_with_no_colour_relations():
+def test_always_has_two_parallel_fabric_sets_the_data_cannot_tell_apart_so_none_is_paired():
+    """Chair_ and Seat_Pad_ fabric colours share one code space and identical type lists, no colour relations: which
+    colour property follows which type is not in the data. It used to be settled by taking the first type (which
+    paired Seat_Pad_Fabric_Colour with Chair_Fabric_Type); now both are reported and left unreduced."""
     generator = OcdArticleGenerator(db("always"))
     model = generator._build_model("NOALE1")
-    schemes = fabric.discover_schemes(model)
-    assert schemes and all(s.mechanism == fabric.MECH_PREFIX_TEXT for s in schemes)
-    structure = {t.type_value: t for t in fabric.fabric_structure(model) if t.colour_property == "Chair_Fabric_Colour"}
-    assert len(structure) > 20 and all(t.default_colour is None or t.default_colour.startswith(t.type_value)
-                                       for t in structure.values())
+    found = fabric.discover(model)
+    assert found.schemes == ()
+    assert {c: set(t) for c, t in found.ambiguous} == {
+        "Chair_Fabric_Colour": {"Chair_Fabric_Type", "Seat_Pad_Fabric_Type"},
+        "Seat_Pad_Fabric_Colour": {"Chair_Fabric_Type", "Seat_Pad_Fabric_Type"}}
+    engine = ConfigurationEngine(model)
+    assert {d.property for d in engine.sink.by_code(dg.FABRIC_PAIR_AMBIGUOUS)} == {
+        "Chair_Fabric_Colour", "Seat_Pad_Fabric_Colour"}
 
 
 # ------------------------------------------------------------------ the one manual property, on real data
