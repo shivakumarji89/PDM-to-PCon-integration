@@ -649,7 +649,6 @@ class MainWindow(QMainWindow):
         """Return to Level 1 and hide all workflow-specific UI."""
         self._active_module = None
         self._apply_shell_chrome(None, [])
-        self._pdm_monitor_btn.setVisible(False)
         self._left_panel.hide()
         self._nav_footer.hide()
         self._assistant_dock.hide()
