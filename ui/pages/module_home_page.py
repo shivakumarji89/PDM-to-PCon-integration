@@ -550,18 +550,7 @@ class ModuleHomePage(QWidget):
         header.addLayout(title_block)
         header.addStretch(1)
 
-        self._header_pdm = _StatusItem("database", "PDM", "Not checked")
-        self._header_repository = _StatusItem("database", "Repository", "Not checked")
-        self._header_app = _StatusItem("gear", "Application", "Ready")
-        for index, item in enumerate((self._header_pdm, self._header_repository, self._header_app)):
-            if index:
-                sep = QLabel()
-                sep.setFixedSize(1, 40)
-                sep.setStyleSheet("background:#DCE2E8;")
-                header.addSpacing(14)
-                header.addWidget(sep)
-                header.addSpacing(14)
-            header.addWidget(item, 0, Qt.AlignmentFlag.AlignVCenter)
+        # Keep system and workspace status consolidated in the bottom strip.
         root.addLayout(header)
 
         # --- orbit ----------------------------------------------------------
@@ -655,14 +644,12 @@ class ModuleHomePage(QWidget):
             preset = config.active_pdm_preset() or "Custom configuration"
             self._pdm_status.set_value("Configured", f"{config.pdm_server}/{config.pdm_database}")
             self._pdm_status.setToolTip(f"{preset} · {config.pdm_server}/{config.pdm_database}")
-            self._header_pdm.set_value("Configured")
             roots = getattr(config, "repository_browser_roots", {}) or {}
             available = [name for name, path in roots.items() if Path(path).is_dir()]
             self._repository_status.set_value(
                 "Available" if available else "Path not found",
                 ", ".join(available) if available else "Configured repository folders not found",
             )
-            self._header_repository.set_value("Available" if available else "Path not found")
         imported = getattr(context, "mdb_import_snapshot", None)
         self._mdb_status.set_value(
             "Loaded" if imported is not None else "Not loaded",
