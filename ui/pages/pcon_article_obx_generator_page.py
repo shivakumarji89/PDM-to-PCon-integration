@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QToolButton,
     QSizePolicy,
     QSpinBox,
     QTableView,
@@ -192,16 +193,34 @@ class PconArticleObxGeneratorPage(BasePage):
         row.addSpacing(8)
         self._load_articles_button = self._button("Load Articles", self._load_articles)
         row.addWidget(self._load_articles_button)
-        self._export_button = self._button("Export OBX", self._export_obx)
-        self._export_button.setEnabled(False)
-        self._export_button.setToolTip("Write the priced SKUs to the output OBX file.")
-        row.addWidget(self._export_button)
-        self._validator_button = self._button("Prepare for Validator", self._prepare_for_validator)
-        self._validator_button.setEnabled(False)
-        self._validator_button.setToolTip(
-            "Write a temporary OBX of the generated SKUs. Load it in OBX Validation with "
-            "Load OBX... > Load from Article OBX Generator. Your exported OBX is not touched.")
-        row.addWidget(self._validator_button)
+        # Keep the related export and validator handoff actions in one dropdown,
+        # matching the compact QToolButton style used by "Load OBX..." in Validation.
+        self._obx_actions_button = QToolButton(self)
+        self._obx_actions_button.setObjectName("pconObxActions")
+        self._obx_actions_button.setText("OBX Actions")
+        self._obx_actions_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._obx_actions_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._obx_actions_button.setMinimumHeight(36)
+        self._obx_actions_button.setStyleSheet(
+            "QToolButton { background:#FFFFFF; color:#1B2433; border:1px solid #C9D3DF; "
+            "border-radius:6px; padding:7px 12px; } "
+            "QToolButton:hover { background:#F3F7FB; border-color:#9AAABD; } "
+            "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; "
+            "right:8px; }"
+        )
+        self._obx_actions_button.setToolTip("Export the generated OBX or prepare a temporary OBX for validation.")
+        self._obx_actions_menu = self._obx_actions_button.addMenu if False else None
+        from PySide6.QtWidgets import QMenu
+        obx_menu = QMenu(self._obx_actions_button)
+        self._export_action = obx_menu.addAction("Export OBX")
+        self._export_action.triggered.connect(self._export_obx)
+        self._validator_action = obx_menu.addAction("Prepare for Validator")
+        self._validator_action.setToolTip(
+            "Create a temporary OBX for validation; the exported OBX file is not touched.")
+        self._validator_action.triggered.connect(self._prepare_for_validator)
+        self._obx_actions_button.setMenu(obx_menu)
+        self._obx_actions_button.setEnabled(False)
+        row.addWidget(self._obx_actions_button)
         self._diagnostics_button = self._button("Price Diagnostics…", self._show_price_diagnostics)
         self._diagnostics_button.setEnabled(False)
         self._diagnostics_button.setToolTip(
@@ -355,8 +374,10 @@ class PconArticleObxGeneratorPage(BasePage):
         self._load_articles_button.setEnabled(idle and has_program)
         self._article_filter.setEnabled(bool(self._articles))
         self._fabric_property.setEnabled(idle and self._fabric_property.count() > 1)
-        self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
-        self._validator_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
+        has_exportable = self._outcome is not None and bool(self._outcome.exportable)
+        self._obx_actions_button.setEnabled(idle and has_exportable)
+        self._export_action.setEnabled(idle and has_exportable)
+        self._validator_action.setEnabled(idle and has_exportable)
         self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
 
     # --------------------------------------------------------------- helpers
