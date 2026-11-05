@@ -319,13 +319,60 @@ class FabricTie:
                 f"{self.follower_colour} = {self.primary_colour}")
 
 
-def shared_fabric_ties(model: m.ArticleModel, schemes: Sequence[FabricScheme]) -> tuple[FabricTie, ...]:
+@dataclass(frozen=True)
+class FabricTieSkip:
+    """A potential tie that was not applied, and why (the follower stays an independent choice)."""
+
+    primary_type: str
+    follower_type: str
+    reason: str
+
+    def describe(self) -> str:
+        return f"shared fabric not applied: {self.follower_type} is independent of {self.primary_type} ({self.reason})"
+
+
+@dataclass(frozen=True)
+class SharedFabricAnalysis:
+    ties: tuple[FabricTie, ...] = ()
+    skipped: tuple[FabricTieSkip, ...] = ()
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def _preconditions(model: m.ArticleModel, scheme: FabricScheme) -> dict[str, str]:
+    """Precondition texts that gate a fabric position (its two properties and their classes), by normalised text."""
+    by_name = {p.name_upper: p for p in model.properties}
+    classes = model.class_by_name()
+    texts: dict[str, str] = {}
+    for name in (scheme.type_upper, scheme.colour_upper):
+        prop = by_name.get(name)
+        if prop is None:
+            continue
+        owners = [prop.relations]
+        cls = classes.get((prop.class_name or "").upper())
+        if cls is not None:
+            owners.append(cls.relations)
+        for relations in owners:
+            for r in relations:
+                if r.rel_type == m.PRECONDITION and r.domain.upper() == "C":
+                    texts.setdefault(_norm(r.text), " ".join(r.text.split()))
+    return texts
+
+
+def analyse_shared_fabric(model: m.ArticleModel, schemes: Sequence[FabricScheme]) -> SharedFabricAnalysis:
     """Ties between the fabric positions of one article, derived from the data (no property or code is named).
 
     Two discovered (type, colour) pairs are *positions of the same fabric choice* when their type properties offer
     the same set of type codes and their colour properties share at least one colour code. The earliest position in
     the model is the primary; every other position of its group follows it. Pairs whose type lists differ (a seat
-    and a frame with different fabric ranges) are independent choices and are never tied."""
+    and a frame with different fabric ranges) are independent choices and are never tied.
+
+    A follower that is only offered under a precondition the primary does not have (``Number_Of_Fabrics IN ('2')``)
+    is an *explicit second fabric choice*: the data enables it deliberately, so it is not tied and is reported in
+    :attr:`SharedFabricAnalysis.skipped`. Because a precondition cannot be told apart from an unrelated visibility
+    rule, any extra precondition on the follower bypasses the tie - valid configurations are never removed on a guess."""
     by_name = {p.name_upper: p for p in model.properties}
     order = {p.name_upper: i for i, p in enumerate(model.properties)}
     groups: dict[frozenset, list[FabricScheme]] = {}
@@ -335,15 +382,29 @@ def shared_fabric_ties(model: m.ArticleModel, schemes: Sequence[FabricScheme]) -
             continue
         groups.setdefault(frozenset(v.value for v in _offered(types)), []).append(scheme)
     ties: list[FabricTie] = []
+    skipped: list[FabricTieSkip] = []
     for members in groups.values():
         members = sorted(members, key=lambda s: order[s.type_upper])
         primary = members[0]
         primary_codes = {v.value for v in _offered(by_name[primary.colour_upper])}
+        primary_gates = _preconditions(model, primary)
         for follower in members[1:]:
-            if primary_codes & {v.value for v in _offered(by_name[follower.colour_upper])}:
-                ties.append(FabricTie(primary.type_property, primary.colour_property,
-                                      follower.type_property, follower.colour_property))
-    return tuple(ties)
+            if not primary_codes & {v.value for v in _offered(by_name[follower.colour_upper])}:
+                continue
+            gates = _preconditions(model, follower)
+            extra = [text for key, text in gates.items() if key not in primary_gates]
+            if extra:
+                skipped.append(FabricTieSkip(
+                    primary.type_property, follower.type_property,
+                    "explicit second-fabric option: it is only offered when " + " and ".join(extra)))
+                continue
+            ties.append(FabricTie(primary.type_property, primary.colour_property,
+                                  follower.type_property, follower.colour_property))
+    return SharedFabricAnalysis(tuple(ties), tuple(skipped))
+
+
+def shared_fabric_ties(model: m.ArticleModel, schemes: Sequence[FabricScheme]) -> tuple[FabricTie, ...]:
+    return analyse_shared_fabric(model, schemes).ties
 
 
 def constrained_to_default(candidates: Sequence[m.ValueDef]) -> list[m.ValueDef]:

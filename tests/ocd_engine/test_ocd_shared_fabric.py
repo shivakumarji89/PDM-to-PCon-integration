@@ -28,7 +28,7 @@ SEAT_COLOURS = [("A1", "A"), ("A2", "A"), ("B2", "B"), ("B3", "B"), ("C1", "C")]
 
 
 def positions(back=BACK_COLOURS, seat=SEAT_COLOURS, *, back_types="ABC", seat_types="ABC", extra=(), names=None,
-              seat_rule=None, seat_colour_rules=None):
+              seat_rule=None, seat_colour_rules=None, back_rule=None):
     bt, bc, st, sc = names or (BACK_T, BACK_C, SEAT_T, SEAT_C)
     seat_colour_rules = seat_colour_rules or {}
 
@@ -39,7 +39,9 @@ def positions(back=BACK_COLOURS, seat=SEAT_COLOURS, *, back_types="ABC", seat_ty
 
     seat_props = [prop(st, [typed(t) for t in seat_types], rels=[rel(seat_rule)] if seat_rule else ()),
                   prop(sc, colours(seat, st, seat_colour_rules), rels=[rel(seat_rule)] if seat_rule else ())]
-    return model("ML1", [prop(bt, [typed(t) for t in back_types]), prop(bc, colours(back, bt)), *seat_props, *extra])
+    back_rels = [rel(back_rule)] if back_rule else ()
+    return model("ML1", [prop(bt, [typed(t) for t in back_types], rels=back_rels),
+                         prop(bc, colours(back, bt), rels=back_rels), *seat_props, *extra])
 
 
 def run(mdl, **kwargs):
@@ -139,16 +141,38 @@ def test_relations_and_preconditions_of_both_positions_are_still_evaluated():
     assert {("F1", "A1"), ("F1", "B2"), ("F1", "C1"), ("F2", "A1"), ("F2", "B2"), ("F2", "C1")} <= got
 
 
-def test_a_follower_hidden_by_its_own_precondition_does_not_constrain_the_primary():
+def test_an_explicit_second_fabric_option_stays_independent():
+    """The seat is only offered when Fabrics = 2: the data deliberately offers a second fabric, so it is not tied."""
     count = prop("Fabrics", ["1", "2"])
     mdl = positions(extra=[count], seat_rule="Fabrics = '2'")
-    rows = [chosen(c) for c, _ in run(mdl)[0]]
+    tied, engine = run(mdl)
+    independent = run(mdl, shared_fabric=False)[0]
+    rows = [chosen(c) for c, _ in tied]
     one = [r for r in rows if r["Fabrics"] == "1"]
     two = [r for r in rows if r["Fabrics"] == "2"]
     assert {r[BACK_T] for r in one} == {"A", "B", "C"} and all(r[SEAT_T] == "<hidden>" for r in one)
-    assert all(r[BACK_T] == r[SEAT_T] and r[BACK_C] == r[SEAT_C] for r in two) and len(two) == 3
-    # B1 is back-only: with the seat hidden nothing shares it, so the back's own first colour stays
-    assert {r[BACK_C] for r in one} == {"A1", "B1", "C1"}
+    assert len(two) == 9 and any(r[BACK_T] != r[SEAT_T] for r in two)       # different fabrics remain selectable
+    assert [chosen(c) for c, _ in tied] == [chosen(c) for c, _ in independent]
+    assert engine.fabric_ties == ()
+    (skip,) = engine.fabric_tie_skips
+    assert (skip.primary_type, skip.follower_type) == (BACK_T, SEAT_T) and "Fabrics = '2'" in skip.reason
+    assert skip.describe().startswith("shared fabric not applied:")
+
+
+def test_positions_gated_by_the_same_precondition_are_still_tied():
+    count = prop("Fabrics", ["1", "2"])
+    mdl = positions(extra=[count], seat_rule="Fabrics = '2'", back_rule="Fabrics = '2'")
+    configs, engine = run(mdl)
+    rows = [chosen(c) for c, _ in configs]
+    visible = [r for r in rows if r["Fabrics"] == "2"]
+    assert len(visible) == 3 and all(r[BACK_T] == r[SEAT_T] and r[BACK_C] == r[SEAT_C] for r in visible)
+    assert len(engine.fabric_ties) == 1 and engine.fabric_tie_skips == ()
+
+
+def test_no_tie_diagnostics_when_the_constraint_is_off():
+    count = prop("Fabrics", ["1", "2"])
+    mdl = positions(extra=[count], seat_rule="Fabrics = '2'")
+    assert run(mdl, shared_fabric=False)[1].fabric_tie_skips == ()
 
 
 def test_the_constraint_is_off_by_default_so_other_products_keep_independent_positions():

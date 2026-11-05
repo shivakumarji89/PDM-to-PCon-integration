@@ -128,7 +128,8 @@ class ConfigurationEngine:
                  progress_every: int = 5000,
                  identity_texts: Sequence[str] | None = None,
                  fabric_default_only: bool = True, fabric_property: str = "",
-                 shared_fabric: bool = False, fabric_ties: Sequence[fabric.FabricTie] | None = None) -> None:
+                 shared_fabric: bool = False, fabric_ties: Sequence[fabric.FabricTie] | None = None,
+                 fabric_tie_skips: Sequence[fabric.FabricTieSkip] = ()) -> None:
         """``shared_fabric`` (opt-in): fabric positions that offer the same fabric types (``fabric.shared_fabric_ties``, e.g.
         a Back/Arms and a Seat position) are one choice. The later position's type and colour are restricted, at its
         own node and by the same precondition filtering, to what the first position selected - the independent
@@ -169,13 +170,17 @@ class ConfigurationEngine:
                         if fabric_default_only else None)
         self._fabric_colours = self._fabric.colour_properties if self._fabric else frozenset()
         self.fabric_resolutions: dict[tuple, fr.FabricResolution] = {}     # first resolution per (colour, type, pick)
+        skips = tuple(fabric_tie_skips)
         if not shared_fabric:
             ties: tuple[fabric.FabricTie, ...] = ()
+            skips = ()
         elif fabric_ties is not None:
             ties = tuple(fabric_ties)
         else:
-            ties = fabric.shared_fabric_ties(model, fabric.discover(model, fabric_property).schemes)
+            analysis = fabric.analyse_shared_fabric(model, fabric.discover(model, fabric_property).schemes)
+            ties, skips = analysis.ties, analysis.skipped
         self.fabric_ties = ties
+        self.fabric_tie_skips = skips
         # follower property (upper) -> the property (upper) whose selected value it must take
         self._tie_source: dict[str, str] = {}
         for tie in ties:

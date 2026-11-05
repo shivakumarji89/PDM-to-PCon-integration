@@ -426,8 +426,9 @@ class OcdArticleGenerator:
                 reporter.note(f"Enumerating {article_number}")
             full_model = self._build_model(article_number)
             # Ties come from the unrestricted model: a pin narrows the type lists and must not switch a tie off.
-            ties = (fabric.shared_fabric_ties(full_model, fabric.discover(full_model, fabric_property).schemes)
-                    if shared_fabric else ())
+            analysis = (fabric.analyse_shared_fabric(full_model, fabric.discover(full_model, fabric_property).schemes)
+                        if shared_fabric else fabric.SharedFabricAnalysis())
+            ties = analysis.ties
             model, pinned = self._apply_rules(full_model, rules, outcome.warnings)
             scheme = dataset.code_scheme(model.scheme_id)
             encoder = CodeSchemeEncoder(scheme) if scheme is not None else None
@@ -438,7 +439,7 @@ class OcdArticleGenerator:
             engine = ConfigurationEngine(
                 model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES), identity_texts=identity,
                 fabric_default_only=fabric_default_only, fabric_property=fabric_property,
-                shared_fabric=shared_fabric, fabric_ties=ties,
+                shared_fabric=shared_fabric, fabric_ties=ties, fabric_tie_skips=analysis.skipped,
                 progress=(lambda st, a=article_number: reporter.note(
                     f"Enumerating {a}: {st.emitted:,} configuration(s), {st.nodes:,} node(s) evaluated, "
                     f"{len(outcome.skus):,} valid SKU(s)")) if reporter is not None else None)
@@ -499,6 +500,7 @@ class OcdArticleGenerator:
             outcome.fabric_notes.extend(f"{article_number}: {r.describe()}"
                                         for r in engine.fabric_resolutions.values() if r.selected)
             outcome.fabric_notes.extend(f"{article_number}: {tie.describe()}" for tie in engine.fabric_ties)
+            outcome.fabric_notes.extend(f"{article_number}: {skip.describe()}" for skip in engine.fabric_tie_skips)
             outcome.nodes += engine.stats.nodes
             outcome.configurations += engine.stats.emitted
             outcome.inert_properties = tuple(dict.fromkeys(outcome.inert_properties + engine.stats.inert))
