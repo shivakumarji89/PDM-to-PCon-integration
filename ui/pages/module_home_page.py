@@ -519,6 +519,7 @@ class ModuleHomePage(QWidget):
     """Landing screen with workspace actions arranged around the central visual."""
 
     module_selected = Signal(object)
+    pdm_changes_requested = Signal()
 
     def __init__(self, context=None, parent: QWidget | None = None) -> None:
         # Backward compatibility with the former ModuleHomePage(parent) call.
@@ -549,6 +550,21 @@ class ModuleHomePage(QWidget):
         title_block.addWidget(accent)
         header.addLayout(title_block)
         header.addStretch(1)
+
+        # PDM change review is a front-page utility, not a workflow-navigation
+        # control. Keep it accessible before users enter a module.
+        self._pdm_changes_button = QPushButton("Check PDM Changes", self)
+        self._pdm_changes_button.setObjectName("pdmChangesHomeButton")
+        self._pdm_changes_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._pdm_changes_button.setMinimumHeight(38)
+        self._pdm_changes_button.setStyleSheet(
+            "QPushButton { color:#1B2433; background:#FFFFFF; border:1px solid #C9D3DF; "
+            "border-radius:7px; padding:8px 14px; font-size:12px; font-weight:600; } "
+            "QPushButton:hover { background:#F3F7FB; border-color:#9AAABD; } "
+            "QPushButton:pressed { background:#E8EEF5; }"
+        )
+        self._pdm_changes_button.clicked.connect(self.pdm_changes_requested.emit)
+        header.addWidget(self._pdm_changes_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Keep system and workspace status consolidated in the bottom strip.
         root.addLayout(header)
