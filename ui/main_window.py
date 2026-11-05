@@ -1750,22 +1750,20 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _build_status_bar(self) -> None:
+        """Keep Qt's status-message channel available internally, but hide its UI.
+
+        Workflow-specific status and recovery details belong in their respective
+        workspaces rather than in a persistent application-wide strip.
+        """
         status: QStatusBar = self.statusBar()
         status.showMessage("Ready")
+        status.hide()
 
-        # Background task indicator (clickable): shows the current background
-        # activity + percentage and reopens the progress monitor. It observes
-        # the shared ActivityService, so any future background task appears here
-        # without touching this window.
-        self._background_status = BackgroundStatusIndicator(
-            self._context.activity_service, self
-        )
-        self._background_status.clicked.connect(self._open_progress_monitor)
-        status.addPermanentWidget(self._background_status)
-
+        # Retain this hidden label because product-load callbacks still update it;
+        # it is no longer presented as a global status-bar item.
         self._product_status = QLabel("No Product Selected", self)
         self._product_status.setObjectName("productStatus")
-        status.addPermanentWidget(self._product_status)
+        self._product_status.hide()
 
     def progress_monitor(self):
         """Return the shared reusable progress monitor for background workspaces."""
