@@ -93,6 +93,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._module_home)
         self._stack.addWidget(self._module_placeholder)
         self._module_home.module_selected.connect(self._on_module_selected)
+        self._module_home.pdm_changes_requested.connect(self._on_check_pdm_changes)
         self._module_placeholder.back_button.clicked.connect(self._show_module_home)
 
         self._build_pages()
@@ -442,9 +443,8 @@ class MainWindow(QMainWindow):
         self._manager.step_changed.connect(lambda *_: self._refresh_app_header())
 
     def _build_left_panel(self) -> QWidget:
-        from PySide6.QtWidgets import QComboBox, QPushButton, QVBoxLayout
+        from PySide6.QtWidgets import QComboBox, QVBoxLayout
         from core.config import PDM_DATABASE_PRESETS
-        from ui.components._styles import secondary_button_qss
 
         container = QWidget()
         container.setObjectName("leftPanel")
@@ -476,12 +476,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
-        self._pdm_monitor_btn = QPushButton("Check PDM Changes", container)
-        self._pdm_monitor_btn.setObjectName("pdmMonitorBtn")
-        self._pdm_monitor_btn.setStyleSheet(secondary_button_qss("pdmMonitorBtn"))
-        self._pdm_monitor_btn.clicked.connect(self._on_check_pdm_changes)
-        layout.addWidget(self._pdm_monitor_btn)
-
         self._legacy_nav_spacer = QWidget(container)
         self._legacy_nav_spacer.setFixedHeight(theme.SECTION_SPACING)
         layout.addWidget(self._legacy_nav_spacer)
@@ -500,9 +494,6 @@ class MainWindow(QMainWindow):
         self._active_module = module
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
-        # PDM change review is a Development control; Maintenance has its own
-        # alignment/parity workflow and must not expose this review action.
-        self._pdm_monitor_btn.setVisible(module != WorkbenchModule.MAINTENANCE)
         steps = list(module_workflows(module))
         self._active_module_label.setText(module_title(module))
 
