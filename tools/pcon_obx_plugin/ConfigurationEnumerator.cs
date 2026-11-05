@@ -103,10 +103,17 @@ namespace MKObxGenerator
             {
                 if (Truncated || Cancelled) break;
                 _seenFinals.Clear();
+                // Reuse the branch state during depth-first traversal. Each child
+                // appends one assignment and removes it in a finally block, avoiding
+                // a fresh prefix list and assigned-key HashSet for every visited node.
                 var prefix = new List<KeyValuePair<string, string>>();
+                var assigned = new HashSet<string>(StringComparer.Ordinal);
                 foreach (PropertyRule rule in _fixedRules)
+                {
                     prefix.Add(new KeyValuePair<string, string>(rule.Key, rule.ValueKey));
-                Enumerate(request, article, prefix);
+                    assigned.Add(rule.Key);
+                }
+                Enumerate(request, article, prefix, assigned);
             }
         }
 
@@ -199,7 +206,7 @@ namespace MKObxGenerator
         }
 
         private void Enumerate(GenerationRequest request, ArticleRequest article,
-                               List<KeyValuePair<string, string>> prefix)
+                               List<KeyValuePair<string, string>> prefix, HashSet<string> assigned)
         {
             if (CheckCancelled()) return;
             if (Configurations.Count >= request.MaxConfigurations)
@@ -228,7 +235,6 @@ namespace MKObxGenerator
                 // Re-apply the prefix in order. pCon re-evaluates relations after
                 // each SetValue, so a value chosen earlier can legitimately make a
                 // later value unavailable; that branch is skipped, not forced.
-                var assigned = new HashSet<string>(StringComparer.Ordinal);
                 foreach (KeyValuePair<string, string> assignment in prefix)
                 {
                     string error;
@@ -238,7 +244,6 @@ namespace MKObxGenerator
                         Warnings.Add(article.ArticleNumber + " " + Describe(prefix) + ": " + error);
                         return;
                     }
-                    assigned.Add(assignment.Key);
                 }
 
                 IProperty next = NextProperty(probe, assigned);
@@ -279,11 +284,19 @@ namespace MKObxGenerator
                         Truncated = true;
                         return;
                     }
-                    var branch = new List<KeyValuePair<string, string>>(prefix)
+                    prefix.Add(new KeyValuePair<string, string>(key, value));
+                    assigned.Add(key);
+                    try
                     {
-                        new KeyValuePair<string, string>(key, value)
-                    };
-                    Enumerate(request, article, branch);
+                        Enumerate(request, article, prefix, assigned);
+                    }
+                    finally
+                    {
+                        // Restore the parent prefix exactly, including when the
+                        // child is cancelled, truncated, or exits through an error.
+                        assigned.Remove(key);
+                        prefix.RemoveAt(prefix.Count - 1);
+                    }
                 }
             }
             finally
