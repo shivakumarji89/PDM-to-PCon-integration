@@ -204,11 +204,18 @@ def test_16_10a_and_16_11a_when_only_additional_parent_has_increment():
 
 def test_intentional_deviation_embedded_token_entries_ignored_3316_and_3362():
     # Legacy: "XP2|4".Replace("P2|","") = "X4" -> double.Parse throws. Deviation: not a match.
+    line = "{item}\t[opt_{n}]\t9-[opt_{n}]-X\tPC|TR0\t{amount}\t1\t0\t[opt~{t}][seq]7\t\t\t10\t\r\n"  # shape as in 16.10a/16.11a test
     h = make(sp_script(stage14=[{"Item": "XP2", "MyIncrementalPrice": 4}]), sp=True, item="SP1")
     h.p03_materials()
+    assert h.materialstr == (                 # "XP2|4" matches neither parent: both amounts stay 0
+        line.format(item="P1", n="#_1", amount=0, t="#~1") + line.format(item="P2<5>", n="1_1", amount=0, t="1~1")
+    )
     h = make(sp_script(stage14=[{"Item": "P2", "MyIncrementalPrice": 1}, {"Item": "XP2", "MyIncrementalPrice": 4}]),
              sp=True, item="SP1")
     h.p03_materials()                         # only "P2|1" is summed (16.11a), "XP2|4" is not a match
+    assert h.materialstr == (
+        line.format(item="P1", n="#_1", amount=0, t="#~1") + line.format(item="P2<5>", n="1_1", amount=1, t="1~1")
+    )
 
 
 def test_increment_helpers_anchor_the_token():

@@ -305,6 +305,47 @@ def fabric_structure(model: m.ArticleModel) -> list[FabricType]:
     return out
 
 
+@dataclass(frozen=True)
+class FabricTie:
+    """A later fabric position that must take the same type and colour as an earlier one."""
+
+    primary_type: str
+    primary_colour: str
+    follower_type: str
+    follower_colour: str
+
+    def describe(self) -> str:
+        return (f"shared fabric selection: {self.follower_type} = {self.primary_type}, "
+                f"{self.follower_colour} = {self.primary_colour}")
+
+
+def shared_fabric_ties(model: m.ArticleModel, schemes: Sequence[FabricScheme]) -> tuple[FabricTie, ...]:
+    """Ties between the fabric positions of one article, derived from the data (no property or code is named).
+
+    Two discovered (type, colour) pairs are *positions of the same fabric choice* when their type properties offer
+    the same set of type codes and their colour properties share at least one colour code. The earliest position in
+    the model is the primary; every other position of its group follows it. Pairs whose type lists differ (a seat
+    and a frame with different fabric ranges) are independent choices and are never tied."""
+    by_name = {p.name_upper: p for p in model.properties}
+    order = {p.name_upper: i for i, p in enumerate(model.properties)}
+    groups: dict[frozenset, list[FabricScheme]] = {}
+    for scheme in schemes:
+        types, colours = by_name.get(scheme.type_upper), by_name.get(scheme.colour_upper)
+        if types is None or colours is None:
+            continue
+        groups.setdefault(frozenset(v.value for v in _offered(types)), []).append(scheme)
+    ties: list[FabricTie] = []
+    for members in groups.values():
+        members = sorted(members, key=lambda s: order[s.type_upper])
+        primary = members[0]
+        primary_codes = {v.value for v in _offered(by_name[primary.colour_upper])}
+        for follower in members[1:]:
+            if primary_codes & {v.value for v in _offered(by_name[follower.colour_upper])}:
+                ties.append(FabricTie(primary.type_property, primary.colour_property,
+                                      follower.type_property, follower.colour_property))
+    return tuple(ties)
+
+
 def constrained_to_default(candidates: Sequence[m.ValueDef]) -> list[m.ValueDef]:
     """The default colour among relation-valid ``candidates``: the flagged ``is_default`` one if any, else the first.
 

@@ -144,11 +144,24 @@ def no_plugin(monkeypatch):
     monkeypatch.setattr(bridge_module.PconPluginBridge, "__init__", forbidden)
 
 
+def generation_available(widget) -> bool:
+    """Generation has no button any more (it starts when the article dialog is accepted); this is its precondition."""
+    return (widget._run is None and widget._selected_program() is not None
+            and bool(widget._article_table.selectedIndexes()))
+
+
+def _save_dialog_returns(monkeypatch, path) -> Mock:
+    """The page asks for the OBX path when exporting (there is no output-path field any more)."""
+    dialog = Mock(return_value=(str(path), "OBX files (*.obx)"))
+    monkeypatch.setattr(page_module.QFileDialog, "getSaveFileName", dialog)
+    return dialog
+
+
 @pytest.fixture
 def page(tmp_path, monkeypatch, ocd_root, no_plugin):
     _boxes(monkeypatch)
     widget = PconArticleObxGeneratorPage(context=None, catalogue=OcdCatalogueService(ocd_root))
-    widget._output_path.setText(str(tmp_path / "page.obx"))
+    _save_dialog_returns(monkeypatch, tmp_path / "page.obx")
     yield widget
     dispose(widget)
 
@@ -167,7 +180,7 @@ def _open_demo(widget):
 def gen_page(tmp_path, monkeypatch, generation_root, no_plugin):
     _boxes(monkeypatch)
     widget = PconArticleObxGeneratorPage(context=None, catalogue=OcdCatalogueService(generation_root))
-    widget._output_path.setText(str(tmp_path / "page.obx"))
+    _save_dialog_returns(monkeypatch, tmp_path / "page.obx")
     _open_demo(widget)
     yield widget
     dispose(widget)
@@ -193,13 +206,13 @@ def test_page_has_no_plugin_connection_controls(no_plugin, monkeypatch):
     _boxes(monkeypatch)      # the page loads its catalogue itself; with no repository configured that reports an error
     widget = PconArticleObxGeneratorPage(context=None)
     assert widget.is_ready()
-    assert not widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
+    assert not generation_available(widget) and not widget._export_button.isEnabled()
     for removed in ("_connection_status", "_job_dir_label", "_check_button", "_install_button",
                     "_bridge", "_catalog", "_generation", "_discard_planning"):
         assert not hasattr(widget, removed)
     texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
-    assert {"Load Articles",
-            "Generate Valid SKUs", "Export OBX"} <= texts
+    assert {"Load Articles", "Export OBX", "Prepare for Validator"} <= texts
+    assert "Generate Valid SKUs" not in texts      # generation starts when the article dialog is accepted
     assert "Inspect Properties" not in texts and "Max SKUs:" not in texts
     assert not {"Check Connection", "Install Plugin"} & texts
     assert widget.header.title_label.text() == "Article OBX Generator (OCD Engine)"
@@ -223,7 +236,7 @@ def test_page_runs_the_complete_standalone_workflow(gen_page, tmp_path):
     assert widget._article_table.rowCount() == 5
     assert [widget._currency.itemText(i) for i in range(widget._currency.count())] == ["EUR", "GBP"]
     _pick(widget, "chair1")
-    assert widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
+    assert generation_available(widget) and not widget._export_button.isEnabled()
 
     widget._price_date.setDate(QDate.fromString("2026-01-15", "yyyy-MM-dd"))
     _generate(widget)                        # automatic: no property inspection needed
@@ -307,7 +320,7 @@ def test_currency_must_be_chosen_when_the_repository_has_several(gen_page):
     drain()
     assert "Choose a currency (EUR, GBP)" in widget._generation_status.text()
     page_module.QMessageBox.critical.assert_called_once()
-    assert widget._generate_button.isEnabled()             # can be retried
+    assert generation_available(widget)             # can be retried
 
 
 def test_malformed_article_data_is_reported_and_the_page_recovers(gen_page):
@@ -316,7 +329,7 @@ def test_malformed_article_data_is_reported_and_the_page_recovers(gen_page):
     _generate(widget)
     assert "Malformed OCD data for article BROKEN" in widget._generation_status.text()
     assert page_module.QMessageBox.critical.call_count == 1
-    assert widget._generate_button.isEnabled() and not widget._export_button.isEnabled()
+    assert generation_available(widget) and not widget._export_button.isEnabled()
 
 
 def test_missing_data_tables_are_reported(monkeypatch, ocd_root, no_plugin):
@@ -351,15 +364,12 @@ def test_export_without_a_path_uses_the_file_dialog_and_can_be_declined(gen_page
     widget = gen_page
     _pick(widget, "chair1")
     _generate(widget)
-    widget._output_path.setText("")
     chosen = tmp_path / "chosen" / "x.obx"
-    dialog = Mock(return_value=(str(chosen), "OBX files (*.obx)"))
-    monkeypatch.setattr(page_module.QFileDialog, "getSaveFileName", dialog)
+    dialog = _save_dialog_returns(monkeypatch, chosen)
     widget._export_obx()
     drain()
     dialog.assert_called_once()
-    assert chosen.is_file() and widget._output_path.text() == str(chosen)
-    widget._output_path.setText("")
+    assert chosen.is_file() and widget._exported_path == str(chosen)
     monkeypatch.setattr(page_module.QFileDialog, "getSaveFileName", Mock(return_value=("", "")))
     before = widget._generation_status.text()
     widget._export_obx()
@@ -367,14 +377,16 @@ def test_export_without_a_path_uses_the_file_dialog_and_can_be_declined(gen_page
     assert widget._generation_status.text() == before     # declined: nothing written, nothing reported
 
 
-def test_export_failure_is_reported(gen_page, tmp_path):
+def test_export_failure_is_reported(gen_page, tmp_path, monkeypatch):
     widget = gen_page
     _pick(widget, "chair1")
     _generate(widget)
-    widget._output_path.setText(str(tmp_path / "not_obx.txt"))
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, so nothing can be created below it")
+    _save_dialog_returns(monkeypatch, blocker / "x.obx")
     widget._export_obx()
     drain()
-    assert "Exporting OBX failed: The output file must use the .obx extension." in widget._generation_status.text()
+    assert "Exporting OBX failed: Cannot write" in widget._generation_status.text()
     page_module.QMessageBox.critical.assert_called_once()
 
 
@@ -416,14 +428,14 @@ def _names(table, column=0):
 def test_controls_wait_for_their_prerequisites(page):
     widget = page
     for control in (widget._manufacturer, widget._program, widget._series, widget._load_articles_button,
-                    widget._article_filter, widget._generate_button):
+                    widget._article_filter):
         assert not control.isEnabled()
     assert "automatically" in widget._catalogue_status.text().lower()
     _loaded(page)
     assert widget._manufacturer.isEnabled() and widget._program.isEnabled()
     assert widget._load_articles_button.isEnabled()
     assert not widget._article_filter.isEnabled()        # nothing to filter yet
-    assert not widget._generate_button.isEnabled()       # nothing selected yet
+    assert not generation_available(widget)       # nothing selected yet
 
 
 def test_load_catalogue_populates_manufacturers_from_repository(page):
@@ -459,12 +471,12 @@ def test_changing_the_selection_clears_loaded_articles(page):
     widget._load_articles()
     drain()
     widget._article_table.selectRow(0)
-    assert widget._generate_button.isEnabled()
+    assert generation_available(widget)
     _select(widget._series, "DX")
     assert widget._article_table.rowCount() == 0
     assert widget._article_count.text() == "0 of 0 articles"
     assert "load the articles again" in widget._catalogue_status.text()
-    assert not widget._generate_button.isEnabled()
+    assert not generation_available(widget)
     _program(widget, "found")
     assert widget._article_table.rowCount() == 0
 

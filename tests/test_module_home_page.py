@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QPoint, QSettings, Qt
+from PySide6.QtCore import QCoreApplication, QPoint, QSettings, QThreadPool, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -23,6 +23,16 @@ PRIMARY = (
 @pytest.fixture(scope="module")
 def app():
     return QApplication.instance() or QApplication([])
+
+
+def _dispose_window(window) -> None:
+    """Close a MainWindow and let its pages' background work (e.g. the catalogue check) finish before the next test.
+
+    Closing alone leaves those worker threads running into later tests, which then crash inside Qt.
+    """
+    window.close()
+    assert QThreadPool.globalInstance().waitForDone(10000)
+    QCoreApplication.processEvents()
 
 
 @pytest.fixture(autouse=True)
@@ -97,7 +107,7 @@ def test_main_window_still_routes_module_selection(app):
         window._show_module_home()
         assert window._active_module is None
     finally:
-        window.close()
+        _dispose_window(window)
 
 
 @pytest.mark.parametrize("size", [(760, 400), (1000, 560), (1360, 760), (1900, 1000)])
@@ -145,7 +155,7 @@ def test_hidden_workflow_pages_do_not_set_window_minimum_size(app):
         assert window.minimumSizeHint().height() < 400
         assert window._stack.minimumSizeHint() == window._module_home.minimumSizeHint()
     finally:
-        window.close()
+        _dispose_window(window)
 
 
 def test_oversized_window_is_fitted_to_the_screen(app):
@@ -162,4 +172,4 @@ def test_oversized_window_is_fitted_to_the_screen(app):
         assert frame.width() <= avail.width() and frame.height() <= avail.height()
         assert avail.contains(frame.topLeft())
     finally:
-        window.close()
+        _dispose_window(window)

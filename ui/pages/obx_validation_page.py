@@ -284,6 +284,7 @@ class ObxValidationPage(BasePage):
         load_menu = QMenu(self._load_btn)
         load_menu.addAction("Select file(s)...", self._on_load)
         load_menu.addAction("Select folder (including subfolders)...", self._on_load_folder)
+        load_menu.addAction("Load from Article OBX Generator", self._on_load_from_generator)
         self._load_btn.setMenu(load_menu)
         self._launch_btn = QPushButton("Start Validation", container)
         self._launch_btn.setEnabled(False)
@@ -518,6 +519,20 @@ class ObxValidationPage(BasePage):
         paths, _ = QFileDialog.getOpenFileNames(self, "Load OBX file(s)", "", "OBX files (*.obx);;All files (*.*)")
         if paths:
             self._load_paths(paths)
+
+    def _on_load_from_generator(self) -> None:
+        """Load the temporary OBX the Article OBX Generator prepared, through the ordinary file-load path."""
+        from services.article_obx.validator_handoff import shared_handoff
+        paths = shared_handoff().current_paths()
+        if not paths:
+            QMessageBox.information(
+                self,
+                "OBX Validation",
+                "There is no generated OBX to load. It was not prepared yet, or it has expired.\n\n"
+                "Generate SKUs in the Article OBX Generator and choose Prepare for Validator.",
+            )
+            return
+        self._load_paths([str(path) for path in paths])
 
     @staticmethod
     def _discover_obx_files(folder: str | Path) -> list[str]:

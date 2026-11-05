@@ -18,7 +18,7 @@ import ui.pages.pcon_article_obx_generator_page as page_module
 from core.cancellation import CancellationToken, OperationCancelled, cancellation_scope
 from services.ocd_engine.generator import GeneratedSku, GenerationOutcome, OcdArticleGenerator
 from tests.test_pcon_sdk_obx_page import (  # noqa: F401  (fixtures and helpers of the page tests)
-    _generate, _pick, app, drain, gen_page, generation_root, no_plugin,
+    _generate, _pick, app, drain, gen_page, generation_available, generation_root, no_plugin,
 )
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.pages.sku_results_model import HEADERS, SkuResultsModel
@@ -112,7 +112,7 @@ def test_a_cancelled_generation_leaves_the_previous_table_untouched_and_the_page
     monkeypatch.setattr(OcdArticleGenerator, "generate", cancelling)
     widget._generate()
     drain()
-    assert widget._run is None and widget._generate_button.isEnabled()
+    assert widget._run is None and generation_available(widget)
     assert widget._result_model.rowCount() == 0                   # cleared when the new run started
     assert before == 3 and "ancel" in widget._generation_status.text()
 

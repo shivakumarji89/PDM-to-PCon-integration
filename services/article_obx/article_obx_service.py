@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from services.base_service import BaseService
 from services.ocd_engine import diagnostics as dg
 from services.article_obx.article_obx_models import ArticleObxResult, ArticleObxRow
+from services.article_obx.basket_contract import add_calculation_changes, add_session_state, new_basket_id
 from services.article_obx.article_permutation_service import ArticlePermutationService
 from services.article_obx.article_price_service import ArticlePriceRequest, ArticlePriceService
 from services.obx_service import _DEFAULT_EXCLUSIONS, OBX_SENTINEL
@@ -100,6 +101,7 @@ class ArticleObxService(BaseService):
     def _render_xml(self, rows, *, manufacturer_id, series_id, ofml_class_suffix, exclusions,
                     final_mode: str = FINAL_PREDICTED) -> str:
         root = ET.Element("cutBuffer")
+        add_session_state(root)
         version = ET.SubElement(root, "versionInfo")
         version.attrib.update({
             "vendorKey": "EasternGraphics", "appKey": "EAI-Server",
@@ -108,11 +110,16 @@ class ArticleObxService(BaseService):
         items = ET.SubElement(root, "items")
 
         default_series = series_id
+        basket_ids: list[str] = []
         for row in rows:
             p = row.permutation
             price = row.price
             series_id = p.series_id or default_series
-            bsk = ET.SubElement(items, "bskArticle", {"itemType": "BasketAggregate", "updateState": "Migratable"})
+            # Basket rejects a paste whose articles lack a unique basketId; every article gets a fresh one.
+            basket_id = new_basket_id()
+            basket_ids.append(basket_id)
+            bsk = ET.SubElement(items, "bskArticle", {
+                "basketId": basket_id, "itemType": "BasketAggregate", "updateState": "Migratable"})
             ET.SubElement(bsk, "manufacturer", {"id": manufacturer_id})
             ET.SubElement(bsk, "series", {"id": series_id})
 
@@ -121,16 +128,28 @@ class ArticleObxService(BaseService):
             if final_mode != FINAL_OMIT:
                 final = ET.SubElement(bsk, "artNr", {"type": "final"})
                 final.text = OBX_SENTINEL if final_mode == FINAL_SENTINEL else p.final_article
-                if p.description or p.name:
-                    txt = ET.SubElement(final, "text", {"lang": "en"})
-                    txt.text = p.description or p.name
 
             varcode = ET.SubElement(bsk, "artNr", {"type": "ofmlvarcode"})
             varcode.text = self._varcode(p, series_id, ofml_class_suffix, exclusions)
 
-            ET.SubElement(bsk, "itemPrice", {
-                "type": "purchase", "value": f"{price.total_price:.2f}", "currency": price.currency,
-            })
+            # pCon keeps article numbers as plain text and the label in sibling
+            # <description> elements; a child inside <artNr> corrupts the final
+            # number for parsers that read up to the next closing tag.
+            label = p.description or p.name
+            if label:
+                for kind, default in (("short", "0"), ("long", "1")):
+                    description = ET.SubElement(bsk, "description", {"type": kind, "default": default})
+                    ET.SubElement(description, "text", {"lang": "en"}).text = label
+
+            # pCon exports purchase and sale, each with and without pd="1"; the
+            # Validator reads only the sale/pd="1" row. The engine prices one
+            # sale amount (purchase equals sale in every reference observed).
+            amount = f"{price.total_price:.2f}"
+            for kind, pd in (("purchase", True), ("purchase", False), ("sale", True), ("sale", False)):
+                attributes = {"type": kind}
+                if pd:
+                    attributes["pd"] = "1"
+                ET.SubElement(bsk, "itemPrice", {**attributes, "value": amount, "currency": price.currency})
             ET.SubElement(bsk, "priceDate", {"value": price.effective_date})
             ET.SubElement(bsk, "quantity", {"count": str(p.quantity)})
 
@@ -151,6 +170,7 @@ class ArticleObxService(BaseService):
                 "seriesId": series_id, "progId": "",
             })
 
+        add_calculation_changes(root, basket_ids)
         ET.indent(root, space="  ")
         return "<?xml version='1.0' encoding='utf-8'?>\n" + ET.tostring(root, encoding="unicode")
 

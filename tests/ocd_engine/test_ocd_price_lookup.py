@@ -268,7 +268,7 @@ def test_exported_obx_carries_exactly_the_generated_price(tmp_path):
     summary = export_obx(outcome.exportable, str(target), manufacturer_id="MK", price_date="2026-01-15")
     assert summary.exported == 3 and summary.skipped_unpriced == 0 and summary.ok
     xml = target.read_text(encoding="utf-8")
-    written = re.findall(r'<itemPrice type="[^"]+" value="([^"]+)" currency="([^"]+)"', xml)
+    written = re.findall(r'<itemPrice type="sale" value="([^"]+)" currency="([^"]+)"', xml)
     assert sorted(written) == [("100.00", "EUR"), ("100.00", "EUR"), ("125.50", "EUR")]
     assert sorted(s.price for s in outcome.skus) == [D("100.00"), D("100.00"), D("125.50")]
 

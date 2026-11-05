@@ -229,10 +229,13 @@ class ObxXmlTests(unittest.TestCase):
     def test_document_structure_and_required_metadata(self):
         root = ET.fromstring(self.generate().xml)                    # well-formed
         self.assertEqual(root.tag, "cutBuffer")
-        self.assertEqual([c.tag for c in root], ["versionInfo", "items"])
+        # Basket paste contract (Testsuite-proven envelope): session state first, calculation changes last.
+        self.assertEqual([c.tag for c in root], ["state", "versionInfo", "items", "docCalculationChanges"])
         self.assertTrue({"vendorKey", "appKey", "appVersion", "bskXmlVersion"} <= set(root.find("versionInfo").attrib))
         articles = root.findall("./items/bskArticle")
         self.assertEqual(len(articles), 4)
+        self.assertEqual(len({x.get("basketId") for x in articles}), 4)       # unique, non-empty
+        self.assertTrue(all(x.get("basketId") for x in articles))
         a = articles[0]
         self.assertEqual(a.get("itemType"), "BasketAggregate")
         self.assertEqual(a.find("manufacturer").get("id"), "HM")

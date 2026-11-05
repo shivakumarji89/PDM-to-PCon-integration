@@ -22,6 +22,7 @@ from services.article_obx.article_obx_models import (
     ArticlePrice,
 )
 from services.article_obx.article_obx_service import ArticleObxService
+from services.article_obx.basket_contract import basket_problems
 from services.obx_validation_service import ObxValidationService
 from services.ocd_engine.generator import GeneratedSku
 
@@ -114,6 +115,7 @@ def export_obx(skus: Sequence[GeneratedSku], path: str | Path, *, manufacturer_i
         summary.problems.append(f"The written OBX could not be read back: {exc}")
         return summary
     summary.article_lines = len(lines)
+    summary.problems += basket_problems(target.read_text(encoding="utf-8"))
     missing = Counter(_normalise(r.permutation.final_article) for r in rows) - \
         Counter(_normalise(line.final_article) for line in lines)
     summary.missing_final_articles = sorted(missing.elements())

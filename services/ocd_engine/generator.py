@@ -391,12 +391,17 @@ class OcdArticleGenerator:
     def generate(self, article_numbers: Sequence[str], rules: Sequence[PropertyRule] = (), *,
                  currency: str = "", price_date: str,
                  max_configurations: None = None, fabric_default_only: bool = True, fabric_property: str = "",
-                 reporter=None) -> GenerationOutcome:
+                 shared_fabric: bool = False, reporter=None) -> GenerationOutcome:
         """Every valid, unique SKU of ``article_numbers``; ``OperationCancelled`` propagates on cancel.
 
         ``fabric_property`` is the one optional manual choice (a property name, ``""`` = automatic discovery): it feeds
         the same resolver, and a choice that cannot be resolved raises :class:`GenerationError` before anything is
         enumerated, so every colour is never silently expanded.
+
+        ``shared_fabric`` (default off - Betwixt has identical Back/Seat type lists and is generated independently): fabric positions that offer the same fabric types (e.g. Back/Arms and Seat) are
+        one choice - every configuration carries the same type and colour in each of them (see
+        :class:`~services.ocd_engine.configuration_engine.ConfigurationEngine`). ``False`` enumerates each position
+        independently (the default).
 
         There is no SKU cap: ``max_configurations`` exists so callers state "unlimited" explicitly and
         anything but ``None`` is refused rather than silently ignored.
@@ -419,7 +424,11 @@ class OcdArticleGenerator:
         for article_number in article_numbers:
             if reporter is not None:
                 reporter.note(f"Enumerating {article_number}")
-            model, pinned = self._apply_rules(self._build_model(article_number), rules, outcome.warnings)
+            full_model = self._build_model(article_number)
+            # Ties come from the unrestricted model: a pin narrows the type lists and must not switch a tie off.
+            ties = (fabric.shared_fabric_ties(full_model, fabric.discover(full_model, fabric_property).schemes)
+                    if shared_fabric else ())
+            model, pinned = self._apply_rules(full_model, rules, outcome.warnings)
             scheme = dataset.code_scheme(model.scheme_id)
             encoder = CodeSchemeEncoder(scheme) if scheme is not None else None
             if encoder is None:
@@ -429,6 +438,7 @@ class OcdArticleGenerator:
             engine = ConfigurationEngine(
                 model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES), identity_texts=identity,
                 fabric_default_only=fabric_default_only, fabric_property=fabric_property,
+                shared_fabric=shared_fabric, fabric_ties=ties,
                 progress=(lambda st, a=article_number: reporter.note(
                     f"Enumerating {a}: {st.emitted:,} configuration(s), {st.nodes:,} node(s) evaluated, "
                     f"{len(outcome.skus):,} valid SKU(s)")) if reporter is not None else None)
@@ -488,6 +498,7 @@ class OcdArticleGenerator:
                                   f"{produced:,} valid SKU(s)")
             outcome.fabric_notes.extend(f"{article_number}: {r.describe()}"
                                         for r in engine.fabric_resolutions.values() if r.selected)
+            outcome.fabric_notes.extend(f"{article_number}: {tie.describe()}" for tie in engine.fabric_ties)
             outcome.nodes += engine.stats.nodes
             outcome.configurations += engine.stats.emitted
             outcome.inert_properties = tuple(dict.fromkeys(outcome.inert_properties + engine.stats.inert))

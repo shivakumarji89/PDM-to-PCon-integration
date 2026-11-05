@@ -63,10 +63,3 @@ def test_module_workflow_mapping_uses_existing_workflows():
     assert module_workflows(WorkbenchModule.SYTELINE_EXPORT) == (
         WorkflowStep.SYTELINE_EXPORT,
     )
-
-
-# Bulk Update intentionally exposes the existing Maintenance workflow.
-def test_bulk_update_module_uses_maintenance_workflow():
-    assert module_workflows(WorkbenchModule.BULK_UPDATE) == (
-        WorkflowStep.MAINTENANCE,
-    )

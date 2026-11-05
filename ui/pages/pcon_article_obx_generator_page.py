@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.article_obx.ocd_repository_obx import compare_with_reference, export_obx
+from services.article_obx.validator_handoff import shared_handoff
 from services.ocd_engine.catalogue import (
     CatalogueScan,
     OcdArticle,
@@ -115,6 +116,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._outcome_program: OcdProgram | None = None
         self._outcome_price_date = ""
         self._exported_path = ""
+        self._validator_handoff = shared_handoff()
         self._run: ReportedTask | None = None
 
         self._build_content()
@@ -194,6 +196,12 @@ class PconArticleObxGeneratorPage(BasePage):
         self._export_button.setEnabled(False)
         self._export_button.setToolTip("Write the priced SKUs to the output OBX file.")
         row.addWidget(self._export_button)
+        self._validator_button = self._button("Prepare for Validator", self._prepare_for_validator)
+        self._validator_button.setEnabled(False)
+        self._validator_button.setToolTip(
+            "Write a temporary OBX of the generated SKUs. Load it in OBX Validation with "
+            "Load OBX... > Load from Article OBX Generator. Your exported OBX is not touched.")
+        row.addWidget(self._validator_button)
         self._diagnostics_button = self._button("Price Diagnostics…", self._show_price_diagnostics)
         self._diagnostics_button.setEnabled(False)
         self._diagnostics_button.setToolTip(
@@ -348,6 +356,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._article_filter.setEnabled(bool(self._articles))
         self._fabric_property.setEnabled(idle and self._fabric_property.count() > 1)
         self._export_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
+        self._validator_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.exportable))
         self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
 
     # --------------------------------------------------------------- helpers
@@ -819,6 +828,30 @@ class PconArticleObxGeneratorPage(BasePage):
             return summary
 
         self._start("Exporting OBX", work, self._on_exported, subject=Path(path).name)
+
+    def _prepare_for_validator(self) -> None:
+        outcome, program = self._outcome, self._outcome_program
+        if outcome is None or program is None or not outcome.exportable:
+            QMessageBox.information(self, "Prepare for Validator", "Generate valid SKUs with a price first.")
+            return
+        skus, price_date = list(outcome.exportable), self._outcome_price_date
+        series = self._series.currentData() or ""
+
+        def work(reporter):
+            reporter.note(f"Writing {len(skus)} SKU(s) to a temporary OBX")
+            snapshot = self._validator_handoff.create(
+                skus, manufacturer_id=program.manufacturer_id, price_date=price_date, series_id=series)
+            reporter.advance("Temporary OBX written")
+            return snapshot
+
+        self._start("Preparing for Validator", work, self._on_validator_snapshot, subject=f"{len(skus)} SKU(s)")
+
+    def _on_validator_snapshot(self, snapshot) -> None:
+        text = (f"Temporary OBX ready ({snapshot.article_count} article line(s)). In OBX Validation choose "
+                f"Load OBX... > Load from Article OBX Generator.")
+        self._generation_status.setText(text)
+        self._generation_status.setStyleSheet(f"color: {theme.COLOR_OK if snapshot.ok else theme.COLOR_ERROR};")
+        self._validation_label.setText(" ".join(snapshot.problems))
 
     def _on_exported(self, summary) -> None:
         text = (f"Exported {summary.exported} SKU(s) to {summary.path}; "

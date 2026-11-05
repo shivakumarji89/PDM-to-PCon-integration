@@ -36,6 +36,7 @@ Evaluate = Callable[[m.RelationRef, EvalContext, str], "tuple[Tri, str | None]"]
 SELECTED_EXPLICIT = "explicit-default"
 SELECTED_FIRST = "first-valid"
 SELECTED_NONE = "none"
+SELECTED_SHARED = "shared-with-primary"
 
 #: Rejections kept individually per resolution; the counts per reason are always exact.
 MAX_LISTED = 25
@@ -126,8 +127,17 @@ class FabricColourResolver:
         return scheme is not None and scheme.type_upper in values
 
     # ------------------------------------------------------------------ resolution
-    def resolve(self, dim: m.PropertyDef, ctx: EvalContext) -> tuple[FabricResolution, list[m.ValueDef]]:
-        """``(explanation, [the selected colour])``; the list is empty when no colour is valid."""
+    def resolve(self, dim: m.PropertyDef, ctx: EvalContext, prefer: str | None = None,
+                accept: frozenset[str] | None = None) -> tuple[FabricResolution, list[m.ValueDef]]:
+        """``(explanation, [the selected colour])``; the list is empty when no colour is valid.
+
+        Shared fabric selection (two positions that are one choice):
+
+        ``prefer`` is the colour code the earlier position already chose: only that colour may be selected here, and
+        only when it passed every relation of this position - otherwise no colour is selected.
+
+        ``accept`` is, for the earlier position, the colour codes its later position also accepts: the pick is made
+        among the colours valid *here and* in ``accept``, so the shared colour is valid for both."""
         scheme = self._by_colour[dim.name_upper]
         type_value = ctx.values.get(scheme.type_upper)
         type_text = None if type_value is None else str(type_value)
@@ -171,10 +181,15 @@ class FabricColourResolver:
             else:
                 reject(value, *verdict)
 
-        selected = next((v for v in valid if v.is_default), None)
-        selection = SELECTED_EXPLICIT if selected is not None else SELECTED_NONE
-        if selected is None and valid:
-            selected, selection = valid[0], SELECTED_FIRST
+        pickable = valid if accept is None else [v for v in valid if v.value in accept]
+        if prefer is not None:
+            selected = next((v for v in valid if v.value == prefer), None)
+            selection = SELECTED_SHARED if selected is not None else SELECTED_NONE
+        else:
+            selected = next((v for v in pickable if v.is_default), None)
+            selection = SELECTED_EXPLICIT if selected is not None else SELECTED_NONE
+            if selected is None and pickable:
+                selected, selection = pickable[0], SELECTED_FIRST
         return FabricResolution(
             colour_property=dim.name, type_property=scheme.type_property, type_value=type_text,
             mechanism=scheme.mechanism, candidates=tuple(v.value for v in candidates),

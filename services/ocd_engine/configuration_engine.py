@@ -18,6 +18,7 @@ from typing import Callable, Iterator, Mapping, Sequence
 
 from core.cancellation import checkpoint
 from services.ocd_engine import diagnostics as dg
+from services.ocd_engine import fabric
 from services.ocd_engine import fabric_resolver as fr
 from services.ocd_engine import model as m
 from services.ocd_engine import relation_parser as rp
@@ -108,6 +109,13 @@ class ConfigView:
         return list(self._ordered)
 
 
+@dataclass(frozen=True)
+class _Follower:
+    colour_upper: str
+    type_upper: str
+    primary_type_upper: str
+
+
 def _tail(name: str) -> str:
     return name.rsplit(".", 1)[-1]
 
@@ -119,8 +127,15 @@ class ConfigurationEngine:
                  rhs_values_factory: Callable[[Mapping[str, str], Sequence[m.Assignment]], dict] | None = None,
                  progress_every: int = 5000,
                  identity_texts: Sequence[str] | None = None,
-                 fabric_default_only: bool = True, fabric_property: str = "") -> None:
-        """``fabric_default_only``: every fabric colour property the data shows (``fabric.discover_schemes``) is
+                 fabric_default_only: bool = True, fabric_property: str = "",
+                 shared_fabric: bool = False, fabric_ties: Sequence[fabric.FabricTie] | None = None) -> None:
+        """``shared_fabric`` (opt-in): fabric positions that offer the same fabric types (``fabric.shared_fabric_ties``, e.g.
+        a Back/Arms and a Seat position) are one choice. The later position's type and colour are restricted, at its
+        own node and by the same precondition filtering, to what the first position selected - the independent
+        product of the positions is never enumerated. ``fabric_ties`` supplies ties derived from an unrestricted
+        model (a pinned model may offer fewer types); ``None`` derives them from ``model``.
+
+        ``fabric_default_only``: every fabric colour property the data shows (``fabric.discover_schemes``) is
         resolved by :class:`~services.ocd_engine.fabric_resolver.FabricColourResolver` to ONE colour per
         configuration - a valid flagged ``is_default`` colour, else the first valid colour in source order - at the
         colour's own node, so the other colours are never expanded. ``False`` keeps every valid colour.
@@ -154,6 +169,24 @@ class ConfigurationEngine:
                         if fabric_default_only else None)
         self._fabric_colours = self._fabric.colour_properties if self._fabric else frozenset()
         self.fabric_resolutions: dict[tuple, fr.FabricResolution] = {}     # first resolution per (colour, type, pick)
+        if not shared_fabric:
+            ties: tuple[fabric.FabricTie, ...] = ()
+        elif fabric_ties is not None:
+            ties = tuple(fabric_ties)
+        else:
+            ties = fabric.shared_fabric_ties(model, fabric.discover(model, fabric_property).schemes)
+        self.fabric_ties = ties
+        # follower property (upper) -> the property (upper) whose selected value it must take
+        self._tie_source: dict[str, str] = {}
+        for tie in ties:
+            self._tie_source[tie.follower_type.upper()] = tie.primary_type.upper()
+            self._tie_source[tie.follower_colour.upper()] = tie.primary_colour.upper()
+        self._props_by_name = {p.name_upper: p for p in model.properties}
+        # primary colour property (upper) -> the ties whose follower must accept the colour it picks
+        self._followers: dict[str, list[_Follower]] = {}
+        for tie in ties:
+            self._followers.setdefault(tie.primary_colour.upper(), []).append(
+                _Follower(tie.follower_colour.upper(), tie.follower_type.upper(), tie.primary_type.upper()))
         if self._fabric is not None and self._fabric.override_error:
             self.sink.add(dg.FABRIC_OVERRIDE_UNRESOLVED, f"fabric property {self._fabric.override or fabric_property}: "
                           f"{self._fabric.override_error}",
@@ -256,26 +289,39 @@ class ConfigurationEngine:
                 found.append((ref, owner, compiled))
         return found
 
+    def _relation_refs(self, dim: m.PropertyDef) -> tuple[set[str], bool]:
+        """Properties the relations that decide ``dim``'s visibility and values read, and whether all were readable."""
+        refs: set[str] = set()
+        readable = True
+        relations = list(self._of_type(dim.relations, m.PRECONDITION)) +             list(self._of_type(dim.relations, m.SELECTION))
+        cls = self._classes.get(dim.class_name.upper())
+        if cls is not None:
+            relations += self._of_type(cls.relations, m.PRECONDITION)
+        for value in dim.values:
+            relations += self._of_type(value.relations, m.PRECONDITION)
+            relations += self._of_type(value.relations, m.SELECTION)
+        for ref in relations:
+            compiled = rp.compile_relation(m.PRECONDITION, ref.text)
+            refs |= {_tail(r) for r in compiled.refs}
+            readable = readable and not compiled.error
+        return refs, readable
+
     # ------------------------------------------------------------ ordering
     def _prepare(self, dimensions: Sequence[m.PropertyDef]):
         names = {d.name_upper: i for i, d in enumerate(dimensions)}
         deps: list[set[str]] = []
         self._candidate_refs, self._candidate_cache = {}, {}
+        by_name = {d.name_upper: d for d in dimensions}
         for dim in dimensions:
-            refs: set[str] = set()
-            readable = True
-            relations = list(self._of_type(dim.relations, m.PRECONDITION)) + \
-                list(self._of_type(dim.relations, m.SELECTION))
-            cls = self._classes.get(dim.class_name.upper())
-            if cls is not None:
-                relations += self._of_type(cls.relations, m.PRECONDITION)
-            for value in dim.values:
-                relations += self._of_type(value.relations, m.PRECONDITION)
-                relations += self._of_type(value.relations, m.SELECTION)
-            for ref in relations:
-                compiled = rp.compile_relation(m.PRECONDITION, ref.text)
-                refs |= {_tail(r) for r in compiled.refs}
-                readable = readable and not compiled.error
+            refs, readable = self._relation_refs(dim)
+            for follower in self._followers.get(dim.name_upper, ()):
+                # The colour this position picks is also checked against its follower (``_accept``), so the choice
+                # depends on what the follower's relations read, and is ordered after it.
+                follower_dim = by_name.get(follower.colour_upper)
+                if follower_dim is not None:
+                    more, more_readable = self._relation_refs(follower_dim)
+                    refs |= more | {follower.type_upper}
+                    readable = readable and more_readable
             if readable:
                 # What this dimension's value filter (``_candidates``) can depend on; see there.
                 self._candidate_refs[dim.key] = tuple(sorted(refs))
@@ -286,6 +332,12 @@ class ConfigurationEngine:
                 refs.add(scheme.type_upper)
                 if dim.key in self._candidate_refs:
                     self._candidate_refs[dim.key] = tuple(sorted(set(self._candidate_refs[dim.key]) | {scheme.type_upper}))
+            source = self._tie_source.get(dim.name_upper)
+            if source is not None:
+                # A tied position is chosen after the position it follows, and its list is keyed on that choice.
+                refs.add(source)
+                if dim.key in self._candidate_refs:
+                    self._candidate_refs[dim.key] = tuple(sorted(set(self._candidate_refs[dim.key]) | {source}))
             refs.discard(dim.name_upper)
             deps.append({r for r in refs if r in names})
         order: list[int] = []
@@ -374,12 +426,24 @@ class ConfigurationEngine:
                 chosen.pop()
                 return
             candidates = self._candidates(dim, ctx)
+            shared = self._shared_value(dim, ctx)
+            if not candidates and shared is not None:
+                # The position this one follows chose a value that is not valid here: the two positions cannot
+                # agree, so this is not a configuration (never an unassigned position).
+                self.stats.pruned += 1
+                if dim.name_upper not in self._no_value_reported:
+                    self._no_value_reported.add(dim.name_upper)
+                    self.sink.add(dg.SHARED_FABRIC_UNAVAILABLE,
+                                  f"{dim.name} cannot take the value {shared!r} chosen for "
+                                  f"{self._tie_source[dim.name_upper]} under some selections; those configurations "
+                                  f"are rejected", dg.Severity.INFO, article=self.model.base_code, property=dim.name)
+                return
             if not candidates and dim.name_upper in self._fabric_colours and self._fabric_type_selected(dim, ctx):
                 # A fabric is chosen but none of its colours is valid here: not a configuration.
                 self.stats.pruned += 1
                 if dim.name_upper not in self._no_value_reported:
                     self._no_value_reported.add(dim.name_upper)
-                    why = self._fabric.resolve(dim, ctx)[0].describe()
+                    why = self._fabric.resolve(dim, ctx, self._shared_value(dim, ctx))[0].describe()
                     self.sink.add(dg.NO_FABRIC_COLOUR,
                                   f"no colour of {dim.name} is valid for the selected fabric type under some "
                                   f"selections; those configurations are rejected ({why})", dg.Severity.WARNING,
@@ -442,9 +506,34 @@ class ConfigurationEngine:
             found = self._candidate_cache[key] = self._filter_values(dim, ctx)
         return found
 
+    def _shared_value(self, dim: m.PropertyDef, ctx: EvalContext) -> str | None:
+        """The value ``dim`` must take because it follows another fabric position (``None`` = not tied, or that
+        position has no value in this configuration)."""
+        source = self._tie_source.get(dim.name_upper)
+        found = ctx.values.get(source) if source is not None else None
+        return None if found is None else str(found)
+
+    def _accepted(self, dim: m.PropertyDef, ctx: EvalContext) -> frozenset[str] | None:
+        """For a colour that a later fabric position must share: the colour codes that position accepts, so the pick
+        is valid in both (``None`` = no follower, or nothing to check)."""
+        followers = self._followers.get(dim.name_upper)
+        if not followers:
+            return None
+        accepted: frozenset[str] | None = None
+        for follower in followers:
+            follower_dim, shared_type = self._props_by_name.get(follower.colour_upper), ctx.values.get(follower.primary_type_upper)
+            if follower_dim is None or shared_type is None:
+                continue
+            probe = EvalContext(values={**ctx.values, follower.type_upper: shared_type}, ban=ctx.ban, tables=ctx.tables)
+            if self._is_hidden(follower_dim, probe):
+                continue
+            valid = frozenset(self._fabric.resolve(follower_dim, probe)[0].valid)
+            accepted = valid if accepted is None else accepted & valid
+        return accepted
+
     def _resolve_fabric(self, dim: m.PropertyDef, ctx: EvalContext) -> list[m.ValueDef]:
         """The one fabric colour of ``dim`` for this configuration (none if no colour is valid), explanation recorded."""
-        resolution, chosen = self._fabric.resolve(dim, ctx)
+        resolution, chosen = self._fabric.resolve(dim, ctx, self._shared_value(dim, ctx), self._accepted(dim, ctx))
         self.stats.pruned += dict(resolution.rejected_counts).get(fr.REASON_PRECONDITION, 0)
         key = (dim.name_upper, resolution.type_value, resolution.selected, resolution.mechanism)
         if key not in self.fabric_resolutions and len(self.fabric_resolutions) < 5000:
@@ -464,8 +553,12 @@ class ConfigurationEngine:
         if dim.name_upper in self._fabric_colours:
             return self._resolve_fabric(dim, ctx)
         out = []
+        shared = self._shared_value(dim, ctx)
         for value in dim.values:
             if dim.allowed_keys is not None and value.key not in dim.allowed_keys:
+                continue
+            if shared is not None and value.value != shared:
+                self.stats.pruned += 1
                 continue
             ok = True
             for ref in self._of_type(value.relations, m.PRECONDITION):
