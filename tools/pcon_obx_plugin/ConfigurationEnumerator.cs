@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using X3g.Plugin;
 
 namespace MKObxGenerator
@@ -65,6 +66,11 @@ namespace MKObxGenerator
         public int Skipped;
         public int Duplicates;
         public int Visited;
+        public int ProbeInsertions;
+        public int PropertyApplications;
+        public long ProbeInsertElapsedMs;
+        public long PropertyApplyElapsedMs;
+        public long EnumerationElapsedMs;
         public bool Truncated;
         public bool Cancelled;
 
@@ -87,6 +93,7 @@ namespace MKObxGenerator
 
         public void Run(GenerationRequest request)
         {
+            var runClock = Stopwatch.StartNew();
             _estimatedTotal = request.MaxConfigurations;
             _varyAll = request.VaryAll;
             _fixedRules = new List<PropertyRule>();
@@ -114,6 +121,39 @@ namespace MKObxGenerator
                     assigned.Add(rule.Key);
                 }
                 Enumerate(request, article, prefix, assigned);
+            }
+            runClock.Stop();
+            EnumerationElapsedMs = runClock.ElapsedMilliseconds;
+        }
+
+        private ConfiguredArticle InsertProbe(GenerationRequest request, ArticleRequest article)
+        {
+            var clock = Stopwatch.StartNew();
+            try
+            {
+                ProbeInsertions++;
+                return _configurator.Insert(request.ManufacturerId, request.SeriesId, request.CatalogPackage,
+                                             article.PackageName, article.ArticleNumber, article.VariantCode);
+            }
+            finally
+            {
+                clock.Stop();
+                ProbeInsertElapsedMs += clock.ElapsedMilliseconds;
+            }
+        }
+
+        private bool ApplyAndCount(ConfiguredArticle probe, string key, string value, out string error)
+        {
+            var clock = Stopwatch.StartNew();
+            try
+            {
+                PropertyApplications++;
+                return _configurator.Apply(probe, key, value, out error);
+            }
+            finally
+            {
+                clock.Stop();
+                PropertyApplyElapsedMs += clock.ElapsedMilliseconds;
             }
         }
 
@@ -176,7 +216,7 @@ namespace MKObxGenerator
             foreach (PropertyRule rule in _fixedRules)
             {
                 string error;
-                if (!_configurator.Apply(probe, rule.Key, rule.ValueKey, out error))
+                if (!ApplyAndCount(probe, rule.Key, rule.ValueKey, out error))
                 {
                     Skipped++;
                     Warnings.Add(article.ArticleNumber + " " + Describe(prefix) + ": " + error);
@@ -219,8 +259,7 @@ namespace MKObxGenerator
             ConfiguredArticle probe;
             try
             {
-                probe = _configurator.Insert(request.ManufacturerId, request.SeriesId, request.CatalogPackage,
-                                             article.PackageName, article.ArticleNumber, article.VariantCode);
+                probe = InsertProbe(request, article);
             }
             catch (Exception ex)
             {
@@ -238,7 +277,7 @@ namespace MKObxGenerator
                 foreach (KeyValuePair<string, string> assignment in prefix)
                 {
                     string error;
-                    if (!_configurator.Apply(probe, assignment.Key, assignment.Value, out error))
+                    if (!ApplyAndCount(probe, assignment.Key, assignment.Value, out error))
                     {
                         Skipped++;
                         Warnings.Add(article.ArticleNumber + " " + Describe(prefix) + ": " + error);
