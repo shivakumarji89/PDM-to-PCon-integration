@@ -515,6 +515,7 @@ class MainWindow(QMainWindow):
         ))
         self._manager.set_steps(steps)
         self._apply_shell_chrome(module, steps)
+        self._configure_maintenance_page_actions(steps)
         self._left_panel.show()
         self._nav_footer.show()
         self._stack.setCurrentWidget(self._pages[self._manager.current_step()])
@@ -592,6 +593,32 @@ class MainWindow(QMainWindow):
                 [items_by_step[step] for step in steps if step in items_by_step],
             )
             self._refresh_app_header()
+
+
+    def _configure_maintenance_page_actions(self, steps) -> None:
+        """Add consistent Reload and Export MDB actions to Maintenance workflow headers."""
+        from PySide6.QtWidgets import QPushButton
+
+        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        for step in steps:
+            page = self._pages.get(step)
+            header = getattr(page, "header", None) if page is not None else None
+            if header is None or not hasattr(header, "add_action"):
+                continue
+            if not hasattr(page, "_maintenance_reload_button"):
+                reload_button = QPushButton("↻  Reload", page)
+                reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
+                reload_button.clicked.connect(page.refresh)
+                page._maintenance_reload_button = reload_button
+                header.add_action(reload_button, "secondary")
+            if not hasattr(page, "_maintenance_export_mdb_button"):
+                export_button = QPushButton("⇩  Export to MDB", page)
+                export_button.setToolTip("Export the current Maintenance PDM snapshot to an MDB")
+                export_button.clicked.connect(self._on_export_mdb)
+                page._maintenance_export_mdb_button = export_button
+                header.add_action(export_button, "secondary")
+            page._maintenance_reload_button.setVisible(is_maintenance)
+            page._maintenance_export_mdb_button.setVisible(is_maintenance)
 
     def _refresh_app_header(self) -> None:
         """Header indicators from existing application state (no new queries)."""
@@ -1558,12 +1585,14 @@ class MainWindow(QMainWindow):
         """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-        if self._active_module != WorkbenchModule.DEVELOPMENT:
+        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        if self._active_module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE):
             QMessageBox.information(
-                self, "Export MDB", "MDB Export is available from Development."
+                self, "Export MDB", "MDB Export is available from Development and Maintenance."
             )
             return
-        if not self._context.snapshot_manager.has_snapshot():
+        snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
+        if snapshot is None:
             QMessageBox.information(self, "Export MDB", "Load a product first.")
             return
         directory = QFileDialog.getExistingDirectory(
@@ -1577,10 +1606,12 @@ class MainWindow(QMainWindow):
         # locate or choose external template files.
         kind = None
 
-        snapshot = self._context.active_snapshot
-        # Standardise base article lengths to the registry (CAD) before export.
-        psvc = self._context.price_update_service
-        standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+        # Development uses the registry standardisation step; Maintenance exports
+        # its PDM snapshot as-is so no Development workflow data is mutated.
+        standardised = 0
+        if not is_maintenance:
+            psvc = self._context.price_update_service
+            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
         export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
         result = self._context.ocd_export_service.export(
             export_snapshot, directory, kind
