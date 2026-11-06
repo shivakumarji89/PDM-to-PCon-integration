@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
         )
 
         self._build_central_layout()
+        self._module_home.set_database_selector(self._database_selector)
         self._build_assistant_dock()
         self._build_activity_dock()
         self._build_menu_bar()
@@ -454,23 +455,15 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
 
-        # PDM database selector, above the workflow navigator. Choosing a
-        # database re-points the connection so product loads / snapshots
-        # come from that database.
-        db_label = QLabel("Database:", container)
-        db_label.setObjectName("databaseSelectorLabel")
-        self._database_label = db_label
-        layout.addWidget(db_label)
-
-        self._database_selector = QComboBox(container)
+        # PDM database is an application-level setting shown on the module
+        # home page, not a workflow/header status control.
+        self._database_selector = QComboBox(self)
         self._database_selector.setObjectName("databaseSelector")
         self._database_selector.addItems(list(PDM_DATABASE_PRESETS.keys()))
         active = self._context.config.active_pdm_preset()
         if active:
             self._database_selector.setCurrentText(active)
         self._database_selector.currentTextChanged.connect(self._on_database_changed)
-        layout.addWidget(self._database_selector)
-
         module_label = QLabel("Module", container)
         module_label.setObjectName("activeModuleLabel")
         layout.addWidget(module_label)
@@ -522,6 +515,7 @@ class MainWindow(QMainWindow):
         ))
         self._manager.set_steps(steps)
         self._apply_shell_chrome(module, steps)
+        self._configure_maintenance_page_actions(steps)
         self._left_panel.show()
         self._nav_footer.show()
         self._stack.setCurrentWidget(self._pages[self._manager.current_step()])
@@ -546,23 +540,8 @@ class MainWindow(QMainWindow):
         self._legacy_nav_spacer.setVisible(not shell)
         self._active_module_label.setVisible(not shell)
 
-        # In the Maintenance shell, keep the database choice beside the PDM
-        # connection indicator in the global header. Restore it to the legacy
-        # left panel for modules that have not migrated to the shell.
-        left_layout = self._left_panel.layout()
-        if shell:
-            left_layout.removeWidget(self._database_label)
-            left_layout.removeWidget(self._database_selector)
-            self._database_label.hide()
-            self._app_header.set_database_selector(self._database_selector)
-        else:
-            self._app_header.set_database_selector(None)
-            self._database_selector.setParent(self._left_panel)
-            self._database_label.setParent(self._left_panel)
-            left_layout.insertWidget(0, self._database_label)
-            left_layout.insertWidget(1, self._database_selector)
-            self._database_label.show()
-            self._database_selector.show()
+        # PDM database selection is kept on the module home page as a
+        # one-time application setting; it is not repeated in workflow chrome.
         # Match the horizontal gutter around the workflow workspace:
         # keep the sidebar's outer left inset, but remove the doubled right
         # inset so the gap between sidebar and content matches the page's
@@ -598,9 +577,6 @@ class MainWindow(QMainWindow):
             f"QMenuBar {{ background: {theme.WB_SURFACE}; color: {theme.WB_NAVY}; padding: 0 6px; }} "
             f"QMenuBar::item {{ background: transparent; padding: 3px 10px; border-radius: 4px; }} "
             f"QMenuBar::item:selected {{ background: {theme.WB_GREEN_SOFT}; }}" if shell else "")
-        self._database_label.setStyleSheet(
-            f"background: transparent; color: {theme.WB_TEXT_SECONDARY}; font-size: 12px; "
-            "font-weight: 600; padding: 0;" if shell else "")
         for button, role in ((self._continue_btn, "primary"), (self._back_btn, "secondary"),
                              (self._modules_btn, "secondary")):
             if shell:
@@ -618,17 +594,38 @@ class MainWindow(QMainWindow):
             )
             self._refresh_app_header()
 
+
+    def _configure_maintenance_page_actions(self, steps) -> None:
+        """Add consistent Reload and Export MDB actions to Maintenance workflow headers."""
+        from PySide6.QtWidgets import QPushButton
+
+        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
+        for step in maintenance_steps:
+            page = self._pages.get(step)
+            header = getattr(page, "header", None) if page is not None else None
+            if header is None or not hasattr(header, "add_action"):
+                continue
+            if not hasattr(page, "_maintenance_reload_button"):
+                reload_button = QPushButton("↻  Reload", page)
+                reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
+                reload_button.clicked.connect(page.refresh)
+                page._maintenance_reload_button = reload_button
+                header.add_action(reload_button, "secondary")
+            if not hasattr(page, "_maintenance_export_mdb_button"):
+                export_button = QPushButton("⇩  Export to MDB", page)
+                export_button.setToolTip("Export the current Maintenance PDM snapshot to an MDB")
+                export_button.clicked.connect(self._on_export_mdb)
+                page._maintenance_export_mdb_button = export_button
+                header.add_action(export_button, "secondary")
+            page._maintenance_reload_button.setVisible(is_maintenance)
+            page._maintenance_export_mdb_button.setVisible(is_maintenance)
+
     def _refresh_app_header(self) -> None:
         """Header indicators from existing application state (no new queries)."""
         if not self._app_header.isVisibleTo(self):
             return
         ctx = self._context
-        preset = ctx.config.active_pdm_preset() or "PDM"
-        loaded = ctx.pdm_snapshot is not None
-        self._app_header.set_indicator(
-            "pdm", "Loaded" if loaded else "Not loaded", "success" if loaded else "neutral",
-            f"PDM database: {preset}",
-        )
         repo = ctx.maintenance_repository_info is not None
         self._app_header.set_indicator(
             "repository", "Linked" if repo else "Not linked", "success" if repo else "neutral",
@@ -1589,12 +1586,14 @@ class MainWindow(QMainWindow):
         """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-        if self._active_module != WorkbenchModule.DEVELOPMENT:
+        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        if self._active_module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE):
             QMessageBox.information(
-                self, "Export MDB", "MDB Export is available from Development."
+                self, "Export MDB", "MDB Export is available from Development and Maintenance."
             )
             return
-        if not self._context.snapshot_manager.has_snapshot():
+        snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
+        if snapshot is None:
             QMessageBox.information(self, "Export MDB", "Load a product first.")
             return
         directory = QFileDialog.getExistingDirectory(
@@ -1608,10 +1607,12 @@ class MainWindow(QMainWindow):
         # locate or choose external template files.
         kind = None
 
-        snapshot = self._context.active_snapshot
-        # Standardise base article lengths to the registry (CAD) before export.
-        psvc = self._context.price_update_service
-        standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+        # Development uses the registry standardisation step; Maintenance exports
+        # its PDM snapshot as-is so no Development workflow data is mutated.
+        standardised = 0
+        if not is_maintenance:
+            psvc = self._context.price_update_service
+            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
         export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
         result = self._context.ocd_export_service.export(
             export_snapshot, directory, kind
