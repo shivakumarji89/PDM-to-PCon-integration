@@ -576,9 +576,6 @@ class MainWindow(QMainWindow):
             f"QMenuBar {{ background: {theme.WB_SURFACE}; color: {theme.WB_NAVY}; padding: 0 6px; }} "
             f"QMenuBar::item {{ background: transparent; padding: 3px 10px; border-radius: 4px; }} "
             f"QMenuBar::item:selected {{ background: {theme.WB_GREEN_SOFT}; }}" if shell else "")
-        self._database_label.setStyleSheet(
-            f"background: transparent; color: {theme.WB_TEXT_SECONDARY}; font-size: 12px; "
-            "font-weight: 600; padding: 0;" if shell else "")
         for button, role in ((self._continue_btn, "primary"), (self._back_btn, "secondary"),
                              (self._modules_btn, "secondary")):
             if shell:
