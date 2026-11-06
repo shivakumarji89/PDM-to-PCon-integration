@@ -535,6 +535,9 @@ class ModuleHomePage(QWidget):
 
         # --- header -------------------------------------------------------
         header = QHBoxLayout()
+        # Match the right edge of the button to the rightmost footer status item.
+        # _StatusStrip reserves 34 px of trailing content inset.
+        header.setContentsMargins(0, 0, 34, 0)
         title_block = QVBoxLayout()
         title_block.setSpacing(0)
         title = QLabel("MK Product Workbench")
