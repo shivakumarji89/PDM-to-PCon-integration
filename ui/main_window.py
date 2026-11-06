@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
         )
 
         self._build_central_layout()
+        self._module_home.set_database_selector(self._database_selector)
         self._build_assistant_dock()
         self._build_activity_dock()
         self._build_menu_bar()
@@ -454,23 +455,15 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
 
-        # PDM database selector, above the workflow navigator. Choosing a
-        # database re-points the connection so product loads / snapshots
-        # come from that database.
-        db_label = QLabel("Database:", container)
-        db_label.setObjectName("databaseSelectorLabel")
-        self._database_label = db_label
-        layout.addWidget(db_label)
-
-        self._database_selector = QComboBox(container)
+        # PDM database is an application-level setting shown on the module
+        # home page, not a workflow/header status control.
+        self._database_selector = QComboBox(self)
         self._database_selector.setObjectName("databaseSelector")
         self._database_selector.addItems(list(PDM_DATABASE_PRESETS.keys()))
         active = self._context.config.active_pdm_preset()
         if active:
             self._database_selector.setCurrentText(active)
         self._database_selector.currentTextChanged.connect(self._on_database_changed)
-        layout.addWidget(self._database_selector)
-
         module_label = QLabel("Module", container)
         module_label.setObjectName("activeModuleLabel")
         layout.addWidget(module_label)
@@ -546,23 +539,8 @@ class MainWindow(QMainWindow):
         self._legacy_nav_spacer.setVisible(not shell)
         self._active_module_label.setVisible(not shell)
 
-        # In the Maintenance shell, keep the database choice beside the PDM
-        # connection indicator in the global header. Restore it to the legacy
-        # left panel for modules that have not migrated to the shell.
-        left_layout = self._left_panel.layout()
-        if shell:
-            left_layout.removeWidget(self._database_label)
-            left_layout.removeWidget(self._database_selector)
-            self._database_label.hide()
-            self._app_header.set_database_selector(self._database_selector)
-        else:
-            self._app_header.set_database_selector(None)
-            self._database_selector.setParent(self._left_panel)
-            self._database_label.setParent(self._left_panel)
-            left_layout.insertWidget(0, self._database_label)
-            left_layout.insertWidget(1, self._database_selector)
-            self._database_label.show()
-            self._database_selector.show()
+        # PDM database selection is kept on the module home page as a
+        # one-time application setting; it is not repeated in workflow chrome.
         # Match the horizontal gutter around the workflow workspace:
         # keep the sidebar's outer left inset, but remove the doubled right
         # inset so the gap between sidebar and content matches the page's
@@ -623,12 +601,6 @@ class MainWindow(QMainWindow):
         if not self._app_header.isVisibleTo(self):
             return
         ctx = self._context
-        preset = ctx.config.active_pdm_preset() or "PDM"
-        loaded = ctx.pdm_snapshot is not None
-        self._app_header.set_indicator(
-            "pdm", "Loaded" if loaded else "Not loaded", "success" if loaded else "neutral",
-            f"PDM database: {preset}",
-        )
         repo = ctx.maintenance_repository_info is not None
         self._app_header.set_indicator(
             "repository", "Linked" if repo else "Not linked", "success" if repo else "neutral",
