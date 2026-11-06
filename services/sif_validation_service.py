@@ -398,12 +398,22 @@ class SifValidationService(BaseService):
         codes,
         fabric_groups: dict[str, dict[str, float]] | None = None,
         fabric_targets: dict[str, list[str]] | None = None,
+        fabric_order: list[str] | None = None,
     ) -> float:
-        """OBX upcharge with legacy PDM fabric-band resolution."""
+        """OBX upcharge with legacy PDM fabric-band resolution.
+
+        The n-th fabric colour in the SKU prices against the n-th fabric parent
+        group (``fabric_order``, PDM row order) when the colour is eligible
+        there. If that group is unknown, already used, or does not list the
+        colour, the colour's first unused eligible group is used instead.
+        """
         order = list(groups.items())
         used: set[str] = set()
         total = 0.0
-        fabric_occurrence: dict[str, int] = {}
+        fabric_position = 0
+        positional_groups = [
+            str(group) for group in (fabric_order if fabric_order else (fabric_groups or {}))
+        ]
 
         for raw in codes:
             code = (raw or "").strip().upper()
@@ -421,9 +431,14 @@ class SifValidationService(BaseService):
                 continue
             if not fabric_groups:
                 continue
-            targets = fabric_targets.get(code, [])
-            occurrence = fabric_occurrence.get(code, 0)
-            target_group = targets[occurrence] if occurrence < len(targets) else None
+            targets = [str(group) for group in fabric_targets.get(code, [])]
+            position = fabric_position
+            fabric_position += 1
+            positional = positional_groups[position] if position < len(positional_groups) else None
+            if positional in targets and positional not in used:
+                target_group = positional
+            else:
+                target_group = next((group for group in targets if group not in used), None)
             if target_group is None:
                 continue
             band_values = fabric_groups.get(str(target_group), {})
@@ -431,8 +446,7 @@ class SifValidationService(BaseService):
                 (band_code, price) for band_code, price in band_values.items()
                 if band_code.endswith("#") and code.startswith(band_code[:-1])
             ]
-            fabric_occurrence[code] = occurrence + 1
-            used.add(str(target_group))
+            used.add(target_group)
             if candidates:
                 _, price = max(candidates, key=lambda pair: len(pair[0]))
                 total += price
@@ -1226,6 +1240,7 @@ class SifValidationService(BaseService):
             inc_groups_by_item: dict[str, dict[str, dict[str, tuple[float, int]]]] = {}
             fabric_groups_by_item: dict[str, dict[str, dict[str, float]]] = {}
             fabric_targets_by_item: dict[str, dict[str, list[str]]] = {}
+            fabric_order_by_item: dict[str, list[str]] = {}
 
             for r in all_increment_rows:
                 item = str(r.Item)
@@ -1247,6 +1262,8 @@ class SifValidationService(BaseService):
                         0.0 if inc_price is None else float(inc_price),
                         int(r.Quantity or 1) if is_fabric == 0 else 1,
                     )
+                    if is_fabric == 1 and group not in fabric_order_by_item.setdefault(item, []):
+                        fabric_order_by_item[item].append(group)
                     if is_fabric == 1 and code.endswith("#") and inc_price is not None:
                         fabric_groups_by_item.setdefault(item, {}).setdefault(group, {})[code] = float(inc_price)
                     elif is_fabric == 2:
@@ -1342,6 +1359,7 @@ class SifValidationService(BaseService):
                         [o.code for o in line.options],
                         fabric_groups_by_item.get(line.base, {}),
                         fabric_targets_by_item.get(line.base, {}),
+                        fabric_order_by_item.get(line.base),
                     )
                 else:
                     inc = inc_by_item.get(line.base, {})
