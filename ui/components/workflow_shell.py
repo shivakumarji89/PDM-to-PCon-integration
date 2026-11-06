@@ -180,8 +180,6 @@ class AppHeaderBar(QFrame):
     def indicator(self, key: str) -> StatusIndicator:
         return self._indicators[key]
 
-        self._pdm_database_slot.setVisible(True)
-
 # --------------------------------------------------------------------------
 # Sidebar: module identity, vertical steps, tips
 # --------------------------------------------------------------------------

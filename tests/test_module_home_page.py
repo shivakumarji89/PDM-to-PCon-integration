@@ -173,3 +173,38 @@ def test_oversized_window_is_fitted_to_the_screen(app):
         assert avail.contains(frame.topLeft())
     finally:
         _dispose_window(window)
+
+
+def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
+    from core.modules import module_workflows
+    from ui.main_window import MainWindow
+
+    window = MainWindow()
+    try:
+        selector = window._database_selector
+        home = window._module_home
+        assert selector.parent() is home
+        layout = home._header_layout
+        assert layout.indexOf(selector) == layout.indexOf(home._pdm_changes_button) - 1
+        assert layout.contentsMargins().right() == 34  # aligns with the footer status strip inset
+
+        with pytest.raises(KeyError):
+            window._app_header.indicator("pdm")
+        assert {"repository", "mdb"} <= set(window._app_header._indicators)
+
+        maintenance_pages = [window._pages[s] for s in module_workflows(WorkbenchModule.MAINTENANCE)]
+        window._on_module_selected(WorkbenchModule.MAINTENANCE)
+        for page in maintenance_pages:
+            if getattr(page, "header", None) is None or not hasattr(page.header, "add_action"):
+                continue
+            assert not page._maintenance_reload_button.isHidden()
+            assert not page._maintenance_export_mdb_button.isHidden()
+
+        window._show_module_home()
+        window._on_module_selected(WorkbenchModule.DEVELOPMENT)
+        for page in maintenance_pages:
+            if hasattr(page, "_maintenance_reload_button"):
+                assert page._maintenance_reload_button.isHidden()
+                assert page._maintenance_export_mdb_button.isHidden()
+    finally:
+        _dispose_window(window)

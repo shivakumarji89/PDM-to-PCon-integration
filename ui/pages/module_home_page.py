@@ -291,22 +291,6 @@ class _ModuleTile(QAbstractButton):
         self.update()
         super().leaveEvent(event)
 
-
-    def set_database_selector(self, selector: QWidget) -> None:
-        """Show the application-level PDM database selector on the home page."""
-        selector.setParent(self)
-        selector.setMinimumWidth(112)
-        selector.setMaximumWidth(150)
-        selector.setFixedHeight(38)
-        selector.setToolTip("Select the active PDM database")
-        selector.setStyleSheet(
-            "QComboBox { color:#1B2433; background:#FFFFFF; border:1px solid #C9D3DF; "
-            "border-radius:7px; padding:8px 12px; font-size:12px; } "
-            "QComboBox:hover { background:#F3F7FB; border-color:#9AAABD; }"
-        )
-        button_index = self._header_layout.indexOf(self._pdm_changes_button)
-        self._header_layout.insertWidget(button_index, selector, 0, Qt.AlignmentFlag.AlignVCenter)
-
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -624,6 +608,21 @@ class ModuleHomePage(QWidget):
         self._syteline_button = syte_line
 
         self.refresh_status()
+
+    def set_database_selector(self, selector: QWidget) -> None:
+        """Show the application-level PDM database selector on the home page."""
+        selector.setParent(self)
+        selector.setMinimumWidth(112)
+        selector.setMaximumWidth(150)
+        selector.setFixedHeight(38)
+        selector.setToolTip("Select the active PDM database")
+        selector.setStyleSheet(
+            "QComboBox { color:#1B2433; background:#FFFFFF; border:1px solid #C9D3DF; "
+            "border-radius:7px; padding:8px 12px; font-size:12px; } "
+            "QComboBox:hover { background:#F3F7FB; border-color:#9AAABD; }"
+        )
+        button_index = self._header_layout.indexOf(self._pdm_changes_button)
+        self._header_layout.insertWidget(button_index, selector, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)

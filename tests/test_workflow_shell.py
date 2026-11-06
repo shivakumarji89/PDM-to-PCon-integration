@@ -113,12 +113,13 @@ def test_header_indicators_and_settings_signal(app):
     header = AppHeaderBar()
     hits = []
     header.settings_clicked.connect(lambda: hits.append(1))
-    header.set_indicator("pdm", "Loaded", "success")
+    header.set_indicator("repository", "Linked", "success")
     header.set_indicator("mdb", "Not loaded", "neutral")
     header.settings_button.click()
-    assert header.indicator("pdm").state_label.text() == "Loaded"
+    assert header.indicator("repository").state_label.text() == "Linked"
     assert header.indicator("mdb").state_label.text() == "Not loaded"
     assert hits == [1]
+    assert "pdm" not in header._indicators  # PDM database lives on the module home page
 
 
 # ---- flow toolbar ------------------------------------------------------------
