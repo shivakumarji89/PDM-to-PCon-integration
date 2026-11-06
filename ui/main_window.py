@@ -600,7 +600,8 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QPushButton
 
         is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
-        for step in steps:
+        maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
+        for step in maintenance_steps:
             page = self._pages.get(step)
             header = getattr(page, "header", None) if page is not None else None
             if header is None or not hasattr(header, "add_action"):
