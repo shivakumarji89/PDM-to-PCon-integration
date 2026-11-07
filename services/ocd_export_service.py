@@ -162,7 +162,8 @@ class OcdExportService(BaseService):
     # -- Public entry point ---------------------------------------------
 
     def export(
-        self, snapshot: Snapshot, dest: str | Path, template_kind: str | None = None
+        self, snapshot: Snapshot, dest: str | Path, template_kind: str | None = None,
+        selected_article_ids: set[str] | None = None,
     ) -> OcdExportResult:
         """Export ``snapshot`` into a copied template MDB at ``dest``.
 
@@ -249,7 +250,7 @@ class OcdExportService(BaseService):
         price_lists = self._price_lists_by_currency(mdb, snapshot)
         inserts = self._build(
             snapshot, package_id, comgroup_id, series_id, protos, price_lists,
-            material_map_id, result
+            material_map_id, result, selected_article_ids
         )
         if result.error:
             return result
@@ -521,7 +522,7 @@ class OcdExportService(BaseService):
         comgroup_id: Any,
         series_id: str,
         protos: dict[str, dict[str, Any]],
-        result: OcdExportResult,
+        result: OcdExportResult, selected_article_ids: set[str] | None = None,
     ) -> list[tuple[str, list[dict[str, Any]]]]:
         """Build only the data Review owns.
 
@@ -534,7 +535,7 @@ class OcdExportService(BaseService):
         classes = self._mdb_export_classes(snapshot)
         codes = xocd._value_code_map(snapshot)
         digits = xocd._value_lengths(snapshot)
-        base_codes = xocd._base_codes(snapshot)
+        base_codes = xocd._base_codes(snapshot, selected_article_ids)
         token_by_base = xocd._group_token_by_base(snapshot, classes)
 
         scheme_rows, scheme_index, scheme_by_code = self._code_schemes(
