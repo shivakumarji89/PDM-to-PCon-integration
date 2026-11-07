@@ -100,7 +100,7 @@ class WorkflowManager(QObject):
             WorkflowStep.MAINTENANCE,
             WorkflowStep.CET_SIF_VALIDATION,
             WorkflowStep.OBX_VALIDATION,
-            # Works against pCon.planner's installed product data, not a PDM product.
+            # Reads the OCD repository folder directly, not a PDM product.
             WorkflowStep.PCON_ARTICLE_OBX_GENERATOR,
             # Scans the HMX filesystem repository; independent of any PDM product.
             WorkflowStep.METATYPE_REPOSITORY_ANALYSIS,

@@ -2,8 +2,7 @@
 
 Fully standalone: the OCD repository folder is read directly (``OcdCatalogueService``), valid SKUs
 are enumerated by the OCD Engine (``OcdArticleGenerator``) and exported with the existing OBX
-serializer (``ocd_repository_obx``). No pCon plugin, job folder or running pCon.planner is needed;
-*Launch pCon.planner* is only a convenience for opening the generated OBX afterwards.
+serializer (``ocd_repository_obx``). No pCon plugin, SDK, launcher or running pCon.planner is involved.
 See ``docs/04_Reference/pCon/Article_OBX_Generator/``.
 """
 from __future__ import annotations
@@ -67,7 +66,7 @@ from ui.pages.sku_results_model import SkuResultsModel
 from ui.workers.background_task import ReportedTask
 
 _MODE_LABELS = {MODE_VARY: "Vary (auto)", MODE_FIXED: "Fixed value", MODE_DEFAULT: "Default value"}
-_SETTINGS_PREFIX = "pcon_sdk_obx/"
+_SETTINGS_PREFIX = "pcon_sdk_obx/"   # legacy key prefix, kept so saved settings still apply
 
 
 
@@ -77,12 +76,10 @@ _FABRIC_AUTOMATIC = "Automatic"
 class PconArticleObxGeneratorPage(BasePage):
     """Standalone QA workspace; needs neither pCon.planner nor a PDM product.
 
-    ``bridge`` is only the optional launcher used by *Launch pCon.planner*; ``catalogue`` and
-    ``generator_factory`` let callers substitute the repository readers.
+    ``catalogue`` and ``generator_factory`` let callers substitute the repository readers.
     """
 
     def __init__(self, context, parent: QWidget | None = None,
-                 bridge=None,
                  catalogue: OcdCatalogueService | None = None,
                  generator_factory: Callable[[Path], OcdArticleGenerator] | None = None) -> None:
         super().__init__(
@@ -98,7 +95,6 @@ class PconArticleObxGeneratorPage(BasePage):
         )
         self._context = context
         self._settings = QSettings()
-        self._launcher = bridge                    # only ever used by Launch pCon.planner
         self._catalogue_override = catalogue
         self._generator_factory = generator_factory or OcdArticleGenerator
         self._generators: dict[Path, OcdArticleGenerator] = {}
@@ -341,17 +337,6 @@ class PconArticleObxGeneratorPage(BasePage):
         return box
 
     # --------------------------------------------------------------- settings
-    def _launcher_bridge(self):
-        """The pCon.planner launcher, created only when *Launch pCon.planner* is clicked."""
-        if self._launcher is None:
-            from services.pcon_sdk_obx import BridgeSettings, PconPluginBridge
-            settings = BridgeSettings()
-            planner = self._settings.value(_SETTINGS_PREFIX + "plannerExe", "", type=str)
-            if planner:
-                settings.planner_exe = planner
-            self._launcher = PconPluginBridge(settings)
-        return self._launcher
-
     def _save_settings(self) -> None:
         # Export destination is selected interactively each time Export OBX is clicked.
         return
@@ -476,15 +461,6 @@ class PconArticleObxGeneratorPage(BasePage):
             if article is not None:
                 selected.append(article)
         return selected
-
-    # ------------------------------------------------------------- connection
-    def _launch_planner(self) -> None:
-        try:
-            self._launcher_bridge().launch_planner()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, "Launch pCon.planner", str(exc))
-            return
-        self._generation_status.setText("pCon.planner is starting.")
 
     # -------------------------------------------------------------- catalogue
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)

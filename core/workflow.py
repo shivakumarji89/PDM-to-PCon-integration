@@ -76,12 +76,12 @@ if CET_SIF_VALIDATION_ENABLED:
                      "Validate OBX files against PDM (standalone tool)."),
     )
 
-# --- Article OBX Generator (pCon SDK) (self-contained, easily disconnectable) --
-# Drives pCon.planner through its Plugin SDK via the MK OBX Generator plugin.
+# --- Article OBX Generator (OCD Engine) (self-contained, easily disconnectable) --
+# Fully standalone: no pCon plugin, SDK or pCon.planner involved.
 # Set False to remove the navigator entry, page and step with no other change.
-PCON_SDK_OBX_GENERATOR_ENABLED = True
+OCD_ARTICLE_OBX_GENERATOR_ENABLED = True
 
-if PCON_SDK_OBX_GENERATOR_ENABLED:
+if OCD_ARTICLE_OBX_GENERATOR_ENABLED:
     WORKFLOW_ITEMS = WORKFLOW_ITEMS + (
         WorkflowItem(WorkflowStep.PCON_ARTICLE_OBX_GENERATOR, "Article OBX Generator (OCD Engine)",
                      "Enumerate valid SKUs with the standalone OCD Engine and export an OBX."),

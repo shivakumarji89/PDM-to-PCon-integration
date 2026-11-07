@@ -135,13 +135,18 @@ def _boxes(monkeypatch):
 
 @pytest.fixture
 def no_plugin(monkeypatch):
-    """Any construction of the plugin bridge fails the test: the page must not need it."""
-    import services.pcon_sdk_obx.bridge as bridge_module
+    """Importing any pCon plugin/SDK/launcher module fails the test: generation must not need pCon."""
+    import importlib.abc
+    import sys
 
-    def forbidden(*_args, **_kwargs):
-        raise AssertionError("PconPluginBridge must not be used by the standalone generator")
+    class Forbidden(importlib.abc.MetaPathFinder):
+        def find_spec(self, name, path=None, target=None):
+            if name.startswith(("services.pcon_sdk_obx", "services.pcon_launcher")):
+                raise AssertionError(f"{name} must not be used by the standalone generator")
+            return None
 
-    monkeypatch.setattr(bridge_module.PconPluginBridge, "__init__", forbidden)
+    finder = Forbidden()
+    monkeypatch.setattr(sys, "meta_path", [finder, *sys.meta_path])
 
 
 def generation_available(widget) -> bool:
@@ -219,13 +224,18 @@ def test_page_has_no_plugin_connection_controls(no_plugin, monkeypatch):
     dispose(widget)
 
 
-def test_page_module_reaches_the_plugin_package_only_to_launch_the_planner():
+def test_page_module_has_no_pcon_runtime_dependency(monkeypatch):
+    _boxes(monkeypatch)
     source = open(page_module.__file__, encoding="utf-8").read()
-    for name in ("PconCatalogService", "PconObxGenerationService", "PconConfigurationService",
-                 "ReferenceObxComparer", "FakePconPlugin", "heartbeat", "job_dir", "send("):
+    for name in ("PconPluginBridge", "PconLauncher", "pcon_launcher", "launch_planner", "Launch pCon",
+                 "PconCatalogService", "PconObxGenerationService", "PconConfigurationService",
+                 "ReferenceObxComparer", "FakePconPlugin", "heartbeat", "job_dir", "send(",
+                 "import pcon", "from services.pcon"):
         assert name not in source, name
-    assert source.count("PconPluginBridge") == 2        # the lazy import and construction behind Launch
-    assert source.count("from services.pcon_sdk_obx import") == 1
+    widget = page_module.PconArticleObxGeneratorPage(context=None)
+    texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
+    assert not any("pcon" in text.lower() for text in texts)
+    dispose(widget)
 
 
 

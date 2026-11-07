@@ -4,6 +4,22 @@
 
 The generator is **standalone**: it reads an OCD repository folder, enumerates valid SKUs with the existing OCD Engine, prices them and writes an OBX with the existing serializer. It needs no pCon plugin, job folder, heartbeat or running pCon.planner. The supplied `p-bk_1.14.4_Installer.zip` contributed no code (it is a binary installer).
 
+### Independence from pCon / EasternGraphics
+
+The OCD Engine, SKU enumeration, relation and price processing, and OBX generation/validation are **pure Python** and
+need no EasternGraphics plugin, SDK, licence, hash registration or .NET build. The Workbench ships and runs without any
+C# component for this workflow. The earlier pCon plugin (`tools/pcon_obx_plugin`) and its job-folder bridge
+(`services/pcon_sdk_obx`) were removed; they remain in Git history.
+
+There is **no** pCon launcher, *Launch pCon.planner* button or other pCon runtime hook. `tests/test_independence.py`
+asserts that the engine, OBX services and application shell load no pCon code and that the build files reference no
+plugin or SDK. The only remaining pCon/EasternGraphics strings are data: the `vendorKey` fields the OBX serializer
+writes (part of the OBX format) and the optional *Compare with Reference OBX* feature, which reads an OBX that
+pCon.planner produced independently.
+
+`tools/legacy_varcond_bridge` (a .NET Framework helper for PDM VARCOND parity checks) is unrelated to pCon and is
+retained unchanged.
+
 ---
 
 ## 1. Data flow
@@ -60,7 +76,6 @@ The generator is **standalone**: it reads an OCD repository folder, enumerates v
 | **Export OBX** | `_export_obx` | `export_obx`; output path field / *Browse…* / file dialog if empty; overwrite confirmation | no |
 | Compare with Reference OBX… | `_compare_reference` | `compare_with_reference` | no |
 | Open Output Folder | `_open_output_folder` | `explorer` | no |
-| **Launch pCon.planner** | `_launch_planner` | the **only** remaining use of `services.pcon_sdk_obx` (`PconPluginBridge.launch_planner`), created lazily on click | yes — convenience only |
 
 Removed/never reintroduced: connection status, heartbeat, job folder, *Check Connection*, *Install Plugin*, *Discard unsaved pCon.planner planning*. Verified by `test_page_has_no_plugin_connection_controls`, `test_page_module_reaches_the_plugin_package_only_to_launch_the_planner`, and the `no_plugin` fixture, which makes **any** construction of `PconPluginBridge` fail the test during the full workflow tests.
 
@@ -118,8 +133,8 @@ Output properties:
 ## 7. Plugin independence
 
 - Catalogue, articles, properties, enumeration, pricing and export use only: `services/ocd_engine/*`, `services/article_obx/ocd_repository_obx.py`, `ArticleObxService`, `ObxValidationService`.
-- The page imports no `services.pcon_sdk_obx` name at module level. The lazy import inside `_launcher_bridge` is the sole reference.
-- `services/pcon_sdk_obx` (bridge, protocol, plugin, fake plugin, their tests) is **untouched**; it remains available as a legacy path.
+- The page imports nothing from any pCon plugin, SDK or launcher module, and has no pCon button.
+- `services/pcon_sdk_obx`, `tools/pcon_obx_plugin` and the launcher were removed (see the independence note above); they remain only in Git history.
 
 ## 8. Tests
 

@@ -1,6 +1,13 @@
 # pCon.planner Plugin SDK 8.15 → QA Article OBX Generator
 
-**Status:** CURRENT · **Date:** 2026-10-30 · **Scope:** SDK investigation and implementation reference for `QA → Article OBX Generator (pCon SDK)`.
+> **Status: HISTORICAL (2026-11-07).** The plugin approach described here was superseded by the standalone OCD Engine
+> (see [`Article_OBX_Generator/ARTICLE_OBX_GENERATOR_ARCHITECTURE.md`](./Article_OBX_Generator/ARTICLE_OBX_GENERATOR_ARCHITECTURE.md)).
+> EasternGraphics plugin registration/hash is not being pursued, so the `tools/pcon_obx_plugin` C# plugin and the
+> `services/pcon_sdk_obx` bridge were removed in commit `refactor(architecture): decouple core engine from pCon SDK`;
+> both remain in Git history before that commit. This document is kept as SDK research evidence only; the
+> file/class names it cites for the Workbench side no longer exist.
+
+**Status (original):** 2026-10-30 · **Scope:** SDK investigation and implementation reference for `QA → Article OBX Generator (pCon SDK)`.
 
 **Evidence base** (all files inside `pcon.planner_plugin_sdk_8.15 (1).zip`, extracted root `pCon.planner Plugin SDK/`):
 

@@ -98,7 +98,7 @@ Real data on this machine: 102 range folders; for example `dalby/` has regions `
 |---|---|
 | Reading `ocd_*.csv` and descriptors | **Nothing needed** — plain files, stdlib `csv`. |
 | `pdata.ebase`, `pdata.inp_descr` (compiled database/index files next to the CSVs) | Present in real folders but **not read**; the CSVs are read directly and are complete (the `tables` column of `ocd_version.csv` lists all 22 tables). |
-| pCon.planner / pCon.basket / the Plugin SDK | **Not needed** for catalogue, inspection, enumeration or export. Only `Launch pCon.planner` (convenience) still touches the old bridge. |
+| pCon.planner / pCon.basket / the Plugin SDK | **Not needed** for catalogue, inspection, enumeration or export. Nothing in the Workbench touches pCon at runtime (the former *Launch pCon.planner* bridge was removed). |
 | Region-specific folders (`EURO`, `GBP`, …) | Not read. See [REPOSITORY_DATA_MODEL.md](./REPOSITORY_DATA_MODEL.md) §6. |
 
 ## 5. Reuse versus reproduction
