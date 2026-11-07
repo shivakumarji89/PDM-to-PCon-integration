@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
                 header.add_action(refresh_pdm_button, "secondary")
             if not hasattr(page, "_maintenance_export_mdb_button"):
                 export_button = QPushButton("⇩  Export to MDB", page)
-                export_button.setToolTip("Export the current Maintenance PDM snapshot to an MDB")
+                export_button.setToolTip("Export selected Articles or the current workflow snapshot to MDB")
                 export_handler = getattr(page, "_on_export_component_mdb", None)
                 if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
                     export_handler = page._on_export_prices
@@ -1598,7 +1598,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(self, "Export XOCD", message)
 
-    def _on_export_mdb(self) -> None:
+    def _on_export_mdb(self, selected_article_ids: set[str] | None = None) -> None:
         """Export Development output as a ``pcr_data_com_ocd.mdb``.
 
         Copies the category template, wipes its example product, and writes the
@@ -1636,7 +1636,8 @@ class MainWindow(QMainWindow):
             standardised = psvc.apply_registry(snapshot, psvc.registry_path())
         export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
         result = self._context.ocd_export_service.export(
-            export_snapshot, directory, kind
+            export_snapshot, directory, kind,
+            selected_article_ids=selected_article_ids,
         )
 
         if not result.ok or result.error:
