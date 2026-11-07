@@ -781,7 +781,9 @@ class PconArticleObxGeneratorPage(BasePage):
             self._update_controls()
             self._show_price_diagnostics()
 
-        self._start("Price Diagnostics", work, finished, steps=1,
+        # The engine reports one completed progress unit per 500 priced SKUs.
+        pricing_steps = max(1, (len(skus) + 499) // 500)
+        self._start("Price Diagnostics", work, finished, steps=pricing_steps,
                     subject=f"{len(skus):,} SKU(s) - {currency} - {price_date}")
 
     def _price_diagnostics_text(self) -> str:
