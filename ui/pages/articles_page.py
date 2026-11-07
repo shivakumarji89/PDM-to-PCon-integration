@@ -1370,6 +1370,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         groups = service.resolve_class_groups(snapshot, category)
         if not groups:
             return [("Unassigned", rows)] if rows else []
+        # A single unsplit Class Creation group has no ProductRange membership
+        # map; keep the complete article list under that one group.
+        if len(groups) == 1 and not getattr(groups[0], "source_ranges", ()):
+            return [(groups[0].name, list(rows))] if rows else []
 
         article_group: dict[str, str] = {}
         basis = str(getattr(snapshot, "class_group_basis", "") or "range").lower()
