@@ -201,9 +201,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._base_len_spin.setRange(0, 999)
         self._base_len_spin.setValue(0)
         self._base_len_spin.setToolTip(
-            "Manual base length for the currently filtered Article rows. "
-            "Development Class Creation remains the authoritative source for "
-            "the automatically generated base."
+            "Manual base length for selected rows. If no rows are selected, "
+            "applies to all currently filtered rows. Turn off Group by Base "
+            "to select individual line items. Development Class Creation "
+            "remains the authoritative source for the automatically generated base."
         )
         layout.addWidget(QLabel("Base Length:", box))
         layout.addWidget(self._base_len_spin)
@@ -440,7 +441,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(28)  # match tree rows app-wide
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed
@@ -1547,12 +1548,33 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._apply_filter()
 
     def _on_apply_base_length(self) -> None:
-        """Apply the visible base-length edit to the currently filtered rows."""
+        """Apply base length to selected rows, or all currently filtered rows.
+
+        In grouped mode a selected base row intentionally applies to every
+        member represented by that group. Switch off Group by Base to select
+        individual line items.
+        """
         value = int(self._base_len_spin.value())
+        selected_rows = self._table.selectionModel().selectedRows()
+        targets = []
+        if selected_rows:
+            for selected in selected_rows:
+                source = self._table.item(selected.row(), _COL_SOURCE)
+                record = source.data(Qt.ItemDataRole.UserRole) if source else None
+                if not record:
+                    continue
+                if record[0] == "__base__":
+                    targets.extend(record[2])
+                else:
+                    targets.append(record[1])
+        else:
+            targets = [member for _family, member, article in self._filtered
+                       if article is not None]
+
         ids = {
-            str(article.id)
-            for _family, _member, article in self._filtered
-            if article is not None
+            str(member.article_id)
+            for member in targets
+            if getattr(member, "article_id", None) is not None
         }
         if not ids:
             return
