@@ -257,14 +257,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._group_check)
 
         self._maintenance_export_component = "Articles"
-        self._export_mdb_btn = QPushButton("Export to MDB", box)
-        self._export_mdb_btn.setToolTip(
-            "Preview and export Maintenance Base Articles to an existing MDB. "
-            "Existing IDs and unrelated records are preserved; missing text links "
-            "are completed by the Text workflow."
-        )
-        self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        self._sync_export_mdb_button()
+
 
         return box
 
@@ -521,7 +514,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         buttons = (
             (self._apply_len_btn, "secondary"), (self._dot_base_btn, "secondary"),
             (self._copy_long_btn, "secondary"), (self._components_btn, "secondary"),
-            (self._clear_btn, "danger"), (self._export_mdb_btn, "primary"),
+            (self._clear_btn, "danger"),
         )
         if on:
             body.removeWidget(self._table)
@@ -659,7 +652,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             [base_label, self._base_len_spin, self._apply_len_btn],
             [self._dot_base_btn, self._copy_long_btn, self._components_btn],
             [self._clear_btn, self._group_check],
-            [self._export_mdb_btn],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
