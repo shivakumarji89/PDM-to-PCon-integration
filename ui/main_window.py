@@ -615,7 +615,12 @@ class MainWindow(QMainWindow):
             if not hasattr(page, "_maintenance_export_mdb_button"):
                 export_button = QPushButton("⇩  Export to MDB", page)
                 export_button.setToolTip("Export the current Maintenance PDM snapshot to an MDB")
-                export_button.clicked.connect(self._on_export_mdb)
+                export_handler = getattr(page, "_on_export_component_mdb", None)
+                if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
+                    export_handler = page._on_export_prices
+                if not callable(export_handler):
+                    export_handler = self._on_export_mdb
+                export_button.clicked.connect(export_handler)
                 page._maintenance_export_mdb_button = export_button
                 header.add_action(export_button, "secondary")
             page._maintenance_reload_button.setVisible(is_maintenance)
