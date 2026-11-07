@@ -601,7 +601,6 @@ class ModuleHomePage(QWidget):
             self._pdm_group,
             self._mdb_status,
             self._application_status,
-            self._pdm_changes_button,
         ))
         root.addWidget(strip)
 
