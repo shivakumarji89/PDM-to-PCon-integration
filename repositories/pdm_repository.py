@@ -742,6 +742,73 @@ class PDMRepository(BaseRepository):
             rows.extend(self._execute(query, tuple(chunk), connection=connection))
         return rows
 
+    def fetch_products_item_attribute_values(
+        self, product_ids: Sequence[Any], connection: Any = None
+    ) -> list[Any]:
+        """Product-scoped :meth:`fetch_item_attribute_values`.
+
+        Same columns and per-item ordering, but selected by the owning
+        ``Item.ProductId`` so a family needs one query per product chunk instead
+        of one per 500 ItemIds (each item-id list is a fresh, expensive plan).
+        """
+        ids = [pid for pid in product_ids if pid is not None]
+        rows: list[Any] = []
+        for chunk in self._chunked(ids, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT bav.ItemId, av.AttributeValueId, av.OrderCodeValue AS Code, "
+                "av.ModelSuffix, a.DisplayOrder, av.DisplayOrdinal, "
+                "a.Name AS AttrName, a.HasDependentOptions "
+                "FROM Item i "
+                "INNER JOIN BaseAttributeValues bav ON bav.ItemId = i.ItemId "
+                "INNER JOIN AttributeValue av ON bav.AttributeValueId = av.AttributeValueId "
+                "INNER JOIN Attribute a ON av.AttributeId = a.AttributeId "
+                f"WHERE i.ProductId IN ({ph}) AND av.Status = 1 "
+                "ORDER BY bav.ItemId, a.DisplayOrder, av.DisplayOrdinal"
+            )
+            rows.extend(self._execute(query, tuple(chunk), connection=connection))
+        return rows
+
+    def fetch_products_item_components(
+        self, product_ids: Sequence[Any], connection: Any = None
+    ) -> list[Any]:
+        """Product-scoped :meth:`fetch_item_components` (parents selected by
+        ``Item.ProductId``; same columns and per-parent component order)."""
+        ids = [pid for pid in product_ids if pid is not None]
+        rows: list[Any] = []
+        for chunk in self._chunked(ids, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT itco.ItemId AS ParentItemId, sub.Item AS SubItem, "
+                "itco.Quantity, itco.ComponentSequence "
+                "FROM Item parent "
+                "INNER JOIN ItemComponents itco ON itco.ItemId = parent.ItemId "
+                "INNER JOIN Item sub ON itco.SubItemId = sub.ItemId "
+                f"WHERE parent.ProductId IN ({ph}) "
+                "ORDER BY itco.ItemId, CONVERT(INT, itco.ComponentSequence)"
+            )
+            rows.extend(self._execute(query, tuple(chunk), connection=connection))
+        return rows
+
+    def fetch_products_article_prefix_lengths(
+        self, product_ids: Sequence[Any], connection: Any = None
+    ) -> list[Any]:
+        """Product-scoped :meth:`fetch_article_prefix_lengths` (raw ``Notes`` and
+        category per item, selected by ``Item.ProductId``)."""
+        ids = [pid for pid in product_ids if pid is not None]
+        rows: list[Any] = []
+        for chunk in self._chunked(ids, self._IN_CHUNK):
+            ph = self._placeholders(len(chunk))
+            query = (
+                "SELECT i.ItemId, i.Item, i.Notes, pr.ProductCategoryId "
+                "FROM Item i "
+                "INNER JOIN Product p ON i.ProductId = p.ProductId "
+                "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                f"WHERE i.ProductId IN ({ph})"
+            )
+            rows.extend(self._execute(query, tuple(chunk), connection=connection))
+        return rows
+
     def fetch_attribute_value_exclusions(
         self, product_id: Any, connection: Any = None
     ) -> list[Any]:
@@ -1027,7 +1094,9 @@ class PDMRepository(BaseRepository):
         """
         vals = [str(p) for p in prefixes if p]
         rows: list[Any] = []
-        for chunk in self._chunked(vals, 50):
+        # 500 prefixes per query (was 50): each query carries a large fixed
+        # plan cost, so 10x fewer round trips returns identical rows ~3x faster.
+        for chunk in self._chunked(vals, self._IN_CHUNK):
             likes = " OR ".join("i.Item LIKE ?" for _ in chunk)
             params = tuple(p + "%" for p in chunk)
             query = (

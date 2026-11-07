@@ -80,6 +80,9 @@ def main() -> int:
     repo.fetch_item_attribute_values = lambda ids, connection=None: link_rows
     repo.fetch_item_components = lambda ids, connection=None: comp_rows
     repo.fetch_article_prefix_lengths = lambda ids, connection=None: []
+    repo.fetch_products_item_attribute_values = lambda ids, connection=None: link_rows
+    repo.fetch_products_item_components = lambda ids, connection=None: comp_rows
+    repo.fetch_products_article_prefix_lengths = lambda ids, connection=None: []
     repo.fetch_category_master_notes = lambda ids, connection=None: []
     repo.fetch_item_head_attribute_names = lambda codes, connection=None: []
     repo.fetch_item_option_increments = lambda prefixes, connection=None: []

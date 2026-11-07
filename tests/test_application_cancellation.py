@@ -371,6 +371,8 @@ def test_add_family_cancels_working_copy_then_retry_inserts_only_once(monkeypatc
     for name in (
         "fetch_products_info", "fetch_products_attributes", "fetch_products_options",
         "fetch_item_attribute_values", "fetch_item_components",
+        "fetch_products_item_attribute_values", "fetch_products_item_components",
+        "fetch_products_article_prefix_lengths",
     ):
         getattr(repo, name).return_value = []
     repo.fetch_products_items.return_value = [row]

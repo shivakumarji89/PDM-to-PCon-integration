@@ -1180,6 +1180,10 @@ class EngineeringReductionService(BaseService):
         # attribute id -> (name, {value id -> [article ids]})
         by_attribute: dict[str, tuple[str, dict[str, list[str]]]] = {}
         order: list[str] = []
+        # (value id, article id) pairs already recorded: O(1) uniqueness instead
+        # of scanning the carrier list, which was quadratic for a value shared
+        # by thousands of articles.
+        recorded: set[tuple[str, str]] = set()
         article_value_ids = article_value_ids or {}
         for article_id in article_ids:
             checkpoint()
@@ -1200,7 +1204,9 @@ class EngineeringReductionService(BaseService):
                     order.append(attribute_id)
                 values = by_attribute[attribute_id][1]
                 carriers = values.setdefault(str(value_id), [])
-                if article_id not in carriers:
+                pair = (str(value_id), article_id)
+                if pair not in recorded:
+                    recorded.add(pair)
                     carriers.append(article_id)
         attributes: list[SetAttribute] = []
         for attribute_id in order:
