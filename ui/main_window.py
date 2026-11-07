@@ -613,9 +613,19 @@ class MainWindow(QMainWindow):
             if not hasattr(page, "_maintenance_reload_button"):
                 reload_button = QPushButton("↻  Reload", page)
                 reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
-                reload_button.clicked.connect(page.refresh)
+                reload_handler = page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
+                reload_button.clicked.connect(reload_handler)
                 page._maintenance_reload_button = reload_button
                 header.add_action(reload_button, "secondary")
+            if step == WorkflowStep.PRODUCT and not hasattr(page, "_maintenance_refresh_pdm_button"):
+                refresh_pdm_button = QPushButton("↻  Refresh PDM", page)
+                refresh_pdm_button.setToolTip(
+                    "Fetch the latest Catalogue → Category → Product hierarchy from PDM "
+                    "and update the local product cache."
+                )
+                refresh_pdm_button.clicked.connect(page._on_refresh_hierarchy)
+                page._maintenance_refresh_pdm_button = refresh_pdm_button
+                header.add_action(refresh_pdm_button, "secondary")
             if not hasattr(page, "_maintenance_export_mdb_button"):
                 export_button = QPushButton("⇩  Export to MDB", page)
                 export_button.setToolTip("Export the current Maintenance PDM snapshot to an MDB")
@@ -628,6 +638,8 @@ class MainWindow(QMainWindow):
                 page._maintenance_export_mdb_button = export_button
                 header.add_action(export_button, "secondary")
             page._maintenance_reload_button.setVisible(is_maintenance)
+            if hasattr(page, "_maintenance_refresh_pdm_button"):
+                page._maintenance_refresh_pdm_button.setVisible(is_maintenance)
             page._maintenance_export_mdb_button.setVisible(is_maintenance)
 
     def _refresh_app_header(self) -> None:
