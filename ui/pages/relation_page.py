@@ -138,12 +138,7 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._value_table_btn)
 
         self._maintenance_export_component = "Relation Object"
-        self._export_mdb_btn = QPushButton("Export to MDB", box)
-        self._export_mdb_btn.setToolTip(
-            "Export relation-object data to the selected MDB. Component field mapping is being connected."
-        )
-        self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        self._sync_export_mdb_button()
+
         return box
 
     def _build_body(self) -> QWidget:
