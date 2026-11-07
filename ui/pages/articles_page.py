@@ -651,7 +651,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
             [self._dot_base_btn, self._copy_long_btn, self._components_btn],
-            [self._clear_btn, self._group_check],
+            [self._group_check],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
