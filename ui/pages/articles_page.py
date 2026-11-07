@@ -136,6 +136,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._active_family_id: str | None = None  # None = all families
         self._active_set_ids: frozenset[str] | None = None  # None = all sets
         self._filtered: list[tuple] = []  # rows currently shown
+        self._export_selected_article_ids: set[str] = set()
         self._base_len_by_member: dict[str, int] = {}  # member id -> base length
         self._set_len_by_ids: dict = {}  # set ids -> Class-Creation-derived length
         self._snapshot_key = None  # identity of the loaded snapshot (product change)
@@ -431,11 +432,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._apply_filter()
 
     def _build_table(self) -> QWidget:
-        self._table = QTableWidget(0, 9, self)
+        self._table = QTableWidget(0, 10, self)
         self._table.setObjectName("articlesTable")
         self._table.setHorizontalHeaderLabels(
             ["Source Article", "Len", "Base Article", "Remaining",
-             "Short Text", "Long Text", "Relation Object", "Code Scheme", ""]
+             "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
         )
         self._table.setColumnHidden(_COL_ORDER, True)
         self._table.verticalHeader().setVisible(False)
@@ -449,6 +450,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._table.setSortingEnabled(True)
         self._table.setMinimumHeight(280)
         header = self._table.horizontalHeader()
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(_COL_SOURCE, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(_COL_BASE, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(_COL_REMAINING, QHeaderView.ResizeMode.ResizeToContents)
@@ -459,6 +461,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         header.setSectionResizeMode(_COL_LONG, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(_COL_RELATION, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(_COL_SCHEME, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(9, 64)
         self._table.setColumnWidth(_COL_LEN, 48)
         self._table.setColumnWidth(_COL_SHORT, 300)
         self._table.setColumnWidth(_COL_LONG, 430)
@@ -1381,6 +1384,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             order_item.setData(Qt.ItemDataRole.DisplayRole, order)
             self._set_readonly(order_item)
             self._table.setItem(row, _COL_ORDER, order_item)
+            self._set_export_checkbox(row, {str(article.id)} if article is not None else set())
         self._table.setSortingEnabled(True)
         self._table.sortByColumn(_COL_ORDER, Qt.SortOrder.AscendingOrder)
         self._populating = False
@@ -1473,6 +1477,37 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             order_item.setData(Qt.ItemDataRole.DisplayRole, order)
             self._set_readonly(order_item)
             self._table.setItem(row, _COL_ORDER, order_item)
+            article_ids = {
+                str(article.id)
+                for _family, member, article in rows
+                if article is not None and any(member is grouped for grouped in members)
+            }
+            self._set_export_checkbox(row, article_ids)
+
+    def _set_export_checkbox(self, row: int, article_ids: set[str]) -> None:
+        item = QTableWidgetItem()
+        item.setFlags((item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                      & ~Qt.ItemFlag.ItemIsEditable & ~Qt.ItemFlag.ItemIsSelectable)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setData(Qt.ItemDataRole.UserRole, tuple(sorted(article_ids)))
+        checked = bool(article_ids) and article_ids.issubset(self._export_selected_article_ids)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        item.setToolTip("Include these article(s) in Export to MDB.")
+        self._table.setItem(row, 9, item)
+
+    def selected_export_article_ids(self) -> set[str]:
+        return set(self._export_selected_article_ids)
+
+    def _on_export_component_mdb(self) -> None:
+        ids = self.selected_export_article_ids()
+        if not ids:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Export Selected Articles",
+                "Tick at least one article in the Export column before exporting.")
+            return
+        handler = getattr(self.window(), "_on_export_mdb", None)
+        if callable(handler):
+            handler(selected_article_ids=ids)
 
     def _on_group_toggled(self, checked: bool) -> None:
         self._group_by_base = checked
@@ -1585,6 +1620,13 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         if self._populating:
             return
         column = item.column()
+        if column == 9:
+            ids = set(item.data(Qt.ItemDataRole.UserRole) or ())
+            if item.checkState() == Qt.CheckState.Checked:
+                self._export_selected_article_ids.update(ids)
+            else:
+                self._export_selected_article_ids.difference_update(ids)
+            return
         if column == _COL_LEN:
             self._on_base_length_cell_changed(item)
             return
