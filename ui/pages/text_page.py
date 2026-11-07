@@ -111,7 +111,6 @@ class TextPage(MaintenanceSourceMixin, BasePage):
             "Export localized text data to the selected MDB. Component field mapping is being connected."
         )
         self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        layout.addWidget(self._export_mdb_btn)
         self._sync_export_mdb_button()
 
         return box
