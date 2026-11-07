@@ -582,12 +582,23 @@ class ModuleHomePage(QWidget):
         strip = _StatusStrip()
         self._repository_status = _StatusItem("folder", "Active Repository", "Not checked")
         self._pdm_status = _StatusItem("database", "PDM Database", "Not checked")
+        self._pdm_controls = QWidget()
+        self._pdm_controls_layout = QHBoxLayout(self._pdm_controls)
+        self._pdm_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self._pdm_controls_layout.setSpacing(8)
+        self._pdm_controls_layout.addWidget(self._pdm_changes_button)
+        self._pdm_group = QWidget()
+        pdm_group_layout = QHBoxLayout(self._pdm_group)
+        pdm_group_layout.setContentsMargins(0, 0, 0, 0)
+        pdm_group_layout.setSpacing(12)
+        pdm_group_layout.addWidget(self._pdm_status)
+        pdm_group_layout.addWidget(self._pdm_controls)
         self._mdb_status = _StatusItem("doc", "MDB Snapshot", "Not loaded")
         self._application_status = _StatusItem("gear", "Application", "Ready")
         self._status_strip = strip
         strip.set_items((
             self._repository_status,
-            self._pdm_status,
+            self._pdm_group,
             self._mdb_status,
             self._application_status,
             self._pdm_changes_button,
@@ -627,7 +638,7 @@ class ModuleHomePage(QWidget):
             "border-radius:7px; padding:8px 12px; font-size:12px; } "
             "QComboBox:hover { background:#F3F7FB; border-color:#9AAABD; }"
         )
-        self._status_strip.insert_item(4, selector)
+        self._pdm_controls_layout.insertWidget(0, selector)
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
