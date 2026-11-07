@@ -568,9 +568,8 @@ class ModuleHomePage(QWidget):
             "QPushButton:pressed { background:#E8EEF5; }"
         )
         self._pdm_changes_button.clicked.connect(self.pdm_changes_requested.emit)
-        header.addWidget(self._pdm_changes_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        # Keep system and workspace status consolidated in the bottom strip.
+        # Keep the title/header clean; PDM controls live in the lower utility row.
         root.addLayout(header)
 
         # --- orbit ----------------------------------------------------------
@@ -604,7 +603,9 @@ class ModuleHomePage(QWidget):
         syte_line.clicked.connect(lambda: self.module_selected.emit(WorkbenchModule.SYTELINE_EXPORT))
         utility_row.addWidget(syte_line)
         utility_row.addStretch(1)
+        utility_row.addWidget(self._pdm_changes_button, 0, Qt.AlignmentFlag.AlignVCenter)
         root.addLayout(utility_row)
+        self._utility_layout = utility_row
         self._syteline_button = syte_line
 
         self.refresh_status()
@@ -621,8 +622,12 @@ class ModuleHomePage(QWidget):
             "border-radius:7px; padding:8px 12px; font-size:12px; } "
             "QComboBox:hover { background:#F3F7FB; border-color:#9AAABD; }"
         )
-        button_index = self._header_layout.indexOf(self._pdm_changes_button)
-        self._header_layout.insertWidget(button_index, selector, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._utility_layout.insertWidget(
+            self._utility_layout.count() - 1,
+            selector,
+            0,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
