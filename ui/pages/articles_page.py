@@ -513,6 +513,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         reverted otherwise. Only widget placement and styling change; every
         control, signal and data path is the existing one.
         """
+        self._group_class_check.setVisible(
+            on and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+        )
         if on == self._shell_on:
             return
         if on and not self._shell_built:
@@ -531,9 +534,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             (self._clear_btn, "danger"),
         )
         if on:
-            self._group_class_check.setVisible(
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
-            )
             body.removeWidget(self._table)
             top.removeWidget(self._family_box)
             top.removeWidget(self._details_box)
@@ -1415,84 +1415,84 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         return result
 
     def _populate_individual(self, rows: list[tuple]) -> None:
-            self._table.setHorizontalHeaderLabels(
-                ["Source Article", "Len", "Base Article", "Remaining",
-                 "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
+        self._table.setHorizontalHeaderLabels(
+            ["Source Article", "Len", "Base Article", "Remaining",
+             "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
+        )
+        self._table.setColumnHidden(_COL_REMAINING, False)
+        default_len = self._default_base_len()
+        for order, (family, member, article) in enumerate(rows):
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+    
+            code = article.code if article is not None else ""
+            applied = self._applied_length(member)
+            has_length = applied is not None
+            length = applied if applied is not None else default_len
+            if (
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                and getattr(member, "reduced_article", "")
+            ):
+                base = member.reduced_article
+                remaining = code[len(base):] if base and code.startswith(base) else ""
+                length = len(base)
+                has_length = True
+            else:
+                base, remaining = self._split_base(code, length)
+    
+            source_item = QTableWidgetItem(code)
+            source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
+            self._set_readonly(source_item)
+            self._table.setItem(row, _COL_SOURCE, source_item)
+    
+            base_item = QTableWidgetItem(base)
+            self._set_readonly(base_item)
+            self._table.setItem(row, _COL_BASE, base_item)
+    
+            remaining_item = QTableWidgetItem(remaining)
+            self._set_readonly(remaining_item)
+            self._table.setItem(row, _COL_REMAINING, remaining_item)
+    
+            len_item = QTableWidgetItem()
+            # Empty until a base length is actually applied to this member, so an
+            # empty Len cell always means "not applied" (including after Clear).
+            if has_length:
+                len_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
+            len_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            len_item.setToolTip("Edit the base length for this article.")
+            self._table.setItem(row, _COL_LEN, len_item)
+    
+            # Editable: short text defaults to the generic product-TYPE name
+            # (product name up to the first '/', e.g. 'Always Chair') so the
+            # shortened article reads generically, not the full permutation; the
+            # user's override (member.short_description) wins when present.
+            short_default = member.short_description or (
+                self._context.product_type_name(article.product_id)
+                if article is not None else ""
+            ) or (article.description if article is not None else "")
+            self._table.setItem(row, _COL_SHORT, QTableWidgetItem(short_default))
+    
+            # Editable: long text defaults to the article's product name (from
+            # the shared product registry), falling back to the article's own
+            # name; the user's override (member.long_description) wins.
+            long_default = self._effective_long_text(member, article)
+            self._table.setItem(row, _COL_LONG, QTableWidgetItem(long_default))
+    
+            # Editable: relation object defaults to P_<base>; the user's
+            # override (member.relation_object) wins when present.
+            relation_default = member.relation_object or (f"P_{base}" if base else "")
+            self._table.setItem(row, _COL_RELATION, QTableWidgetItem(relation_default))
+    
+            # Code Scheme defaults to the base article; a saved override wins.
+            self._table.setItem(
+                row, _COL_SCHEME, QTableWidgetItem(member.code_scheme or base)
             )
-            self._table.setColumnHidden(_COL_REMAINING, False)
-            default_len = self._default_base_len()
-            for order, (family, member, article) in enumerate(rows):
-                row = self._table.rowCount()
-                self._table.insertRow(row)
     
-                code = article.code if article is not None else ""
-                applied = self._applied_length(member)
-                has_length = applied is not None
-                length = applied if applied is not None else default_len
-                if (
-                    getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                    and getattr(member, "reduced_article", "")
-                ):
-                    base = member.reduced_article
-                    remaining = code[len(base):] if base and code.startswith(base) else ""
-                    length = len(base)
-                    has_length = True
-                else:
-                    base, remaining = self._split_base(code, length)
-    
-                source_item = QTableWidgetItem(code)
-                source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
-                self._set_readonly(source_item)
-                self._table.setItem(row, _COL_SOURCE, source_item)
-    
-                base_item = QTableWidgetItem(base)
-                self._set_readonly(base_item)
-                self._table.setItem(row, _COL_BASE, base_item)
-    
-                remaining_item = QTableWidgetItem(remaining)
-                self._set_readonly(remaining_item)
-                self._table.setItem(row, _COL_REMAINING, remaining_item)
-    
-                len_item = QTableWidgetItem()
-                # Empty until a base length is actually applied to this member, so an
-                # empty Len cell always means "not applied" (including after Clear).
-                if has_length:
-                    len_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
-                len_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                len_item.setToolTip("Edit the base length for this article.")
-                self._table.setItem(row, _COL_LEN, len_item)
-    
-                # Editable: short text defaults to the generic product-TYPE name
-                # (product name up to the first '/', e.g. 'Always Chair') so the
-                # shortened article reads generically, not the full permutation; the
-                # user's override (member.short_description) wins when present.
-                short_default = member.short_description or (
-                    self._context.product_type_name(article.product_id)
-                    if article is not None else ""
-                ) or (article.description if article is not None else "")
-                self._table.setItem(row, _COL_SHORT, QTableWidgetItem(short_default))
-    
-                # Editable: long text defaults to the article's product name (from
-                # the shared product registry), falling back to the article's own
-                # name; the user's override (member.long_description) wins.
-                long_default = self._effective_long_text(member, article)
-                self._table.setItem(row, _COL_LONG, QTableWidgetItem(long_default))
-    
-                # Editable: relation object defaults to P_<base>; the user's
-                # override (member.relation_object) wins when present.
-                relation_default = member.relation_object or (f"P_{base}" if base else "")
-                self._table.setItem(row, _COL_RELATION, QTableWidgetItem(relation_default))
-    
-                # Code Scheme defaults to the base article; a saved override wins.
-                self._table.setItem(
-                    row, _COL_SCHEME, QTableWidgetItem(member.code_scheme or base)
-                )
-    
-                order_item = QTableWidgetItem()
-                order_item.setData(Qt.ItemDataRole.DisplayRole, order)
-                self._set_readonly(order_item)
-                self._table.setItem(row, _COL_ORDER, order_item)
-                self._set_export_checkbox(row, {str(article.id)} if article is not None else set())
+            order_item = QTableWidgetItem()
+            order_item.setData(Qt.ItemDataRole.DisplayRole, order)
+            self._set_readonly(order_item)
+            self._table.setItem(row, _COL_ORDER, order_item)
+            self._set_export_checkbox(row, {str(article.id)} if article is not None else set())
     
     def _populate_grouped(self, rows: list[tuple]) -> None:
         """One row per Base Article (the reduced prefix): line-item count +
