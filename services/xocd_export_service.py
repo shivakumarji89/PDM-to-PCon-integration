@@ -344,7 +344,7 @@ class XocdExportService(BaseService):
 
     # -- Structural table builders --------------------------------------
 
-    def _base_codes(self, snapshot: Snapshot) -> list[str]:
+    def _base_codes(self, snapshot: Snapshot, selected_article_ids: set[str] | None = None) -> list[str]:
         """Distinct base article codes, sliced the SAME way prices are.
 
         The base article MUST match the price ``ArticleID`` (``rec.article_code``,
@@ -357,9 +357,13 @@ class XocdExportService(BaseService):
         seen: set[str] = set()
         ordered: list[str] = []
         # Follow member order so the article rows keep their engineering order.
+        selected = {str(value) for value in selected_article_ids} if selected_article_ids is not None else None
         for family in snapshot.engineering.families:
             for member in family.members:
-                code = code_by_id.get(str(getattr(member, "article_id", "")), "")
+                article_id = str(getattr(member, "article_id", ""))
+                if selected is not None and article_id not in selected:
+                    continue
+                code = code_by_id.get(article_id, "")
                 base = base_of.get(code) or (member.reduced_article or "").strip()
                 if base and base not in seen:
                     seen.add(base)
