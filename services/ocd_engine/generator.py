@@ -391,7 +391,7 @@ class OcdArticleGenerator:
             "Choose a currency" + (f" ({', '.join(available)})." if available else "; the repository has no prices."))
 
     def generate(self, article_numbers: Sequence[str], rules: Sequence[PropertyRule] = (), *,
-                 currency: str = "", price_date: str,
+                 currency: str = "", price_date: str = "", price: bool = True,
                  max_configurations: None = None, fabric_default_only: bool = True, fabric_property: str = "",
                  shared_fabric: bool = False, reporter=None, price_relation_cache: bool = True,
                  price_cache_verify_every: int = 0) -> GenerationOutcome:
@@ -418,10 +418,14 @@ class OcdArticleGenerator:
             raise GenerationError("SKU generation is not capped; max_configurations must be None.")
         if not article_numbers:
             raise GenerationError("Select at least one article.")
-        if not ymd(price_date):
-            raise GenerationError("A price date is required.")
-        currency = self.resolve_currency(currency)
-        calculator = self._price_calculator()
+        if price:
+            if not ymd(price_date):
+                raise GenerationError("A price date is required.")
+            currency = self.resolve_currency(currency)
+            calculator = self._price_calculator()
+        else:
+            currency = ""
+            calculator = None
         dataset = self.dataset
         outcome = GenerationOutcome()
         seen: dict[str, tuple] = {}        # final article -> price key of the configuration that produced it
@@ -492,13 +496,15 @@ class OcdArticleGenerator:
                             f"conditions ({seen[final][1]} vs {key[1]}); the first one is kept.")
                     continue
                 seen[final] = key
-                priced = priced_by_key.get(key)
-                if priced is None:
-                    priced = priced_by_key[key] = calculator.price_resolved(
-                        resolved, price_date=price_date, currency=currency)
-                    outcome.price_evaluations += 1
-                else:
-                    outcome.price_reused += 1
+                priced = None
+                if calculator is not None:
+                    priced = priced_by_key.get(key)
+                    if priced is None:
+                        priced = priced_by_key[key] = calculator.price_resolved(
+                            resolved, price_date=price_date, currency=currency)
+                        outcome.price_evaluations += 1
+                    else:
+                        outcome.price_reused += 1
                 outcome.skus.append(self._sku(
                     len(outcome.skus) + 1, article_number, series, label, final, variant, model, config, result,
                     priced))
@@ -523,16 +529,50 @@ class OcdArticleGenerator:
                 reporter.advance(f"{article_number}: {produced} valid SKU(s)")
         outcome.warnings.extend(str(d) for d in sink if d.severity is not dg.Severity.INFO
                                 and d.code != dg.ENUMERATION_TRUNCATED)
-        if outcome.unpriced:
+        if price and outcome.unpriced:
             outcome.warnings.append(
                 f"{outcome.unpriced} SKU(s) have no price in {currency} on {price_date}; they are not exported.")
         return outcome
 
+    def price_skus(self, skus: Sequence[GeneratedSku], *, currency: str, price_date: str,
+                   reporter=None) -> list[GeneratedSku]:
+        """Price an already-enumerated SKU list from this repository’s OCD price CSV table.
+
+        The SKU list and its order are preserved. Currency/date changes never re-enumerate configurations.
+        """
+        if not skus:
+            return []
+        if not ymd(price_date):
+            raise GenerationError("A price date is required.")
+        currency = self.resolve_currency(currency)
+        calculator = self._price_calculator()
+        cache: dict[tuple, PriceResult] = {}
+        priced_skus: list[GeneratedSku] = []
+        for index, sku in enumerate(skus, 1):
+            resolved = ResolvedConfiguration.of(sku.base_article, sku.varconds, dict(sku.pricing_factors))
+            result = cache.get(resolved.price_key)
+            if result is None:
+                result = cache[resolved.price_key] = calculator.price_resolved(
+                    resolved, price_date=price_date, currency=currency)
+            priced_skus.append(self._with_price(sku, result))
+            if reporter is not None and index % 500 == 0:
+                reporter.note(f"Pricing {index:,}/{len(skus):,} SKU(s) in {currency}")
+        return priced_skus
+
     @staticmethod
-    def _sku(index, article_number, series, label, final, variant, model, config, result,
-             priced: PriceResult) -> GeneratedSku:
+    def _with_price(sku: GeneratedSku, priced: PriceResult) -> GeneratedSku:
         message = ""
         if priced.total is None:
+            reasons = [d.message for d in priced.diagnostics if d.severity is dg.Severity.ERROR]
+            message = reasons[0] if reasons else "price could not be resolved"
+        return dataclasses.replace(sku, price=priced.total, currency=priced.currency,
+                                   status="ok" if priced.total is not None else "unpriced", message=message)
+
+    @staticmethod
+    def _sku(index, article_number, series, label, final, variant, model, config, result,
+             priced: PriceResult | None) -> GeneratedSku:
+        message = ""
+        if priced is not None and priced.total is None:
             reasons = [d.message for d in priced.diagnostics if d.severity is dg.Severity.ERROR]
             message = reasons[0] if reasons else "price could not be resolved"
         by_key = {a.prop.key: a for a in config.assignments}
@@ -547,7 +587,9 @@ class OcdArticleGenerator:
             configuration_text=configuration_text(config.assignments), label=label, values=values,
             varconds=tuple(dict.fromkeys(x for x in result.varconds if x)),
             pricing_factors=tuple(result.pricing_factors.items()), scheme_id=model.scheme_id,
-            price=priced.total, currency=priced.currency, status="ok" if priced.total is not None else "unpriced",
+            price=priced.total if priced is not None else None,
+            currency=priced.currency if priced is not None else "",
+            status=("ok" if priced.total is not None else "unpriced") if priced is not None else "not priced",
             message=message,
         )
 
