@@ -89,10 +89,19 @@ namespace MKObxGenerator
         private readonly IArticleManager _articles;
         private readonly Logger _log;
 
-        public ArticleConfigurator(IArticleManager articles, Logger log)
+        public readonly EnumerationMetrics Metrics;
+
+        /// <summary>
+        /// Benchmark switch (MK_OBX_LEGACY_READS=1): ignore the "value was just read" shortcut and
+        /// always run the offered-check, as before the ValueSet-read optimisation.
+        /// </summary>
+        public bool AlwaysCheckOffered;
+
+        public ArticleConfigurator(IArticleManager articles, Logger log, EnumerationMetrics metrics = null)
         {
             _articles = articles;
             _log = log;
+            Metrics = metrics ?? new EnumerationMetrics();
         }
 
         public ConfiguredArticle Insert(string manufacturerId, string seriesId, string catalogPackage,
@@ -136,20 +145,28 @@ namespace MKObxGenerator
             IPropertyProvider provider = article.Instance.PropertyProvider;
             if (provider == null)
                 return new ReadOnlyCollection<IProperty>(new List<IProperty>());
-            return provider.GetProperties() ?? new ReadOnlyCollection<IProperty>(new List<IProperty>());
+            long begin = CostCounter.Begin();
+            try { return provider.GetProperties() ?? new ReadOnlyCollection<IProperty>(new List<IProperty>()); }
+            finally { Metrics.PropertyList.End(begin); }
         }
 
         public IProperty FindProperty(ConfiguredArticle article, string key)
         {
             IPropertyProvider provider = article.Instance.PropertyProvider;
-            return provider == null ? null : provider.GetProperty(key);
+            if (provider == null) return null;
+            long begin = CostCounter.Begin();
+            try { return provider.GetProperty(key); }
+            finally { Metrics.PropertyFind.End(begin); }
         }
 
         /// <summary>
         /// Set one choice value. Returns false when the value is not offered at this
         /// point (dependent properties may have removed it) or pCon rejects it.
+        /// valueJustRead: the caller took valueKey from this article's live ValueSet
+        /// with no change since, so the offered-check (a second ValueSet read) is skipped.
         /// </summary>
-        public bool Apply(ConfiguredArticle article, string key, string valueKey, out string error)
+        public bool Apply(ConfiguredArticle article, string key, string valueKey, out string error,
+                          bool valueJustRead = false)
         {
             error = "";
             IProperty property = FindProperty(article, key);
@@ -158,11 +175,12 @@ namespace MKObxGenerator
                 error = "Property " + key + " is not available for this configuration.";
                 return false;
             }
-            if (!Offers(property, valueKey))
+            if ((!valueJustRead || AlwaysCheckOffered) && !Offers(property, valueKey))
             {
                 error = "Value " + valueKey + " is not offered for " + key + " in this configuration.";
                 return false;
             }
+            long begin = CostCounter.Begin();
             try
             {
                 bool ok = property.SetValue(new ChoicePropertyValue(valueKey), false);
@@ -175,36 +193,47 @@ namespace MKObxGenerator
                 error = "pCon.planner failed to set " + key + "=" + valueKey + ": " + ex.Message;
                 return false;
             }
+            finally { Metrics.SetValue.End(begin); }
         }
 
-        public static bool Offers(IProperty property, string valueKey)
+        public bool Offers(IProperty property, string valueKey)
         {
-            ReadOnlyCollection<PropertyValue> set = property.ValueSet;
-            if (set == null || set.Count == 0)
-                return true; // free-form property: let pCon decide
-            foreach (PropertyValue value in set)
+            long begin = CostCounter.Begin();
+            try
             {
-                var choice = value as ChoicePropertyValue;
-                string key = choice != null ? choice.Key : value.ValueAsString;
-                if (string.Equals(key, valueKey, StringComparison.Ordinal))
-                    return true;
+                ReadOnlyCollection<PropertyValue> set = property.ValueSet;
+                if (set == null || set.Count == 0)
+                    return true; // free-form property: let pCon decide
+                foreach (PropertyValue value in set)
+                {
+                    var choice = value as ChoicePropertyValue;
+                    string key = choice != null ? choice.Key : value.ValueAsString;
+                    if (string.Equals(key, valueKey, StringComparison.Ordinal))
+                        return true;
+                }
+                return false;
             }
-            return false;
+            finally { Metrics.ValueSetRead.End(begin); }
         }
 
-        public static List<string> ChoiceKeys(IProperty property)
+        public List<string> ChoiceKeys(IProperty property)
         {
-            var keys = new List<string>();
-            ReadOnlyCollection<PropertyValue> set = property.ValueSet;
-            if (set == null) return keys;
-            foreach (PropertyValue value in set)
+            long begin = CostCounter.Begin();
+            try
             {
-                var choice = value as ChoicePropertyValue;
-                string key = choice != null ? choice.Key : value.ValueAsString;
-                if (!string.IsNullOrEmpty(key) && !keys.Contains(key))
-                    keys.Add(key);
+                var keys = new List<string>();
+                ReadOnlyCollection<PropertyValue> set = property.ValueSet;
+                if (set == null) return keys;
+                foreach (PropertyValue value in set)
+                {
+                    var choice = value as ChoicePropertyValue;
+                    string key = choice != null ? choice.Key : value.ValueAsString;
+                    if (!string.IsNullOrEmpty(key) && !keys.Contains(key))
+                        keys.Add(key);
+                }
+                return keys;
             }
-            return keys;
+            finally { Metrics.ValueSetRead.End(begin); }
         }
 
         public static bool IsHidden(IProperty property)

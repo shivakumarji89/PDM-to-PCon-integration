@@ -1,0 +1,735 @@
+{
+  "range": "bay_work_pod",
+  "article": "PEP100",
+  "plain": false,
+  "reporter": "count",
+  "dataLoadSeconds": 0.345,
+  "generateSeconds": 4368.622,
+  "skus": 43680,
+  "configurations": 122304,
+  "nodes": 417559,
+  "invalid": 0,
+  "duplicates": 78624,
+  "pruned": 16,
+  "priceEvaluations": 1600,
+  "priceReused": 42080,
+  "truncated": false,
+  "skuDigest": "936cfd440240c7cdc8d87f4bb36daa3a99b387caa637f2afe2004071874c1e1d",
+  "sortedSkuDigest": "4406196e82bf69738fcaf183676cb940e9e811b5af2c5c83f54d574d6eb9d8d2",
+  "phases": {
+    "encode": {
+      "seconds": 3.538,
+      "calls": 122304,
+      "pctOfTotal": 0.1,
+      "usPerCall": 28.9
+    },
+    "enumerate": {
+      "seconds": 9.837,
+      "calls": 122304,
+      "pctOfTotal": 0.2,
+      "usPerCall": 80.4
+    },
+    "finalize": {
+      "seconds": 4332.731,
+      "calls": 122304,
+      "pctOfTotal": 99.2,
+      "usPerCall": 35425.9
+    },
+    "finalize.computed": {
+      "seconds": 20.275,
+      "calls": 122304,
+      "pctOfTotal": 0.5,
+      "usPerCall": 165.8
+    },
+    "finalize.varcond": {
+      "seconds": 4296.734,
+      "calls": 122304,
+      "pctOfTotal": 98.4,
+      "usPerCall": 35131.6
+    },
+    "finalize.verify": {
+      "seconds": 9.606,
+      "calls": 122304,
+      "pctOfTotal": 0.2,
+      "usPerCall": 78.5
+    },
+    "price": {
+      "seconds": 1.98,
+      "calls": 1600,
+      "pctOfTotal": 0.0,
+      "usPerCall": 1237.2
+    },
+    "progress": {
+      "seconds": 0.0,
+      "calls": 172,
+      "pctOfTotal": 0.0,
+      "usPerCall": 1.2
+    },
+    "sku_build.resolved": {
+      "seconds": 3.631,
+      "calls": 122304,
+      "pctOfTotal": 0.1,
+      "usPerCall": 29.7
+    },
+    "sku_build.sku": {
+      "seconds": 3.919,
+      "calls": 43680,
+      "pctOfTotal": 0.1,
+      "usPerCall": 89.7
+    },
+    "walk.candidates": {
+      "seconds": 0.743,
+      "calls": 236599,
+      "pctOfTotal": 0.0,
+      "usPerCall": 3.1
+    },
+    "walk.early_constraints": {
+      "seconds": 0.305,
+      "calls": 358902,
+      "pctOfTotal": 0.0,
+      "usPerCall": 0.8
+    },
+    "walk.filter_values": {
+      "seconds": 0.001,
+      "calls": 21,
+      "pctOfTotal": 0.0,
+      "usPerCall": 25.4
+    },
+    "walk.is_hidden": {
+      "seconds": 3.724,
+      "calls": 417559,
+      "pctOfTotal": 0.1,
+      "usPerCall": 8.9
+    }
+  },
+  "unaccountedSeconds": -4313.628,
+  "candidateCache": {
+    "miss": 21,
+    "hit": 236578
+  },
+  "enumerateSecondsWalkOnly": 9.837,
+  "perProperty": {
+    "Surface_Height": {
+      "visits": 1,
+      "candidateCalls": 1,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Surface_Material": {
+      "visits": 2,
+      "candidateCalls": 2,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Power_Option": {
+      "visits": 4,
+      "candidateCalls": 4,
+      "avgBranch": 4.0,
+      "maxBranch": 4
+    },
+    "Country": {
+      "visits": 16,
+      "candidateCalls": 16,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Monitor_Support": {
+      "visits": 32,
+      "candidateCalls": 32,
+      "avgBranch": 5.0,
+      "maxBranch": 5
+    },
+    "Occupancy_Indicator": {
+      "visits": 160,
+      "candidateCalls": 160,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Door_Finish": {
+      "visits": 320,
+      "candidateCalls": 320,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Ceiling_Finish": {
+      "visits": 640,
+      "candidateCalls": 640,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Surface_Finish": {
+      "visits": 1280,
+      "candidateCalls": 1280,
+      "avgBranch": 4.5,
+      "maxBranch": 6
+    },
+    "Edge_Finish": {
+      "visits": 5760,
+      "candidateCalls": 5760,
+      "avgBranch": 4.33,
+      "maxBranch": 6
+    },
+    "Exterior_Fabric_Type": {
+      "visits": 43680,
+      "candidateCalls": 43680,
+      "avgBranch": 1.0,
+      "maxBranch": 1
+    },
+    "Exterior_Fabric_Colour": {
+      "visits": 43680,
+      "candidateCalls": 43680,
+      "avgBranch": 1.0,
+      "maxBranch": 1
+    },
+    "PLC": {
+      "visits": 43680,
+      "candidateCalls": 43680,
+      "avgBranch": 1.0,
+      "maxBranch": 1
+    },
+    "Door_Option": {
+      "visits": 43680,
+      "candidateCalls": 43680,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Monitor": {
+      "visits": 87360,
+      "candidateCalls": 34944,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    },
+    "Power_Finish": {
+      "visits": 24960,
+      "candidateCalls": 18720,
+      "avgBranch": 2.0,
+      "maxBranch": 2
+    }
+  },
+  "propertyOrderBySeen": [
+    "Surface_Height",
+    "Surface_Material",
+    "Power_Option",
+    "Country",
+    "Monitor_Support",
+    "Occupancy_Indicator",
+    "Door_Finish",
+    "Ceiling_Finish",
+    "Surface_Finish",
+    "Edge_Finish",
+    "Power_Finish",
+    "Exterior_Fabric_Type",
+    "Exterior_Fabric_Colour",
+    "PLC",
+    "Door_Option",
+    "Monitor",
+    "Code"
+  ],
+  "finalizeSeries": [
+    {
+      "elapsed": 89.72,
+      "finalizeCalls": 2000,
+      "nodes": 7146,
+      "bucketFinalizeSeconds": 88.971,
+      "msPerLeaf": 44.49
+    },
+    {
+      "elapsed": 169.86,
+      "finalizeCalls": 4000,
+      "nodes": 14286,
+      "bucketFinalizeSeconds": 79.491,
+      "msPerLeaf": 39.75
+    },
+    {
+      "elapsed": 215.62,
+      "finalizeCalls": 6000,
+      "nodes": 21427,
+      "bucketFinalizeSeconds": 45.354,
+      "msPerLeaf": 22.68
+    },
+    {
+      "elapsed": 292.01,
+      "finalizeCalls": 8000,
+      "nodes": 28567,
+      "bucketFinalizeSeconds": 75.795,
+      "msPerLeaf": 37.9
+    },
+    {
+      "elapsed": 370.67,
+      "finalizeCalls": 10000,
+      "nodes": 35903,
+      "bucketFinalizeSeconds": 77.994,
+      "msPerLeaf": 39.0
+    },
+    {
+      "elapsed": 419.78,
+      "finalizeCalls": 12000,
+      "nodes": 42000,
+      "bucketFinalizeSeconds": 48.709,
+      "msPerLeaf": 24.35
+    },
+    {
+      "elapsed": 456.89,
+      "finalizeCalls": 14000,
+      "nodes": 48416,
+      "bucketFinalizeSeconds": 36.781,
+      "msPerLeaf": 18.39
+    },
+    {
+      "elapsed": 535.97,
+      "finalizeCalls": 16000,
+      "nodes": 55412,
+      "bucketFinalizeSeconds": 78.419,
+      "msPerLeaf": 39.21
+    },
+    {
+      "elapsed": 607.62,
+      "finalizeCalls": 18000,
+      "nodes": 62833,
+      "bucketFinalizeSeconds": 71.016,
+      "msPerLeaf": 35.51
+    },
+    {
+      "elapsed": 651.51,
+      "finalizeCalls": 20000,
+      "nodes": 68825,
+      "bucketFinalizeSeconds": 43.529,
+      "msPerLeaf": 21.76
+    },
+    {
+      "elapsed": 695.5,
+      "finalizeCalls": 22000,
+      "nodes": 75347,
+      "bucketFinalizeSeconds": 43.602,
+      "msPerLeaf": 21.8
+    },
+    {
+      "elapsed": 770.1,
+      "finalizeCalls": 24000,
+      "nodes": 82236,
+      "bucketFinalizeSeconds": 73.973,
+      "msPerLeaf": 36.99
+    },
+    {
+      "elapsed": 846.54,
+      "finalizeCalls": 26000,
+      "nodes": 89765,
+      "bucketFinalizeSeconds": 75.778,
+      "msPerLeaf": 37.89
+    },
+    {
+      "elapsed": 894.64,
+      "finalizeCalls": 28000,
+      "nodes": 95651,
+      "bucketFinalizeSeconds": 47.716,
+      "msPerLeaf": 23.86
+    },
+    {
+      "elapsed": 931.6,
+      "finalizeCalls": 30000,
+      "nodes": 102278,
+      "bucketFinalizeSeconds": 36.636,
+      "msPerLeaf": 18.32
+    },
+    {
+      "elapsed": 1034.22,
+      "finalizeCalls": 32000,
+      "nodes": 109063,
+      "bucketFinalizeSeconds": 101.812,
+      "msPerLeaf": 50.91
+    },
+    {
+      "elapsed": 1107.27,
+      "finalizeCalls": 34000,
+      "nodes": 116696,
+      "bucketFinalizeSeconds": 72.421,
+      "msPerLeaf": 36.21
+    },
+    {
+      "elapsed": 1144.23,
+      "finalizeCalls": 36000,
+      "nodes": 122474,
+      "bucketFinalizeSeconds": 36.647,
+      "msPerLeaf": 18.32
+    },
+    {
+      "elapsed": 1199.01,
+      "finalizeCalls": 38000,
+      "nodes": 129206,
+      "bucketFinalizeSeconds": 54.327,
+      "msPerLeaf": 27.16
+    },
+    {
+      "elapsed": 1267.72,
+      "finalizeCalls": 40000,
+      "nodes": 135886,
+      "bucketFinalizeSeconds": 68.139,
+      "msPerLeaf": 34.07
+    },
+    {
+      "elapsed": 1376.14,
+      "finalizeCalls": 42000,
+      "nodes": 143625,
+      "bucketFinalizeSeconds": 107.552,
+      "msPerLeaf": 53.78
+    },
+    {
+      "elapsed": 1523.06,
+      "finalizeCalls": 44000,
+      "nodes": 149301,
+      "bucketFinalizeSeconds": 145.977,
+      "msPerLeaf": 72.99
+    },
+    {
+      "elapsed": 1677.25,
+      "finalizeCalls": 46000,
+      "nodes": 156138,
+      "bucketFinalizeSeconds": 153.112,
+      "msPerLeaf": 76.56
+    },
+    {
+      "elapsed": 1752.46,
+      "finalizeCalls": 48000,
+      "nodes": 162712,
+      "bucketFinalizeSeconds": 74.665,
+      "msPerLeaf": 37.33
+    },
+    {
+      "elapsed": 1798.15,
+      "finalizeCalls": 50000,
+      "nodes": 170556,
+      "bucketFinalizeSeconds": 45.286,
+      "msPerLeaf": 22.64
+    },
+    {
+      "elapsed": 1844.83,
+      "finalizeCalls": 52000,
+      "nodes": 176126,
+      "bucketFinalizeSeconds": 46.33,
+      "msPerLeaf": 23.16
+    },
+    {
+      "elapsed": 1921.83,
+      "finalizeCalls": 54000,
+      "nodes": 183068,
+      "bucketFinalizeSeconds": 76.428,
+      "msPerLeaf": 38.21
+    },
+    {
+      "elapsed": 2060.5,
+      "finalizeCalls": 56000,
+      "nodes": 189537,
+      "bucketFinalizeSeconds": 137.712,
+      "msPerLeaf": 68.86
+    },
+    {
+      "elapsed": 2164.82,
+      "finalizeCalls": 58000,
+      "nodes": 197405,
+      "bucketFinalizeSeconds": 103.208,
+      "msPerLeaf": 51.6
+    },
+    {
+      "elapsed": 2210.03,
+      "finalizeCalls": 60000,
+      "nodes": 204644,
+      "bucketFinalizeSeconds": 44.724,
+      "msPerLeaf": 22.36
+    },
+    {
+      "elapsed": 2255.92,
+      "finalizeCalls": 62000,
+      "nodes": 212204,
+      "bucketFinalizeSeconds": 45.448,
+      "msPerLeaf": 22.72
+    },
+    {
+      "elapsed": 2324.4,
+      "finalizeCalls": 64000,
+      "nodes": 218852,
+      "bucketFinalizeSeconds": 67.954,
+      "msPerLeaf": 33.98
+    },
+    {
+      "elapsed": 2415.91,
+      "finalizeCalls": 66000,
+      "nodes": 226542,
+      "bucketFinalizeSeconds": 90.794,
+      "msPerLeaf": 45.4
+    },
+    {
+      "elapsed": 2532.24,
+      "finalizeCalls": 68000,
+      "nodes": 233191,
+      "bucketFinalizeSeconds": 115.536,
+      "msPerLeaf": 57.77
+    },
+    {
+      "elapsed": 2602.04,
+      "finalizeCalls": 70000,
+      "nodes": 241018,
+      "bucketFinalizeSeconds": 69.245,
+      "msPerLeaf": 34.62
+    },
+    {
+      "elapsed": 2645.42,
+      "finalizeCalls": 72000,
+      "nodes": 246930,
+      "bucketFinalizeSeconds": 43.043,
+      "msPerLeaf": 21.52
+    },
+    {
+      "elapsed": 2699.71,
+      "finalizeCalls": 74000,
+      "nodes": 254140,
+      "bucketFinalizeSeconds": 53.844,
+      "msPerLeaf": 26.92
+    },
+    {
+      "elapsed": 2766.0,
+      "finalizeCalls": 76000,
+      "nodes": 259443,
+      "bucketFinalizeSeconds": 65.811,
+      "msPerLeaf": 32.91
+    },
+    {
+      "elapsed": 2888.09,
+      "finalizeCalls": 78000,
+      "nodes": 267842,
+      "bucketFinalizeSeconds": 121.046,
+      "msPerLeaf": 60.52
+    },
+    {
+      "elapsed": 3030.37,
+      "finalizeCalls": 80000,
+      "nodes": 273861,
+      "bucketFinalizeSeconds": 141.321,
+      "msPerLeaf": 70.66
+    },
+    {
+      "elapsed": 3068.24,
+      "finalizeCalls": 82000,
+      "nodes": 281071,
+      "bucketFinalizeSeconds": 37.514,
+      "msPerLeaf": 18.76
+    },
+    {
+      "elapsed": 3108.45,
+      "finalizeCalls": 84000,
+      "nodes": 286373,
+      "bucketFinalizeSeconds": 39.891,
+      "msPerLeaf": 19.95
+    },
+    {
+      "elapsed": 3163.0,
+      "finalizeCalls": 86000,
+      "nodes": 294669,
+      "bucketFinalizeSeconds": 54.055,
+      "msPerLeaf": 27.03
+    },
+    {
+      "elapsed": 3229.33,
+      "finalizeCalls": 88000,
+      "nodes": 300793,
+      "bucketFinalizeSeconds": 65.815,
+      "msPerLeaf": 32.91
+    },
+    {
+      "elapsed": 3313.24,
+      "finalizeCalls": 90000,
+      "nodes": 308002,
+      "bucketFinalizeSeconds": 83.193,
+      "msPerLeaf": 41.6
+    },
+    {
+      "elapsed": 3415.86,
+      "finalizeCalls": 92000,
+      "nodes": 313305,
+      "bucketFinalizeSeconds": 101.88,
+      "msPerLeaf": 50.94
+    },
+    {
+      "elapsed": 3513.21,
+      "finalizeCalls": 94000,
+      "nodes": 321494,
+      "bucketFinalizeSeconds": 96.484,
+      "msPerLeaf": 48.24
+    },
+    {
+      "elapsed": 3574.3,
+      "finalizeCalls": 96000,
+      "nodes": 327722,
+      "bucketFinalizeSeconds": 60.578,
+      "msPerLeaf": 30.29
+    },
+    {
+      "elapsed": 3613.69,
+      "finalizeCalls": 98000,
+      "nodes": 334903,
+      "bucketFinalizeSeconds": 39.017,
+      "msPerLeaf": 19.51
+    },
+    {
+      "elapsed": 3689.81,
+      "finalizeCalls": 100000,
+      "nodes": 340235,
+      "bucketFinalizeSeconds": 75.547,
+      "msPerLeaf": 37.77
+    },
+    {
+      "elapsed": 3767.27,
+      "finalizeCalls": 102000,
+      "nodes": 348317,
+      "bucketFinalizeSeconds": 76.765,
+      "msPerLeaf": 38.38
+    },
+    {
+      "elapsed": 3836.68,
+      "finalizeCalls": 104000,
+      "nodes": 354654,
+      "bucketFinalizeSeconds": 68.844,
+      "msPerLeaf": 34.42
+    },
+    {
+      "elapsed": 3875.51,
+      "finalizeCalls": 106000,
+      "nodes": 361729,
+      "bucketFinalizeSeconds": 38.477,
+      "msPerLeaf": 19.24
+    },
+    {
+      "elapsed": 3941.14,
+      "finalizeCalls": 108000,
+      "nodes": 367166,
+      "bucketFinalizeSeconds": 65.128,
+      "msPerLeaf": 32.56
+    },
+    {
+      "elapsed": 4025.69,
+      "finalizeCalls": 110000,
+      "nodes": 375143,
+      "bucketFinalizeSeconds": 83.792,
+      "msPerLeaf": 41.9
+    },
+    {
+      "elapsed": 4088.95,
+      "finalizeCalls": 112000,
+      "nodes": 381585,
+      "bucketFinalizeSeconds": 62.731,
+      "msPerLeaf": 31.37
+    },
+    {
+      "elapsed": 4128.12,
+      "finalizeCalls": 114000,
+      "nodes": 388553,
+      "bucketFinalizeSeconds": 38.823,
+      "msPerLeaf": 19.41
+    },
+    {
+      "elapsed": 4195.57,
+      "finalizeCalls": 116000,
+      "nodes": 394097,
+      "bucketFinalizeSeconds": 66.925,
+      "msPerLeaf": 33.46
+    },
+    {
+      "elapsed": 4273.72,
+      "finalizeCalls": 118000,
+      "nodes": 401925,
+      "bucketFinalizeSeconds": 77.388,
+      "msPerLeaf": 38.69
+    },
+    {
+      "elapsed": 4327.66,
+      "finalizeCalls": 120000,
+      "nodes": 409284,
+      "bucketFinalizeSeconds": 53.271,
+      "msPerLeaf": 26.64
+    },
+    {
+      "elapsed": 4363.32,
+      "finalizeCalls": 122000,
+      "nodes": 416496,
+      "bucketFinalizeSeconds": 35.257,
+      "msPerLeaf": 17.63
+    }
+  ],
+  "leafCost": {
+    "leaves": 122304,
+    "msMin": 13.17,
+    "msMedian": 32.4,
+    "msP95": 78.82,
+    "msMax": 535.77,
+    "meanMsByPropertyValue": {
+      "Surface_Height": {
+        "SE": 36.28,
+        "ST": 34.57
+      },
+      "Surface_Material": {
+        "M": 36.11,
+        "Y": 27.18
+      },
+      "Power_Option": {
+        "NN": 41.15,
+        "EG": 31.48,
+        "BL": 33.24,
+        "MU": 38.69
+      },
+      "Country": {
+        "U": 36.79,
+        "D": 34.06
+      },
+      "Monitor_Support": {
+        "NM": 39.54,
+        "WM": 31.78,
+        "DL": 28.84,
+        "DM": 37.49,
+        "DS": 41.07
+      },
+      "Occupancy_Indicator": {
+        "NN": 35.37,
+        "YY": 35.48
+      },
+      "Door_Finish": {
+        "TR": 35.48,
+        "FS": 35.38
+      },
+      "Ceiling_Finish": {
+        "TR": 35.26,
+        "FS": 35.59
+      },
+      "Surface_Finish": {
+        "98": 34.83,
+        "91": 34.74,
+        "8Q": 34.99,
+        "I2": 35.79,
+        "0B": 36.07,
+        "RY": 36.41
+      },
+      "Edge_Finish": {
+        "98": 36.07,
+        "91": 36.12,
+        "8Q": 36.09,
+        "I2": 36.08,
+        "0B": 36.11,
+        "RY": 36.2,
+        "PDG": 27.18
+      },
+      "Door_Option": {
+        "CL": 35.44,
+        "OP": 35.41
+      },
+      "Monitor": {
+        "ON": 34.64,
+        "OFF": 34.62
+      },
+      "Power_Finish": {
+        "B": 32.36,
+        "W": 32.37,
+        "UBK": 38.72,
+        "98": 38.65
+      }
+    }
+  },
+  "progressNotes": 172
+}

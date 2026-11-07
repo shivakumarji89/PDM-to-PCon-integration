@@ -142,6 +142,8 @@ class GenerationOutcome:
     price_reused: int = 0             # SKUs priced from an earlier lookup with the same price key
     configurations: int = 0           # complete configurations the engine produced (before validation/dedup)
     inert_properties: tuple[str, ...] = ()   # read-only properties enumerated with one value only
+    #: price-relation work: configurations finalised, relations actually executed, and the result-cache counters
+    price_relation_stats: dict[str, int] = field(default_factory=dict)
     truncated: bool = False
     warnings: list[str] = field(default_factory=list)
     #: one line per fabric colour decision (selected type, mechanism, candidates, rejections, chosen colour and why)
@@ -391,7 +393,8 @@ class OcdArticleGenerator:
     def generate(self, article_numbers: Sequence[str], rules: Sequence[PropertyRule] = (), *,
                  currency: str = "", price_date: str,
                  max_configurations: None = None, fabric_default_only: bool = True, fabric_property: str = "",
-                 shared_fabric: bool = False, reporter=None) -> GenerationOutcome:
+                 shared_fabric: bool = False, reporter=None, price_relation_cache: bool = True,
+                 price_cache_verify_every: int = 0) -> GenerationOutcome:
         """Every valid, unique SKU of ``article_numbers``; ``OperationCancelled`` propagates on cancel.
 
         ``fabric_property`` is the one optional manual choice (a property name, ``""`` = automatic discovery): it feeds
@@ -402,6 +405,11 @@ class OcdArticleGenerator:
         one choice - every configuration carries the same type and colour in each of them (see
         :class:`~services.ocd_engine.configuration_engine.ConfigurationEngine`). ``False`` enumerates each position
         independently (the default).
+
+        ``price_relation_cache`` (default on) memoises the price-relation run per distinct relation input within
+        this call; ``False`` evaluates every relation for every configuration as before. The SKUs, prices and
+        diagnostics are identical either way. ``price_cache_verify_every`` is for benchmarking (see
+        :class:`~services.ocd_engine.varcond_engine.VarcondEngine`).
 
         There is no SKU cap: ``max_configurations`` exists so callers state "unlimited" explicitly and
         anything but ``None`` is refused rather than silently ignored.
@@ -440,6 +448,7 @@ class OcdArticleGenerator:
                 model, sink=sink, limits=EnumerationLimits(max_nodes=MAX_NODES), identity_texts=identity,
                 fabric_default_only=fabric_default_only, fabric_property=fabric_property,
                 shared_fabric=shared_fabric, fabric_ties=ties, fabric_tie_skips=analysis.skipped,
+                price_relation_cache=price_relation_cache, price_cache_verify_every=price_cache_verify_every,
                 progress=(lambda st, a=article_number: reporter.note(
                     f"Enumerating {a}: {st.emitted:,} configuration(s), {st.nodes:,} node(s) evaluated, "
                     f"{len(outcome.skus):,} valid SKU(s)")) if reporter is not None else None)
@@ -502,6 +511,8 @@ class OcdArticleGenerator:
             outcome.fabric_notes.extend(f"{article_number}: {tie.describe()}" for tie in engine.fabric_ties)
             outcome.fabric_notes.extend(f"{article_number}: {skip.describe()}" for skip in engine.fabric_tie_skips)
             outcome.nodes += engine.stats.nodes
+            for name, count in engine.price_relation_stats.items():
+                outcome.price_relation_stats[name] = outcome.price_relation_stats.get(name, 0) + count
             outcome.configurations += engine.stats.emitted
             outcome.inert_properties = tuple(dict.fromkeys(outcome.inert_properties + engine.stats.inert))
             outcome.pruned += engine.stats.pruned

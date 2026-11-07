@@ -339,10 +339,14 @@ namespace MKObxGenerator
             if (generation.Articles.Count == 0)
                 throw new InvalidDataException("At least one article is required.");
 
+            var metrics = new EnumerationMetrics();
             uint progressId = X3gApp.StartProgress("MK OBX Generator", generation.MaxConfigurations, false);
             Action<int, int, string> progress = (processed, total, message) =>
             {
+                long begin = CostCounter.Begin();
                 try { X3gApp.SetProgress(progressId, Math.Min(processed, total)); } catch (Exception) { }
+                metrics.ProgressSetProgress.End(begin);
+                begin = CostCounter.Begin();
                 try
                 {
                     JobProtocol.WriteAtomic(progressPath, new Dictionary<string, object>
@@ -351,12 +355,19 @@ namespace MKObxGenerator
                     });
                 }
                 catch (Exception) { }
+                metrics.ProgressWriteFile.End(begin);
+                begin = CostCounter.Begin();
                 Application.DoEvents();
+                metrics.ProgressDoEvents.End(begin);
             };
 
-            var configurator = new ArticleConfigurator(X3gArticles, Log);
+            var configurator = new ArticleConfigurator(X3gArticles, Log, metrics);
             Func<bool> cancelRequested = () => File.Exists(cancelPath);
             var enumerator = new ConfigurationEnumerator(configurator, X3gArticles, Log, progress, cancelRequested);
+            // Benchmark switch: MK_OBX_REUSE_PROBE=0 restores the one-insert-per-node baseline.
+            enumerator.ReuseParentProbe = Environment.GetEnvironmentVariable("MK_OBX_REUSE_PROBE") != "0";
+            // MK_OBX_LEGACY_READS=1 restores the redundant ValueSet reads; with REUSE_PROBE=0 that is the fe4534e SDK-call pattern.
+            enumerator.LegacyValueSetReads = Environment.GetEnvironmentVariable("MK_OBX_LEGACY_READS") == "1";
             bool exported = false;
             int basketItems = 0;
             bool incomplete = false;
@@ -393,11 +404,14 @@ namespace MKObxGenerator
                 { "skipped", enumerator.Skipped },
                 { "duplicates", enumerator.Duplicates },
                 { "visited", enumerator.Visited },
+                { "reuseParentProbe", enumerator.ReuseParentProbe },
+                { "legacyValueSetReads", enumerator.LegacyValueSetReads },
                 { "probeInsertions", enumerator.ProbeInsertions },
                 { "propertyApplications", enumerator.PropertyApplications },
                 { "probeInsertElapsedMs", enumerator.ProbeInsertElapsedMs },
                 { "propertyApplyElapsedMs", enumerator.PropertyApplyElapsedMs },
                 { "enumerationElapsedMs", enumerator.EnumerationElapsedMs },
+                { "metrics", enumerator.Metrics.ToDictionary() },
                 { "truncated", enumerator.Truncated },
                 { "cancelled", enumerator.Cancelled },
                 { "basketItems", basketItems },

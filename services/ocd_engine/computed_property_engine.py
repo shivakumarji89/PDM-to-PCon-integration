@@ -37,21 +37,28 @@ def relations_in_scope(model: m.ArticleModel, assignments, rel_type: int, domain
     return scoped
 
 
-def execute_relations(scoped, ctx: EvalContext, sink: dg.DiagnosticSink | None, article: str = "") -> None:
+def execute_relations(scoped, ctx: EvalContext, sink: dg.DiagnosticSink | None, article: str = "") -> bool:
+    """Run the relations in order. Returns ``True`` when nothing was reported (no parse error, no skipped
+    clause), i.e. when the run is a pure function of its inputs and may be memoised."""
+    clean = True
     for rel, owner in scoped:
         compiled = rp.compile_relation(rel.rel_type, rel.text)
         if compiled.error:
+            clean = False
             if sink is not None:
                 sink.add(dg.RELATION_PARSE_ERROR, compiled.error, article=article,
                          relation=rel.name, source=owner)
             continue
         report = run_actions(compiled.node, ctx)
+        if report.skipped:
+            clean = False
         if sink is not None:
             for clause, reason in report.skipped:
                 code = dg.UNSUPPORTED_SYNTAX if "not an assignment" in reason or "expected" in reason \
                     or "unexpected" in reason else dg.RELATION_EVAL_ERROR
                 sink.add(code, f"clause skipped: {clause} ({reason})", article=article,
                          relation=rel.name, source=owner)
+    return clean
 
 
 class ComputedPropertyEngine:

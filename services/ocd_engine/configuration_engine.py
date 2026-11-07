@@ -129,7 +129,8 @@ class ConfigurationEngine:
                  identity_texts: Sequence[str] | None = None,
                  fabric_default_only: bool = True, fabric_property: str = "",
                  shared_fabric: bool = False, fabric_ties: Sequence[fabric.FabricTie] | None = None,
-                 fabric_tie_skips: Sequence[fabric.FabricTieSkip] = ()) -> None:
+                 fabric_tie_skips: Sequence[fabric.FabricTieSkip] = (),
+                 price_relation_cache: bool = False, price_cache_verify_every: int = 0) -> None:
         """``shared_fabric`` (opt-in): fabric positions that offer the same fabric types (``fabric.shared_fabric_ties``, e.g.
         a Back/Arms and a Seat position) are one choice. The later position's type and colour are restricted, at its
         own node and by the same precondition filtering, to what the first position selected - the independent
@@ -148,7 +149,12 @@ class ConfigurationEngine:
 
         ``identity_texts``: every text outside the model's relations that reads property values to build the
         final article (the code scheme body). ``None`` disables the inert-property optimisation because the
-        engine cannot know what else reads the configuration."""
+        engine cannot know what else reads the configuration.
+
+        ``price_relation_cache`` (opt-in): memoise the price-domain relation run per distinct set of inputs the
+        relations read (see :mod:`~services.ocd_engine.varcond_engine`); the result is identical, the cache lives
+        and dies with this engine. ``price_cache_verify_every=N`` re-evaluates every Nth hit and raises on a
+        difference (diagnostic use)."""
         self.model = model
         self.sink = sink if sink is not None else dg.DiagnosticSink()
         self.limits = limits or EnumerationLimits()
@@ -161,7 +167,8 @@ class ConfigurationEngine:
         self._no_value_reported: set[str] = set()
         self._classes = model.class_by_name()
         self._computed_engine = ComputedPropertyEngine(model, self.sink)
-        self._varcond_engine = VarcondEngine(model, self.sink)
+        self._varcond_engine = VarcondEngine(model, self.sink, cache=price_relation_cache,
+                                             verify_every=price_cache_verify_every)
         self._constraints = self._collect_constraints()
         self._candidate_refs: dict[str, tuple[str, ...]] = {}     # dimension key -> properties its value filter reads
         self._candidate_cache: dict[tuple, list[m.ValueDef]] = {}
@@ -208,6 +215,11 @@ class ConfigurationEngine:
                           f"not say which one it follows, so it is not paired and not reduced to one colour",
                           dg.Severity.WARNING, article=model.base_code, property=colour_name)
         self._inert = self.inert_properties(model, identity_texts) if identity_texts is not None else frozenset()
+
+    @property
+    def price_relation_stats(self) -> dict[str, int]:
+        """Price-relation evaluation and cache counters (see ``VarcondEngine.stats``)."""
+        return self._varcond_engine.stats()
 
     @property
     def fabric_override_error(self) -> str:

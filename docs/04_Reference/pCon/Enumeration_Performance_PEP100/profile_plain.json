@@ -1,0 +1,20 @@
+{
+  "range": "bay_work_pod",
+  "article": "PEP100",
+  "plain": true,
+  "reporter": "count",
+  "dataLoadSeconds": 0.267,
+  "generateSeconds": 4358.151,
+  "skus": 43680,
+  "configurations": 122304,
+  "nodes": 417559,
+  "invalid": 0,
+  "duplicates": 78624,
+  "pruned": 16,
+  "priceEvaluations": 1600,
+  "priceReused": 42080,
+  "truncated": false,
+  "skuDigest": "936cfd440240c7cdc8d87f4bb36daa3a99b387caa637f2afe2004071874c1e1d",
+  "sortedSkuDigest": "4406196e82bf69738fcaf183676cb940e9e811b5af2c5c83f54d574d6eb9d8d2",
+  "progressNotes": 172
+}
