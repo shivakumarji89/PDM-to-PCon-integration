@@ -751,6 +751,9 @@ class ProductPage(BasePage):
         if self._navigator_loading:
             return
         self._navigator_loading = True
+        refresh_button = getattr(self, "_maintenance_refresh_pdm_button", None)
+        if refresh_button is not None:
+            refresh_button.setEnabled(False)
         self._navigator_token += 1
         token = self._navigator_token
         if not self._search_input.text().strip():
@@ -784,6 +787,9 @@ class ProductPage(BasePage):
         if token != self._navigator_token:
             return
         self._navigator_loading = False
+        refresh_button = getattr(self, "_maintenance_refresh_pdm_button", None)
+        if refresh_button is not None:
+            refresh_button.setEnabled(True)
         self._navigator_products = products
         self._navigator_grouped = grouped
         # Share id -> name so pages resolve product NAMES (e.g. Long Text).
@@ -796,6 +802,9 @@ class ProductPage(BasePage):
         if token != self._navigator_token:
             return
         self._navigator_loading = False
+        refresh_button = getattr(self, "_maintenance_refresh_pdm_button", None)
+        if refresh_button is not None:
+            refresh_button.setEnabled(True)
         if not self._search_input.text().strip():
             self._search_status.setText(
                 f"Product hierarchy unavailable: {message}"
