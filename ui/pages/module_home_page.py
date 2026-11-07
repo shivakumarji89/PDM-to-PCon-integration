@@ -584,7 +584,14 @@ class ModuleHomePage(QWidget):
         self._pdm_status = _StatusItem("database", "PDM Database", "Not checked")
         self._mdb_status = _StatusItem("doc", "MDB Snapshot", "Not loaded")
         self._application_status = _StatusItem("gear", "Application", "Ready")
-        strip.set_items((self._repository_status, self._pdm_status, self._mdb_status, self._application_status))
+        self._status_strip = strip
+        strip.set_items((
+            self._repository_status,
+            self._pdm_status,
+            self._mdb_status,
+            self._application_status,
+            self._pdm_changes_button,
+        ))
         root.addWidget(strip)
 
         # --- additional tools ----------------------------------------------
@@ -603,9 +610,7 @@ class ModuleHomePage(QWidget):
         syte_line.clicked.connect(lambda: self.module_selected.emit(WorkbenchModule.SYTELINE_EXPORT))
         utility_row.addWidget(syte_line)
         utility_row.addStretch(1)
-        utility_row.addWidget(self._pdm_changes_button, 0, Qt.AlignmentFlag.AlignVCenter)
         root.addLayout(utility_row)
-        self._utility_layout = utility_row
         self._syteline_button = syte_line
 
         self.refresh_status()
@@ -622,12 +627,7 @@ class ModuleHomePage(QWidget):
             "border-radius:7px; padding:8px 12px; font-size:12px; } "
             "QComboBox:hover { background:#F3F7FB; border-color:#9AAABD; }"
         )
-        self._utility_layout.insertWidget(
-            self._utility_layout.count() - 1,
-            selector,
-            0,
-            Qt.AlignmentFlag.AlignVCenter,
-        )
+        self._status_strip.insert_item(4, selector)
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
@@ -705,10 +705,26 @@ class _StatusStrip(QWidget):
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(34, 12, 34, 12)
         self._layout.setSpacing(0)
+        self._items = []
         self.setFixedHeight(76)
 
     def set_items(self, items) -> None:
-        for index, item in enumerate(items):
+        self._items = list(items)
+        self._rebuild_items()
+
+    def insert_item(self, index: int, item: QWidget) -> None:
+        if item in self._items:
+            self._items.remove(item)
+        self._items.insert(max(0, min(index, len(self._items))), item)
+        self._rebuild_items()
+
+    def _rebuild_items(self) -> None:
+        while self._layout.count():
+            entry = self._layout.takeAt(0)
+            widget = entry.widget()
+            if widget is not None and widget not in self._items:
+                widget.deleteLater()
+        for index, item in enumerate(self._items):
             if index:
                 sep = QLabel()
                 sep.setFixedSize(1, 42)
