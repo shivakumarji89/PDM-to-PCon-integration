@@ -637,10 +637,12 @@ class MainWindow(QMainWindow):
                 export_button.clicked.connect(export_handler)
                 page._maintenance_export_mdb_button = export_button
                 header.add_action(export_button, "secondary")
-            page._maintenance_reload_button.setVisible(is_maintenance)
+            # Articles is intentionally a compact workspace without header Reload/Export.
+            show_page_actions = is_maintenance and step != WorkflowStep.ARTICLES
+            page._maintenance_reload_button.setVisible(show_page_actions)
             if hasattr(page, "_maintenance_refresh_pdm_button"):
                 page._maintenance_refresh_pdm_button.setVisible(is_maintenance)
-            page._maintenance_export_mdb_button.setVisible(is_maintenance)
+            page._maintenance_export_mdb_button.setVisible(show_page_actions)
 
     def _refresh_app_header(self) -> None:
         """Header indicators from existing application state (no new queries)."""
