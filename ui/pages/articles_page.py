@@ -804,6 +804,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._snapshot_key = key
             self._base_len_by_member.clear()
             self._active_family_id = None
+            self._export_selected_article_ids.clear()
         self._mdb_mapping = self._maintenance_mapping()
         self._rows = self._collect_rows()
         self._rebuild_family_list()
@@ -1309,7 +1310,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         self._table.setHorizontalHeaderLabels(
             ["Source Article", "Len", "Base Article", "Remaining",
-             "Short Text", "Long Text", "Relation Object", "Code Scheme", ""]
+             "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
         )
         self._table.setColumnHidden(_COL_REMAINING, False)
         default_len = self._default_base_len()
@@ -1394,7 +1395,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         distinct variants, with per-base text/relation applying to all members."""
         self._table.setHorizontalHeaderLabels(
             ["Base Article", "Length", "Variants", "",
-             "Short Text", "Long Text", "Relation Object", "Code Scheme", ""]
+             "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
         )
         # Grouped view has no per-line "Remaining"; hide that column here.
         self._table.setColumnHidden(_COL_REMAINING, True)
