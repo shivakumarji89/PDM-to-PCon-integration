@@ -213,11 +213,11 @@ class PconArticleObxGeneratorPage(BasePage):
         self._obx_actions_button.setMenu(obx_menu)
         self._obx_actions_button.setEnabled(False)
         row.addWidget(self._obx_actions_button)
-        self._diagnostics_button = self._button("Price Diagnostics…", self._show_price_diagnostics)
+        self._diagnostics_button = self._button("Price Diagnostics", self._price_generated_skus)
         self._diagnostics_button.setEnabled(False)
         self._diagnostics_button.setToolTip(
-            "Explain the price lookup of the selected result row (or the first row): price file, key, "
-            "candidate rows and why each was rejected.")
+            "Apply the selected currency and price date from ocd_price.csv to the already-generated SKU list. "
+            "This does not enumerate SKUs again.")
         row.addWidget(self._diagnostics_button)
         layout.addLayout(row)
 
@@ -710,14 +710,13 @@ class PconArticleObxGeneratorPage(BasePage):
         self._generation_status.setText("Enumerating valid SKUs with the OCD Engine…")
         generator = self._generator_for(program)
         numbers = [a.article_number for a in articles]
-        currency = self._currency.currentText().strip()
         price_date = self._price_date.date().toString("yyyy-MM-dd")
         fabric_property = self._fabric_property.currentData() or ""
 
         def work(reporter):
             reporter.note("Reading the OCD data")
             _ = generator.dataset
-            outcome = generator.generate(numbers, rules, currency=currency, price_date=price_date,
+            outcome = generator.generate(numbers, rules, price=False,
                                          max_configurations=None, fabric_property=fabric_property,
                                          reporter=reporter)
             # Everything proportional to the result size happens here, off the GUI thread; the GUI only
@@ -726,7 +725,7 @@ class PconArticleObxGeneratorPage(BasePage):
             return outcome
 
         def finished(outcome):
-            self._outcome_program, self._outcome_price_date = program, price_date
+            self._outcome_program, self._outcome_price_date = program, ""
             self._on_generated(outcome)
 
         self._start("Generating valid SKUs", work, finished, steps=len(numbers),
@@ -744,8 +743,7 @@ class PconArticleObxGeneratorPage(BasePage):
             f"{', ' + str(outcome.duplicates) + ' duplicate SKU(s) removed' if outcome.duplicates else ''}"
             f"{' (limit reached)' if outcome.truncated else ''}."
         )
-        if outcome.unpriced:
-            summary += f" {outcome.unpriced} without price."
+        summary += " Pricing not run; choose a currency and date, then click Price Diagnostics."
         self._generation_status.setText(summary)
         self._generation_status.setStyleSheet(
             f"color: {theme.COLOR_OK if outcome.skus and not outcome.truncated else theme.COLOR_WARNING};")
@@ -753,6 +751,38 @@ class PconArticleObxGeneratorPage(BasePage):
         # one line per fabric colour decision: type, mechanism, candidates, rejections, chosen colour and why
         self._generation_status.setToolTip("\n".join(outcome.fabric_notes[:40]))
         self._update_controls()
+
+    def _price_generated_skus(self) -> None:
+        """Apply the chosen OCD CSV price list to the existing SKU rows without re-enumerating."""
+        outcome, program = self._outcome, self._outcome_program
+        if outcome is None or program is None or not outcome.skus:
+            QMessageBox.information(self, "Price Diagnostics", "Generate valid SKUs first.")
+            return
+        currency = self._currency.currentText().strip()
+        price_date = self._price_date.date().toString("yyyy-MM-dd")
+        generator = self._generator_for(program)
+        skus = outcome.skus
+        self._generation_status.setText(f"Applying {currency or 'selected'} prices from ocd_price.csv…")
+
+        def work(reporter):
+            reporter.note(f"Pricing {len(skus):,} existing SKU(s)")
+            return generator.price_skus(skus, currency=currency, price_date=price_date, reporter=reporter)
+
+        def finished(priced_skus):
+            outcome.skus = priced_skus
+            self._outcome_price_date = price_date
+            self._result_model.set_results(outcome.skus)
+            self._generation_status.setText(
+                f"Price diagnostics complete: {len(outcome.exportable):,} priced, "
+                f"{outcome.unpriced:,} unpriced SKU(s) in {currency} for {price_date}. "
+                "SKU enumeration was not repeated.")
+            self._generation_status.setStyleSheet(
+                f"color: {theme.COLOR_OK if outcome.exportable else theme.COLOR_WARNING};")
+            self._update_controls()
+            self._show_price_diagnostics()
+
+        self._start("Price Diagnostics", work, finished, steps=1,
+                    subject=f"{len(skus):,} SKU(s) - {currency} - {price_date}")
 
     def _price_diagnostics_text(self) -> str:
         """Diagnostics for the selected result row, or the first one; empty when nothing was generated."""
