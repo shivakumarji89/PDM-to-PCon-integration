@@ -508,7 +508,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         for w in self._legacy_header:
             w.setVisible(not on)
         self._shell_header.setVisible(on)
-        self._kpi_row.setVisible(on)
+        # Maintenance Articles no longer needs the summary KPI cards; keep them in Development.
+        self._kpi_row.setVisible(on and getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE)
         body, top = self._body_layout, self._top_layout
         toolbar = self._toolbar_box
         buttons = (
