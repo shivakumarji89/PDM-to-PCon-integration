@@ -557,6 +557,9 @@ class OcdArticleGenerator:
             priced_skus.append(self._with_price(sku, result))
             if reporter is not None and index % 500 == 0:
                 reporter.note(f"Pricing {index:,}/{len(skus):,} SKU(s) in {currency}")
+                reporter.advance(f"Priced {index:,}/{len(skus):,} SKU(s)")
+        if reporter is not None and len(skus) % 500:
+            reporter.advance(f"Priced {len(skus):,}/{len(skus):,} SKU(s)")
         return priced_skus
 
     @staticmethod
