@@ -704,6 +704,14 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._shell_card.body.setSpacing(4)
         self._shell_card.set_content(self._shell_vsplit)
 
+        # The Articles shell header is created lazily on first Maintenance
+        # activation. The main window's initial action-attachment pass therefore
+        # runs before this header exists; rerun it now that add_action is ready.
+        window = self.window()
+        configure_actions = getattr(window, "_configure_maintenance_page_actions", None)
+        if callable(configure_actions):
+            configure_actions(())
+
     _DETAIL_FIELDS = (
         "_d_code", "_d_description", "_d_id", "_d_status", "_d_super", "_d_source", "_d_validation",
     )
