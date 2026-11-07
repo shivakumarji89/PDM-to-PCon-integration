@@ -377,16 +377,6 @@ class ProductPage(BasePage):
         self._search_input.textChanged.connect(self._on_search_text_changed)
         search_row.addWidget(self._search_input, 1)
 
-        # The cached hierarchy is the primary navigation source; this button
-        # re-syncs it from PDM through the existing loader. Live filtering of
-        # the cache is handled entirely by the search box above.
-        self._refresh_hierarchy_btn = QPushButton("Refresh Hierarchy", box)
-        self._refresh_hierarchy_btn.setToolTip(
-            "Re-sync the Catalogue \u2192 Category \u2192 Product hierarchy from PDM "
-            "and update the local cache"
-        )
-        self._refresh_hierarchy_btn.clicked.connect(self._on_refresh_hierarchy)
-        search_row.addWidget(self._refresh_hierarchy_btn)
         outer.addLayout(search_row)
 
         self._tree = QTreeWidget(box)
@@ -1554,7 +1544,9 @@ class ProductPage(BasePage):
         QMessageBox.warning(self, "Load Product", message)
 
     def _set_actions_enabled(self, enabled: bool) -> None:
-        self._refresh_hierarchy_btn.setEnabled(enabled)
+        refresh_button = getattr(self, "_maintenance_refresh_pdm_button", None)
+        if refresh_button is not None:
+            refresh_button.setEnabled(enabled)
 
     def _on_clear_snapshot(self) -> None:
         run = getattr(self, "_family_run", None)
