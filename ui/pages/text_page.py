@@ -106,12 +106,7 @@ class TextPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._fill_btn)
 
         self._maintenance_export_component = "Text"
-        self._export_mdb_btn = QPushButton("Export to MDB", box)
-        self._export_mdb_btn.setToolTip(
-            "Export localized text data to the selected MDB. Component field mapping is being connected."
-        )
-        self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        self._sync_export_mdb_button()
+
 
         return box
 
