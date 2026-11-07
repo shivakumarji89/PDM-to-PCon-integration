@@ -981,8 +981,9 @@ class ObxValidationPage(BasePage):
             return
         attempt, _maximum, message = payload
         self._recovery_attempt = attempt
+        # Recovery attempts are transient; keep the user informed in the status
+        # area instead of opening a modal dialog for every retry.
         self._update_bottom_status()
-        QMessageBox.warning(self, "OBX Validation - Recovery", message)
 
     def _on_failed(self, message: str) -> None:
         if self._active_control is not None:
