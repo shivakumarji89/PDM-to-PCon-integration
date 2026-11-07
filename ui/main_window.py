@@ -604,6 +604,10 @@ class MainWindow(QMainWindow):
         for step in maintenance_steps:
             page = self._pages.get(step)
             header = getattr(page, "header", None) if page is not None else None
+            if header is None and page is not None:
+                # Articles uses its own shared-shell header for the compact
+                # Maintenance layout; attach the same actions there.
+                header = getattr(page, "_shell_header", None)
             if header is None or not hasattr(header, "add_action"):
                 continue
             if not hasattr(page, "_maintenance_reload_button"):
