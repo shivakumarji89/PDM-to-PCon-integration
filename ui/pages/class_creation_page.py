@@ -375,7 +375,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             "Export class, property and option data to the selected MDB. Component field mapping is being connected."
         )
         self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        layout.addWidget(self._export_mdb_btn)
         self._sync_export_mdb_button()
 
         return box
