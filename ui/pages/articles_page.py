@@ -258,6 +258,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._group_check.toggled.connect(self._on_group_toggled)
         layout.addWidget(self._group_check)
 
+        self._group_class_check = QCheckBox("Group by Class Creation", box)
+        self._group_class_check.setChecked(False)
+        self._group_class_check.setToolTip(
+            "Add Class Creation property-group headers. Articles remain visible "
+            "individually unless Group by Base is also enabled."
+        )
+        self._group_class_check.toggled.connect(self._on_class_group_toggled)
+        layout.addWidget(self._group_class_check)
+
         self._maintenance_export_component = "Articles"
 
 
@@ -522,6 +531,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             (self._clear_btn, "danger"),
         )
         if on:
+            self._group_class_check.setVisible(
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+            )
             body.removeWidget(self._table)
             top.removeWidget(self._family_box)
             top.removeWidget(self._details_box)
@@ -656,7 +668,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
             [self._dot_base_btn, self._copy_long_btn, self._components_btn],
-            [self._group_check],
+            [self._group_check, self._group_class_check],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
@@ -1304,94 +1316,184 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._populating = True
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
-        if self._group_by_base:
+        class_groups = (
+            self._article_class_groups(rows)
+            if self._group_class_check.isChecked()
+            and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+            else None
+        )
+        if class_groups is not None:
+            for group_name, group_rows in class_groups:
+                header_row = self._table.rowCount()
+                self._table.insertRow(header_row)
+                header_item = QTableWidgetItem(
+                    f"{group_name}  ({len(group_rows)} articles)"
+                )
+                font = header_item.font()
+                font.setBold(True)
+                header_item.setFont(font)
+                header_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                header_item.setData(Qt.ItemDataRole.UserRole, "__class_group_header__")
+                self._table.setItem(header_row, 0, header_item)
+                self._table.setSpan(header_row, 0, 1, self._table.columnCount())
+                if self._group_by_base:
+                    self._populate_grouped(group_rows)
+                else:
+                    self._populate_individual(group_rows)
+            self._table.setSortingEnabled(False)
+        elif self._group_by_base:
             self._populate_grouped(rows)
             self._table.setSortingEnabled(True)
             self._table.sortByColumn(_COL_ORDER, Qt.SortOrder.AscendingOrder)
-            self._populating = False
-            return
-        self._table.setHorizontalHeaderLabels(
-            ["Source Article", "Len", "Base Article", "Remaining",
-             "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
-        )
-        self._table.setColumnHidden(_COL_REMAINING, False)
-        default_len = self._default_base_len()
-        for order, (family, member, article) in enumerate(rows):
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-
-            code = article.code if article is not None else ""
-            applied = self._applied_length(member)
-            has_length = applied is not None
-            length = applied if applied is not None else default_len
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
-                remaining = code[len(base):] if base and code.startswith(base) else ""
-                length = len(base)
-                has_length = True
-            else:
-                base, remaining = self._split_base(code, length)
-
-            source_item = QTableWidgetItem(code)
-            source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
-            self._set_readonly(source_item)
-            self._table.setItem(row, _COL_SOURCE, source_item)
-
-            base_item = QTableWidgetItem(base)
-            self._set_readonly(base_item)
-            self._table.setItem(row, _COL_BASE, base_item)
-
-            remaining_item = QTableWidgetItem(remaining)
-            self._set_readonly(remaining_item)
-            self._table.setItem(row, _COL_REMAINING, remaining_item)
-
-            len_item = QTableWidgetItem()
-            # Empty until a base length is actually applied to this member, so an
-            # empty Len cell always means "not applied" (including after Clear).
-            if has_length:
-                len_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
-            len_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            len_item.setToolTip("Edit the base length for this article.")
-            self._table.setItem(row, _COL_LEN, len_item)
-
-            # Editable: short text defaults to the generic product-TYPE name
-            # (product name up to the first '/', e.g. 'Always Chair') so the
-            # shortened article reads generically, not the full permutation; the
-            # user's override (member.short_description) wins when present.
-            short_default = member.short_description or (
-                self._context.product_type_name(article.product_id)
-                if article is not None else ""
-            ) or (article.description if article is not None else "")
-            self._table.setItem(row, _COL_SHORT, QTableWidgetItem(short_default))
-
-            # Editable: long text defaults to the article's product name (from
-            # the shared product registry), falling back to the article's own
-            # name; the user's override (member.long_description) wins.
-            long_default = self._effective_long_text(member, article)
-            self._table.setItem(row, _COL_LONG, QTableWidgetItem(long_default))
-
-            # Editable: relation object defaults to P_<base>; the user's
-            # override (member.relation_object) wins when present.
-            relation_default = member.relation_object or (f"P_{base}" if base else "")
-            self._table.setItem(row, _COL_RELATION, QTableWidgetItem(relation_default))
-
-            # Code Scheme defaults to the base article; a saved override wins.
-            self._table.setItem(
-                row, _COL_SCHEME, QTableWidgetItem(member.code_scheme or base)
-            )
-
-            order_item = QTableWidgetItem()
-            order_item.setData(Qt.ItemDataRole.DisplayRole, order)
-            self._set_readonly(order_item)
-            self._table.setItem(row, _COL_ORDER, order_item)
-            self._set_export_checkbox(row, {str(article.id)} if article is not None else set())
-        self._table.setSortingEnabled(True)
-        self._table.sortByColumn(_COL_ORDER, Qt.SortOrder.AscendingOrder)
+        else:
+            self._populate_individual(rows)
+            self._table.setSortingEnabled(True)
+            self._table.sortByColumn(_COL_ORDER, Qt.SortOrder.AscendingOrder)
         self._populating = False
 
+    def _article_class_groups(self, rows: list[tuple]) -> list[tuple[str, list[tuple]]]:
+        """Return exclusive article buckets matching Class Creation's groups.
+
+        Range basis uses each article's ProductRange assignment, never shared
+        property-name overlap. Article-set basis uses the materialized set
+        membership that Class Creation itself uses.
+        """
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return [("Unassigned", rows)] if rows else []
+        product = getattr(snapshot, "product", None)
+        category = (
+            (getattr(product, "category", "") or getattr(product, "range_name", "") or "").strip()
+            if product is not None else ""
+        ) or "Class"
+        service = self._context.engineering_class_service
+        groups = service.resolve_class_groups(snapshot, category)
+        if not groups:
+            return [("Unassigned", rows)] if rows else []
+
+        article_group: dict[str, str] = {}
+        basis = str(getattr(snapshot, "class_group_basis", "") or "range").lower()
+        if basis == "article_set":
+            sets = list(getattr(snapshot, "article_sets", None) or [])
+            for index, aset in enumerate(sets):
+                if index >= len(groups):
+                    continue
+                name = groups[index].name
+                for article_id in getattr(aset, "article_ids", []) or []:
+                    article_group[str(article_id)] = name
+        else:
+            product_ranges = getattr(snapshot, "product_range", None) or {}
+            rename = getattr(snapshot, "class_group_names", None) or {}
+            range_to_group = {}
+            for group in groups:
+                for raw_range in getattr(group, "source_ranges", ()) or ():
+                    range_to_group[str(raw_range)] = group.name
+            for _family, _member, article in rows:
+                if article is None:
+                    continue
+                raw_range = product_ranges.get(str(getattr(article, "product_id", "") or ""))
+                if raw_range:
+                    display_name = (rename.get(raw_range) or raw_range).strip()
+                    group_name = range_to_group.get(str(raw_range), display_name)
+                    if any(g.name == group_name for g in groups):
+                        article_group[str(article.id)] = group_name
+
+        buckets = {group.name: [] for group in groups}
+        unassigned = []
+        for record in rows:
+            article = record[2]
+            group_name = article_group.get(str(article.id)) if article is not None else None
+            if group_name in buckets:
+                buckets[group_name].append(record)
+            else:
+                unassigned.append(record)
+        result = [(name, bucket) for name, bucket in buckets.items() if bucket]
+        if unassigned:
+            # Keep every source row visible even when its ProductRange/set is
+            # missing or ignored by Class Creation.
+            result.append(("Unassigned", unassigned))
+        return result
+
+    def _populate_individual(self, rows: list[tuple]) -> None:
+            self._table.setHorizontalHeaderLabels(
+                ["Source Article", "Len", "Base Article", "Remaining",
+                 "Short Text", "Long Text", "Relation Object", "Code Scheme", "", "Export"]
+            )
+            self._table.setColumnHidden(_COL_REMAINING, False)
+            default_len = self._default_base_len()
+            for order, (family, member, article) in enumerate(rows):
+                row = self._table.rowCount()
+                self._table.insertRow(row)
+    
+                code = article.code if article is not None else ""
+                applied = self._applied_length(member)
+                has_length = applied is not None
+                length = applied if applied is not None else default_len
+                if (
+                    getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                    and getattr(member, "reduced_article", "")
+                ):
+                    base = member.reduced_article
+                    remaining = code[len(base):] if base and code.startswith(base) else ""
+                    length = len(base)
+                    has_length = True
+                else:
+                    base, remaining = self._split_base(code, length)
+    
+                source_item = QTableWidgetItem(code)
+                source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
+                self._set_readonly(source_item)
+                self._table.setItem(row, _COL_SOURCE, source_item)
+    
+                base_item = QTableWidgetItem(base)
+                self._set_readonly(base_item)
+                self._table.setItem(row, _COL_BASE, base_item)
+    
+                remaining_item = QTableWidgetItem(remaining)
+                self._set_readonly(remaining_item)
+                self._table.setItem(row, _COL_REMAINING, remaining_item)
+    
+                len_item = QTableWidgetItem()
+                # Empty until a base length is actually applied to this member, so an
+                # empty Len cell always means "not applied" (including after Clear).
+                if has_length:
+                    len_item.setData(Qt.ItemDataRole.DisplayRole, len(base))
+                len_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                len_item.setToolTip("Edit the base length for this article.")
+                self._table.setItem(row, _COL_LEN, len_item)
+    
+                # Editable: short text defaults to the generic product-TYPE name
+                # (product name up to the first '/', e.g. 'Always Chair') so the
+                # shortened article reads generically, not the full permutation; the
+                # user's override (member.short_description) wins when present.
+                short_default = member.short_description or (
+                    self._context.product_type_name(article.product_id)
+                    if article is not None else ""
+                ) or (article.description if article is not None else "")
+                self._table.setItem(row, _COL_SHORT, QTableWidgetItem(short_default))
+    
+                # Editable: long text defaults to the article's product name (from
+                # the shared product registry), falling back to the article's own
+                # name; the user's override (member.long_description) wins.
+                long_default = self._effective_long_text(member, article)
+                self._table.setItem(row, _COL_LONG, QTableWidgetItem(long_default))
+    
+                # Editable: relation object defaults to P_<base>; the user's
+                # override (member.relation_object) wins when present.
+                relation_default = member.relation_object or (f"P_{base}" if base else "")
+                self._table.setItem(row, _COL_RELATION, QTableWidgetItem(relation_default))
+    
+                # Code Scheme defaults to the base article; a saved override wins.
+                self._table.setItem(
+                    row, _COL_SCHEME, QTableWidgetItem(member.code_scheme or base)
+                )
+    
+                order_item = QTableWidgetItem()
+                order_item.setData(Qt.ItemDataRole.DisplayRole, order)
+                self._set_readonly(order_item)
+                self._table.setItem(row, _COL_ORDER, order_item)
+                self._set_export_checkbox(row, {str(article.id)} if article is not None else set())
+    
     def _populate_grouped(self, rows: list[tuple]) -> None:
         """One row per Base Article (the reduced prefix): line-item count +
         distinct variants, with per-base text/relation applying to all members."""
@@ -1514,6 +1616,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     def _on_group_toggled(self, checked: bool) -> None:
         self._group_by_base = checked
+        self._apply_filter()
+
+    def _on_class_group_toggled(self, checked: bool) -> None:
         self._apply_filter()
 
     def _update_base_details(self, record) -> None:
