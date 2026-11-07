@@ -184,8 +184,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._price_date.setMaximumWidth(140)
         row.addWidget(self._price_date)
         row.addSpacing(8)
-        self._load_articles_button = self._button("Load Articles", self._load_articles)
-        row.addWidget(self._load_articles_button)
+        # Article lists load automatically when a program or series is selected.
         # Keep the related export and validator handoff actions in one dropdown,
         # matching the compact QToolButton style used by "Load OBX..." in Validation.
         self._obx_actions_button = QToolButton(self)
@@ -345,7 +344,6 @@ class PconArticleObxGeneratorPage(BasePage):
         self._manufacturer.setEnabled(idle and self._manufacturer.count() > 0)
         self._program.setEnabled(idle and self._program.count() > 0)
         self._series.setEnabled(idle and self._series.count() > 1)
-        self._load_articles_button.setEnabled(idle and has_program)
         self._article_filter.setEnabled(bool(self._articles))
         self._fabric_property.setEnabled(idle and self._fabric_property.count() > 1)
         has_exportable = self._outcome is not None and bool(self._outcome.exportable)
@@ -567,9 +565,11 @@ class PconArticleObxGeneratorPage(BasePage):
             for program in self._scan.programs_for(manufacturer_id):
                 self._program.addItem(f"{program.program} ({program.article_count})", program)
         self._program.blockSignals(False)
-        self._on_program_changed()
+        # Do not load the first program implicitly when only the manufacturer changes.
+        # Wait until the user chooses a program.
+        self._on_program_changed(auto_load=False)
 
-    def _on_program_changed(self) -> None:
+    def _on_program_changed(self, *, auto_load: bool = True) -> None:
         program = self._selected_program()
         self._series.blockSignals(True)
         self._series.clear()
@@ -580,19 +580,21 @@ class PconArticleObxGeneratorPage(BasePage):
             if len(program.series_ids) == 1:
                 self._series.setCurrentIndex(1)
         self._series.blockSignals(False)
-        self._on_series_changed()
+        self._on_series_changed(auto_load=auto_load)
 
-    def _on_series_changed(self) -> None:
+    def _on_series_changed(self, *, auto_load: bool = True) -> None:
         """Any change upstream invalidates the loaded articles; they must be loaded again."""
         had_articles = bool(self._articles)
         self._articles = []
         self._article_filter.clear()
         self._populate_articles()
         if had_articles:
-            self._set_status(self._catalogue_status, "Selection changed - load the articles again.")
+            self._set_status(self._catalogue_status, "Selection changed - loading the selected article list…")
         elif self._selected_program() is not None:
-            self._set_status(self._catalogue_status, "Choose a series and click Load Articles.")
+            self._set_status(self._catalogue_status, "Loading articles for the selected program…")
         self._update_controls()
+        if auto_load and self._selected_program() is not None:
+            self._load_articles()
 
     def _load_articles(self) -> None:
         program = self._selected_program()
