@@ -780,6 +780,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # Keep their data/reduction logic intact, but remove them from the
         # Maintenance layout so the article workspace stays focused.
         maintenance = module == WorkbenchModule.MAINTENANCE
+        if hasattr(self, "_table"):
+            self._table.setColumnHidden(9, not maintenance)
         self._apply_shell(maintenance)
         if hasattr(self, "_sets_box"):
             self._sets_box.setVisible(not maintenance)
