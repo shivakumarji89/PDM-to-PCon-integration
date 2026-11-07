@@ -264,7 +264,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             "are completed by the Text workflow."
         )
         self._export_mdb_btn.clicked.connect(self._on_export_component_mdb)
-        layout.addWidget(self._export_mdb_btn)
         self._sync_export_mdb_button()
 
         return box
@@ -619,10 +618,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             ) if w is not None
         ]
         self._shell_header = WorkflowHeader(self._title, self._description, self)
-        self._reload_header_btn = QPushButton("↻  Reload", self._shell_header)
-        self._reload_header_btn.setToolTip("Reload articles from the active PDM / MDB snapshots.")
-        self._reload_header_btn.clicked.connect(self.refresh)
-        self._shell_header.add_action(self._reload_header_btn, "secondary")
         self._content.insertWidget(0, self._shell_header)
 
         self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="▤", parent=self)
