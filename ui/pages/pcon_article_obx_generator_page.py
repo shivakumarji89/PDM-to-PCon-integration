@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QDate, QSettings, Qt, QTimer
+from PySide6.QtCore import QDate, QSettings, Qt, QTimer, QSortFilterProxyModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -213,7 +213,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._obx_actions_button.setMenu(obx_menu)
         self._obx_actions_button.setEnabled(False)
         row.addWidget(self._obx_actions_button)
-        self._diagnostics_button = self._button("Price Diagnostics", self._price_generated_skus)
+        self._diagnostics_button = self._button("Price Selected", self._price_generated_skus)
         self._diagnostics_button.setEnabled(False)
         self._diagnostics_button.setToolTip(
             "Apply the selected currency and price date from ocd_price.csv to the already-generated SKU list. "
@@ -300,9 +300,29 @@ class PconArticleObxGeneratorPage(BasePage):
         layout.addWidget(self._generation_status)
 
         # Virtual model: hundreds of thousands of SKUs are shown without building a widget item per cell.
+        result_filter_row = QHBoxLayout()
+        result_filter_row.addWidget(QLabel("Filter SKUs:"))
+        self._result_filter = QLineEdit(self)
+        self._result_filter.setPlaceholderText("Article number, final SKU, variant, configuration or status")
+        self._result_filter.setClearButtonEnabled(True)
+        result_filter_row.addWidget(self._result_filter, 1)
+        self._result_count = QLabel("0 SKUs", self)
+        result_filter_row.addWidget(self._result_count)
+        layout.addLayout(result_filter_row)
+
         self._result_model = SkuResultsModel(self)
+        self._result_proxy = QSortFilterProxyModel(self)
+        self._result_proxy.setSourceModel(self._result_model)
+        self._result_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._result_proxy.setFilterKeyColumn(-1)
+        self._result_proxy.setDynamicSortFilter(True)
+        self._result_filter.textChanged.connect(self._result_proxy.setFilterFixedString)
+        self._result_proxy.rowsInserted.connect(self._update_result_count)
+        self._result_proxy.rowsRemoved.connect(self._update_result_count)
+        self._result_proxy.modelReset.connect(self._update_result_count)
         self._result_table = QTableView(self)
-        self._result_table.setModel(self._result_model)
+        self._result_table.setModel(self._result_proxy)
+        self._result_table.selectionModel().selectionChanged.connect(self._update_controls)
         self._result_table.horizontalHeader().setResizeContentsPrecision(200)
         self._result_table.verticalHeader().setDefaultSectionSize(24)
         self._result_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -350,7 +370,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._obx_actions_button.setEnabled(idle and has_exportable)
         self._export_action.setEnabled(idle and has_exportable)
         self._validator_action.setEnabled(idle and has_exportable)
-        self._diagnostics_button.setEnabled(idle and self._outcome is not None and bool(self._outcome.skus))
+        selected_skus = bool(self._result_table.selectionModel().selectedRows()) if hasattr(self, "_result_table") else False
+        self._diagnostics_button.setEnabled(idle and self._outcome is not None and selected_skus)
 
     # --------------------------------------------------------------- helpers
     def _progress_monitor(self) -> ProgressDialog:
@@ -734,6 +755,7 @@ class PconArticleObxGeneratorPage(BasePage):
     def _on_generated(self, outcome: GenerationOutcome) -> None:
         self._outcome = outcome
         self._result_model.set_results(outcome.skus)
+        self._update_result_count()
 
         summary = (
             f"Generated {len(outcome.skus):,} valid unique SKU(s) from {outcome.configurations:,} configuration(s), "
@@ -743,7 +765,7 @@ class PconArticleObxGeneratorPage(BasePage):
             f"{', ' + str(outcome.duplicates) + ' duplicate SKU(s) removed' if outcome.duplicates else ''}"
             f"{' (limit reached)' if outcome.truncated else ''}."
         )
-        summary += " Pricing not run; choose a currency and date, then click Price Diagnostics."
+        summary += " Pricing not run; filter the list, select SKU rows, then click Price Selected."
         self._generation_status.setText(summary)
         self._generation_status.setStyleSheet(
             f"color: {theme.COLOR_OK if outcome.skus and not outcome.truncated else theme.COLOR_WARNING};")
@@ -756,35 +778,51 @@ class PconArticleObxGeneratorPage(BasePage):
         """Apply the chosen OCD CSV price list to the existing SKU rows without re-enumerating."""
         outcome, program = self._outcome, self._outcome_program
         if outcome is None or program is None or not outcome.skus:
-            QMessageBox.information(self, "Price Diagnostics", "Generate valid SKUs first.")
+            QMessageBox.information(self, "Price Selected", "Generate valid SKUs first.")
+            return
+        selected_rows = sorted({index.row() for index in self._result_table.selectionModel().selectedRows()})
+        source_rows = [self._result_proxy.mapToSource(self._result_proxy.index(row, 0)).row()
+                       for row in selected_rows]
+        if not source_rows:
+            QMessageBox.information(self, "Price Selected", "Filter the SKU list and select one or more rows first.")
             return
         currency = self._currency.currentText().strip()
         price_date = self._price_date.date().toString("yyyy-MM-dd")
         generator = self._generator_for(program)
-        skus = outcome.skus
-        self._generation_status.setText(f"Applying {currency or 'selected'} prices from ocd_price.csv…")
+        skus = [outcome.skus[row] for row in source_rows]
+        self._generation_status.setText(
+            f"Applying {currency or 'selected'} prices from ocd_price.csv to {len(skus):,} selected SKU(s)…")
 
         def work(reporter):
-            reporter.note(f"Pricing {len(skus):,} existing SKU(s)")
+            reporter.note(f"Pricing {len(skus):,} selected SKU(s)")
             return generator.price_skus(skus, currency=currency, price_date=price_date, reporter=reporter)
 
         def finished(priced_skus):
-            outcome.skus = priced_skus
+            for source_row, priced_sku in zip(source_rows, priced_skus):
+                outcome.skus[source_row] = priced_sku
             self._outcome_price_date = price_date
             self._result_model.set_results(outcome.skus)
+            self._update_result_count()
             self._generation_status.setText(
-                f"Price diagnostics complete: {len(outcome.exportable):,} priced, "
-                f"{outcome.unpriced:,} unpriced SKU(s) in {currency} for {price_date}. "
-                "SKU enumeration was not repeated.")
+                f"Price selection complete: {len(priced_skus):,} selected SKU(s) processed; "
+                f"{len(outcome.exportable):,} total priced and {outcome.unpriced:,} unpriced SKU(s) "
+                f"in {currency} for {price_date}. Other rows were not changed.")
             self._generation_status.setStyleSheet(
-                f"color: {theme.COLOR_OK if outcome.exportable else theme.COLOR_WARNING};")
+                f"color: {theme.COLOR_OK if priced_skus and all(s.price is not None for s in priced_skus) else theme.COLOR_WARNING};")
             self._update_controls()
             self._show_price_diagnostics()
 
-        # The engine reports one completed progress unit per 500 priced SKUs.
         pricing_steps = max(1, (len(skus) + 499) // 500)
-        self._start("Price Diagnostics", work, finished, steps=pricing_steps,
-                    subject=f"{len(skus):,} SKU(s) - {currency} - {price_date}")
+        self._start("Price Selected", work, finished, steps=pricing_steps,
+                    subject=f"{len(skus):,} selected SKU(s) - {currency} - {price_date}")
+
+    def _update_result_count(self, *args) -> None:
+        if not hasattr(self, "_result_count"):
+            return
+        visible = self._result_proxy.rowCount()
+        total = self._result_model.rowCount()
+        selected = len(self._result_table.selectionModel().selectedRows()) if self._result_table.selectionModel() else 0
+        self._result_count.setText(f"{visible:,} of {total:,} SKUs · {selected:,} selected")
 
     def _price_diagnostics_text(self) -> str:
         """Diagnostics for the selected result row, or the first one; empty when nothing was generated."""
@@ -792,7 +830,8 @@ class PconArticleObxGeneratorPage(BasePage):
         if outcome is None or program is None or not outcome.skus:
             return ""
         rows = self._result_table.selectionModel().selectedRows() if self._result_table.selectionModel() else []
-        sku = outcome.skus[rows[0].row()] if rows else outcome.skus[0]
+        source_row = self._result_proxy.mapToSource(rows[0]).row() if rows else 0
+        sku = outcome.skus[source_row]
         try:
             lines = self._generator_for(program).price_diagnostics(
                 sku.base_article, varconds=sku.varconds, currency=sku.currency,
