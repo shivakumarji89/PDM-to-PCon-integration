@@ -176,7 +176,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         window = self.window()
         if (
             snapshot is not None
-            and getattr(window, "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            and self.is_development_mode()
         ):
             self._context.engineering_reduction_service.materialize_class_creation_article_sets(
                 snapshot
@@ -375,7 +375,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         svc = self._context.engineering_reduction_service
         if (
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            self.is_development_mode()
             and getattr(snapshot, "article_sets", None)
         ):
             # Development Class Creation removes configured pre-dot segments,
@@ -514,7 +514,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         control, signal and data path is the existing one.
         """
         self._group_class_check.setVisible(
-            on and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+            on and self.is_maintenance_mode()
         )
         if on == self._shell_on:
             return
@@ -525,7 +525,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             w.setVisible(not on)
         self._shell_header.setVisible(on)
         # Maintenance Articles no longer needs the summary KPI cards; keep them in Development.
-        self._kpi_row.setVisible(on and getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE)
+        self._kpi_row.setVisible(on and not self.is_maintenance_mode())
         body, top = self._body_layout, self._top_layout
         toolbar = self._toolbar_box
         buttons = (
@@ -795,7 +795,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # This bulk boundary action belongs to Maintenance; Development's
         # Class Creation workflow and toolbar remain unchanged.
         if hasattr(self, "_dot_base_btn"):
-            self._dot_base_btn.setVisible(module == WorkbenchModule.MAINTENANCE)
+            self._dot_base_btn.setVisible(self.is_maintenance_mode())
         # Article Sets and Workspace Status are Development-only panels.
         # Keep their data/reduction logic intact, but remove them from the
         # Maintenance layout so the article workspace stays focused.
@@ -1658,7 +1658,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     # -- editing -----------------------------------------------------------
     def _on_rebuild_from_class_creation(self) -> None:
         """Explicitly rebuild the Development Article view from Class Creation."""
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self.is_development_mode():
             return
         snapshot = self._context.active_snapshot
         if snapshot is None:
