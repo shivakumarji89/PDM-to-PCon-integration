@@ -324,7 +324,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
     def _price_list_mode(self) -> str:
         """Select creation vs maintenance behavior from the active module."""
         module = getattr(self.window(), "_active_module", None)
-        return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
+        return "new_creation" if self.is_development_mode() else "maintenance"
 
     def _price_list_currencies(self) -> list[str]:
         """Return currencies for the price-list workflow.
@@ -379,7 +379,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None:
             return
         module = getattr(self.window(), "_active_module", None)
-        if module != WorkbenchModule.DEVELOPMENT or snapshot.price_lists:
+        if not self.is_development_mode() or snapshot.price_lists:
             return
         if getattr(self, "_default_price_list_snapshot", None) is snapshot:
             return
@@ -503,7 +503,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         explicit = str(getattr(snapshot, "generation_program", "") or "")
         if explicit.strip():
             return explicit
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE:
+        if not self.is_maintenance_mode():
             return explicit
         state = self._context.maintenance_snapshot
         info = self._context.maintenance_repository_info or {}
