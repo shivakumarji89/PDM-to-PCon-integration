@@ -65,7 +65,6 @@ from ui.widgets.background_status import BackgroundStatusIndicator
 from ui.components.workflow_shell import AppHeaderBar, WorkflowSidebar
 from ui.components.workflow_styles import set_button_role
 from ui.widgets.data_table import standardize_table
-from ui.widgets.maintenance_source_tabs import MaintenanceSourceTabs
 from ui.widgets.explorer_tree import standardize_tree
 
 
@@ -198,29 +197,6 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage(f"Ready - {title} workspace")
 
-        # Keep the shared selector's helper text meaningful as the user moves
-        # between the PDM product explorer, source-specific workflows and
-        # cross-source review pages.
-        if self._product_data_context_active:
-            page = self._pages.get(step)
-            if page is self._product_page:
-                self._workspace_source_tabs.set_indicator(
-                    "Product Explorer uses PDM; both snapshots remain visible"
-                )
-            elif page in (
-                self._pages.get(WorkflowStep.REVIEW),
-                self._pages.get(WorkflowStep.MAINTENANCE_COMPARISON),
-            ):
-                self._workspace_source_tabs.set_indicator(
-                    "Cross-source review · PDM and MDB"
-                )
-            else:
-                selected = self._workspace_source_tabs.source.upper()
-                self._workspace_source_tabs.set_indicator(
-                    f"Selected source: {selected}"
-                    + (" (read-only)" if selected == "MDB" else "")
-                )
-
     def log_activity(self, kind: str, message: str) -> None:
         """Forward a detailed activity line to the Engineering Activity panel.
 
@@ -236,7 +212,6 @@ class MainWindow(QMainWindow):
 
 
     def _on_snapshot_changed(self) -> None:
-        self._sync_product_data_mode()
         self.refresh_workspaces()
 
     #: Workspaces that read the Snapshot's product data directly, refreshed as
@@ -500,11 +475,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
-        # Product Data Workspace has one automatic operating mode. The mode is
-        # inferred from the two independently retained snapshots; there is no
-        # manual Development / Maintenance selector.
-        self._product_data_context_active = False
-
         self._legacy_nav_spacer = QWidget(container)
         self._legacy_nav_spacer.setFixedHeight(theme.SECTION_SPACING)
         layout.addWidget(self._legacy_nav_spacer)
@@ -518,39 +488,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._sidebar, 1)
         return container
 
-    def _resolve_product_data_mode(self) -> WorkbenchModule:
-        """Infer Development or Maintenance from the loaded PDM/MDB snapshots.
-
-        A loaded PDM snapshot without a non-empty imported MDB article
-        baseline is Development. Maintenance starts only when the released MDB
-        contains article data as well as the PDM snapshot.
-        """
-        mdb_snapshot = self._context.mdb_import_snapshot
-        has_released_mdb_articles = bool(
-            mdb_snapshot is not None
-            and getattr(mdb_snapshot, "articles", None)
-        )
-        if self._context.pdm_snapshot is not None and has_released_mdb_articles:
-            return WorkbenchModule.MAINTENANCE
-        return WorkbenchModule.DEVELOPMENT
-
-    def _sync_product_data_mode(self) -> None:
-        """Re-evaluate the workspace mode after either source snapshot changes."""
-        if not self._product_data_context_active:
-            return
-        mode = self._resolve_product_data_mode()
-        if self._active_module != mode:
-            self._on_module_selected(mode)
-
     def _on_module_selected(self, module: WorkbenchModule) -> None:
-        """Enter a module; Product Data Workspace mode is inferred from its data."""
-        if module == WorkbenchModule.PRODUCT_DATA_WORKSPACE:
-            self._product_data_context_active = True
-            module = self._resolve_product_data_mode()
-        elif module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE) or not self._product_data_context_active:
-            self._product_data_context_active = False
+        """Enter Level 2 and expose only the workflows for the selected module."""
         self._active_module = module
-        self._workspace_source_tabs.setVisible(self._product_data_context_active)
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
         steps = list(module_workflows(module))
@@ -654,46 +594,22 @@ class MainWindow(QMainWindow):
             description = next(
                 (item.description for item in MODULE_ITEMS if item.module == module), ""
             )
-            if module == WorkbenchModule.DEVELOPMENT:
-                description = "Product Data Workspace · Product Engineering"
-            elif module == WorkbenchModule.MAINTENANCE:
-                description = "Product Data Workspace · Product Maintenance"
             self._sidebar.set_module(
-                "Product Data Workspace" if self._product_data_context_active else module_title(module),
-                description,
+                module_title(module), description,
                 [items_by_step[step] for step in steps if step in items_by_step],
             )
             self._refresh_app_header()
 
 
     def _configure_maintenance_page_actions(self, steps) -> None:
-        """Attach Maintenance actions once and show them only in Maintenance mode."""
+        """Add consistent Reload and Export MDB actions to Maintenance workflow headers."""
         from PySide6.QtWidgets import QPushButton
 
-        maintenance = self._active_module == WorkbenchModule.MAINTENANCE
-        maintenance_steps = tuple(
-            step for step in module_workflows(WorkbenchModule.MAINTENANCE)
-            if step != WorkflowStep.REVIEW
-        )
+        maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
         for step in maintenance_steps:
             page = self._pages.get(step)
-            if page is None:
-                continue
-
-            # These controls belong exclusively to Maintenance. Keep their
-            # visibility synchronized even when a page's shell header is
-            # created lazily or replaced after its first activation.
-            for name in (
-                "_maintenance_reload_button",
-                "_maintenance_refresh_pdm_button",
-                "_maintenance_export_mdb_button",
-            ):
-                button = getattr(page, name, None)
-                if button is not None:
-                    button.setVisible(maintenance)
-
-            header = getattr(page, "header", None)
-            if header is None:
+            header = getattr(page, "header", None) if page is not None else None
+            if header is None and page is not None:
                 # Articles replaces its base header with a lazily-created shell
                 # header. Reattach the same persistent buttons when that happens.
                 header = getattr(page, "_shell_header", None)
@@ -702,17 +618,11 @@ class MainWindow(QMainWindow):
 
             if not hasattr(page, "_maintenance_reload_button"):
                 reload_button = QPushButton("↻  Reload", page)
-                reload_button.setToolTip(
-                    "Reload this workflow from the current Maintenance snapshot"
-                )
-                reload_handler = (
-                    page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
-                )
+                reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
+                reload_handler = page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
                 reload_button.clicked.connect(reload_handler)
                 page._maintenance_reload_button = reload_button
-            if step == WorkflowStep.PRODUCT and not hasattr(
-                page, "_maintenance_refresh_pdm_button"
-            ):
+            if step == WorkflowStep.PRODUCT and not hasattr(page, "_maintenance_refresh_pdm_button"):
                 refresh_pdm_button = QPushButton("↻  Refresh PDM", page)
                 refresh_pdm_button.setToolTip(
                     "Fetch the latest Catalogue → Category → Product hierarchy from PDM "
@@ -722,9 +632,7 @@ class MainWindow(QMainWindow):
                 page._maintenance_refresh_pdm_button = refresh_pdm_button
             if not hasattr(page, "_maintenance_export_mdb_button"):
                 export_button = QPushButton("⇩  Export to MDB", page)
-                export_button.setToolTip(
-                    "Export selected Articles or the current workflow snapshot to MDB"
-                )
+                export_button.setToolTip("Export selected Articles or the current workflow snapshot to MDB")
                 export_handler = getattr(page, "_on_export_component_mdb", None)
                 if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
                     export_handler = page._on_export_prices
@@ -732,11 +640,6 @@ class MainWindow(QMainWindow):
                     export_handler = self._on_export_mdb
                 export_button.clicked.connect(export_handler)
                 page._maintenance_export_mdb_button = export_button
-
-            page._maintenance_reload_button.setVisible(maintenance)
-            page._maintenance_export_mdb_button.setVisible(maintenance)
-            if step == WorkflowStep.PRODUCT:
-                page._maintenance_refresh_pdm_button.setVisible(maintenance)
 
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
@@ -768,34 +671,9 @@ class MainWindow(QMainWindow):
             button = self._app_header.settings_button
             menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
 
-    def _on_workspace_source_changed(self, source: str) -> None:
-        """Refresh the active page using the workspace-wide PDM/MDB selection."""
-        page = self._stack.currentWidget()
-        handler = getattr(page, "_on_source_changed", None)
-        if callable(handler):
-            handler(source)
-            return
-        # Product is intentionally a dual-source overview: product discovery
-        # and loading remain PDM-owned while its table summary shows both
-        # snapshots side by side. Do not redirect the PDM loader to MDB.
-        if page is self._product_page:
-            self._workspace_source_tabs.set_indicator(
-                "Product Explorer uses PDM; both snapshots remain visible"
-            )
-            self._product_page._refresh_maintenance_source_table()
-        elif page in (
-            self._pages.get(WorkflowStep.REVIEW),
-            self._pages.get(WorkflowStep.MAINTENANCE_COMPARISON),
-        ):
-            self._workspace_source_tabs.set_indicator(
-                "Cross-source review · PDM and MDB"
-            )
-
     def _show_module_home(self) -> None:
         """Return to Level 1 and hide all workflow-specific UI."""
-        self._workspace_source_tabs.hide()
         self._active_module = None
-        self._product_data_context_active = False
         self._apply_shell_chrome(None, [])
         self._left_panel.hide()
         self._nav_footer.hide()
@@ -835,16 +713,6 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
         layout.setSpacing(theme.SECTION_SPACING)
-        # One persistent PDM/MDB selector for the entire Product Data Workspace.
-        # Individual workflow pages consume this shared selection; they do not
-        # create their own tab bars.
-        self._workspace_source_tabs = MaintenanceSourceTabs(container)
-        self._workspace_source_tabs.setObjectName("productDataWorkspaceSourceTabs")
-        self._workspace_source_tabs.source_changed.connect(
-            self._on_workspace_source_changed
-        )
-        self._workspace_source_tabs.hide()
-        layout.addWidget(self._workspace_source_tabs)
         # Keep the footer fixed while allowing the active workflow page to
         # scroll inside the workspace when its content minimum exceeds the
         # available screen height. The scroll area wraps only the page stack;
@@ -1121,7 +989,8 @@ class MainWindow(QMainWindow):
             project = self._context.project_service.load_project(path)
         except Exception as error:  # noqa: BLE001 (surface any load failure)
             QMessageBox.critical(
-                self, "Open Project", f"Could not open project:\n{error}"
+                self, "Open Project", f"Could not open project:
+{error}"
             )
             return
         self._remember_project_dir(path)
@@ -1173,7 +1042,8 @@ class MainWindow(QMainWindow):
             )
         except Exception as error:  # noqa: BLE001 (surface any save failure)
             QMessageBox.critical(
-                self, "Save Project", f"Could not save project:\n{error}"
+                self, "Save Project", f"Could not save project:
+{error}"
             )
             return False
         self._remember_project_dir(str(saved))
@@ -1295,18 +1165,27 @@ class MainWindow(QMainWindow):
             rows = service.to_csv_rows(table)
             filename = f"{table.name}_tbl.csv"
             (out / filename).write_text(
-                "\r\n".join(rows) + "\r\n", encoding="utf-8"
+                "\r
+".join(rows) + "\r
+", encoding="utf-8"
             )
             written.append(filename)
             constraints.append(service.constraint_body(table))
         (out / "value_table_constraints.txt").write_text(
-            "\r\n\r\n".join(constraints) + "\r\n", encoding="utf-8"
+            "\r
+\r
+".join(constraints) + "\r
+", encoding="utf-8"
         )
         written.append("value_table_constraints.txt")
         QMessageBox.information(
             self, "Export Value Tables",
-            f"Exported {len(written)} file(s) to:\n{directory}\n\n"
-            + "\n".join(written),
+            f"Exported {len(written)} file(s) to:
+{directory}
+
+"
+            + "
+".join(written),
         )
 
     def _on_export_xocd(self) -> None:
@@ -1459,7 +1338,9 @@ class MainWindow(QMainWindow):
 
         if exit_code != 0:
             detail = error_text.strip() or output.strip() or f"svn.exe exited with code {exit_code}."
-            self._xocd_publish_failed(f"SVN {stage} failed.\n\n{detail}")
+            self._xocd_publish_failed(f"SVN {stage} failed.
+
+{detail}")
             return
 
         if stage == "cleanup":
@@ -1483,7 +1364,9 @@ class MainWindow(QMainWindow):
                 snapshot, xocd, force=True
             )
             if result.error:
-                self._xocd_publish_failed(f"XOCD export failed:\n\n{result.error}")
+                self._xocd_publish_failed(f"XOCD export failed:
+
+{result.error}")
                 return
 
             self._xocd_publish_program = result.program
@@ -1517,7 +1400,9 @@ class MainWindow(QMainWindow):
                 )
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not determine which XOCD files need to be added.\n\n{exc}"
+                    f"Could not determine which XOCD files need to be added.
+
+{exc}"
                 )
                 return
 
@@ -1562,7 +1447,9 @@ class MainWindow(QMainWindow):
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not verify SVN freshness before commit.\n\n{exc}"
+                    f"Could not verify SVN freshness before commit.
+
+{exc}"
                 )
                 return
 
@@ -1588,7 +1475,8 @@ class MainWindow(QMainWindow):
         if stage == "commit":
             revision = ""
             import re
-            match = re.search(r"Committed revision (\d+)\.", output + "\n" + error_text)
+            match = re.search(r"Committed revision (\d+)\.", output + "
+" + error_text)
             if match:
                 revision = match.group(1)
             self._xocd_publish_revision = revision
@@ -1619,12 +1507,17 @@ class MainWindow(QMainWindow):
                 if dirty:
                     self._xocd_publish_failed(
                         "SVN commit finished, but validation found remaining "
-                        "changes in generated files:\n\n" + "\n".join(dirty)
+                        "changes in generated files:
+
+" + "
+".join(dirty)
                     )
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Commit completed, but final SVN validation failed.\n\n{exc}"
+                    f"Commit completed, but final SVN validation failed.
+
+{exc}"
                 )
                 return
 
@@ -1644,9 +1537,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Export XOCD",
-                f"XOCD commit completed successfully.\n\n"
+                f"XOCD commit completed successfully.
+
+"
                 f"Files committed: {len(self._xocd_publish_files)}"
-                + (f"\nRevision: {revision}" if revision else "")
+                + (f"
+Revision: {revision}" if revision else "")
                 + extra,
             )
             return
@@ -1782,7 +1678,8 @@ class MainWindow(QMainWindow):
 
         if not result.ok or result.error:
             QMessageBox.warning(
-                self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
+                self, "Export MDB", f"Export failed:
+{result.error or 'unknown error'}"
             )
             return
 
@@ -1790,8 +1687,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Export MDB",
             f"Exported '{result.template}' MDB ({total} rows across "
-            f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
-            + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
+            f"{len(result.table_counts)} table(s)) into:
+{result.mdb_path}"
+            + (f"
+
+Standardised {standardised} base article(s) to CAD Maintenance."
                if standardised else ""),
         )
 
@@ -1856,7 +1756,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dlg)
 
         if warnings:
-            warn = QLabel("\n".join(warnings), dlg)
+            warn = QLabel("
+".join(warnings), dlg)
             warn.setWordWrap(True)
             warn.setObjectName("pageSubtitle")
             layout.addWidget(warn)
