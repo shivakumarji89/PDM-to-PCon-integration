@@ -116,7 +116,8 @@ class BulkPdmPriceUpdateService:
         return sorted(discovered.values(), key=lambda x: (x["name"].casefold(), x["path"].casefold()))
 
     def _extract_temporary_pricing_context(
-        self, repository_path: str, mdb_path: Path, expected_program: str
+        self, repository_path: str, mdb_path: Path, expected_program: str,
+        effective_date: date,
     ) -> TemporarySeriesPricingContext:
         """Extract the pricing configuration from this series MDB only.
 
@@ -157,6 +158,8 @@ class BulkPdmPriceUpdateService:
             raise ValueError(
                 "Series MDB has no usable non-default price lists with currency and label."
             )
+        from services.price_list_targets import DATE_MAX, DATE_MIN, normalize_mdb_date
+
         currencies = {str(item.currency).strip().upper() for item in price_lists}
         required = {"EUR", "GBP"}
         missing = sorted(required - currencies)
@@ -165,6 +168,34 @@ class BulkPdmPriceUpdateService:
                 "Series MDB is missing required Maintenance pricing currency list(s): "
                 + ", ".join(missing)
             )
+
+        # PricingService computes each supported currency. Before invoking it,
+        # prove that this series has exactly one applicable list for every
+        # currency on the requested date. Overlapping lists are ambiguous and
+        # must never be resolved by table order.
+        day = effective_date.strftime("%Y%m%d")
+        for currency in sorted(currencies):
+            applicable = []
+            for price_list in price_lists:
+                if str(price_list.currency).strip().upper() != currency:
+                    continue
+                start = normalize_mdb_date(price_list.date_from, DATE_MIN)
+                end = normalize_mdb_date(price_list.date_to, DATE_MAX)
+                if start <= day <= end:
+                    applicable.append(price_list)
+            if not applicable:
+                raise ValueError(
+                    f"Series MDB has no {currency} price list valid on {day}. "
+                    "No PDM pricing request or MDB write was attempted."
+                )
+            if len(applicable) > 1:
+                labels = ", ".join(
+                    f"{item.label or item.id} (ID {item.id})" for item in applicable
+                )
+                raise ValueError(
+                    f"Series MDB has overlapping {currency} price lists valid on {day}: "
+                    f"{labels}. Resolve the list configuration before updating."
+                )
 
         return TemporarySeriesPricingContext(
             repository_path=str(Path(repository_path).resolve()),
@@ -245,7 +276,7 @@ class BulkPdmPriceUpdateService:
                 identity = link_service.inspect_repository(path)
                 program = validate_pricing_program(identity.get("code", ""))
                 temporary = self._extract_temporary_pricing_context(
-                    path, mdb_path, program
+                    path, mdb_path, program, day
                 )
 
                 # Isolated PDM snapshot: never publish it to SnapshotManager and
