@@ -524,7 +524,12 @@ class MainWindow(QMainWindow):
         A loaded PDM snapshot without an imported MDB baseline is Development.
         When both snapshots exist, the same workspace operates in Maintenance.
         """
-        if self._context.pdm_snapshot is not None and self._context.mdb_import_snapshot is not None:
+        mdb_snapshot = self._context.mdb_import_snapshot
+        has_released_mdb_articles = bool(
+            mdb_snapshot is not None
+            and getattr(mdb_snapshot, "articles", None)
+        )
+        if self._context.pdm_snapshot is not None and has_released_mdb_articles:
             return WorkbenchModule.MAINTENANCE
         return WorkbenchModule.DEVELOPMENT
 
