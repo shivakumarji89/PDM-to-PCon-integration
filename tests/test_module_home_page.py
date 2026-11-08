@@ -11,7 +11,6 @@ from core.modules import WorkbenchModule
 from ui.pages.module_home_page import ModuleHomePage
 
 PRIMARY = (
-    WorkbenchModule.DEVELOPMENT,
     WorkbenchModule.MAINTENANCE,
     WorkbenchModule.METATYPE,
     WorkbenchModule.OAP,
@@ -200,11 +199,11 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
             assert not page._maintenance_reload_button.isHidden()
             assert not page._maintenance_export_mdb_button.isHidden()
 
-        window._show_module_home()
-        window._on_module_selected(WorkbenchModule.DEVELOPMENT)
+        # There is no separate Development module; the same Maintenance
+        # workflow remains active regardless of whether MDB is loaded.
+        assert WorkbenchModule.DEVELOPMENT not in tiles
         for page in maintenance_pages:
             if hasattr(page, "_maintenance_reload_button"):
-                assert page._maintenance_reload_button.isHidden()
-                assert page._maintenance_export_mdb_button.isHidden()
+                assert not page._maintenance_reload_button.isHidden()
     finally:
         _dispose_window(window)
