@@ -656,7 +656,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         group_defs = (
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
-            [self._dot_base_btn, self._copy_long_btn, self._components_btn],
+            [self._dot_base_btn, self._copy_long_btn, self._components_btn, self._clear_btn],
             [self._group_check, self._group_class_check],
         )
         self._toolbar_groups = []
@@ -770,9 +770,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
-        # Base-to-dot is a Maintenance-side bulk boundary action.
+        # This bulk boundary action is part of the unified Articles workspace.
         if hasattr(self, "_dot_base_btn"):
-            self._dot_base_btn.setVisible(self.is_maintenance_mode())
+            self._dot_base_btn.setVisible(True)
         # Article Sets and Workspace Status are Development-only panels.
         # Keep their data/reduction logic intact, but remove them from the
         # Maintenance layout so the article workspace stays focused.
