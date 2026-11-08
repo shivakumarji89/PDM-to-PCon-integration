@@ -1697,8 +1697,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if mdb_attribute_ids:
             props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
         development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
+            self.is_development_mode()
         )
         snapshot = self._context.active_snapshot
         # Value ids that will actually get a relation (subset-confined); generic
@@ -2135,7 +2134,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                         combo.addItem(effective_code)
                     # Development Class Creation permits correction of every
                     # value code, not only inferred/configuration codes.
-                    if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                    if self.is_development_mode():
                         combo.setEditable(True)
                     pos = combo.findText(effective_code)
                     combo.setCurrentIndex(pos if pos >= 0 else 0)
@@ -2321,7 +2320,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._move_down_btn.setEnabled(development and has_prop)
 
     def _on_attr_context_menu(self, pos) -> None:
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self.is_development_mode():
             return
         item = self._attr_tree.itemAt(pos)
         if item is None:
