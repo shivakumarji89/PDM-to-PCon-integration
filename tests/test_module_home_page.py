@@ -306,6 +306,10 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
         assert window._product_data_context_active
         assert window._manager.steps() == expected_maintenance
         assert WorkflowStep.MAINTENANCE_COMPARISON in expected_maintenance
+        assert WorkflowStep.REVIEW in expected_maintenance
+        assert expected_maintenance.index(WorkflowStep.REVIEW) < expected_maintenance.index(
+            WorkflowStep.MAINTENANCE_COMPARISON
+        )
         assert not window._workspace_source_tabs.isHidden()
 
         # Existing Maintenance actions remain attached to their original pages.
