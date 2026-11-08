@@ -351,9 +351,16 @@ class BulkRepositoryLinkPage(_BulkPage):
         selected = [self._repositories[r] for r in range(self._table.rowCount())
                     if self._table.item(r, 0).checkState() == Qt.CheckState.Checked]
         if not selected:
-            QMessageBox.information(self, "Repository Link", "Select at least one published series."); return
-        answer = QMessageBox.question(self, "Confirm Repository Links",
-            f"Link {len(selected)} selected series to {self._loaded_product.code} — {self._loaded_product.name}?",
+            QMessageBox.information(self, "Repository Link", "Select one published series."); return
+        if len(selected) != 1:
+            QMessageBox.information(
+                self, "Repository Link",
+                "Link one series at a time. Load the matching PDM product before linking each series; "
+                "this prevents accidentally assigning one product to unrelated series.",
+            )
+            return
+        answer = QMessageBox.question(self, "Confirm Repository Link",
+            f"Link {selected[0][0]['name']} to {self._loaded_product.code} — {self._loaded_product.name}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
         service = self._context.maintenance_repository_link_service
