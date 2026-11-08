@@ -198,6 +198,7 @@ def test_oversized_window_is_fitted_to_the_screen(app):
 
 def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
     from core.modules import module_workflows
+    from core.workflow import WorkflowStep
     from ui.main_window import MainWindow
 
     window = MainWindow()
@@ -216,7 +217,12 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
         maintenance_pages = [window._pages[s] for s in module_workflows(WorkbenchModule.MAINTENANCE)]
         window._product_data_context_active = True
         window._on_module_selected(WorkbenchModule.MAINTENANCE)
-        for page in maintenance_pages:
+        for step in module_workflows(WorkbenchModule.MAINTENANCE):
+            page = window._pages[step]
+            if step == WorkflowStep.REVIEW:
+                assert not hasattr(page, "_maintenance_reload_button")
+                assert not hasattr(page, "_maintenance_export_mdb_button")
+                continue
             if getattr(page, "header", None) is None or not hasattr(page.header, "add_action"):
                 continue
             assert not page._maintenance_reload_button.isHidden()
