@@ -47,7 +47,7 @@ from core.modules import WorkbenchModule
 from core.engines.status import warnings_text
 from ui import theme
 from ui.components.flow_layout import FlowFrame
-from ui.components import CardRow, DataCard, DetailTabs, KpiCard, WorkflowHeader
+from ui.components import DataCard, DetailTabs, WorkflowHeader
 from ui.components.workflow_styles import set_button_role, style_table
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
@@ -524,8 +524,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         for w in self._legacy_header:
             w.setVisible(not on)
         self._shell_header.setVisible(on)
-        # Maintenance Articles no longer needs the summary KPI cards; keep them in Development.
-        self._kpi_row.setVisible(on and not self.is_maintenance_mode())
         body, top = self._body_layout, self._top_layout
         toolbar = self._toolbar_box
         buttons = (
@@ -629,15 +627,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         ]
         self._shell_header = WorkflowHeader(self._title, self._description, self)
         self._content.insertWidget(0, self._shell_header)
-
-        self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="▤", parent=self)
-        self._kpi_shown = KpiCard("Shown", "0", "neutral", glyph="⌕", parent=self)
-        self._kpi_selected = KpiCard("Selected", "0", "neutral", glyph="\u2713", parent=self)
-        self._kpi_issues = KpiCard("Issue Groups", "-", "neutral", glyph="!", parent=self)
-        self._kpi_row = CardRow(170, self)
-        for card in (self._kpi_loaded, self._kpi_shown, self._kpi_selected, self._kpi_issues):
-            self._kpi_row.add_card(card)
-        self._content.insertWidget(1, self._kpi_row)
 
         self._shell_hsplit = QSplitter(Qt.Orientation.Horizontal, self)
         self._shell_hsplit.setChildrenCollapsible(False)
@@ -745,24 +734,13 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._details_host.setVisible(shell)
 
     def _sync_shell(self) -> None:
-        """Refresh KPI cards and the detail placeholder from existing state."""
+        """Refresh the shell summary and detail placeholder from existing state."""
         if not self._shell_on:
             return
         validation = self._validation
         if validation is not None:
-            total, selected = int(validation.total), int(validation.selected)
+            total = int(validation.total)
             shown = len(self._filtered)
-            issues = len(validation.warnings)
-            self._kpi_loaded.set_value(f"{total:,}")
-            self._kpi_loaded.set_tone("success" if total else "neutral")
-            self._kpi_shown.set_value(f"{shown:,}")
-            self._kpi_shown.set_meter(shown / total if total else None)
-            self._kpi_selected.set_value(f"{selected:,}")
-            self._kpi_issues.set_value(str(issues) if total else "-")
-            self._kpi_issues.set_tone(
-                "neutral" if not total else ("danger" if issues else "success"),
-                "!" if issues else "\u2713",
-            )
             self._shell_card.set_subtitle(f"{shown:,} of {total:,} articles shown")
 
 
