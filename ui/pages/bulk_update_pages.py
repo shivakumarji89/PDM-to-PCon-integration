@@ -162,7 +162,7 @@ class BulkPriceUpdatePage(_BulkPage):
             name = path.parent.name if self._target.currentIndex() == 1 else path.name
             self._table.setItem(row, 1, _item(name))
             self._table.setItem(row, 2, _item(path))
-            lists = ", ".join(f"{x.currency}: {x.list_id}" for x in getattr(pkg, "lists", [])) if pkg else ""
+            lists = ", ".join(f"{x.currency}: {x.old_list}" for x in getattr(pkg, "lists", [])) if pkg else ""
             preview = getattr(pkg, "error", "") or ("; ".join(f"{x.currency}: {x.old_list} → {x.new_list}" for x in getattr(pkg, "lists", [])) if pkg else "No result")
             self._table.setItem(row, 3, _item(lists or "No open price list"))
             self._table.setItem(row, 4, _item(preview))
@@ -326,7 +326,7 @@ class BulkRepositoryLinkPage(_BulkPage):
                     connection = link_svc.get(info["path"])
                     pdm = (connection or {}).get("pdm", {})
                     status = (connection or {}).get("connection", {}).get("status", "Not linked")
-                    rows.append((info, status, pdm.get("product_code", ""), "Existing link" if connection else "Not checked"))
+                    rows.append((info, status, pdm.get("product_code", ""), "Stored link" if connection else "Not evaluated"))
                 except Exception as exc:
                     rows.append(({"path": str(folder), "name": folder.name, "code": "-", "version": ""}, "Inspection error", "", str(exc)))
                 reporter.advance(folder.name)
