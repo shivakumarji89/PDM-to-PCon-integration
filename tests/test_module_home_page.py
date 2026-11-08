@@ -310,6 +310,9 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
         assert expected_maintenance.index(WorkflowStep.REVIEW) < expected_maintenance.index(
             WorkflowStep.MAINTENANCE_COMPARISON
         )
+        assert set(module_workflows(WorkbenchModule.DEVELOPMENT)).issubset(
+            set(expected_maintenance)
+        )
         assert not window._workspace_source_tabs.isHidden()
 
         # Existing Maintenance actions remain attached to their original pages.
