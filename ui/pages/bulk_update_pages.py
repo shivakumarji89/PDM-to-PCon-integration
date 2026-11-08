@@ -526,6 +526,9 @@ class BulkRepositoryLinkPage(_BulkPage):
         self._status = QLabel("Discover repository series to begin.", self); root.addWidget(self._status)
         self._table = _table(self, ["Select", "Series", "Program Code", "Version", "PDM Link", "Linked Product", "Alignment"])
         root.addWidget(self._table, 1)
+        self._tabs = QTabWidget(self)
+        self._tabs.setDocumentMode(True)
+        root.addWidget(self._tabs, 1)
         body = QWidget(self); body.setLayout(root); self.add_content(body)
         self._repositories = []
         self._refresh_product()
@@ -565,13 +568,44 @@ class BulkRepositoryLinkPage(_BulkPage):
 
     def _scanned(self, rows):
         self._repositories = rows
+        self._tabs.clear()
         self._table.setRowCount(len(rows))
         for r, (info, status, pdm_code, alignment) in enumerate(rows):
             check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable); check.setCheckState(Qt.CheckState.Unchecked)
             self._table.setItem(r, 0, check)
             for c, value in enumerate((info.get("name"), info.get("code"), info.get("version") or "-", status, pdm_code or "-", alignment), 1):
                 self._table.setItem(r, c, _item(value))
-        self._status.setText(f"Discovered {len(rows)} published series. Select rows to establish or repair links.")
+            tab = QWidget(self._tabs)
+            layout = QVBoxLayout(tab)
+            existing = self._context.maintenance_repository_link_service.get(info.get("path", "")) if info.get("path") else None
+            linked = (existing or {}).get("pdm", {})
+            current_identity = f"{linked.get('product_code') or 'Not linked'} — {linked.get('product_name') or ''}"
+            proposed_identity = (
+                f"{self._loaded_product.code or '-'} — {self._loaded_product.name or '-'}"
+                if self._loaded_product is not None else "No PDM product loaded"
+            )
+            details = QLabel(
+                f"Repository: {info.get('name') or '-'}\n"
+                f"Program: {info.get('code') or '-'}\n"
+                f"Version: {info.get('version') or '-'}\n"
+                f"Folder: {info.get('path') or '-'}\n\n"
+                f"Existing PDM link: {current_identity}\n"
+                f"Loaded PDM product: {proposed_identity}\n"
+                f"Link status: {status}\n"
+                f"Inspection: {alignment}",
+                tab,
+            )
+            details.setWordWrap(True)
+            layout.addWidget(details)
+            note = QLabel(
+                "Linking is deliberately one series at a time. Confirm that the loaded PDM product "
+                "belongs to this exact repository before establishing or replacing the link.",
+                tab,
+            )
+            note.setWordWrap(True)
+            layout.addWidget(note)
+            self._tabs.addTab(tab, info.get("name") or f"Series {r + 1}")
+        self._status.setText(f"Discovered {len(rows)} published series. Review each tab; link one series at a time.")
 
     def _link_selected(self):
         if self._busy(): return
@@ -589,8 +623,17 @@ class BulkRepositoryLinkPage(_BulkPage):
                 "this prevents accidentally assigning one product to unrelated series.",
             )
             return
+        info = selected[0][0]
+        existing = self._context.maintenance_repository_link_service.get(info["path"])
+        previous = (existing or {}).get("pdm", {})
+        replacement_note = (
+            f"\n\nThis will replace the existing link to {previous.get('product_code') or '-'} — "
+            f"{previous.get('product_name') or '-'}."
+            if existing and str(previous.get("product_id") or "") != str(self._loaded_product.id or "")
+            else ""
+        )
         answer = QMessageBox.question(self, "Confirm Repository Link",
-            f"Link {selected[0][0]['name']} to {self._loaded_product.code} — {self._loaded_product.name}?",
+            f"Link {info['name']} to {self._loaded_product.code} — {self._loaded_product.name}?{replacement_note}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes: return
         service = self._context.maintenance_repository_link_service
