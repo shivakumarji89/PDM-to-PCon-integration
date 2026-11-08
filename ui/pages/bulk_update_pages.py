@@ -232,9 +232,14 @@ class BulkPriceUpdatePage(_BulkPage):
 
 
     def _prepared_results(self, result):
-        self._prepared = {entry.path.casefold(): entry for entry in result.results}
-        self._tabs.clear()
         for outcome in result.results:
+            key = outcome.path.casefold()
+            self._prepared[key] = outcome
+            for old_index in range(self._tabs.count() - 1, -1, -1):
+                old_tab = self._tabs.widget(old_index)
+                if str(old_tab.property("series_path") or "").casefold() == key:
+                    self._tabs.removeTab(old_index)
+                    old_tab.deleteLater()
             tab = QWidget(self._tabs)
             layout = QVBoxLayout(tab)
             summary = QLabel(
@@ -264,6 +269,10 @@ class BulkPriceUpdatePage(_BulkPage):
             tab_title = outcome.name if outcome.status == "Ready" else f"{outcome.name} • Failed"
             tab.setProperty("series_path", outcome.path.casefold())
             self._tabs.addTab(tab, tab_title)
+            for table_row, series in enumerate(self._series):
+                if str(series.get("path") or "").casefold() == key:
+                    self._table.setItem(table_row, 5, _item(f"{outcome.status}: {outcome.message}"))
+                    break
         self._status.setText(
             f"Calculation finished: {sum(x.status == 'Ready' for x in result.results)} ready, "
             f"{sum(x.status != 'Ready' for x in result.results)} failed. Review tabs before export."
@@ -312,8 +321,13 @@ class BulkPriceUpdatePage(_BulkPage):
         for outcome in result.results:
             self._prepared[outcome.path.casefold()] = outcome
             for index in range(self._tabs.count()):
-                if self._tabs.tabText(index).replace(" • Failed", "") == outcome.name:
+                tab = self._tabs.widget(index)
+                if str(tab.property("series_path") or "").casefold() == outcome.path.casefold():
                     self._tabs.setTabText(index, f"{outcome.name} • {outcome.status}")
+            for row, series in enumerate(self._series):
+                if str(series.get("path") or "").casefold() == outcome.path.casefold():
+                    self._table.setItem(row, 5, _item(f"{outcome.status}: {outcome.message}"))
+                    break
         failures = [f"{x.name}: {x.message}" for x in result.results if x.status != "Updated"]
         self._status.setText(
             f"MDB export finished: {sum(x.status == 'Updated' for x in result.results)} verified, "
