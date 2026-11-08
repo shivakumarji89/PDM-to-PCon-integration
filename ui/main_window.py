@@ -1041,8 +1041,7 @@ class MainWindow(QMainWindow):
             )
         except Exception as error:  # noqa: BLE001 (surface any save failure)
             QMessageBox.critical(
-                self, "Save Project", f"Could not save project:
-{error}"
+                self, "Save Project", f"Could not save project:\n{error}"
             )
             return False
         self._remember_project_dir(str(saved))
