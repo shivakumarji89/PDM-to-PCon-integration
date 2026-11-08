@@ -989,8 +989,7 @@ class MainWindow(QMainWindow):
             project = self._context.project_service.load_project(path)
         except Exception as error:  # noqa: BLE001 (surface any load failure)
             QMessageBox.critical(
-                self, "Open Project", f"Could not open project:
-{error}"
+                self, "Open Project", f"Could not open project:\n{error}"
             )
             return
         self._remember_project_dir(path)
