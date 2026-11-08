@@ -340,7 +340,7 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
         # Clearing the imported MDB returns to Development without deleting
         # any Maintenance workflow registrations or page implementations.
         window._context.register_mdb_import_snapshot(None)
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
         assert window._manager.steps() == list(module_workflows(WorkbenchModule.DEVELOPMENT))
         assert module_workflows(WorkbenchModule.MAINTENANCE) == tuple(expected_maintenance)
