@@ -166,21 +166,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self.refresh()
 
     def on_enter(self) -> None:
-        """Refresh when returning from another workflow.
-
-        Development re-materialises Article Sets from the current Class Creation
-        definition before the Article table is rebuilt. Maintenance keeps its
-        existing ArticleSet/reduction path.
-        """
+        """Refresh the existing Maintenance Article Sets and reduction view."""
         snapshot = self._context.active_snapshot
-        window = self.window()
-        if (
-            snapshot is not None
-            and getattr(window, "_active_module", None) == WorkbenchModule.DEVELOPMENT
-        ):
-            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
-                snapshot
-            )
         # Returning from another workflow may mean the snapshot's article state
         # changed while this page was hidden; only tab toggles reuse validation.
         self._invalidate_validation(snapshot)
@@ -374,40 +361,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None:
             return
         svc = self._context.engineering_reduction_service
-        if (
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-            and getattr(snapshot, "article_sets", None)
-        ):
-            # Development Class Creation removes configured pre-dot segments,
-            # so the Article Set master must use the resulting reduced article,
-            # not a prefix cut of the original PDM code.
-            members_by_article = {
-                str(member.article_id): member
-                for family in (getattr(snapshot.engineering, "families", []) or [])
-                for member in (getattr(family, "members", []) or [])
-            }
-            by_base: dict[str, dict] = {}
-            set_props = {
-                str(aid): {
-                    str(getattr(attr, "name", "") or "")
-                    for attr in getattr(aset, "properties", []) or []
-                    if getattr(attr, "name", "")
-                }
-                for aset in (getattr(snapshot, "article_sets", []) or [])
-                for aid in getattr(aset, "article_ids", []) or []
-            }
-            for aset in getattr(snapshot, "article_sets", []) or []:
-                for aid in getattr(aset, "article_ids", []) or []:
-                    member = members_by_article.get(str(aid))
-                    base = (getattr(member, "reduced_article", "") if member else "") or ""
-                    base = base or "Set"
-                    entry = by_base.setdefault(base, {"ids": [], "props": set()})
-                    if str(aid) not in entry["ids"]:
-                        entry["ids"].append(str(aid))
-                    entry["props"].update(set_props.get(str(aid), set()))
-            for base, entry in by_base.items():
-                yield (base, entry["ids"], len(base), len(entry["props"]), ())
-        elif getattr(snapshot, "article_sets", None):
+        if getattr(snapshot, "article_sets", None):
             for m in svc.merge_sets_by_base(snapshot):
                 yield (m.base or "Set", m.article_ids, m.base_length,
                        len(m.property_names), m.optional_property_names)
@@ -1673,29 +1627,25 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- editing -----------------------------------------------------------
     def _on_rebuild_from_class_creation(self) -> None:
-        """Rebuild Article Sets using the active stage's authoritative pipeline."""
+        """Rebuild Article Sets through the canonical Maintenance pipeline."""
         snapshot = self._context.active_snapshot
-        module = getattr(self.window(), "_active_module", None)
-        if snapshot is None or self.is_mdb_view():
+        if (
+            snapshot is None
+            or self.is_mdb_view()
+            or getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE
+        ):
             return
-        if module == WorkbenchModule.DEVELOPMENT:
-            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+        mdb = self._context.real.mdb_import_snapshot
+        if mdb is not None:
+            from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+            MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
+                snapshot, mdb, force=True
+            )
+        else:
+            self._context.engineering_reduction_service.materialize_article_sets(
                 snapshot
             )
-        elif module == WorkbenchModule.MAINTENANCE:
-            mdb = self._context.real.mdb_import_snapshot
-            if mdb is not None:
-                from services.maintenance_alignment_service import MaintenanceAlignmentService
-
-                MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
-                    snapshot, mdb, force=True
-                )
-            else:
-                self._context.engineering_reduction_service.materialize_article_sets(
-                    snapshot
-                )
-        else:
-            return
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
