@@ -359,79 +359,154 @@ class BulkPriceUpdatePage(_BulkPage):
 
 class BulkVersionUpdatePage(_BulkPage):
     def __init__(self, context, parent=None):
-        super().__init__("Version Update", "Review OCD and ODB export versions and update selected series.", context, parent)
+        super().__init__("Version Update", "Inspect version differences, review each series in its own tab, then apply the version update.", context, parent)
         root = QVBoxLayout()
         form = QFormLayout()
         defaults = ";".join(p for p in _DEFAULT_REPOS if Path(p).is_dir())
         repo_row, self._repo = _repo_field(self, defaults)
-        form.addRow("Repository", repo_row)
-        self._version = QLineEdit(self); self._version.setPlaceholderText("Major.Minor.Build, e.g. 1.34.0")
-        form.addRow("New version", self._version)
+        form.addRow("Repository roots", repo_row)
+        self._version = QLineEdit(self)
+        self._version.setPlaceholderText("Major.Minor.Build, e.g. 1.34.0")
+        form.addRow("Target version", self._version)
         root.addLayout(form)
         actions = QHBoxLayout()
-        scan = QPushButton("Scan", self); scan.clicked.connect(self._scan)
-        all_btn = QPushButton("Select All", self); all_btn.clicked.connect(lambda: self._set_all(True))
-        clear = QPushButton("Clear", self); clear.clicked.connect(lambda: self._set_all(False))
-        apply = QPushButton("Apply Selected", self); apply.clicked.connect(self._apply)
-        for b in (scan, all_btn, clear, apply): actions.addWidget(b)
-        actions.addStretch(1); root.addLayout(actions)
-        self._status = QLabel("Scan repository to inspect versions.", self); root.addWidget(self._status)
-        self._table = _table(self, ["Apply", "Series", "OCD version", "ODB version", "Files", "Folder"])
+        scan = QPushButton("Discover Series", self)
+        scan.clicked.connect(self._scan)
+        all_btn = QPushButton("Select All", self)
+        all_btn.clicked.connect(lambda: self._set_all(True))
+        clear = QPushButton("Clear", self)
+        clear.clicked.connect(lambda: self._set_all(False))
+        apply = QPushButton("Apply Selected", self)
+        apply.clicked.connect(self._apply)
+        for button in (scan, all_btn, clear, apply):
+            actions.addWidget(button)
+        actions.addStretch(1)
+        root.addLayout(actions)
+        self._status = QLabel("Discover series to inspect current OCD and ODB versions.", self)
+        root.addWidget(self._status)
+        self._table = _table(self, ["Apply", "Series", "OCD version", "ODB version", "Files", "Folder", "Result"])
         root.addWidget(self._table, 1)
-        body = QWidget(self); body.setLayout(root); self.add_content(body)
+        self._tabs = QTabWidget(self)
+        self._tabs.setDocumentMode(True)
+        root.addWidget(self._tabs, 2)
+        body = QWidget(self)
+        body.setLayout(root)
+        self.add_content(body)
         self._series = []
+        self._tab_by_folder = {}
 
     def _scan(self):
-        if self._busy(): return
+        if self._busy():
+            return
         repo = self._repo.text().strip()
         if not repo:
-            QMessageBox.information(self, "Update Version", "Choose a repository root."); return
+            QMessageBox.information(self, "Version Update", "Choose at least one repository root.")
+            return
         svc = self._context.version_update_service
         def work(reporter):
             folders = svc.series_folders(repo)
-            reporter.begin(max(len(folders), 1), title="Scan Versions", subject=Path(repo.split(";")[0]).name)
-            return svc.read_series(folders, progress=lambda d,t,n: reporter.advance(n))
-        self._start(work, self._scanned, "Update Version")
+            reporter.begin(max(len(folders), 1), title="Discover Versions", subject="Repository scan")
+            return svc.read_series(folders, progress=lambda done, total, name: reporter.advance(name))
+        self._start(work, self._scanned, "Version Update")
 
     def _scanned(self, series):
         self._series = list(series)
+        self._tab_by_folder = {}
+        self._tabs.clear()
         self._table.setRowCount(len(series))
-        for r, sv in enumerate(series):
-            check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable); check.setCheckState(Qt.CheckState.Unchecked)
-            self._table.setItem(r, 0, check)
+        counts = {}
+        for sv in series:
+            key = (sv.program or Path(sv.folder).name).casefold()
+            counts[key] = counts.get(key, 0) + 1
+        for row, sv in enumerate(series):
+            check = QTableWidgetItem()
+            check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            check.setCheckState(Qt.CheckState.Unchecked)
+            self._table.setItem(row, 0, check)
             files = "OCD + ODB" if sv.ocd_path and sv.odb_path else ("OCD only" if sv.ocd_path else ("ODB only" if sv.odb_path else "Missing"))
-            values = [sv.program, sv.ocd_version or "-", sv.odb_version or "-", files, sv.folder]
-            for c, value in enumerate(values, 1): self._table.setItem(r, c, _item(value))
-        self._status.setText(f"{len(series)} series found.")
+            values = [sv.program, sv.ocd_version or "-", sv.odb_version or "-", files, sv.folder, "Not applied"]
+            for col, value in enumerate(values, 1):
+                self._table.setItem(row, col, _item(value))
+            tab = QWidget(self._tabs)
+            layout = QVBoxLayout(tab)
+            details = QLabel(
+                f"Series: {sv.program}\nFolder: {sv.folder}\n"
+                f"OCD: {sv.ocd_version or 'Unavailable'}\nODB: {sv.odb_version or 'Unavailable'}\n"
+                f"Files: {files}",
+                tab,
+            )
+            details.setWordWrap(True)
+            layout.addWidget(details)
+            tab_status = QLabel("Inspection complete. Select this series and choose a target version to apply.", tab)
+            layout.addWidget(tab_status)
+            self._tab_by_folder[str(sv.folder).casefold()] = (tab_status, row)
+            title = sv.program or Path(sv.folder).name
+            if counts.get(title.casefold(), 0) > 1:
+                title = f"{title} ({Path(sv.folder).name})"
+            self._tabs.addTab(tab, title)
+        self._status.setText(f"Discovered {len(series)} series. Review the tabs, select targets, then apply.")
 
     def _set_all(self, checked):
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
-        for r in range(self._table.rowCount()): self._table.item(r, 0).setCheckState(state)
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is not None and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                item.setCheckState(state)
 
     def _apply(self):
-        if self._busy(): return
+        if self._busy():
+            return
         version = self._context.version_update_service.parse_version(self._version.text())
         if version is None:
-            QMessageBox.information(self, "Update Version", "Enter version as Major.Minor.Build."); return
-        selected = [self._series[r] for r in range(self._table.rowCount())
-                    if self._table.item(r, 0).checkState() == Qt.CheckState.Checked]
+            QMessageBox.information(self, "Version Update", "Enter version as Major.Minor.Build.")
+            return
+        selected_rows = [
+            row for row in range(self._table.rowCount())
+            if self._table.item(row, 0).checkState() == Qt.CheckState.Checked
+        ]
+        selected = [self._series[row] for row in selected_rows]
         if not selected:
-            QMessageBox.information(self, "Update Version", "Select at least one series."); return
-        answer = QMessageBox.question(self, "Confirm Version Update",
-            f"Write {'.'.join(map(str, version))} and today's release date to {len(selected)} selected series?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes: return
+            QMessageBox.information(self, "Version Update", "Select at least one series.")
+            return
+        target = ".".join(map(str, version))
+        names = "\n".join(f"{sv.program} — OCD {sv.ocd_version or '-'} / ODB {sv.odb_version or '-'}" for sv in selected)
+        answer = QMessageBox.question(
+            self, "Confirm Version Update",
+            f"Apply version {target} and today's release date to {len(selected)} selected series?\n\n{names}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
         svc = self._context.version_update_service
         def work(reporter):
-            reporter.begin(max(len(selected), 1), title="Update Versions", subject="")
-            return svc.update(selected, *version, progress=lambda d,t,n: reporter.advance(n))
-        self._start(work, self._applied, "Update Version")
+            reporter.begin(len(selected), title="Update Series Versions", subject=target)
+            return svc.update(selected, *version, progress=lambda done, total, name: reporter.advance(name))
+        self._pending_version = target
+        self._start(work, self._applied, "Version Update")
 
     def _applied(self, results):
-        ok = sum(1 for r in results if r.error is None)
-        failed = [r for r in results if r.error]
-        self._status.setText(f"Updated {ok} of {len(results)} series." + (f" {len(failed)} failed." if failed else ""))
-        self._scan()
+        by_folder = {str(result.series).casefold(): result for result in results}
+        ok = 0
+        failures = []
+        for row, sv in enumerate(self._series):
+            result = by_folder.get(str(sv.program or Path(sv.folder).name).casefold())
+            if result is None:
+                continue
+            if result.error:
+                label = f"Failed: {result.error}"
+                failures.append(f"{result.series}: {result.error}")
+            else:
+                ok += 1
+                label = f"Updated OCD={result.ocd_updated}, ODB={result.odb_updated}"
+            self._table.setItem(row, 6, _item(label))
+            tab_pair = self._tab_by_folder.get(str(sv.folder).casefold())
+            if tab_pair:
+                tab_pair[0].setText(label)
+        self._status.setText(f"Version update completed: {ok} successful, {len(failures)} failed.")
+        if failures:
+            QMessageBox.warning(self, "Version Update Results", "\n".join(failures[:12]))
+        else:
+            QMessageBox.information(self, "Version Update Results", f"Version {getattr(self, '_pending_version', '')} applied to {ok} series.")
 
 
 class BulkRepositoryLinkPage(_BulkPage):
