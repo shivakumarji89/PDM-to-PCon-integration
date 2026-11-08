@@ -2118,13 +2118,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                     # can accept it (re-enter) or correct it; editing stores it.
                     item.setText(_COL_CODE, inferred)
                     item.setForeground(_COL_CODE, QBrush(QColor(theme.COLOR_OK)))
-                development = (
-                    getattr(self.window(), "_active_module", None)
-                    == WorkbenchModule.DEVELOPMENT
-                )
-                if development or inferred or is_config or (not distinct and not fully_coded):
-                    # Development Class Creation owns the pre-dot reduction
-                    # vocabulary, so every value code is correctable there.
+                pdm_authoring = self._pdm_authoring_enabled()
+                if pdm_authoring or inferred or is_config or (not distinct and not fully_coded):
+                    # The unified Maintenance workspace permits correction of
+                    # PDM value codes while the editable PDM source is active.
                     item.setData(1, Qt.ItemDataRole.UserRole + 1, {1})
                     flags |= Qt.ItemFlag.ItemIsEditable
                 item.setFlags(flags)
