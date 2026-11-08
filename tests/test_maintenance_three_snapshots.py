@@ -268,9 +268,14 @@ def test_development_keeps_pdm_active_snapshot_behaviour():
     assert MdbClassificationService.is_mdb_snapshot(context.mdb_import_snapshot)
 
 
-# Bulk Update intentionally exposes the existing Maintenance workflow.
-def test_bulk_update_workflow_unchanged():
-    assert module_workflows(WorkbenchModule.BULK_UPDATE) == (WorkflowStep.MAINTENANCE,)
+# Bulk Update owns three independent work-table workflows; Maintenance remains separate.
+def test_bulk_update_exposes_dedicated_workflows():
+    assert module_workflows(WorkbenchModule.BULK_UPDATE) == (
+        WorkflowStep.BULK_PRICE_UPDATE,
+        WorkflowStep.BULK_VERSION_UPDATE,
+        WorkflowStep.BULK_REPOSITORY_LINK,
+    )
+    assert WorkflowStep.MAINTENANCE not in module_workflows(WorkbenchModule.BULK_UPDATE)
 
 
 def test_development_and_maintenance_use_pdm_while_repository_modules_use_import():
