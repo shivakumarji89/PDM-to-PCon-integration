@@ -237,9 +237,18 @@ class MaintenanceSourceMixin:
 
     # -- source resolution -------------------------------------------------
     def is_maintenance_module(self) -> bool:
-        return (
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
-        )
+        """The single Product Data Workspace is always Maintenance-based."""
+        return getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+
+    def is_development_mode(self) -> bool:
+        """Development mode is the absence of a loaded MDB snapshot."""
+        real = self._context.real
+        return real.pdm_snapshot is None or real.mdb_import_snapshot is None
+
+    def is_maintenance_mode(self) -> bool:
+        """Maintenance mode requires both current PDM and published MDB data."""
+        real = self._context.real
+        return real.pdm_snapshot is not None and real.mdb_import_snapshot is not None
 
     def current_source(self) -> str | None:
         return self._context.source
