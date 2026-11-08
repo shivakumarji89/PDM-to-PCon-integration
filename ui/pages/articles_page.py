@@ -807,7 +807,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._sets_box.setVisible(not maintenance)
         if hasattr(self, "_status_box"):
             self._status_box.setVisible(not maintenance)
-        if module != self._last_module:
+        mode_key = (module, self.is_maintenance_mode())
+        if mode_key != self._last_module:
             # Do not retain a specific set selection when entering Maintenance.
             if maintenance:
                 self._active_set_ids = None
@@ -818,7 +819,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 self._group_check.blockSignals(True)
                 self._group_check.setChecked(self._group_by_base)
                 self._group_check.blockSignals(False)
-            self._last_module = module
+            self._last_module = mode_key
         key = snapshot.id if snapshot is not None else None
         if key != self._snapshot_key:
             # A different product is now active: drop the per-article base-length
@@ -1169,7 +1170,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # In Development the Class Creation materializer already wrote
         # each member's reduced_article. Do not replace that transformed base
         # with the legacy prefix-only reduction.
-        if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+        if self.is_development_mode():
             return
         for ids, length in self._set_len_by_ids.items():
             if ids & self._blocked_article_ids:
@@ -1442,7 +1443,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             has_length = applied is not None
             length = applied if applied is not None else default_len
             if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                self.is_development_mode()
                 and getattr(member, "reduced_article", "")
             ):
                 base = member.reduced_article
@@ -1775,7 +1776,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # dirty-state/save path. Keep Development's existing lifecycle unchanged.
         if changed:
             self._invalidate_validation()
-            if getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE:
+            if self.is_maintenance_mode():
                 self._context.snapshot_manager.mark_modified()
 
     def _on_base_length_cell_changed(self, item: QTableWidgetItem) -> None:
