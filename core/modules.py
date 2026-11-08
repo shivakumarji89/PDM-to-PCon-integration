@@ -116,9 +116,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.MAINTENANCE_COMPARISON,
     ),
-    WorkbenchModule.BULK_UPDATE: (
-        WorkflowStep.MAINTENANCE,
-    ),
+    WorkbenchModule.BULK_UPDATE: (\n        WorkflowStep.BULK_PRICE_UPDATE,\n        WorkflowStep.BULK_VERSION_UPDATE,\n        WorkflowStep.BULK_REPOSITORY_LINK,\n    ),
     # QA owns the OCD-backed Article OBX generator and validation flow.
     WorkbenchModule.QA_VALIDATION: (
         WorkflowStep.PRODUCT,
