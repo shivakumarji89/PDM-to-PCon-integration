@@ -35,11 +35,6 @@ class ModuleItem:
 
 MODULE_ITEMS: tuple[ModuleItem, ...] = (
     ModuleItem(
-        WorkbenchModule.DEVELOPMENT,
-        "Development",
-        "Create and develop product engineering data.",
-    ),
-    ModuleItem(
         WorkbenchModule.MAINTENANCE,
         "Maintenance",
         "Maintain and update published product packages.",
