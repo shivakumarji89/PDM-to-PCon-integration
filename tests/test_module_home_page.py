@@ -103,10 +103,18 @@ def test_main_window_still_routes_module_selection(app):
         tile = {t.module: t for t in window._module_home._module_buttons}[WorkbenchModule.PRODUCT_DATA_WORKSPACE]
         tile.click()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
-        assert window._product_data_context_selector.isVisible()
-        window._product_data_context_selector.setCurrentIndex(1)
+        assert not hasattr(window, "_product_data_context_selector")
+
+        # The workspace changes mode only when both source snapshots are loaded.
+        from models.snapshot import Snapshot
+        window._context.register_pdm_snapshot(Snapshot())
+        window._sync_product_data_mode()
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+        window._context.register_mdb_import_snapshot(Snapshot())
+        window._sync_product_data_mode()
         assert window._active_module == WorkbenchModule.MAINTENANCE
-        window._product_data_context_selector.setCurrentIndex(0)
+        window._context.register_mdb_import_snapshot(None)
+        window._sync_product_data_mode()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
         window._show_module_home()
         tile = {t.module: t for t in window._module_home._module_buttons}[WorkbenchModule.METATYPE]
