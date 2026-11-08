@@ -105,7 +105,7 @@ def test_main_window_still_routes_module_selection(app):
         assert window._active_module == WorkbenchModule.DEVELOPMENT
         assert not hasattr(window, "_product_data_context_selector")
 
-        # The workspace changes mode only when both source snapshots are loaded.
+        # Maintenance requires PDM plus a non-empty imported MDB article baseline.
         from models.snapshot import Snapshot
         from models.article import Article
         pdm = Snapshot()
