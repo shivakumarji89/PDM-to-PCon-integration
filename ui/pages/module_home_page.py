@@ -33,7 +33,7 @@ _FONT_FAMILY = "Segoe UI"
 
 # (module, number, icon, accent, description) - positions follow the reference.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.PRODUCT_DATA_WORKSPACE, "01", "database", _GREEN, "Product Engineering &\nProduct Maintenance"),
+    (WorkbenchModule.PRODUCT_DATA_WORKSPACE, "01", "database", _GREEN, "Development + Maintenance\nMode selected automatically"),
     (WorkbenchModule.METATYPE, "03", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
     (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
     (WorkbenchModule.QA_VALIDATION, "05", "check", _GREEN, "OBX Validation\nData Quality Checks"),
