@@ -1456,8 +1456,7 @@ class MainWindow(QMainWindow):
         if stage == "commit":
             revision = ""
             import re
-            match = re.search(r"Committed revision (\d+)\.", output + "
-" + error_text)
+            match = re.search(r"Committed revision (\d+)\.", output + "\n" + error_text)
             if match:
                 revision = match.group(1)
             self._xocd_publish_revision = revision
@@ -1488,10 +1487,7 @@ class MainWindow(QMainWindow):
                 if dirty:
                     self._xocd_publish_failed(
                         "SVN commit finished, but validation found remaining "
-                        "changes in generated files:
-
-" + "
-".join(dirty)
+                        "changes in generated files:\n\n" + "\n".join(dirty)
                     )
                     return
             except Exception as exc:
@@ -1726,8 +1722,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dlg)
 
         if warnings:
-            warn = QLabel("
-".join(warnings), dlg)
+            warn = QLabel("\n".join(warnings), dlg)
             warn.setWordWrap(True)
             warn.setObjectName("pageSubtitle")
             layout.addWidget(warn)
