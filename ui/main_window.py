@@ -1163,17 +1163,12 @@ class MainWindow(QMainWindow):
             rows = service.to_csv_rows(table)
             filename = f"{table.name}_tbl.csv"
             (out / filename).write_text(
-                "\r
-".join(rows) + "\r
-", encoding="utf-8"
+                "\r\n".join(rows) + "\r\n", encoding="utf-8"
             )
             written.append(filename)
             constraints.append(service.constraint_body(table))
         (out / "value_table_constraints.txt").write_text(
-            "\r
-\r
-".join(constraints) + "\r
-", encoding="utf-8"
+            "\r\n\r\n".join(constraints) + "\r\n", encoding="utf-8"
         )
         written.append("value_table_constraints.txt")
         QMessageBox.information(
