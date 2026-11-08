@@ -1,13 +1,14 @@
-"""PDM / MDB source selection for the unified Product Data Workspace.
+"""PDM / MDB source selector for Maintenance workflow pages.
 
-Development and Maintenance pages can read either the PDM snapshot or the
-imported released MDB snapshot. Selection is page-local: it never changes
-``ApplicationContext.active_snapshot`` or the application's active snapshot
-source. Each page wraps its context in :class:`SourceContext`:
+Maintenance pages can show either the PDM snapshot or the imported released
+MDB snapshot. The selection is *page-local*: it never touches
+``ApplicationContext.active_snapshot`` or the snapshot source. Each page wraps
+its context in :class:`SourceContext`, which resolves the snapshot the page
+should read:
 
-    PDM tab                         -> context.pdm_snapshot
-    MDB tab                         -> context.mdb_import_snapshot
-    pages outside this workspace    -> context.active_snapshot (unchanged)
+    no tabs (Development, other modules) -> context.active_snapshot (unchanged)
+    PDM tab                               -> context.pdm_snapshot
+    MDB tab                               -> context.mdb_import_snapshot
 
 The MDB tab is strictly read-only: ``snapshot_manager.mark_modified`` is a
 no-op for it, mutating page actions are disabled, and mutating handlers are
@@ -56,7 +57,7 @@ class _ReadOnlySnapshotManager:
 
 
 class SourceContext:
-    """Page-local view of the ApplicationContext for the selected workspace source."""
+    """Page-local view of the ApplicationContext for one Maintenance source."""
 
     def __init__(self, context) -> None:
         object.__setattr__(self, "_real", context)
@@ -88,8 +89,8 @@ class SourceContext:
 
         These services resolve ``context.active_snapshot`` internally, so the
         shared instance on the real context would read the global snapshot
-        whichever tab is selected. Without a source (pages outside Product Data
-        Workspace) the shared service is returned unchanged.
+        whichever tab is selected. Without a source (Development / other
+        modules) the shared service is returned unchanged.
         """
         if self.source is None:
             return self._real.get_service(service_type)
@@ -217,12 +218,13 @@ def read_only_in_mdb(*names: str):
 
 
 class MaintenanceSourceMixin:
-    """Shared page logic for PDM/MDB source selection in Product Data Workspace."""
+    """Shared page logic for the PDM/MDB source tabs (Maintenance only)."""
 
     def _init_source_tabs(self, context) -> None:
-        """Wrap the application context; resolve the shared selector on demand."""
+        """Wrap ``context`` and create the (initially hidden) tab bar."""
         self._context = SourceContext(context)
-        self._source_tabs = None
+        self._source_tabs = MaintenanceSourceTabs(self)
+        self._source_tabs.source_changed.connect(self._on_source_changed)
         self._keep_disabled = _KeepDisabled(self)
         self._locked_widgets: dict = {}
         self._mdb_render_key = None
@@ -231,34 +233,9 @@ class MaintenanceSourceMixin:
         self._pdm_scope_cache_key = None
         self._maintenance_mapping_cache_key = None
         self._maintenance_mapping_cache = None
-
-    def _get_source_tabs(self):
-        """Return the MainWindow selector, with a standalone-page test fallback."""
-        window = self.window()
-        shared = getattr(window, "_workspace_source_tabs", None)
-        if shared is not None:
-            self._source_tabs = shared
-            return shared
-        # Standalone page tests have no MainWindow shell. Keep their local
-        # selector without introducing duplicate selectors in the real app.
-        if window is self:
-            if self._source_tabs is None:
-                self._source_tabs = MaintenanceSourceTabs(self)
-                self._source_tabs.source_changed.connect(self._on_source_changed)
-                self.add_content(self._source_tabs)
-            return self._source_tabs
-        return None
+        self.add_content(self._source_tabs)
 
     # -- source resolution -------------------------------------------------
-    def is_product_data_workspace(self) -> bool:
-        window = self.window()
-        return bool(
-            getattr(window, "_product_data_context_active", False)
-            and getattr(window, "_active_module", None) in (
-                WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE
-            )
-        )
-
     def is_maintenance_module(self) -> bool:
         return (
             getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
@@ -358,25 +335,17 @@ class MaintenanceSourceMixin:
         QMessageBox.information(self, "Export Articles", details)
 
     def _sync_source(self) -> None:
-        """Align this page's source context with the workspace-wide selector."""
-        tabs = self._get_source_tabs()
-        if tabs is None:
-            self._context.source = None
-            self._sync_export_mdb_button()
-            return
-        if self.is_product_data_workspace():
-            # The MainWindow owns visibility for its shared selector. A local
-            # fallback is visible only while the standalone page is in scope.
-            if tabs.parentWidget() is self:
-                tabs.setVisible(True)
+        """Align the page-local source with the active module."""
+        tabs = self._source_tabs
+        if self.is_maintenance_module():
+            tabs.setVisible(True)
             self._context.source = tabs.source
         else:
-            if tabs.parentWidget() is self:
-                tabs.setVisible(False)
-                if tabs.source != SOURCE_PDM:
-                    tabs.blockSignals(True)
-                    tabs.set_source(SOURCE_PDM)
-                    tabs.blockSignals(False)
+            tabs.setVisible(False)
+            if tabs.source != SOURCE_PDM:
+                tabs.blockSignals(True)
+                tabs.set_source(SOURCE_PDM)
+                tabs.blockSignals(False)
             self._context.source = None
         self._update_indicator()
         self._sync_export_mdb_button()
@@ -398,9 +367,7 @@ class MaintenanceSourceMixin:
             text = "Source: PDM snapshot"
         else:
             text = ""
-        tabs = self._get_source_tabs()
-        if tabs is not None:
-            tabs.set_indicator(text)
+        self._source_tabs.set_indicator(text)
 
     def _ensure_pdm_scope(self) -> None:
         """Maintenance PDM view with a released MDB: make sure the derived MDB
@@ -410,7 +377,7 @@ class MaintenanceSourceMixin:
         having been opened first (Open Project, repository change, ...).
         Idempotent and cached; a no-op for the MDB view and other modules.
         """
-        if not self.is_maintenance_module() or self._context.source != SOURCE_PDM:
+        if self._context.source != SOURCE_PDM:
             return
         real = self._context.real
         pdm, mdb = real.pdm_snapshot, real.mdb_import_snapshot
