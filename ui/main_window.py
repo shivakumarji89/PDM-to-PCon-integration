@@ -661,14 +661,30 @@ class MainWindow(QMainWindow):
 
 
     def _configure_maintenance_page_actions(self, steps) -> None:
-        """Add consistent Reload and Export MDB actions to Maintenance workflow headers."""
+        """Attach Maintenance actions once and show them only in Maintenance mode."""
         from PySide6.QtWidgets import QPushButton
 
+        maintenance = self._active_module == WorkbenchModule.MAINTENANCE
         maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
         for step in maintenance_steps:
             page = self._pages.get(step)
-            header = getattr(page, "header", None) if page is not None else None
-            if header is None and page is not None:
+            if page is None:
+                continue
+
+            # These controls belong exclusively to Maintenance. Keep their
+            # visibility synchronized even when a page's shell header is
+            # created lazily or replaced after its first activation.
+            for name in (
+                "_maintenance_reload_button",
+                "_maintenance_refresh_pdm_button",
+                "_maintenance_export_mdb_button",
+            ):
+                button = getattr(page, name, None)
+                if button is not None:
+                    button.setVisible(maintenance)
+
+            header = getattr(page, "header", None)
+            if header is None:
                 # Articles replaces its base header with a lazily-created shell
                 # header. Reattach the same persistent buttons when that happens.
                 header = getattr(page, "_shell_header", None)
@@ -677,11 +693,17 @@ class MainWindow(QMainWindow):
 
             if not hasattr(page, "_maintenance_reload_button"):
                 reload_button = QPushButton("↻  Reload", page)
-                reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
-                reload_handler = page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
+                reload_button.setToolTip(
+                    "Reload this workflow from the current Maintenance snapshot"
+                )
+                reload_handler = (
+                    page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
+                )
                 reload_button.clicked.connect(reload_handler)
                 page._maintenance_reload_button = reload_button
-            if step == WorkflowStep.PRODUCT and not hasattr(page, "_maintenance_refresh_pdm_button"):
+            if step == WorkflowStep.PRODUCT and not hasattr(
+                page, "_maintenance_refresh_pdm_button"
+            ):
                 refresh_pdm_button = QPushButton("↻  Refresh PDM", page)
                 refresh_pdm_button.setToolTip(
                     "Fetch the latest Catalogue → Category → Product hierarchy from PDM "
@@ -691,7 +713,9 @@ class MainWindow(QMainWindow):
                 page._maintenance_refresh_pdm_button = refresh_pdm_button
             if not hasattr(page, "_maintenance_export_mdb_button"):
                 export_button = QPushButton("⇩  Export to MDB", page)
-                export_button.setToolTip("Export selected Articles or the current workflow snapshot to MDB")
+                export_button.setToolTip(
+                    "Export selected Articles or the current workflow snapshot to MDB"
+                )
                 export_handler = getattr(page, "_on_export_component_mdb", None)
                 if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
                     export_handler = page._on_export_prices
@@ -699,6 +723,11 @@ class MainWindow(QMainWindow):
                     export_handler = self._on_export_mdb
                 export_button.clicked.connect(export_handler)
                 page._maintenance_export_mdb_button = export_button
+
+            page._maintenance_reload_button.setVisible(maintenance)
+            page._maintenance_export_mdb_button.setVisible(maintenance)
+            if step == WorkflowStep.PRODUCT:
+                page._maintenance_refresh_pdm_button.setVisible(maintenance)
 
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
