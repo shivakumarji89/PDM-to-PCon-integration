@@ -297,8 +297,14 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
         window._sync_product_data_mode()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
 
+        # An imported but empty MDB is not a maintenance baseline.
         mdb = Snapshot()
         window._context.register_mdb_import_snapshot(mdb)
+        window._sync_product_data_mode()
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+
+        from models.article import Article
+        mdb.articles.append(Article(id="mdb-article-1", code="SERIES.001"))
         window._sync_product_data_mode()
 
         expected_maintenance = list(module_workflows(WorkbenchModule.MAINTENANCE))
@@ -314,6 +320,12 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
             set(expected_maintenance)
         )
         assert not window._workspace_source_tabs.isHidden()
+
+        # Review is brought over from Development as a workflow stage, but
+        # must not receive generic Maintenance reload/export actions.
+        review_page = window._pages[WorkflowStep.REVIEW]
+        assert not hasattr(review_page, "_maintenance_reload_button")
+        assert not hasattr(review_page, "_maintenance_export_mdb_button")
 
         # Existing Maintenance actions remain attached to their original pages.
         for step in expected_maintenance:
