@@ -2188,11 +2188,35 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         )
 
     def _sync_development_article_sets(self) -> None:
+        """Refresh the derived Article Sets after Class Creation edits.
+
+        Development uses its dedicated Class-Creation materializer. Maintenance
+        must retain the MDB-aligned reduction pipeline: rebuild the ordinary
+        Article Sets through MaintenanceAlignmentService so the transient MDB
+        base-length overlay is reapplied, rather than replacing it with the
+        Development materializer.
+        """
         snapshot = self._context.active_snapshot
-        window = self.window()
-        if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        module = getattr(self.window(), "_active_module", None)
+        if snapshot is None:
             return
-        self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
+        if module == WorkbenchModule.DEVELOPMENT:
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
+            return
+        if module == WorkbenchModule.MAINTENANCE and not self.is_mdb_view():
+            mdb = self._context.real.mdb_import_snapshot
+            if mdb is not None:
+                from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+                MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
+                    snapshot, mdb, force=True
+                )
+            else:
+                self._context.engineering_reduction_service.materialize_article_sets(
+                    snapshot
+                )
 
     def _on_code_selected(
         self, value, text: str, prop_node, prop, value_item=None
