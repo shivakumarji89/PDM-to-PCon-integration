@@ -209,14 +209,13 @@ def test_articles_shell_stays_consistent_when_mdb_is_loaded(app):
     assert page._shell_toolbar.isVisibleTo(page)
 
 
-def test_articles_shell_kpis_use_real_counts(app):
+def test_articles_shell_has_no_summary_kpi_cards(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
-    assert page._kpi_loaded.value_label.text() == "6"
-    assert page._kpi_shown.value_label.text() == "6"
-    page._search.setText("HM.1002")
-    page._apply_filter()
-    assert page._kpi_shown.value_label.text() == "1"
-    assert page._kpi_loaded.value_label.text() == "6"
+    assert not hasattr(page, "_kpi_row")
+    assert not hasattr(page, "_kpi_loaded")
+    assert not hasattr(page, "_kpi_shown")
+    assert not hasattr(page, "_kpi_selected")
+    assert not hasattr(page, "_kpi_issues")
 
 
 def test_articles_shell_keeps_existing_controls_and_signals(app):
