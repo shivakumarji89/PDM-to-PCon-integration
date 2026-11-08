@@ -87,20 +87,8 @@ def snapshot_source_for_module(module: WorkbenchModule | None) -> str:
 # Engineering remains available to the application internally, but is not
 # exposed as a user-facing workflow step for now.
 MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
-    # Development: Articles establishes the full article code and the manual
-    # Base Length first. Class Creation then consumes the remaining Variant
-    # Condition in property order.
-    WorkbenchModule.DEVELOPMENT: (
-        WorkflowStep.PRODUCT,
-        WorkflowStep.ARTICLES,
-        WorkflowStep.CLASS_CREATION,
-        WorkflowStep.TEXT,
-        WorkflowStep.RELATION,
-        WorkflowStep.PRICING,
-        WorkflowStep.PRICING_RELATION,
-        WorkflowStep.REVIEW,
-    ),
-    # Maintenance keeps its existing workflow order.
+    # The single Product Data Workspace uses the original Maintenance
+    # workflow order in both activity states (MDB absent/present).
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
