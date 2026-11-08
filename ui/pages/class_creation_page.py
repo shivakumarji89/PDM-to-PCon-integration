@@ -268,7 +268,7 @@ class _CollapsibleCard(QGroupBox):
     "_add_selected_visual_value",
     "_on_item_changed",
     "_delete_definition",
-    "_sync_maintenance_article_sets",
+    "_sync_development_article_sets",
 )
 class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     """Unified Attributes + Options + Visual/Misc class-creation workspace."""
@@ -811,13 +811,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         hint = getattr(self, "_slice_hints", {}).get(str(prop_id))
         return bool(hint.get("ignored")) if hint else False
 
-    def _pdm_authoring_enabled(self) -> bool:
-        """Enable PDM authoring tools only inside the unified Maintenance workspace.
-        The MDB source remains read-only.
-        """
-        module = getattr(self.window(), "_active_module", None)
-        return module == WorkbenchModule.MAINTENANCE and not self.is_mdb_view()
-
     def _on_attribute_master_selected(self) -> None:
         if self._populating:
             return
@@ -841,7 +834,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._selected_attr_group = group_name
         self._populate_visible_values(prop, group_name, backing)
         development = (
-            self._pdm_authoring_enabled()
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
         )
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
@@ -923,7 +917,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
             sliced_item = QTableWidgetItem(sliced)
             sliced_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
-            if self._pdm_authoring_enabled():
+            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
                 sliced_item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsSelectable
@@ -996,7 +990,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             self._populate_visible_values(prop, group_name, None)
             return
         self._user_edited_props.add(str(prop.id))
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self._populate_visible_values(prop, group_name, None)
 
@@ -1033,7 +1027,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             self._context.engineering_class_service.set_width(
                 self._context.active_snapshot, cls.id, str(prop.id), width
             )
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
             self._context.snapshot_manager.mark_modified()
             self.refresh()
 
@@ -1238,7 +1232,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             # The imported MDB baseline is displayed as-is: no standard-class
             # creation and no Development article-set synchronisation.
             service.ensure_standard_classes(snap, category)
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
 
         groups = service.resolve_class_groups(snap, category) if snap else []
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
@@ -1655,7 +1649,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         if changed:
             self._context.snapshot_manager.mark_modified()
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
             self.refresh()
 
     def _populate_attributes(self) -> None:
@@ -1704,7 +1698,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if mdb_attribute_ids:
             props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
         development = (
-            self._pdm_authoring_enabled()
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
         )
         snapshot = self._context.active_snapshot
         # Value ids that will actually get a relation (subset-confined); generic
@@ -2118,10 +2113,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                     # can accept it (re-enter) or correct it; editing stores it.
                     item.setText(_COL_CODE, inferred)
                     item.setForeground(_COL_CODE, QBrush(QColor(theme.COLOR_OK)))
-                pdm_authoring = self._pdm_authoring_enabled()
-                if pdm_authoring or inferred or is_config or (not distinct and not fully_coded):
-                    # The unified Maintenance workspace permits correction of
-                    # PDM value codes while the editable PDM source is active.
+                development = (
+                    getattr(self.window(), "_active_module", None)
+                    == WorkbenchModule.DEVELOPMENT
+                )
+                if development or inferred or is_config or (not distinct and not fully_coded):
+                    # Development Class Creation owns the pre-dot reduction
+                    # vocabulary, so every value code is correctable there.
                     item.setData(1, Qt.ItemDataRole.UserRole + 1, {1})
                     flags |= Qt.ItemFlag.ItemIsEditable
                 item.setFlags(flags)
@@ -2139,7 +2137,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                         combo.addItem(effective_code)
                     # Development Class Creation permits correction of every
                     # value code, not only inferred/configuration codes.
-                    if self._pdm_authoring_enabled():
+                    if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
                         combo.setEditable(True)
                     pos = combo.findText(effective_code)
                     combo.setCurrentIndex(pos if pos >= 0 else 0)
@@ -2160,7 +2158,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str, group_name: str | None = None):
-        if not self._pdm_authoring_enabled():
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return None
         cls = self._attribute_class_for_group(group_name)
         if cls is None:
@@ -2176,26 +2174,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             None,
         )
 
-    def _sync_maintenance_article_sets(self) -> None:
-        """Rebuild Article Sets through the canonical Maintenance pipeline."""
+    def _sync_development_article_sets(self) -> None:
         snapshot = self._context.active_snapshot
-        if (
-            snapshot is None
-            or getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE
-            or self.is_mdb_view()
-        ):
+        window = self.window()
+        if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
-        mdb = self._context.real.mdb_import_snapshot
-        if mdb is not None:
-            from services.maintenance_alignment_service import MaintenanceAlignmentService
-
-            MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
-                snapshot, mdb, force=True
-            )
-        else:
-            self._context.engineering_reduction_service.materialize_article_sets(
-                snapshot
-            )
+        self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
 
     def _on_code_selected(
         self, value, text: str, prop_node, prop, value_item=None
@@ -2214,7 +2198,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             class_value.code = new_code
         else:
             value.code = new_code
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self._update_sliced(prop_node, prop)
         if value_item is not None:
@@ -2264,7 +2248,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._context.engineering_class_service.set_config_ignore(
             snapshot, str(prop_id), bool(checked)
         )
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
@@ -2331,14 +2315,15 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 self._active_group_name = meta[1] or self._active_group_name
 
         development = (
-            self._pdm_authoring_enabled()
+            getattr(self.window(), "_active_module", None)
+            == WorkbenchModule.DEVELOPMENT
         )
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
 
     def _on_attr_context_menu(self, pos) -> None:
-        if not self._pdm_authoring_enabled():
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
         item = self._attr_tree.itemAt(pos)
         if item is None:
@@ -2386,7 +2371,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     def _move_selected_attr_property(self, direction: int) -> None:
         """Move the property selected in the visible Attribute table."""
-        if not self._pdm_authoring_enabled():
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
         if self._selected_attr_prop is None:
             return
@@ -2406,7 +2391,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         service = self._context.engineering_class_service
         if service.move_property(snapshot, cls.id, str(prop.id), direction):
             self._context.snapshot_manager.mark_modified()
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
             self.refresh()
 
     def _missing_pdm_values(self, prop) -> list:
@@ -2453,7 +2438,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             return
         added.value_id = str(getattr(pdm_value, "id", "") or "")
         self._context.snapshot_manager.mark_modified()
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self.refresh()
 
     def _add_pdm_values(self, prop, values) -> None:
@@ -2473,7 +2458,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             if added is not None:
                 added.value_id = str(getattr(pdm_value, "id", "") or "")
         self._context.snapshot_manager.mark_modified()
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self.refresh()
 
     def _add_attr_value(self, prop) -> None:
@@ -2528,7 +2513,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._context.engineering_class_service.remove_value(
             snapshot, cls.id, str(prop.id), code
         )
-        self._sync_maintenance_article_sets()
+        self._sync_development_article_sets()
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
@@ -2732,7 +2717,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 self._context.engineering_class_service.set_width(
                     self._context.active_snapshot, cls.id, obj.id, width
                 )
-                self._sync_maintenance_article_sets()
+                self._sync_development_article_sets()
                 self._context.snapshot_manager.mark_modified()
             self._populating = True
             self._populate_attributes()
@@ -2764,7 +2749,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 class_value.code = new_code
             else:
                 obj.code = new_code
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
             # Remember the owning property so its cells stay editable next time.
             snapshot = self._context.active_snapshot
             prop = next(
@@ -2970,7 +2955,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             cls = self._options_class_for_group(group_name)
             cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
             cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
-            if cv is not None and self._pdm_authoring_enabled():
+            if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
                 sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             self._opt_values.setItem(row, 1, sliced_item)
             self._opt_values.setItem(row, 2, QTableWidgetItem(self._value_relation_object(option, value)))
@@ -3583,7 +3568,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             if cv is None:
                 return
             self._context.snapshot_manager.mark_modified()
-            self._sync_maintenance_article_sets()
+            self._sync_development_article_sets()
             self._populating = True
             self._populate_attributes()
             self._populating = False
