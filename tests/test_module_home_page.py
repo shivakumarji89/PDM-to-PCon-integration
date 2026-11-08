@@ -114,7 +114,7 @@ def test_main_window_still_routes_module_selection(app):
         window._sync_product_data_mode()
         assert window._active_module == WorkbenchModule.MAINTENANCE
         window._context.register_mdb_import_snapshot(None)
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
         window._show_module_home()
         tile = {t.module: t for t in window._module_home._module_buttons}[WorkbenchModule.METATYPE]
@@ -294,18 +294,18 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
 
         pdm = Snapshot()
         window._context.register_pdm_snapshot(pdm)
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
 
         # An imported but empty MDB is not a maintenance baseline.
         mdb = Snapshot()
         window._context.register_mdb_import_snapshot(mdb)
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
 
         from models.article import Article
         mdb.articles.append(Article(id="mdb-article-1", code="SERIES.001"))
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
 
         expected_maintenance = list(module_workflows(WorkbenchModule.MAINTENANCE))
         assert window._active_module == WorkbenchModule.MAINTENANCE
