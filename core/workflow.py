@@ -39,6 +39,12 @@ WORKFLOW_ITEMS: tuple[WorkflowItem, ...] = (
     WorkflowItem(WorkflowStep.ENGINEERING, "Engineering", "Read-only view of the engineering hierarchy."),
     WorkflowItem(WorkflowStep.MAINTENANCE, "Bulk Update",
                  "Run bulk maintenance operations on published product packages."),
+    WorkflowItem(WorkflowStep.BULK_PRICE_UPDATE, "Price Update",
+                 "Review and roll published price lists forward across selected series."),
+    WorkflowItem(WorkflowStep.BULK_VERSION_UPDATE, "Version Update",
+                 "Review and update OCD and ODB export versions for selected series."),
+    WorkflowItem(WorkflowStep.BULK_REPOSITORY_LINK, "Repository Link",
+                 "Discover published series and establish their PDM product links."),
     WorkflowItem(WorkflowStep.SYTELINE_EXPORT, "SyteLine Export",
                  "Configure the standalone legacy SyteLine export module."),
     # Metatype module: independent of the CET SIF feature flag below.
