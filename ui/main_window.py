@@ -65,6 +65,7 @@ from ui.widgets.background_status import BackgroundStatusIndicator
 from ui.components.workflow_shell import AppHeaderBar, WorkflowSidebar
 from ui.components.workflow_styles import set_button_role
 from ui.widgets.data_table import standardize_table
+from ui.widgets.maintenance_source_tabs import MaintenanceSourceTabs
 from ui.widgets.explorer_tree import standardize_tree
 
 
@@ -520,6 +521,7 @@ class MainWindow(QMainWindow):
         elif module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE) or not self._product_data_context_active:
             self._product_data_context_active = False
         self._active_module = module
+        self._workspace_source_tabs.setVisible(self._product_data_context_active)
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
         steps = list(module_workflows(module))
@@ -705,8 +707,32 @@ class MainWindow(QMainWindow):
             button = self._app_header.settings_button
             menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
 
+    def _on_workspace_source_changed(self, source: str) -> None:
+        """Refresh the active page using the workspace-wide PDM/MDB selection."""
+        page = self._stack.currentWidget()
+        handler = getattr(page, "_on_source_changed", None)
+        if callable(handler):
+            handler(source)
+            return
+        # Product is intentionally a dual-source overview: product discovery
+        # and loading remain PDM-owned while its table summary shows both
+        # snapshots side by side. Do not redirect the PDM loader to MDB.
+        if page is self._product_page:
+            self._workspace_source_tabs.set_indicator(
+                "Product Explorer uses PDM; both snapshots remain visible"
+            )
+            self._product_page._refresh_maintenance_source_table()
+        elif page in (
+            self._pages.get(WorkflowStep.REVIEW),
+            self._pages.get(WorkflowStep.MAINTENANCE_COMPARISON),
+        ):
+            self._workspace_source_tabs.set_indicator(
+                "Cross-source review · PDM and MDB"
+            )
+
     def _show_module_home(self) -> None:
         """Return to Level 1 and hide all workflow-specific UI."""
+        self._workspace_source_tabs.hide()
         self._active_module = None
         self._product_data_context_active = False
         self._apply_shell_chrome(None, [])
@@ -748,6 +774,16 @@ class MainWindow(QMainWindow):
             theme.PANEL_INSET, theme.PANEL_INSET,
         )
         layout.setSpacing(theme.SECTION_SPACING)
+        # One persistent PDM/MDB selector for the entire Product Data Workspace.
+        # Individual workflow pages consume this shared selection; they do not
+        # create their own tab bars.
+        self._workspace_source_tabs = MaintenanceSourceTabs(container)
+        self._workspace_source_tabs.setObjectName("productDataWorkspaceSourceTabs")
+        self._workspace_source_tabs.source_changed.connect(
+            self._on_workspace_source_changed
+        )
+        self._workspace_source_tabs.hide()
+        layout.addWidget(self._workspace_source_tabs)
         # Keep the footer fixed while allowing the active workflow page to
         # scroll inside the workspace when its content minimum exceeds the
         # available screen height. The scroll area wraps only the page stack;
