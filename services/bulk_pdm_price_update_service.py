@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
 
-from core.cancellation import checkpoint
+from core.cancellation import OperationCancelled, checkpoint
 from models.snapshot import Snapshot
 from services.price_mdb_export_service import PriceMdbExportService
 from services.pricing_program import validate_pricing_program
@@ -262,6 +262,8 @@ class BulkPdmPriceUpdateService:
                     f"Read-back verified. {result.updated} price row(s) corrected; "
                     f"{result.inserted} inserted."
                 )
+            except OperationCancelled:
+                raise
             except Exception as exc:
                 result.message = str(exc)
             finally:
