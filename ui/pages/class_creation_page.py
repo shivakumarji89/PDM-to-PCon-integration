@@ -2311,10 +2311,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 self._selected_attr_prop = meta[0]
                 self._active_group_name = meta[1] or self._active_group_name
 
-        development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
-        )
+        development = self.is_development_mode()
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
@@ -2368,7 +2365,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     def _move_selected_attr_property(self, direction: int) -> None:
         """Move the property selected in the visible Attribute table."""
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self.is_development_mode():
             return
         if self._selected_attr_prop is None:
             return
@@ -2952,7 +2949,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             cls = self._options_class_for_group(group_name)
             cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
             cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
-            if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            if cv is not None and self.is_development_mode():
                 sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             self._opt_values.setItem(row, 1, sliced_item)
             self._opt_values.setItem(row, 2, QTableWidgetItem(self._value_relation_object(option, value)))
