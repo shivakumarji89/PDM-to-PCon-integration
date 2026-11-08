@@ -1615,13 +1615,13 @@ class MainWindow(QMainWindow):
         """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
-        if self._active_module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE):
+        if self._active_module != WorkbenchModule.MAINTENANCE:
             QMessageBox.information(
-                self, "Export MDB", "MDB Export is available from Development and Maintenance."
+                self, "Export MDB", "MDB Export is available from the Product Data Workspace."
             )
             return
-        snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
+        is_maintenance = self._context.mdb_import_snapshot is not None
+        snapshot = self._context.pdm_snapshot
         if snapshot is None:
             QMessageBox.information(self, "Export MDB", "Load a product first.")
             return
@@ -1636,8 +1636,8 @@ class MainWindow(QMainWindow):
         # locate or choose external template files.
         kind = None
 
-        # Development uses the registry standardisation step; Maintenance exports
-        # its PDM snapshot as-is so no Development workflow data is mutated.
+        # MDB-empty activity uses the registry standardisation step; with MDB loaded,
+        # the PDM snapshot is exported as-is.
         standardised = 0
         if not is_maintenance:
             psvc = self._context.price_update_service
