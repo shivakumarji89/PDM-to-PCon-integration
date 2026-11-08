@@ -47,6 +47,21 @@ class BulkPriceUpdateResult:
         return sum(r.status != "Updated" for r in self.results)
 
 
+@dataclass(frozen=True)
+class TemporarySeriesPricingContext:
+    """Pricing inputs extracted from one target series MDB for one batch item.
+
+    This object is deliberately short-lived: it is created immediately before
+    pricing this series and discarded before the next series is processed.
+    """
+    repository_path: str
+    mdb_path: str
+    program_code: str
+    price_lists: tuple[Any, ...]
+    package_id: str
+    package_label: str
+
+
 class BulkPdmPriceUpdateService:
     """Compute and export PDM prices independently for each selected series."""
 
@@ -99,6 +114,66 @@ class BulkPdmPriceUpdateService:
                         "error": str(exc),
                     }
         return sorted(discovered.values(), key=lambda x: (x["name"].casefold(), x["path"].casefold()))
+
+    def _extract_temporary_pricing_context(
+        self, repository_path: str, mdb_path: Path, expected_program: str
+    ) -> TemporarySeriesPricingContext:
+        """Extract the pricing configuration from this series MDB only.
+
+        Read only package identity and price-list metadata. Do not import the
+        series' structural graph or its historical price rows into the PDM
+        pricing snapshot: those rows are the destination baseline, not inputs
+        to the PDM calculation.
+        """
+        from services.mdb_reverse_engineering_service import MdbReverseEngineeringService
+
+        reader = MdbReverseEngineeringService(self.context)
+        data = reader.read(mdb_path, tables=("tCOMd_PriceList2",))
+        package = data.package or {}
+        actual_program = str(package.get("reg_ProgramCode") or "").strip()
+        if not actual_program:
+            raise ValueError("Series MDB has no Package Program Code.")
+        if actual_program.casefold() != str(expected_program).casefold():
+            raise ValueError(
+                f"Series identity changed: discovered Program Code '{expected_program}', "
+                f"but MDB now contains '{actual_program}'. Scan the series again."
+            )
+        if not data.rows("tCOMd_PriceList2"):
+            raise ValueError(
+                "Series MDB contains no price-list configuration. "
+                "Pricing cannot safely choose a target list."
+            )
+
+        # Use the existing importer for canonical date/currency/label mapping.
+        # The temporary snapshot contains only package + price-list metadata.
+        series_config = reader.import_snapshot(data)
+        price_lists = tuple(
+            item for item in series_config.price_lists
+            if (item.currency or "").strip()
+            and (item.label or item.id or "").strip()
+            and str(item.label or item.id).strip().casefold() != "default"
+        )
+        if not price_lists:
+            raise ValueError(
+                "Series MDB has no usable non-default price lists with currency and label."
+            )
+        currencies = {str(item.currency).strip().upper() for item in price_lists}
+        required = {"EUR", "GBP"}
+        missing = sorted(required - currencies)
+        if missing:
+            raise ValueError(
+                "Series MDB is missing required Maintenance pricing currency list(s): "
+                + ", ".join(missing)
+            )
+
+        return TemporarySeriesPricingContext(
+            repository_path=str(Path(repository_path).resolve()),
+            mdb_path=str(mdb_path.resolve()),
+            program_code=actual_program,
+            price_lists=price_lists,
+            package_id=str(package.get("com_PackageID") or ""),
+            package_label=str(package.get("reg_ProgramLabel") or ""),
+        )
 
     def update(
         self,
@@ -164,15 +239,20 @@ class BulkPdmPriceUpdateService:
                 if entry.get("product_id") and str(entry["product_id"]) != linked_product_id:
                     raise ValueError("The PDM link changed after discovery. Scan the series again.")
 
-                # Program is sourced from the target MDB package, not guessed from
-                # its display name or article numbers.
+                # Extract this series' pricing configuration into a temporary
+                # context before fetching PDM prices. This is deliberately
+                # per-series; no settings are carried over from the previous row.
                 identity = link_service.inspect_repository(path)
                 program = validate_pricing_program(identity.get("code", ""))
+                temporary = self._extract_temporary_pricing_context(
+                    path, mdb_path, program
+                )
 
-                # Isolated snapshot: never publish it to SnapshotManager and never
-                # replace active/PDM/MDB Maintenance snapshots.
+                # Isolated PDM snapshot: never publish it to SnapshotManager and
+                # never replace active/PDM/MDB Maintenance snapshots.
                 load_data = pdm._fetch_and_map(product)
                 snapshot = Snapshot(product=product)
+                snapshot.price_lists = list(temporary.price_lists)
                 pdm._populate_snapshot(snapshot, load_data)
                 pdm._populate_links(snapshot)
                 self.context.engineering_reduction_service.materialize_article_sets(snapshot)
@@ -185,7 +265,8 @@ class BulkPdmPriceUpdateService:
                     site_id=int(site_id),
                     valid_from=day.strftime("%Y-%m-%d"),
                     valid_to="",
-                    program_code=program,
+                    program_code=temporary.program_code,
+                    require_program=True,
                 )
                 computed = pricing.compute(params, snapshot)
                 result.articles = len(snapshot.articles)
