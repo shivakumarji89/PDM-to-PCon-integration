@@ -101,7 +101,9 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     ),
-    # Maintenance keeps its existing workflow order.
+    # Maintenance is the updated, complete workflow. Preserve its existing
+    # steps and bring across Development's final Review stage as well; the
+    # Maintenance Comparison remains an additional cross-source step.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -110,6 +112,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
         WorkflowStep.PRICING_RELATION,
+        WorkflowStep.REVIEW,
         WorkflowStep.MAINTENANCE_COMPARISON,
     ),
     WorkbenchModule.BULK_UPDATE: (
