@@ -665,7 +665,10 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QPushButton
 
         maintenance = self._active_module == WorkbenchModule.MAINTENANCE
-        maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
+        maintenance_steps = tuple(
+            step for step in module_workflows(WorkbenchModule.MAINTENANCE)
+            if step != WorkflowStep.REVIEW
+        )
         for step in maintenance_steps:
             page = self._pages.get(step)
             if page is None:
