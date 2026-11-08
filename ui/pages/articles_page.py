@@ -1124,7 +1124,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                     article_service.set_selected(article, True)
             self._invalidate_validation(snapshot)
             return
-         for ids, length in self._set_len_by_ids.items():
+        for ids, length in self._set_len_by_ids.items():
             if ids & self._blocked_article_ids:
                 continue
             self._apply_set(ids, length, refresh=False)
