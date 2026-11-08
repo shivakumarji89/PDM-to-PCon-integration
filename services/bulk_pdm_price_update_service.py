@@ -32,6 +32,9 @@ class BulkPriceSeriesResult:
     inserted: int = 0
     verified: bool = False
     warnings: list[str] = field(default_factory=list)
+    mdb_path: str = ""
+    plan_digest: str = ""
+    snapshot: Any = field(default=None, repr=False)
 
 
 @dataclass
@@ -40,7 +43,7 @@ class BulkPriceUpdateResult:
 
     @property
     def succeeded(self) -> int:
-        return sum(r.status == "Updated" for r in self.results)
+        return sum(r.status in {"Updated", "Ready"} for r in self.results)
 
     @property
     def failed(self) -> int:
@@ -213,6 +216,7 @@ class BulkPdmPriceUpdateService:
         effective_date: str,
         site_id: int = 1,
         reporter=None,
+        export: bool = True,
     ) -> BulkPriceUpdateResult:
         """Update selected series sequentially; each failure is isolated.
 
@@ -349,6 +353,14 @@ class BulkPdmPriceUpdateService:
                         + ", ".join(unlinked) + ". Link the lists before updating."
                     )
 
+                if not export:
+                    result.status = "Ready"
+                    result.mdb_path = str(mdb_path.resolve())
+                    result.plan_digest = str(preview.get("plan_digest") or "")
+                    result.snapshot = snapshot
+                    result.message = f"Calculated {result.computed_records} price record(s). Preview passed; ready for explicit MDB export."
+                    continue
+
                 checkpoint()
                 written = exporter.export(
                     snapshot, mdb_path, expected_plan=preview.get("plan_digest")
@@ -385,3 +397,54 @@ class BulkPdmPriceUpdateService:
                 if reporter is not None:
                     reporter.advance(f"{name}: {result.status}")
         return output
+
+    def export_prepared(self, prepared: Iterable[BulkPriceSeriesResult], *, reporter=None) -> BulkPriceUpdateResult:
+        """Export prepared series snapshots without recalculating PDM prices."""
+        items = list(prepared)
+        output = BulkPriceUpdateResult()
+        exporter = PriceMdbExportService(self.context)
+        if reporter is not None:
+            reporter.begin(len(items), title="Export Bulk Prices to MDB", subject="Prepared series")
+        for item in items:
+            checkpoint()
+            result = BulkPriceSeriesResult(
+                path=item.path, name=item.name, status="Failed",
+                product_code=item.product_code, articles=item.articles,
+                computed_records=item.computed_records, mdb_path=item.mdb_path,
+                plan_digest=item.plan_digest, snapshot=item.snapshot,
+                warnings=list(item.warnings),
+            )
+            output.results.append(result)
+            try:
+                if item.status not in {"Ready", "Updated"} or item.snapshot is None:
+                    raise ValueError("This series has no prepared pricing snapshot.")
+                if item.status == "Updated":
+                    result.status = "Updated"
+                    result.verified = item.verified
+                    result.message = "Already exported and verified."
+                    continue
+                if not item.plan_digest:
+                    raise ValueError("Missing approved preview digest; recalculate this series.")
+                checkpoint()
+                written = exporter.export(item.snapshot, item.mdb_path, expected_plan=item.plan_digest)
+                if not written.get("ok"):
+                    raise ValueError(written.get("error") or "MDB export failed.")
+                if written.get("verified") is not True:
+                    raise ValueError("MDB write did not return successful read-back verification.")
+                if int(written.get("failed") or 0):
+                    raise ValueError(f"{written['failed']} MDB write(s) were not confirmed.")
+                result.status = "Updated"
+                result.verified = True
+                result.updated = int(written.get("updated_prices") or 0) + int(written.get("updated_global_prices") or 0)
+                result.inserted = int(written.get("inserted_prices") or 0) + int(written.get("inserted_global_prices") or 0)
+                result.warnings.extend(written.get("warnings") or [])
+                result.message = f"Read-back verified. {result.updated} price row(s) corrected; {result.inserted} inserted."
+            except OperationCancelled:
+                raise
+            except Exception as exc:
+                result.message = str(exc)
+            finally:
+                if reporter is not None:
+                    reporter.advance(f"{item.name}: {result.status}")
+        return output
+
