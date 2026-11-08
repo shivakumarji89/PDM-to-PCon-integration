@@ -230,6 +230,101 @@ class BulkPriceUpdatePage(_BulkPage):
 
         self._start(work, self._prepared_results, "Price Update")
 
+
+    def _prepared_results(self, result):
+        self._prepared = {entry.path.casefold(): entry for entry in result.results}
+        self._tabs.clear()
+        for outcome in result.results:
+            tab = QWidget(self._tabs)
+            layout = QVBoxLayout(tab)
+            summary = QLabel(
+                f"Linked PDM: {outcome.product_code or '-'} | Articles: {outcome.articles} | "
+                f"Calculated records: {outcome.computed_records} | {outcome.status}: {outcome.message}",
+                tab,
+            )
+            summary.setWordWrap(True)
+            layout.addWidget(summary)
+            records = _table(tab, ["Type", "Article", "Condition", "Level", "Currency", "Price", "Valid From", "Valid To"])
+            prices = list(outcome.snapshot.price_records) if outcome.snapshot is not None else []
+            records.setRowCount(len(prices))
+            for row, price in enumerate(prices):
+                values = (
+                    "Global" if price.is_global else "Article",
+                    price.article_code or price.source_item or "-",
+                    price.variant_condition or "-",
+                    price.level or "-",
+                    price.currency or "-",
+                    f"{price.value:g}",
+                    price.valid_from or "-",
+                    price.valid_to or "-",
+                )
+                for col, value in enumerate(values):
+                    records.setItem(row, col, _item(value))
+            layout.addWidget(records, 1)
+            tab_title = outcome.name if outcome.status == "Ready" else f"{outcome.name} • Failed"
+            self._tabs.addTab(tab, tab_title)
+        self._status.setText(
+            f"Calculation finished: {sum(x.status == 'Ready' for x in result.results)} ready, "
+            f"{sum(x.status != 'Ready' for x in result.results)} failed. Review tabs before export."
+        )
+        failures = [f"{x.name}: {x.message}" for x in result.results if x.status != "Ready"]
+        if failures:
+            QMessageBox.warning(self, "Price Calculation Results", "\\n".join(failures[:12]))
+
+    def _export_active(self):
+        index = self._tabs.currentIndex()
+        if index < 0:
+            QMessageBox.information(self, "Price Update", "Calculate selected series first.")
+            return
+        name = self._tabs.tabText(index).replace(" • Failed", "")
+        items = [x for x in self._prepared.values() if x.name == name and x.status == "Ready"]
+        if not items:
+            QMessageBox.information(self, "Price Update", "The active series is not ready for export.")
+            return
+        self._export_items(items[:1])
+
+    def _export_all(self):
+        items = [x for x in self._prepared.values() if x.status == "Ready"]
+        if not items:
+            QMessageBox.information(self, "Price Update", "No successfully prepared tabs are available.")
+            return
+        self._export_items(items)
+
+    def _export_items(self, items):
+        if self._busy():
+            return
+        names = "\\n".join(x.name for x in items)
+        answer = QMessageBox.question(
+            self, "Confirm MDB Export",
+            f"Export calculated prices to the original MDB for {len(items)} series?\\n\\n{names}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        def work(reporter):
+            from services.bulk_pdm_price_update_service import BulkPdmPriceUpdateService
+            return BulkPdmPriceUpdateService(self._context).export_prepared(items, reporter=reporter)
+        self._start(work, self._exported, "Price Update")
+
+    def _exported(self, result):
+        for outcome in result.results:
+            self._prepared[outcome.path.casefold()] = outcome
+            for index in range(self._tabs.count()):
+                if self._tabs.tabText(index).replace(" • Failed", "") == outcome.name:
+                    self._tabs.setTabText(index, f"{outcome.name} • {outcome.status}")
+        failures = [f"{x.name}: {x.message}" for x in result.results if x.status != "Updated"]
+        self._status.setText(
+            f"MDB export finished: {sum(x.status == 'Updated' for x in result.results)} verified, "
+            f"{len(failures)} failed."
+        )
+        if failures:
+            QMessageBox.warning(self, "MDB Export Results", "\\n".join(failures[:12]))
+        else:
+            QMessageBox.information(
+                self, "MDB Export Results",
+                f"All {len(result.results)} selected series passed MDB read-back verification.",
+            )
+
     def _applied(self, result):
         by_path = {entry.path.casefold(): entry for entry in result.results}
         for row, series in enumerate(self._series):
