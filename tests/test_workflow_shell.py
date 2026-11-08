@@ -179,29 +179,34 @@ def _articles(module):
     return page
 
 
-def test_articles_shell_is_maintenance_only(app):
-    dev = _articles(WorkbenchModule.DEVELOPMENT)
-    assert dev._shell_on is False
-    assert dev._toolbar_box.isVisibleTo(dev)
-    mnt = _articles(WorkbenchModule.MAINTENANCE)
+def test_articles_shell_is_shared_by_both_activity_states(app):
+    dev = _articles(WorkbenchModule.MAINTENANCE)
+    assert dev.is_development_mode()
+    assert dev._shell_on is True
+    assert dev._shell_toolbar.isVisibleTo(dev)
+
+    ctx = ApplicationContext()
+    ctx.register_pdm_snapshot(_snapshot())
+    ctx.register_mdb_import_snapshot(_snapshot())
+    mnt = ArticlesPage(ctx)
+    mnt._active_module = WorkbenchModule.MAINTENANCE
+    _PAGES.append(mnt)
+    mnt.resize(1100, 700)
+    mnt.show()
+    mnt.refresh()
+    assert mnt.is_maintenance_mode()
     assert mnt._shell_on is True
-    assert not mnt._toolbar_box.isVisibleTo(mnt)
     assert mnt._shell_toolbar.isVisibleTo(mnt)
 
 
-def test_articles_shell_reverts_for_development(app):
+def test_articles_shell_stays_consistent_when_mdb_is_loaded(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
     assert page._shell_on
-    page._active_module = WorkbenchModule.DEVELOPMENT
+    page._context.real.register_mdb_import_snapshot(_snapshot())
     page.refresh()
-    assert not page._shell_on
-    assert page._toolbar_box.isVisibleTo(page)
-    assert not page._shell_toolbar.isVisibleTo(page)
-    assert page._table.parent() is not page._shell_hsplit
-    assert page._table.minimumHeight() == 280
-    # every toolbar control is back in the original layout, same order
-    layout = page._toolbar_box.layout()
-    assert [layout.itemAt(i).widget() for i in range(layout.count())] == [w for w, _ in page._toolbar_widgets]
+    assert page.is_maintenance_mode()
+    assert page._shell_on
+    assert page._shell_toolbar.isVisibleTo(page)
 
 
 def test_articles_shell_kpis_use_real_counts(app):
@@ -250,8 +255,7 @@ def test_articles_shell_roundtrip_restores_legacy_details_and_toolbar(app):
     page._table.selectRow(0)
     app.processEvents()
     assert page._details_host.isVisibleTo(page) or not page._details_host.isHidden()
-    page._active_module = WorkbenchModule.DEVELOPMENT
-    page._apply_shell(False)
+    page._apply_shell(False)  # explicit legacy-layout roundtrip remains supported
     # every detail label is back in the original form, the toolbar in its box
     for row, attr in enumerate(page._DETAIL_FIELDS):
         assert page._details_form.itemAt(row, QFormLayout.ItemRole.FieldRole).widget() is getattr(page, attr)
