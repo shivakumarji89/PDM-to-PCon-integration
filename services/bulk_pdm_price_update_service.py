@@ -283,9 +283,12 @@ class BulkPdmPriceUpdateService:
                 # never replace active/PDM/MDB Maintenance snapshots.
                 load_data = pdm._fetch_and_map(product)
                 snapshot = Snapshot(product=product)
-                snapshot.price_lists = list(temporary.price_lists)
                 pdm._populate_snapshot(snapshot, load_data)
                 pdm._populate_links(snapshot)
+                # Apply only the target series' extracted list metadata after
+                # PDM population; this temporary context must not be overwritten
+                # by source-data mapping.
+                snapshot.price_lists = list(temporary.price_lists)
                 self.context.engineering_reduction_service.materialize_article_sets(snapshot)
                 if not snapshot.articles:
                     raise ValueError("The linked PDM product returned no articles.")
