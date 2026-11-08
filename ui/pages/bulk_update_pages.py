@@ -216,7 +216,7 @@ class BulkPriceUpdatePage(_BulkPage):
             self,
             "Confirm PDM Price Update",
             f"Fetch prices from PDM for {len(selected)} selected series, one at a time, "
-            f"and update each linked MDB using {self._effective.date().toString('dd-MMM-yyyy')}?\n\n{names}",
+            f"and prepare separate pricing tabs using {self._effective.date().toString('dd-MMM-yyyy')}?\n\n{names}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
