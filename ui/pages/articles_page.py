@@ -1766,7 +1766,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         """Clear manual base-length overrides for the shown Article rows."""
         snapshot = self._context.active_snapshot
         member_service = self._context.engineering_member_service
-         for _family, member, article in self._filtered:
+        for _family, member, article in self._filtered:
             self._base_len_by_member.pop(getattr(member, "id", ""), None)
             if snapshot is not None and article is not None:
                 code = str(getattr(article, "code", "") or "")
