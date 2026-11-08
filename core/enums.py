@@ -24,7 +24,10 @@ class WorkflowStep(Enum):
     REVIEW = "review"
     MAINTENANCE_COMPARISON = "maintenance_comparison"
     ENGINEERING = "engineering"
-    MAINTENANCE = "maintenance"\n    BULK_PRICE_UPDATE = "bulk_price_update"\n    BULK_VERSION_UPDATE = "bulk_version_update"\n    BULK_REPOSITORY_LINK = "bulk_repository_link"
+    MAINTENANCE = "maintenance"
+    BULK_PRICE_UPDATE = "bulk_price_update"
+    BULK_VERSION_UPDATE = "bulk_version_update"
+    BULK_REPOSITORY_LINK = "bulk_repository_link"
     #: Standalone legacy-compatible SyteLine export module.
     SYTELINE_EXPORT = "syteline_export"
     #: Standalone CET SIF validation tool (self-contained, disconnectable).
