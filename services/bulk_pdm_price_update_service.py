@@ -15,7 +15,7 @@ from typing import Any, Iterable
 from core.cancellation import checkpoint
 from models.snapshot import Snapshot
 from services.price_mdb_export_service import PriceMdbExportService
-from services.pricing_program import validate_pricing_program, PricingProgramError
+from services.pricing_program import validate_pricing_program
 from services.pricing_service import PriceParams, PricingService
 
 
@@ -178,12 +178,6 @@ class BulkPdmPriceUpdateService:
                 self.context.engineering_reduction_service.materialize_article_sets(snapshot)
                 if not snapshot.articles:
                     raise ValueError("The linked PDM product returned no articles.")
-                if not snapshot.article_sets:
-                    raise ValueError(
-                        "PDM article sets/base lengths could not be materialized; "
-                        "refusing to guess price article prefixes."
-                    )
-
                 snapshot.generation_program = program
                 params = PriceParams(
                     currency="",
