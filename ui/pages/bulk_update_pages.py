@@ -91,115 +91,166 @@ class _BulkPage(BasePage):
 
 class BulkPriceUpdatePage(_BulkPage):
     def __init__(self, context, parent=None):
-        super().__init__("Price Update", "Roll published price lists forward and review each package before applying.", context, parent)
+        super().__init__(
+            "Price Update",
+            "Select one or more linked series. Prices are fetched from each linked PDM product and written to that series MDB after validation.",
+            context,
+            parent,
+        )
         root = QVBoxLayout()
         form = QFormLayout()
         defaults = ";".join(p for p in _DEFAULT_REPOS if Path(p).is_dir())
         repo_row, self._repo = _repo_field(self, defaults)
-        form.addRow("Repository", repo_row)
-        self._target = QComboBox(self)
-        self._target.addItems(["XOCD packages (folders)", "OCD MDBs (files)"])
-        form.addRow("Repository holds", self._target)
+        form.addRow("Repository roots", repo_row)
         self._effective = QDateEdit(self)
         self._effective.setCalendarPopup(True)
         self._effective.setDisplayFormat("dd-MMM-yyyy")
         self._effective.setDate(QDate.currentDate())
-        form.addRow("Effective date", self._effective)
-        self._token = QLineEdit(self)
-        self._token.setPlaceholderText("e.g. 2026 or 2026_2")
-        form.addRow("New list token", self._token)
-        self._fresh = QCheckBox("Pull fresh prices from PDM (off = dates only)", self)
-        self._fresh.setChecked(True)
-        form.addRow("", self._fresh)
+        form.addRow("PDM price date", self._effective)
         root.addLayout(form)
-        actions = QHBoxLayout()
-        scan = QPushButton("Scan", self); scan.clicked.connect(self._scan)
-        apply = QPushButton("Apply Selected", self); apply.clicked.connect(self._apply)
-        actions.addWidget(scan); actions.addWidget(apply); actions.addStretch(1)
-        root.addLayout(actions)
-        self._status = QLabel("Enter repository, effective date and list token, then scan.", self)
-        root.addWidget(self._status)
-        self._table = _table(self, ["Apply", "Series", "Package", "Current open lists", "Preview / Result"])
-        root.addWidget(self._table, 1)
-        self.add_content(QWidget(self)); self._content.itemAt(self._content.count()-1).widget().setLayout(root)
-        self._packages = []
-        self._last_scan = None
 
-    def _selected_paths(self):
-        return [self._packages[r] for r in range(self._table.rowCount())
-                if self._table.item(r, 0).checkState() == Qt.CheckState.Checked]
+        actions = QHBoxLayout()
+        scan = QPushButton("Discover Series", self)
+        scan.clicked.connect(self._scan)
+        select_all = QPushButton("Select All", self)
+        select_all.clicked.connect(lambda: self._set_all(True))
+        clear = QPushButton("Clear", self)
+        clear.clicked.connect(lambda: self._set_all(False))
+        update = QPushButton("Update Selected from PDM", self)
+        update.clicked.connect(self._apply)
+        for button in (scan, select_all, clear, update):
+            actions.addWidget(button)
+        actions.addStretch(1)
+        root.addLayout(actions)
+
+        self._status = QLabel("Discover linked published series to begin.", self)
+        root.addWidget(self._status)
+        self._table = _table(
+            self,
+            ["Update", "Series", "Program", "PDM Link", "Linked PDM Product", "Update Result"],
+        )
+        root.addWidget(self._table, 1)
+        body = QWidget(self)
+        body.setLayout(root)
+        self.add_content(body)
+        self._series = []
 
     def _scan(self):
-        if self._busy(): return
-        repo = self._repo.text().strip()
-        if not repo:
-            QMessageBox.information(self, "Price Update", "Choose a repository root."); return
-        svc = self._context.price_update_service
-        is_mdb = self._target.currentIndex() == 1
-        effective = self._effective.date().toString("yyyyMMdd")
-        token = self._token.text().strip()
-        if not token:
-            QMessageBox.information(self, "Price Update", "Enter the new list token."); return
+        if self._busy():
+            return
+        roots = self._repo.text().strip()
+        if not roots:
+            QMessageBox.information(self, "Price Update", "Choose at least one repository root.")
+            return
+
         def work(reporter):
-            packages = svc._discover_packages(repo, is_mdb)
-            reporter.begin(max(len(packages), 1), title="Scan Price Lists", subject=Path(repo.split(";")[0]).name)
-            result = svc.run_batch(repo, is_mdb, effective, token, None, apply=False,
-                                   packages=packages, progress=lambda d,t,n: reporter.advance(n))
-            return packages, result
+            from services.bulk_pdm_price_update_service import BulkPdmPriceUpdateService
+            reporter.begin(1, title="Discover Linked Series", subject="Repository scan")
+            rows = BulkPdmPriceUpdateService(self._context).discover(roots)
+            reporter.advance(f"Discovered {len(rows)} series")
+            return rows
+
         self._start(work, self._scanned, "Price Update")
 
-    def _scanned(self, payload):
-        self._packages, result = payload
-        self._last_scan = result
-        self._table.setRowCount(len(self._packages))
-        by_path = {str(Path(p.package)): p for p in result.packages}
-        for row, path in enumerate(self._packages):
-            pkg = by_path.get(str(path))
+    def _scanned(self, rows):
+        self._series = list(rows)
+        self._table.setRowCount(len(rows))
+        for row, entry in enumerate(rows):
             check = QTableWidgetItem()
             check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
             check.setCheckState(Qt.CheckState.Unchecked)
             self._table.setItem(row, 0, check)
-            name = path.parent.name if self._target.currentIndex() == 1 else path.name
-            self._table.setItem(row, 1, _item(name))
-            self._table.setItem(row, 2, _item(path))
-            lists = ", ".join(f"{x.currency}: {x.old_list}" for x in getattr(pkg, "lists", [])) if pkg else ""
-            preview = getattr(pkg, "error", "") or ("; ".join(f"{x.currency}: {x.old_list} → {x.new_list}" for x in getattr(pkg, "lists", [])) if pkg else "No result")
-            self._table.setItem(row, 3, _item(lists or "No open price list"))
-            self._table.setItem(row, 4, _item(preview))
-        self._status.setText(f"Scanned {len(self._packages)} packages. Select rows to apply.")
+            values = (
+                entry.get("name", ""),
+                entry.get("program", "") or "-",
+                entry.get("link_status", "Not linked"),
+                entry.get("product_code", "") or "-",
+                entry.get("error", "") or "Ready" if entry.get("link_status") == "established" else (
+                    entry.get("error", "") or "Link required"
+                ),
+            )
+            for col, value in enumerate(values, 1):
+                self._table.setItem(row, col, _item(value))
+            if entry.get("error") or entry.get("link_status") != "established":
+                check.setCheckState(Qt.CheckState.Unchecked)
+                check.setFlags(check.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+        linked = sum(1 for x in rows if x.get("link_status") == "established" and not x.get("error"))
+        self._status.setText(
+            f"Discovered {len(rows)} series; {linked} have established PDM links. "
+            "Only linked series can be selected."
+        )
+
+    def _set_all(self, checked):
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is not None and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                item.setCheckState(state)
+
+    def _selected_series(self):
+        return [
+            self._series[row]
+            for row in range(self._table.rowCount())
+            if self._table.item(row, 0).checkState() == Qt.CheckState.Checked
+        ]
 
     def _apply(self):
-        if self._busy(): return
-        selected = self._selected_paths()
+        if self._busy():
+            return
+        selected = self._selected_series()
         if not selected:
-            QMessageBox.information(self, "Price Update", "Select at least one package."); return
-        if not self._token.text().strip():
-            QMessageBox.information(self, "Price Update", "Enter the new list token."); return
-        answer = QMessageBox.question(self, "Confirm Price Update",
-            f"Apply price-list roll-over to {len(selected)} selected package(s)?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes: return
-        svc = self._context.price_update_service
-        is_mdb = self._target.currentIndex() == 1
-        effective = self._effective.date().toString("yyyyMMdd")
-        token = self._token.text().strip()
-        lookup = svc.make_pdm_lookup(self._effective.date().toString("dd-MMM-yyyy"), _UK_SITE_ID,
-                                     special_map=svc.load_special_map()) if self._fresh.isChecked() else None
+            QMessageBox.information(self, "Price Update", "Select at least one linked series.")
+            return
+        day = self._effective.date().toString("yyyy-MM-dd")
+        names = "\n".join(f"• {entry['name']} ({entry.get('product_code') or 'linked PDM product'})" for entry in selected)
+        answer = QMessageBox.question(
+            self,
+            "Confirm PDM Price Update",
+            f"Fetch prices from PDM for {len(selected)} selected series, one at a time, "
+            f"and update each linked MDB using {self._effective.date().toString('dd-MMM-yyyy')}?\n\n{names}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
         def work(reporter):
-            reporter.begin(max(len(selected), 1), title="Apply Price Update", subject="")
-            try:
-                return svc.run_batch(self._repo.text().strip(), is_mdb, effective, token, lookup,
-                    apply=True, packages=selected, progress=lambda d,t,n: reporter.advance(n),
-                    special_map=svc.load_special_map() if lookup else None)
-            finally:
-                if lookup is not None and hasattr(lookup, "close"): lookup.close()
+            from services.bulk_pdm_price_update_service import BulkPdmPriceUpdateService
+            return BulkPdmPriceUpdateService(self._context).update(
+                selected, effective_date=day, site_id=_UK_SITE_ID, reporter=reporter
+            )
+
         self._start(work, self._applied, "Price Update")
 
     def _applied(self, result):
-        if result.error:
-            QMessageBox.warning(self, "Price Update", result.error)
-        self._status.setText(f"Applied to {sum(1 for p in result.packages if p.error is None)} of {len(result.packages)} packages. Commit repository changes to publish.")
-        self._scan()
+        by_path = {entry.path.casefold(): entry for entry in result.results}
+        for row, series in enumerate(self._series):
+            outcome = by_path.get(str(series.get("path") or "").casefold())
+            if outcome is None:
+                continue
+            status = outcome.status
+            detail = outcome.message
+            if outcome.warnings:
+                detail = (detail + " Warnings: " + "; ".join(outcome.warnings)).strip()
+            self._table.setItem(row, 5, _item(f"{status}: {detail}"))
+        self._status.setText(
+            f"Bulk PDM price update finished: {result.succeeded} verified, "
+            f"{result.failed} failed or skipped. Review each series result."
+        )
+        failures = [
+            f"{entry.name}: {entry.message}"
+            for entry in result.results if entry.status != "Updated"
+        ]
+        if failures:
+            QMessageBox.warning(
+                self, "Price Update Results",
+                "Some series were not updated. No unvalidated price plan was written.\n\n"
+                + "\n".join(failures[:12]),
+            )
+        else:
+            QMessageBox.information(
+                self, "Price Update Results",
+                f"All {result.succeeded} selected series completed with MDB read-back verification.",
+            )
 
 
 class BulkVersionUpdatePage(_BulkPage):
