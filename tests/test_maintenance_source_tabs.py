@@ -58,6 +58,7 @@ def _context(with_mdb: bool = True) -> ApplicationContext:
 def _page(cls, ctx, module=WorkbenchModule.MAINTENANCE):
     page = cls(ctx)
     page._active_module = module  # the page is its own top-level window here
+    page._product_data_context_active = True
     page.refresh()
     return page
 
