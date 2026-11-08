@@ -1083,8 +1083,7 @@ class MainWindow(QMainWindow):
             project = self._context.project_service.load_project(path)
         except Exception as error:  # noqa: BLE001 (surface any load failure)
             QMessageBox.critical(
-                self, "Open Project", f"Could not open project:
-{error}"
+                self, "Open Project", f"Could not open project:\n{error}"
             )
             return
         self._remember_project_dir(path)
@@ -1136,8 +1135,7 @@ class MainWindow(QMainWindow):
             )
         except Exception as error:  # noqa: BLE001 (surface any save failure)
             QMessageBox.critical(
-                self, "Save Project", f"Could not save project:
-{error}"
+                self, "Save Project", f"Could not save project:\n{error}"
             )
             return False
         self._remember_project_dir(str(saved))
@@ -1259,27 +1257,18 @@ class MainWindow(QMainWindow):
             rows = service.to_csv_rows(table)
             filename = f"{table.name}_tbl.csv"
             (out / filename).write_text(
-                "\r
-".join(rows) + "\r
-", encoding="utf-8"
+                "\r\n".join(rows) + "\r\n", encoding="utf-8"
             )
             written.append(filename)
             constraints.append(service.constraint_body(table))
         (out / "value_table_constraints.txt").write_text(
-            "\r
-\r
-".join(constraints) + "\r
-", encoding="utf-8"
+            "\r\n\r\n".join(constraints) + "\r\n", encoding="utf-8"
         )
         written.append("value_table_constraints.txt")
         QMessageBox.information(
             self, "Export Value Tables",
-            f"Exported {len(written)} file(s) to:
-{directory}
-
-"
-            + "
-".join(written),
+            f"Exported {len(written)} file(s) to:\n{directory}\n\n"
+            + "\n".join(written),
         )
 
     def _on_export_xocd(self) -> None:
@@ -1432,9 +1421,7 @@ class MainWindow(QMainWindow):
 
         if exit_code != 0:
             detail = error_text.strip() or output.strip() or f"svn.exe exited with code {exit_code}."
-            self._xocd_publish_failed(f"SVN {stage} failed.
-
-{detail}")
+            self._xocd_publish_failed(f"SVN {stage} failed.\n\n{detail}")
             return
 
         if stage == "cleanup":
@@ -1458,9 +1445,7 @@ class MainWindow(QMainWindow):
                 snapshot, xocd, force=True
             )
             if result.error:
-                self._xocd_publish_failed(f"XOCD export failed:
-
-{result.error}")
+                self._xocd_publish_failed(f"XOCD export failed:\n\n{result.error}")
                 return
 
             self._xocd_publish_program = result.program
@@ -1494,9 +1479,7 @@ class MainWindow(QMainWindow):
                 )
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not determine which XOCD files need to be added.
-
-{exc}"
+                    f"Could not determine which XOCD files need to be added.\n\n{exc}"
                 )
                 return
 
@@ -1541,9 +1524,7 @@ class MainWindow(QMainWindow):
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not verify SVN freshness before commit.
-
-{exc}"
+                    f"Could not verify SVN freshness before commit.\n\n{exc}"
                 )
                 return
 
@@ -1569,8 +1550,7 @@ class MainWindow(QMainWindow):
         if stage == "commit":
             revision = ""
             import re
-            match = re.search(r"Committed revision (\d+)\.", output + "
-" + error_text)
+            match = re.search(r"Committed revision (\d+)\.", output + "\n" + error_text)
             if match:
                 revision = match.group(1)
             self._xocd_publish_revision = revision
@@ -1601,17 +1581,12 @@ class MainWindow(QMainWindow):
                 if dirty:
                     self._xocd_publish_failed(
                         "SVN commit finished, but validation found remaining "
-                        "changes in generated files:
-
-" + "
-".join(dirty)
+                        "changes in generated files:\n\n" + "\n".join(dirty)
                     )
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Commit completed, but final SVN validation failed.
-
-{exc}"
+                    f"Commit completed, but final SVN validation failed.\n\n{exc}"
                 )
                 return
 
@@ -1631,12 +1606,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Export XOCD",
-                f"XOCD commit completed successfully.
-
-"
+                f"XOCD commit completed successfully.\n\n"
                 f"Files committed: {len(self._xocd_publish_files)}"
-                + (f"
-Revision: {revision}" if revision else "")
+                + (f"\nRevision: {revision}" if revision else "")
                 + extra,
             )
             return
@@ -1772,8 +1744,7 @@ Revision: {revision}" if revision else "")
 
         if not result.ok or result.error:
             QMessageBox.warning(
-                self, "Export MDB", f"Export failed:
-{result.error or 'unknown error'}"
+                self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
             )
             return
 
@@ -1781,11 +1752,8 @@ Revision: {revision}" if revision else "")
         QMessageBox.information(
             self, "Export MDB",
             f"Exported '{result.template}' MDB ({total} rows across "
-            f"{len(result.table_counts)} table(s)) into:
-{result.mdb_path}"
-            + (f"
-
-Standardised {standardised} base article(s) to CAD Maintenance."
+            f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
+            + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
                if standardised else ""),
         )
 
@@ -1850,8 +1818,7 @@ Standardised {standardised} base article(s) to CAD Maintenance."
         layout = QVBoxLayout(dlg)
 
         if warnings:
-            warn = QLabel("
-".join(warnings), dlg)
+            warn = QLabel("\n".join(warnings), dlg)
             warn.setWordWrap(True)
             warn.setObjectName("pageSubtitle")
             layout.addWidget(warn)
