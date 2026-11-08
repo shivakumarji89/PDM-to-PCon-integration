@@ -166,8 +166,21 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self.refresh()
 
     def on_enter(self) -> None:
-        """Refresh the existing Maintenance Article Sets and reduction view."""
+        """Refresh when returning from another workflow.
+
+        Development re-materialises Article Sets from the current Class Creation
+        definition before the Article table is rebuilt. Maintenance keeps its
+        existing ArticleSet/reduction path.
+        """
         snapshot = self._context.active_snapshot
+        window = self.window()
+        if (
+            snapshot is not None
+            and getattr(window, "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        ):
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
         # Returning from another workflow may mean the snapshot's article state
         # changed while this page was hidden; only tab toggles reuse validation.
         self._invalidate_validation(snapshot)
@@ -361,7 +374,40 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None:
             return
         svc = self._context.engineering_reduction_service
-        if getattr(snapshot, "article_sets", None):
+        if (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            and getattr(snapshot, "article_sets", None)
+        ):
+            # Development Class Creation removes configured pre-dot segments,
+            # so the Article Set master must use the resulting reduced article,
+            # not a prefix cut of the original PDM code.
+            members_by_article = {
+                str(member.article_id): member
+                for family in (getattr(snapshot.engineering, "families", []) or [])
+                for member in (getattr(family, "members", []) or [])
+            }
+            by_base: dict[str, dict] = {}
+            set_props = {
+                str(aid): {
+                    str(getattr(attr, "name", "") or "")
+                    for attr in getattr(aset, "properties", []) or []
+                    if getattr(attr, "name", "")
+                }
+                for aset in (getattr(snapshot, "article_sets", []) or [])
+                for aid in getattr(aset, "article_ids", []) or []
+            }
+            for aset in getattr(snapshot, "article_sets", []) or []:
+                for aid in getattr(aset, "article_ids", []) or []:
+                    member = members_by_article.get(str(aid))
+                    base = (getattr(member, "reduced_article", "") if member else "") or ""
+                    base = base or "Set"
+                    entry = by_base.setdefault(base, {"ids": [], "props": set()})
+                    if str(aid) not in entry["ids"]:
+                        entry["ids"].append(str(aid))
+                    entry["props"].update(set_props.get(str(aid), set()))
+            for base, entry in by_base.items():
+                yield (base, entry["ids"], len(base), len(entry["props"]), ())
+        elif getattr(snapshot, "article_sets", None):
             for m in svc.merge_sets_by_base(snapshot):
                 yield (m.base or "Set", m.article_ids, m.base_length,
                        len(m.property_names), m.optional_property_names)
@@ -493,11 +539,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             top.removeWidget(self._details_box)
             self._top_row.hide()
             self._shell_hsplit.insertWidget(0, self._family_box)
-            self._shell_hsplit.insertWidget(1, self._shell_side_panel)
-            self._shell_hsplit.insertWidget(2, self._table)
-            self._shell_hsplit.setSizes([170, 300, 720])
-            self._sets_box.setVisible(True)
-            self._status_box.setVisible(True)
+            self._shell_hsplit.insertWidget(1, self._table)
+            self._shell_hsplit.setSizes([190, 900])
             self._shell_card.show()
             body.addWidget(self._shell_card, 1)
             for widget, _stretch in self._toolbar_widgets:
@@ -534,8 +577,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             body.removeWidget(self._shell_card)
             self._shell_card.hide()
             top.insertWidget(0, self._family_box, 1)
-            top.insertWidget(1, self._sets_box, 1)
-            top.insertWidget(2, self._status_box, 1)
             top.addWidget(self._details_box, 1)
             body.addWidget(self._table, 1)
             self._top_row.show()
@@ -651,17 +692,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._details_grid.setVerticalSpacing(6)
         self._details_host.hide()
         self._details_form.addRow(self._details_host)
-        # Keep Development's Article Sets and Workspace Status available in
-        # the unified Maintenance shell. These are read-only projections of the
-        # active snapshot here; Maintenance's own alignment pipeline remains
-        # authoritative and is not replaced by Development materialization.
-        self._shell_side_panel = QWidget(self)
-        self._shell_side_layout = QVBoxLayout(self._shell_side_panel)
-        self._shell_side_layout.setContentsMargins(0, 0, 0, 0)
-        self._shell_side_layout.setSpacing(theme.SPACE_2)
-        self._shell_side_layout.addWidget(self._sets_box, 3)
-        self._shell_side_layout.addWidget(self._status_box, 2)
-
         self._shell_vsplit = QSplitter(Qt.Orientation.Vertical, self)
         self._shell_vsplit.setChildrenCollapsible(False)
         self._shell_vsplit.addWidget(self._shell_hsplit)
@@ -774,9 +804,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._table.setColumnHidden(9, not maintenance)
         self._apply_shell(maintenance)
         if hasattr(self, "_sets_box"):
-            self._sets_box.setVisible(True)
+            self._sets_box.setVisible(not maintenance)
         if hasattr(self, "_status_box"):
-            self._status_box.setVisible(True)
+            self._status_box.setVisible(not maintenance)
         if module != self._last_module:
             # Do not retain a specific set selection when entering Maintenance.
             if maintenance:
@@ -1056,6 +1086,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         article_service = self._context.article_service
         member_service = self._context.engineering_member_service
         snapshot = self._context.active_snapshot
+        is_development = (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
         for _family, member, article in self._rows:
             if article is None:
                 continue
@@ -1064,15 +1097,24 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             mid = getattr(member, "id", "")
             code = str(getattr(article, "code", "") or "")
             effective_value = value
+            if is_development:
+                # Development base articles never consume the PDM post-dot
+                # relationship/order-code suffix. The manual length is a
+                # boundary in the pre-dot article only.
+                effective_value = min(value, len(code.split(".", 1)[0]))
             if mid:
                 self._base_len_by_member[mid] = effective_value
             if snapshot is not None and code:
                 # Persist the override separately from Class Creation Ignore.
-                # This preserves the user's manual boundary without changing
-                # property/value relationships or the Ignore decision.
+                # This lets the next Class Creation materialization reproduce
+                # the user's manual boundary without changing property/value
+                # relationships or the Ignore decision.
                 snapshot.base_length_overrides[code] = effective_value
             article_service.set_selected(article, True)
-            base, _remaining = self._split_base(code, effective_value)
+            if is_development:
+                base = code.split(".", 1)[0][:effective_value]
+            else:
+                base, _remaining = self._split_base(code, effective_value)
             member_service.set_reduced_article(member, base)
         if busy is not None:
             busy.update_status("Grouping articles...")
@@ -1123,6 +1165,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 if article is not None and str(article.id) in lengths:
                     article_service.set_selected(article, True)
             self._invalidate_validation(snapshot)
+            return
+        # In Development the Class Creation materializer already wrote
+        # each member's reduced_article. Do not replace that transformed base
+        # with the legacy prefix-only reduction.
+        if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
             return
         for ids, length in self._set_len_by_ids.items():
             if ids & self._blocked_article_ids:
@@ -1394,7 +1441,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             applied = self._applied_length(member)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            base, remaining = self._split_base(code, length)
+            if (
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                and getattr(member, "reduced_article", "")
+            ):
+                base = member.reduced_article
+                remaining = code[len(base):] if base and code.startswith(base) else ""
+                length = len(base)
+                has_length = True
+            else:
+                base, remaining = self._split_base(code, length)
     
             source_item = QTableWidgetItem(code)
             source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
@@ -1464,9 +1520,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         order_keys: list[str] = []
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            base, remaining = self._split_base(
-                code, self._applied_length(member) or default_len
-            )
+            if (
+                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                and getattr(member, "reduced_article", "")
+            ):
+                base = member.reduced_article
+                remaining = code[len(base):] if base and code.startswith(base) else ""
+            else:
+                base, remaining = self._split_base(
+                    code, self._applied_length(member) or default_len
+                )
             group = groups.get(base)
             if group is None:
                 group = {"members": [], "remainders": set(),
@@ -1594,25 +1657,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- editing -----------------------------------------------------------
     def _on_rebuild_from_class_creation(self) -> None:
-        """Rebuild Article Sets through the canonical Maintenance pipeline."""
-        snapshot = self._context.active_snapshot
-        if (
-            snapshot is None
-            or self.is_mdb_view()
-            or getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE
-        ):
+        """Explicitly rebuild the Development Article view from Class Creation."""
+        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
-        mdb = self._context.real.mdb_import_snapshot
-        if mdb is not None:
-            from services.maintenance_alignment_service import MaintenanceAlignmentService
-
-            MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
-                snapshot, mdb, force=True
-            )
-        else:
-            self._context.engineering_reduction_service.materialize_article_sets(
-                snapshot
-            )
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return
+        self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+            snapshot
+        )
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
@@ -1766,25 +1819,23 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         """Clear manual base-length overrides for the shown Article rows."""
         snapshot = self._context.active_snapshot
         member_service = self._context.engineering_member_service
+        is_development = (
+            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+        )
         for _family, member, article in self._filtered:
             self._base_len_by_member.pop(getattr(member, "id", ""), None)
             if snapshot is not None and article is not None:
                 code = str(getattr(article, "code", "") or "")
                 if code:
                     snapshot.base_length_overrides.pop(code, None)
-            member_service.set_reduced_article(member, "")
-        if snapshot is not None:
-            mdb = self._context.real.mdb_import_snapshot
-            if mdb is not None:
-                from services.maintenance_alignment_service import MaintenanceAlignmentService
-
-                MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
-                    snapshot, mdb, force=True
-                )
-            else:
-                self._context.engineering_reduction_service.materialize_article_sets(
-                    snapshot
-                )
+            if not is_development:
+                member_service.set_reduced_article(member, "")
+        if is_development and snapshot is not None:
+            # Re-run the unchanged Class Creation reduction now that the
+            # explicit boundary override is gone.
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
         if snapshot is not None:
             self._context.snapshot_manager.mark_modified()
         self._apply_filter()
