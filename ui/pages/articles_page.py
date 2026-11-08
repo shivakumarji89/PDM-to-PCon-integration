@@ -148,7 +148,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._last_module = None
         # Maintenance PDM view: derived MDB base lengths (None = not applicable).
         self._mdb_mapping: tuple[dict[str, int], list[tuple[str, str]]] | None = None
-        # Workflow-shell look (Maintenance only); see _apply_shell.
+        # Single Product Data Workspace shell; see _apply_shell.
         self._shell_on = False
         self._shell_built = False
 
@@ -802,7 +802,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         maintenance = self.is_maintenance_mode()
         if hasattr(self, "_table"):
             self._table.setColumnHidden(9, not maintenance)
-        self._apply_shell(maintenance)
+        self._apply_shell(True)
         if hasattr(self, "_sets_box"):
             self._sets_box.setVisible(not maintenance)
         if hasattr(self, "_status_box"):
@@ -1821,7 +1821,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         snapshot = self._context.active_snapshot
         member_service = self._context.engineering_member_service
         is_development = (
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            self.is_development_mode()
         )
         for _family, member, article in self._filtered:
             self._base_len_by_member.pop(getattr(member, "id", ""), None)
