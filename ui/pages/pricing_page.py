@@ -322,16 +322,18 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     # -- price lists ------------------------------------------------------
     def _price_list_mode(self) -> str:
-        """Select creation vs maintenance behavior from the active module."""
-        module = getattr(self.window(), "_active_module", None)
-        return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
+        """Create the initial lists when none exist; otherwise roll forward."""
+        snapshot = self._context.active_snapshot
+        if snapshot is not None and not getattr(snapshot, "price_lists", None):
+            return "new_creation"
+        return "maintenance"
 
     def _price_list_currencies(self) -> list[str]:
         """Return currencies for the price-list workflow.
         
-        Development creates the initial price-list set for both supported
-        currencies. Maintenance continues from the currencies already present
-        in the snapshot, with the selected currency used only when no list exists.
+        Initial setup creates both supported currencies in either workspace
+        stage. Once lists exist, Maintenance continues from currencies already
+        present in the snapshot.
         """
         snapshot = self._context.active_snapshot
         if snapshot is None:
@@ -378,8 +380,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self.refresh()
         if snapshot is None:
             return
-        module = getattr(self.window(), "_active_module", None)
-        if module != WorkbenchModule.DEVELOPMENT or snapshot.price_lists:
+        if self.is_mdb_view() or snapshot.price_lists:
             return
         if getattr(self, "_default_price_list_snapshot", None) is snapshot:
             return
