@@ -625,8 +625,13 @@ class MainWindow(QMainWindow):
             description = next(
                 (item.description for item in MODULE_ITEMS if item.module == module), ""
             )
+            if module == WorkbenchModule.DEVELOPMENT:
+                description = "Product Data Workspace · Product Engineering"
+            elif module == WorkbenchModule.MAINTENANCE:
+                description = "Product Data Workspace · Product Maintenance"
             self._sidebar.set_module(
-                module_title(module), description,
+                "Product Data Workspace" if self._product_data_context_active else module_title(module),
+                description,
                 [items_by_step[step] for step in steps if step in items_by_step],
             )
             self._refresh_app_header()
