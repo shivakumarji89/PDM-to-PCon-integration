@@ -1676,8 +1676,7 @@ Revision: {revision}" if revision else "")
 
         if not result.ok or result.error:
             QMessageBox.warning(
-                self, "Export MDB", f"Export failed:
-{result.error or 'unknown error'}"
+                self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
             )
             return
 
@@ -1685,11 +1684,8 @@ Revision: {revision}" if revision else "")
         QMessageBox.information(
             self, "Export MDB",
             f"Exported '{result.template}' MDB ({total} rows across "
-            f"{len(result.table_counts)} table(s)) into:
-{result.mdb_path}"
-            + (f"
-
-Standardised {standardised} base article(s) to CAD Maintenance."
+            f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
+            + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
                if standardised else ""),
         )
 
