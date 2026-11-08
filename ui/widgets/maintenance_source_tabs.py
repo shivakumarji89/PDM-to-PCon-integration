@@ -1,14 +1,13 @@
-"""PDM / MDB source selector for Maintenance workflow pages.
+"""PDM / MDB source selection for the unified Product Data Workspace.
 
-Maintenance pages can show either the PDM snapshot or the imported released
-MDB snapshot. The selection is *page-local*: it never touches
-``ApplicationContext.active_snapshot`` or the snapshot source. Each page wraps
-its context in :class:`SourceContext`, which resolves the snapshot the page
-should read:
+Development and Maintenance pages can read either the PDM snapshot or the
+imported released MDB snapshot. Selection is page-local: it never changes
+``ApplicationContext.active_snapshot`` or the application's active snapshot
+source. Each page wraps its context in :class:`SourceContext`:
 
-    no tabs (Development, other modules) -> context.active_snapshot (unchanged)
-    PDM tab                               -> context.pdm_snapshot
-    MDB tab                               -> context.mdb_import_snapshot
+    PDM tab                         -> context.pdm_snapshot
+    MDB tab                         -> context.mdb_import_snapshot
+    pages outside this workspace    -> context.active_snapshot (unchanged)
 
 The MDB tab is strictly read-only: ``snapshot_manager.mark_modified`` is a
 no-op for it, mutating page actions are disabled, and mutating handlers are
@@ -57,7 +56,7 @@ class _ReadOnlySnapshotManager:
 
 
 class SourceContext:
-    """Page-local view of the ApplicationContext for one Maintenance source."""
+    """Page-local view of the ApplicationContext for the selected workspace source."""
 
     def __init__(self, context) -> None:
         object.__setattr__(self, "_real", context)
@@ -89,8 +88,8 @@ class SourceContext:
 
         These services resolve ``context.active_snapshot`` internally, so the
         shared instance on the real context would read the global snapshot
-        whichever tab is selected. Without a source (Development / other
-        modules) the shared service is returned unchanged.
+        whichever tab is selected. Without a source (pages outside Product Data
+        Workspace) the shared service is returned unchanged.
         """
         if self.source is None:
             return self._real.get_service(service_type)
@@ -218,7 +217,7 @@ def read_only_in_mdb(*names: str):
 
 
 class MaintenanceSourceMixin:
-    """Shared page logic for the PDM/MDB source tabs (Maintenance only)."""
+    """Shared page logic for PDM/MDB source selection in Product Data Workspace."""
 
     def _init_source_tabs(self, context) -> None:
         """Wrap the application context; resolve the shared selector on demand."""
