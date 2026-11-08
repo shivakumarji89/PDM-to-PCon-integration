@@ -1522,7 +1522,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         for family, member, article in rows:
             code = article.code if article is not None else ""
             if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+                self.is_development_mode()
                 and getattr(member, "reduced_article", "")
             ):
                 base = member.reduced_article
