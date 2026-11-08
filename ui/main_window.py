@@ -475,6 +475,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(module_label)
         self._active_module_label = module_label
 
+        self._product_data_context_selector = QComboBox(container)
+        self._product_data_context_selector.setObjectName("productDataContextSelector")
+        self._product_data_context_selector.addItem("Product Engineering", WorkbenchModule.DEVELOPMENT)
+        self._product_data_context_selector.addItem("Product Maintenance", WorkbenchModule.MAINTENANCE)
+        self._product_data_context_selector.setStyleSheet(
+            "QComboBox { padding:7px 9px; border:1px solid #C9D3DF; border-radius:6px; "
+            "background:#FFFFFF; color:#1B2433; }"
+        )
+        self._product_data_context_selector.currentIndexChanged.connect(self._on_product_data_context_changed)
+        self._product_data_context_selector.hide()
+        layout.addWidget(self._product_data_context_selector)
+        self._product_data_context_active = False
+
         self._legacy_nav_spacer = QWidget(container)
         self._legacy_nav_spacer.setFixedHeight(theme.SECTION_SPACING)
         layout.addWidget(self._legacy_nav_spacer)
@@ -488,13 +501,31 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._sidebar, 1)
         return container
 
+    def _on_product_data_context_changed(self, _index: int) -> None:
+        if not self._product_data_context_active:
+            return
+        module = self._product_data_context_selector.currentData()
+        if module in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE):
+            self._on_module_selected(module)
+
     def _on_module_selected(self, module: WorkbenchModule) -> None:
-        """Enter Level 2 and expose only the workflows for the selected module."""
+        """Enter a module or one of the grouped Product Data Workspace contexts."""
+        if module == WorkbenchModule.PRODUCT_DATA_WORKSPACE:
+            self._product_data_context_active = True
+            module = self._product_data_context_selector.currentData() or WorkbenchModule.DEVELOPMENT
+        elif module not in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE) or not self._product_data_context_active:
+            self._product_data_context_active = False
+        if module in (WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE) and self._product_data_context_active:
+            target_index = 0 if module == WorkbenchModule.DEVELOPMENT else 1
+            self._product_data_context_selector.blockSignals(True)
+            self._product_data_context_selector.setCurrentIndex(target_index)
+            self._product_data_context_selector.blockSignals(False)
         self._active_module = module
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
         steps = list(module_workflows(module))
         self._active_module_label.setText(module_title(module))
+        self._product_data_context_selector.setVisible(self._product_data_context_active)
 
         self._module_home.hide()
         self._module_placeholder.hide()
@@ -674,6 +705,8 @@ class MainWindow(QMainWindow):
     def _show_module_home(self) -> None:
         """Return to Level 1 and hide all workflow-specific UI."""
         self._active_module = None
+        self._product_data_context_active = False
+        self._product_data_context_selector.hide()
         self._apply_shell_chrome(None, [])
         self._left_panel.hide()
         self._nav_footer.hide()

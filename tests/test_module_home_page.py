@@ -11,8 +11,7 @@ from core.modules import WorkbenchModule
 from ui.pages.module_home_page import ModuleHomePage
 
 PRIMARY = (
-    WorkbenchModule.DEVELOPMENT,
-    WorkbenchModule.MAINTENANCE,
+    WorkbenchModule.PRODUCT_DATA_WORKSPACE,
     WorkbenchModule.METATYPE,
     WorkbenchModule.OAP,
     WorkbenchModule.QA_VALIDATION,
@@ -101,6 +100,15 @@ def test_main_window_still_routes_module_selection(app):
 
     window = MainWindow()
     try:
+        tile = {t.module: t for t in window._module_home._module_buttons}[WorkbenchModule.PRODUCT_DATA_WORKSPACE]
+        tile.click()
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+        assert window._product_data_context_selector.isVisible()
+        window._product_data_context_selector.setCurrentIndex(1)
+        assert window._active_module == WorkbenchModule.MAINTENANCE
+        window._product_data_context_selector.setCurrentIndex(0)
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+        window._show_module_home()
         tile = {t.module: t for t in window._module_home._module_buttons}[WorkbenchModule.METATYPE]
         tile.click()
         assert window._active_module == WorkbenchModule.METATYPE
@@ -193,6 +201,7 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
         assert {"repository", "mdb"} <= set(window._app_header._indicators)
 
         maintenance_pages = [window._pages[s] for s in module_workflows(WorkbenchModule.MAINTENANCE)]
+        window._product_data_context_active = True
         window._on_module_selected(WorkbenchModule.MAINTENANCE)
         for page in maintenance_pages:
             if getattr(page, "header", None) is None or not hasattr(page.header, "add_action"):

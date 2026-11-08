@@ -33,8 +33,7 @@ _FONT_FAMILY = "Segoe UI"
 
 # (module, number, icon, accent, description) - positions follow the reference.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.DEVELOPMENT, "01", "code", _GREEN, "CAD & Data Workflows\nPDM – pCon Integration"),
-    (WorkbenchModule.MAINTENANCE, "02", "database", _RED, "Article Update,\nPricing and Relations"),
+    (WorkbenchModule.PRODUCT_DATA_WORKSPACE, "01", "database", _GREEN, "Product Engineering &\nProduct Maintenance"),
     (WorkbenchModule.METATYPE, "03", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
     (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
     (WorkbenchModule.QA_VALIDATION, "05", "check", _GREEN, "OBX Validation\nData Quality Checks"),
@@ -44,8 +43,7 @@ _PRIMARY_MODULES = (
 # Design space of the orbit stage (reference image coordinates, y offset 85).
 _DESIGN_W, _DESIGN_H, _DESIGN_Y0 = 1536.0, 790.0, 85.0
 _TILE_RECTS = {
-    WorkbenchModule.DEVELOPMENT: (166, 457, 316, 223),
-    WorkbenchModule.MAINTENANCE: (217, 183, 301, 220),
+    WorkbenchModule.PRODUCT_DATA_WORKSPACE: (166, 457, 316, 223),
     WorkbenchModule.METATYPE: (626, 106, 285, 196),
     WorkbenchModule.OAP: (1019, 183, 301, 220),
     WorkbenchModule.QA_VALIDATION: (1055, 457, 316, 223),

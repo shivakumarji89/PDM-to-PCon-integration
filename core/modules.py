@@ -15,6 +15,7 @@ from core.enums import WorkflowStep
 class WorkbenchModule(Enum):
     """Top-level functional modules of the workbench."""
 
+    PRODUCT_DATA_WORKSPACE = "product_data_workspace"
     DEVELOPMENT = "development"
     MAINTENANCE = "maintenance"
     QA_VALIDATION = "qa_validation"
@@ -35,14 +36,9 @@ class ModuleItem:
 
 MODULE_ITEMS: tuple[ModuleItem, ...] = (
     ModuleItem(
-        WorkbenchModule.DEVELOPMENT,
-        "Development",
-        "Create and develop product engineering data.",
-    ),
-    ModuleItem(
-        WorkbenchModule.MAINTENANCE,
-        "Maintenance",
-        "Maintain and update published product packages.",
+        WorkbenchModule.PRODUCT_DATA_WORKSPACE,
+        "Product Data Workspace",
+        "Engineering and maintenance workflows for product data.",
     ),
     ModuleItem(
         WorkbenchModule.QA_VALIDATION,
