@@ -47,7 +47,7 @@ class BulkPriceUpdateResult:
 
     @property
     def failed(self) -> int:
-        return sum(r.status != "Updated" for r in self.results)
+        return sum(r.status not in {"Updated", "Ready"} for r in self.results)
 
 
 @dataclass(frozen=True)
