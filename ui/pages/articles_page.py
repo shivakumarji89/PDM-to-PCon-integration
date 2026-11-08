@@ -514,7 +514,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         control, signal and data path is the existing one.
         """
         self._group_class_check.setVisible(
-            on and self.is_maintenance_mode()
+            on and self.is_development_mode()
         )
         if on == self._shell_on:
             return
@@ -770,8 +770,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             return
         snapshot = self._context.active_snapshot
         module = getattr(self.window(), "_active_module", None)
-        # This bulk boundary action belongs to Maintenance; Development's
-        # Class Creation workflow and toolbar remain unchanged.
+        # Base-to-dot is a Maintenance-side bulk boundary action.
         if hasattr(self, "_dot_base_btn"):
             self._dot_base_btn.setVisible(self.is_maintenance_mode())
         # Article Sets and Workspace Status are Development-only panels.
