@@ -799,7 +799,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # Article Sets and Workspace Status are Development-only panels.
         # Keep their data/reduction logic intact, but remove them from the
         # Maintenance layout so the article workspace stays focused.
-        maintenance = module == WorkbenchModule.MAINTENANCE
+        maintenance = self.is_maintenance_mode()
         if hasattr(self, "_table"):
             self._table.setColumnHidden(9, not maintenance)
         self._apply_shell(maintenance)
@@ -862,7 +862,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # MDB must never influence Development merely because its source tabs
         # default to PDM there.
         if (
-            getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE
+            not self.is_maintenance_mode()
             or self._context.source != SOURCE_PDM
         ):
             return None
@@ -1087,7 +1087,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         member_service = self._context.engineering_member_service
         snapshot = self._context.active_snapshot
         is_development = (
-            getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
+            self.is_development_mode()
         )
         for _family, member, article in self._rows:
             if article is None:
@@ -1327,7 +1327,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         class_groups = (
             self._article_class_groups(rows)
             if self._group_class_check.isChecked()
-            and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
+            and self.is_maintenance_mode()
             else None
         )
         if class_groups is not None:
