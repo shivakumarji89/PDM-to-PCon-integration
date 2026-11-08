@@ -521,8 +521,9 @@ class MainWindow(QMainWindow):
     def _resolve_product_data_mode(self) -> WorkbenchModule:
         """Infer Development or Maintenance from the loaded PDM/MDB snapshots.
 
-        A loaded PDM snapshot without an imported MDB baseline is Development.
-        When both snapshots exist, the same workspace operates in Maintenance.
+        A loaded PDM snapshot without a non-empty imported MDB article
+        baseline is Development. Maintenance starts only when the released MDB
+        contains article data as well as the PDM snapshot.
         """
         mdb_snapshot = self._context.mdb_import_snapshot
         has_released_mdb_articles = bool(
