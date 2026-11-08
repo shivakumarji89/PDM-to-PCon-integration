@@ -834,8 +834,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._selected_attr_group = group_name
         self._populate_visible_values(prop, group_name, backing)
         development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
+            self.is_development_mode()
         )
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
@@ -917,7 +916,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
             sliced_item = QTableWidgetItem(sliced)
             sliced_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
-            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            if self.is_development_mode():
                 sliced_item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsSelectable
@@ -2114,8 +2113,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                     item.setText(_COL_CODE, inferred)
                     item.setForeground(_COL_CODE, QBrush(QColor(theme.COLOR_OK)))
                 development = (
-                    getattr(self.window(), "_active_module", None)
-                    == WorkbenchModule.DEVELOPMENT
+                    self.is_development_mode()
                 )
                 if development or inferred or is_config or (not distinct and not fully_coded):
                     # Development Class Creation owns the pre-dot reduction
@@ -2158,7 +2156,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str, group_name: str | None = None):
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self.is_development_mode():
             return None
         cls = self._attribute_class_for_group(group_name)
         if cls is None:
@@ -2177,7 +2175,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     def _sync_development_article_sets(self) -> None:
         snapshot = self._context.active_snapshot
         window = self.window()
-        if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if snapshot is None or not self.is_development_mode():
             return
         self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
 
