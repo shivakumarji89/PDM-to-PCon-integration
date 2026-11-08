@@ -107,11 +107,14 @@ def test_main_window_still_routes_module_selection(app):
 
         # The workspace changes mode only when both source snapshots are loaded.
         from models.snapshot import Snapshot
+        from models.article import Article
         window._context.register_pdm_snapshot(Snapshot())
-        window._sync_product_data_mode()
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.DEVELOPMENT
-        window._context.register_mdb_import_snapshot(Snapshot())
-        window._sync_product_data_mode()
+        mdb = Snapshot()
+        mdb.articles.append(Article(id="mdb-article-1", code="SERIES.001"))
+        window._context.register_mdb_import_snapshot(mdb)
+        window._product_page.snapshot_changed.emit()
         assert window._active_module == WorkbenchModule.MAINTENANCE
         window._context.register_mdb_import_snapshot(None)
         window._product_page.snapshot_changed.emit()
