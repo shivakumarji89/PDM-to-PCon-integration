@@ -989,8 +989,7 @@ class MainWindow(QMainWindow):
             project = self._context.project_service.load_project(path)
         except Exception as error:  # noqa: BLE001 (surface any load failure)
             QMessageBox.critical(
-                self, "Open Project", f"Could not open project:
-{error}"
+                self, "Open Project", f"Could not open project:\n{error}"
             )
             return
         self._remember_project_dir(path)
@@ -1042,8 +1041,7 @@ class MainWindow(QMainWindow):
             )
         except Exception as error:  # noqa: BLE001 (surface any save failure)
             QMessageBox.critical(
-                self, "Save Project", f"Could not save project:
-{error}"
+                self, "Save Project", f"Could not save project:\n{error}"
             )
             return False
         self._remember_project_dir(str(saved))
@@ -1180,12 +1178,8 @@ class MainWindow(QMainWindow):
         written.append("value_table_constraints.txt")
         QMessageBox.information(
             self, "Export Value Tables",
-            f"Exported {len(written)} file(s) to:
-{directory}
-
-"
-            + "
-".join(written),
+            f"Exported {len(written)} file(s) to:\n{directory}\n\n"
+            + "\n".join(written),
         )
 
     def _on_export_xocd(self) -> None:
@@ -1338,9 +1332,7 @@ class MainWindow(QMainWindow):
 
         if exit_code != 0:
             detail = error_text.strip() or output.strip() or f"svn.exe exited with code {exit_code}."
-            self._xocd_publish_failed(f"SVN {stage} failed.
-
-{detail}")
+            self._xocd_publish_failed(f"SVN {stage} failed.\n\n{detail}")
             return
 
         if stage == "cleanup":
@@ -1364,9 +1356,7 @@ class MainWindow(QMainWindow):
                 snapshot, xocd, force=True
             )
             if result.error:
-                self._xocd_publish_failed(f"XOCD export failed:
-
-{result.error}")
+                self._xocd_publish_failed(f"XOCD export failed:\n\n{result.error}")
                 return
 
             self._xocd_publish_program = result.program
@@ -1400,9 +1390,7 @@ class MainWindow(QMainWindow):
                 )
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not determine which XOCD files need to be added.
-
-{exc}"
+                    f"Could not determine which XOCD files need to be added.\n\n{exc}"
                 )
                 return
 
@@ -1447,9 +1435,7 @@ class MainWindow(QMainWindow):
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not verify SVN freshness before commit.
-
-{exc}"
+                    f"Could not verify SVN freshness before commit.\n\n{exc}"
                 )
                 return
 
@@ -1515,9 +1501,7 @@ class MainWindow(QMainWindow):
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Commit completed, but final SVN validation failed.
-
-{exc}"
+                    f"Commit completed, but final SVN validation failed.\n\n{exc}"
                 )
                 return
 
@@ -1537,12 +1521,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Export XOCD",
-                f"XOCD commit completed successfully.
-
-"
+                f"XOCD commit completed successfully.\n\n"
                 f"Files committed: {len(self._xocd_publish_files)}"
-                + (f"
-Revision: {revision}" if revision else "")
+                + (f"\nRevision: {revision}" if revision else "")
                 + extra,
             )
             return
@@ -1678,8 +1659,7 @@ Revision: {revision}" if revision else "")
 
         if not result.ok or result.error:
             QMessageBox.warning(
-                self, "Export MDB", f"Export failed:
-{result.error or 'unknown error'}"
+                self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
             )
             return
 
@@ -1687,11 +1667,8 @@ Revision: {revision}" if revision else "")
         QMessageBox.information(
             self, "Export MDB",
             f"Exported '{result.template}' MDB ({total} rows across "
-            f"{len(result.table_counts)} table(s)) into:
-{result.mdb_path}"
-            + (f"
-
-Standardised {standardised} base article(s) to CAD Maintenance."
+            f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
+            + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
                if standardised else ""),
         )
 
@@ -1727,15 +1704,13 @@ Standardised {standardised} base article(s) to CAD Maintenance."
         except Exception as error:  # noqa: BLE001 - report export failures to user
             QMessageBox.warning(
                 self, "Export Snapshot to Excel",
-                f"Excel export failed:\
-{error}",
+                f"Excel export failed:\n{error}",
             )
             return
 
         QMessageBox.information(
             self, "Export Snapshot to Excel",
-            f"Exported all snapshot data to:\
-{saved}",
+            f"Exported all snapshot data to:\n{saved}",
         )
 
     def _show_text_result(
