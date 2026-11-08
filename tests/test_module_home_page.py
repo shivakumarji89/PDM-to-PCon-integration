@@ -326,5 +326,15 @@ def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_auto
         assert window._manager.steps() == list(module_workflows(WorkbenchModule.DEVELOPMENT))
         assert module_workflows(WorkbenchModule.MAINTENANCE) == tuple(expected_maintenance)
         assert all(step in window._pages for step in expected_maintenance)
+        for step in expected_maintenance:
+            page = window._pages[step]
+            for name in (
+                "_maintenance_reload_button",
+                "_maintenance_refresh_pdm_button",
+                "_maintenance_export_mdb_button",
+            ):
+                button = getattr(page, name, None)
+                if button is not None:
+                    assert button.isHidden()
     finally:
         _dispose_window(window)
