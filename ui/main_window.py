@@ -198,6 +198,29 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage(f"Ready - {title} workspace")
 
+        # Keep the shared selector's helper text meaningful as the user moves
+        # between the PDM product explorer, source-specific workflows and
+        # cross-source review pages.
+        if self._product_data_context_active:
+            page = self._pages.get(step)
+            if page is self._product_page:
+                self._workspace_source_tabs.set_indicator(
+                    "Product Explorer uses PDM; both snapshots remain visible"
+                )
+            elif page in (
+                self._pages.get(WorkflowStep.REVIEW),
+                self._pages.get(WorkflowStep.MAINTENANCE_COMPARISON),
+            ):
+                self._workspace_source_tabs.set_indicator(
+                    "Cross-source review · PDM and MDB"
+                )
+            else:
+                selected = self._workspace_source_tabs.source.upper()
+                self._workspace_source_tabs.set_indicator(
+                    f"Selected source: {selected}"
+                    + (" (read-only)" if selected == "MDB" else "")
+                )
+
     def log_activity(self, kind: str, message: str) -> None:
         """Forward a detailed activity line to the Engineering Activity panel.
 
