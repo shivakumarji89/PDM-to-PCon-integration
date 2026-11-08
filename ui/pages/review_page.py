@@ -44,7 +44,7 @@ class ReviewPage(BasePage):
     def __init__(self, context, parent: QWidget | None = None) -> None:
         super().__init__(
             title="Review",
-            description="Final product-data validation and generation preview before export.",
+            description="Final Development validation before export.",
             parent=parent,
             show_placeholder=False,
             content_stretch=True,
