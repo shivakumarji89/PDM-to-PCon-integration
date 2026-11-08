@@ -6,7 +6,6 @@ MDB snapshot. The selection is *page-local*: it never touches
 its context in :class:`SourceContext`, which resolves the snapshot the page
 should read:
 
-    no tabs (Development, other modules) -> context.active_snapshot (unchanged)
     PDM tab                               -> context.pdm_snapshot
     MDB tab                               -> context.mdb_import_snapshot
 
@@ -243,7 +242,7 @@ class MaintenanceSourceMixin:
     def is_development_mode(self) -> bool:
         """Development mode is the absence of a loaded MDB snapshot."""
         real = self._context.real
-        return real.pdm_snapshot is None or real.mdb_import_snapshot is None
+        return real.mdb_import_snapshot is None
 
     def is_maintenance_mode(self) -> bool:
         """Maintenance mode requires both current PDM and published MDB data."""
@@ -344,7 +343,7 @@ class MaintenanceSourceMixin:
         QMessageBox.information(self, "Export Articles", details)
 
     def _sync_source(self) -> None:
-        """Align the page-local source with the active module."""
+        """Keep the two source tabs available throughout the single workspace."""
         tabs = self._source_tabs
         if self.is_maintenance_module():
             tabs.setVisible(True)
