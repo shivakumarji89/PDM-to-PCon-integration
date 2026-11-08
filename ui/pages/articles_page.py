@@ -1056,7 +1056,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         article_service = self._context.article_service
         member_service = self._context.engineering_member_service
         snapshot = self._context.active_snapshot
-         for _family, member, article in self._rows:
+        for _family, member, article in self._rows:
             if article is None:
                 continue
             if id_set is not None and str(article.id) not in id_set:
@@ -1064,14 +1064,12 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             mid = getattr(member, "id", "")
             code = str(getattr(article, "code", "") or "")
             effective_value = value
-            effective_value = value
             if mid:
                 self._base_len_by_member[mid] = effective_value
             if snapshot is not None and code:
                 # Persist the override separately from Class Creation Ignore.
-                # This lets the next Class Creation materialization reproduce
-                # the user's manual boundary without changing property/value
-                # relationships or the Ignore decision.
+                # This preserves the user's manual boundary without changing
+                # property/value relationships or the Ignore decision.
                 snapshot.base_length_overrides[code] = effective_value
             article_service.set_selected(article, True)
             base, _remaining = self._split_base(code, effective_value)
