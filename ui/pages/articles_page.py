@@ -1673,15 +1673,29 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- editing -----------------------------------------------------------
     def _on_rebuild_from_class_creation(self) -> None:
-        """Explicitly rebuild the Development Article view from Class Creation."""
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
-            return
+        """Rebuild Article Sets using the active stage's authoritative pipeline."""
         snapshot = self._context.active_snapshot
-        if snapshot is None:
+        module = getattr(self.window(), "_active_module", None)
+        if snapshot is None or self.is_mdb_view():
             return
-        self._context.engineering_reduction_service.materialize_class_creation_article_sets(
-            snapshot
-        )
+        if module == WorkbenchModule.DEVELOPMENT:
+            self._context.engineering_reduction_service.materialize_class_creation_article_sets(
+                snapshot
+            )
+        elif module == WorkbenchModule.MAINTENANCE:
+            mdb = self._context.real.mdb_import_snapshot
+            if mdb is not None:
+                from services.maintenance_alignment_service import MaintenanceAlignmentService
+
+                MaintenanceAlignmentService(self._context.real).ensure_pdm_scope(
+                    snapshot, mdb, force=True
+                )
+            else:
+                self._context.engineering_reduction_service.materialize_article_sets(
+                    snapshot
+                )
+        else:
+            return
         self._context.snapshot_manager.mark_modified()
         self.refresh()
 
