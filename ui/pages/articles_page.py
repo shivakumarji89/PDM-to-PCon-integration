@@ -539,8 +539,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             top.removeWidget(self._details_box)
             self._top_row.hide()
             self._shell_hsplit.insertWidget(0, self._family_box)
-            self._shell_hsplit.insertWidget(1, self._table)
-            self._shell_hsplit.setSizes([190, 900])
+            self._shell_hsplit.insertWidget(1, self._shell_side_panel)
+            self._shell_hsplit.insertWidget(2, self._table)
+            self._shell_hsplit.setSizes([170, 300, 720])
+            self._sets_box.setVisible(True)
+            self._status_box.setVisible(True)
             self._shell_card.show()
             body.addWidget(self._shell_card, 1)
             for widget, _stretch in self._toolbar_widgets:
@@ -577,6 +580,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             body.removeWidget(self._shell_card)
             self._shell_card.hide()
             top.insertWidget(0, self._family_box, 1)
+            top.insertWidget(1, self._sets_box, 1)
+            top.insertWidget(2, self._status_box, 1)
             top.addWidget(self._details_box, 1)
             body.addWidget(self._table, 1)
             self._top_row.show()
@@ -692,6 +697,17 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._details_grid.setVerticalSpacing(6)
         self._details_host.hide()
         self._details_form.addRow(self._details_host)
+        # Keep Development's Article Sets and Workspace Status available in
+        # the unified Maintenance shell. These are read-only projections of the
+        # active snapshot here; Maintenance's own alignment pipeline remains
+        # authoritative and is not replaced by Development materialization.
+        self._shell_side_panel = QWidget(self)
+        self._shell_side_layout = QVBoxLayout(self._shell_side_panel)
+        self._shell_side_layout.setContentsMargins(0, 0, 0, 0)
+        self._shell_side_layout.setSpacing(theme.SPACE_2)
+        self._shell_side_layout.addWidget(self._sets_box, 3)
+        self._shell_side_layout.addWidget(self._status_box, 2)
+
         self._shell_vsplit = QSplitter(Qt.Orientation.Vertical, self)
         self._shell_vsplit.setChildrenCollapsible(False)
         self._shell_vsplit.addWidget(self._shell_hsplit)
@@ -804,9 +820,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._table.setColumnHidden(9, not maintenance)
         self._apply_shell(maintenance)
         if hasattr(self, "_sets_box"):
-            self._sets_box.setVisible(not maintenance)
+            self._sets_box.setVisible(True)
         if hasattr(self, "_status_box"):
-            self._status_box.setVisible(not maintenance)
+            self._status_box.setVisible(True)
         if module != self._last_module:
             # Do not retain a specific set selection when entering Maintenance.
             if maintenance:
