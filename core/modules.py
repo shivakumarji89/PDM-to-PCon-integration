@@ -133,5 +133,11 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
 
 
 def module_workflows(module: WorkbenchModule) -> tuple[WorkflowStep, ...]:
-    """Return the existing workflows exposed by a top-level module."""
+    """Return workflows, treating the retired Development enum as an alias.
+
+    Development and Maintenance are activity states of one Product Data
+    Workspace, not separate workflow definitions.
+    """
+    if module == WorkbenchModule.DEVELOPMENT:
+        module = WorkbenchModule.MAINTENANCE
     return MODULE_WORKFLOWS.get(module, ())
