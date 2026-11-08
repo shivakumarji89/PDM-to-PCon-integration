@@ -201,7 +201,7 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
 
         # There is no separate Development module; the same Maintenance
         # workflow remains active regardless of whether MDB is loaded.
-        assert WorkbenchModule.DEVELOPMENT not in tiles
+        assert WorkbenchModule.DEVELOPMENT not in {tile.module for tile in window._module_home._module_buttons}
         for page in maintenance_pages:
             if hasattr(page, "_maintenance_reload_button"):
                 assert not page._maintenance_reload_button.isHidden()
