@@ -1074,8 +1074,7 @@ class MainWindow(QMainWindow):
             )
         except Exception as error:  # noqa: BLE001 (surface any save failure)
             QMessageBox.critical(
-                self, "Save Project", f"Could not save project:
-{error}"
+                self, "Save Project", f"Could not save project:\n{error}"
             )
             return False
         self._remember_project_dir(str(saved))
@@ -1432,9 +1431,7 @@ class MainWindow(QMainWindow):
                 )
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not determine which XOCD files need to be added.
-
-{exc}"
+                    f"Could not determine which XOCD files need to be added.\n\n{exc}"
                 )
                 return
 
@@ -1479,9 +1476,7 @@ class MainWindow(QMainWindow):
                     return
             except Exception as exc:
                 self._xocd_publish_failed(
-                    f"Could not verify SVN freshness before commit.
-
-{exc}"
+                    f"Could not verify SVN freshness before commit.\n\n{exc}"
                 )
                 return
 
