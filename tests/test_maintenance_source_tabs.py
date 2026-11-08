@@ -112,16 +112,23 @@ def test_opening_mdb_does_not_mutate_snapshots(cls):
 
 
 @pytest.mark.parametrize("cls", PAGES)
-def test_development_has_no_source_tabs(cls):
+def test_product_data_workspace_exposes_source_tabs_in_both_modes(cls):
     ctx = _context()
     page = _page(cls, ctx, module=WorkbenchModule.DEVELOPMENT)
     page.show()
-    assert not page._source_tabs.isVisible()
-    assert page.current_source() is None
-    assert page.source_snapshot() is ctx.active_snapshot
-    maint = _page(cls, ctx)
+    assert page._source_tabs.isVisible()
+    assert page.current_source() == "pdm"
+    assert page.source_snapshot() is ctx.pdm_snapshot
+
+    _select(page, "mdb")
+    page.refresh()
+    assert page.source_snapshot() is ctx.mdb_import_snapshot
+    assert page.is_mdb_view()
+
+    maint = _page(cls, ctx, module=WorkbenchModule.MAINTENANCE)
     maint.show()
     assert maint._source_tabs.isVisible()
+    assert maint.current_source() == "pdm"
 
 
 @pytest.mark.parametrize("cls", PAGES)

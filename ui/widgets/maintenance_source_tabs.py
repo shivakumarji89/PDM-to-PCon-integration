@@ -236,6 +236,15 @@ class MaintenanceSourceMixin:
         self.add_content(self._source_tabs)
 
     # -- source resolution -------------------------------------------------
+    def is_product_data_workspace(self) -> bool:
+        window = self.window()
+        return bool(
+            getattr(window, "_product_data_context_active", False)
+            and getattr(window, "_active_module", None) in (
+                WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE
+            )
+        )
+
     def is_maintenance_module(self) -> bool:
         return (
             getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
@@ -337,7 +346,7 @@ class MaintenanceSourceMixin:
     def _sync_source(self) -> None:
         """Align the page-local source with the active module."""
         tabs = self._source_tabs
-        if self.is_maintenance_module():
+        if self.is_product_data_workspace():
             tabs.setVisible(True)
             self._context.source = tabs.source
         else:
@@ -377,7 +386,7 @@ class MaintenanceSourceMixin:
         having been opened first (Open Project, repository change, ...).
         Idempotent and cached; a no-op for the MDB view and other modules.
         """
-        if self._context.source != SOURCE_PDM:
+        if not self.is_maintenance_module() or self._context.source != SOURCE_PDM:
             return
         real = self._context.real
         pdm, mdb = real.pdm_snapshot, real.mdb_import_snapshot
