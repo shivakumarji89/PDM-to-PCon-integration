@@ -48,6 +48,7 @@ class VersionUpdateResult:
     """Outcome of writing the version into one series' two databases."""
 
     series: str = ""
+    folder: str = ""
     ocd_updated: bool = False
     odb_updated: bool = False
     error: str | None = None
@@ -140,7 +141,7 @@ class VersionUpdateService(BaseService):
     def _update_one(
         self, sv: SeriesVersion, major: int, minor: int, build: int
     ) -> VersionUpdateResult:
-        result = VersionUpdateResult(series=sv.program or Path(sv.folder).name)
+        result = VersionUpdateResult(series=sv.program or Path(sv.folder).name, folder=str(sv.folder))
         version_fields: dict[str, Any] = {
             "reg_VersionMajor": major, "reg_VersionMinor": minor, "reg_VersionBuild": build,
         }
