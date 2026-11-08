@@ -262,6 +262,7 @@ class BulkPriceUpdatePage(_BulkPage):
                     records.setItem(row, col, _item(value))
             layout.addWidget(records, 1)
             tab_title = outcome.name if outcome.status == "Ready" else f"{outcome.name} • Failed"
+            tab.setProperty("series_path", outcome.path.casefold())
             self._tabs.addTab(tab, tab_title)
         self._status.setText(
             f"Calculation finished: {sum(x.status == 'Ready' for x in result.results)} ready, "
@@ -276,8 +277,9 @@ class BulkPriceUpdatePage(_BulkPage):
         if index < 0:
             QMessageBox.information(self, "Price Update", "Calculate selected series first.")
             return
-        name = self._tabs.tabText(index).replace(" • Failed", "")
-        items = [x for x in self._prepared.values() if x.name == name and x.status == "Ready"]
+        tab = self._tabs.widget(index)
+        series_path = str(tab.property("series_path") or "").casefold()
+        items = [x for x in self._prepared.values() if x.path.casefold() == series_path and x.status == "Ready"]
         if not items:
             QMessageBox.information(self, "Price Update", "The active series is not ready for export.")
             return
@@ -443,6 +445,7 @@ class BulkVersionUpdatePage(_BulkPage):
             title = sv.program or Path(sv.folder).name
             if counts.get(title.casefold(), 0) > 1:
                 title = f"{title} ({Path(sv.folder).name})"
+            tab.setProperty("series_folder", str(sv.folder).casefold())
             self._tabs.addTab(tab, title)
         self._status.setText(f"Discovered {len(series)} series. Review the tabs, select targets, then apply.")
 
@@ -485,11 +488,11 @@ class BulkVersionUpdatePage(_BulkPage):
         self._start(work, self._applied, "Version Update")
 
     def _applied(self, results):
-        by_folder = {str(result.series).casefold(): result for result in results}
+        by_folder = {str(result.folder).casefold(): result for result in results}
         ok = 0
         failures = []
         for row, sv in enumerate(self._series):
-            result = by_folder.get(str(sv.program or Path(sv.folder).name).casefold())
+            result = by_folder.get(str(sv.folder).casefold())
             if result is None:
                 continue
             if result.error:
