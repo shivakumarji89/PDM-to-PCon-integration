@@ -225,3 +225,48 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
                 assert page._maintenance_export_mdb_button.isHidden()
     finally:
         _dispose_window(window)
+
+
+def test_product_data_workspace_uses_one_persistent_source_selector(app):
+    from ui.main_window import MainWindow
+    from core.workflow import WorkflowStep
+
+    window = MainWindow()
+    try:
+        tile = {
+            t.module: t for t in window._module_home._module_buttons
+        }[WorkbenchModule.PRODUCT_DATA_WORKSPACE]
+        tile.click()
+
+        shared = window._workspace_source_tabs
+        assert not shared.isHidden()
+        assert shared.source == "pdm"
+
+        steps = (
+            WorkflowStep.ARTICLES,
+            WorkflowStep.CLASS_CREATION,
+            WorkflowStep.TEXT,
+            WorkflowStep.RELATION,
+            WorkflowStep.PRICING,
+            WorkflowStep.PRICING_RELATION,
+        )
+        for step in steps:
+            page = window._pages[step]
+            page._sync_source()
+            assert page._source_tabs is shared
+            assert page.current_source() == "pdm"
+
+        shared.set_source("mdb")
+        for step in steps:
+            page = window._pages[step]
+            page._sync_source()
+            assert page._source_tabs is shared
+            assert page.current_source() == "mdb"
+
+        # Returning to Product must not reset the selected source.
+        window._manager.jump_to(WorkflowStep.PRODUCT)
+        assert window._workspace_source_tabs.source == "mdb"
+        window._show_module_home()
+        assert shared.isHidden()
+    finally:
+        _dispose_window(window)
