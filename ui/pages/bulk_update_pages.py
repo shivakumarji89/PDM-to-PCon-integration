@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QFileDialog, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QMessageBox, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView,
+    QTabWidget,
 )
 
 from ui.pages.base_page import BasePage
@@ -116,9 +117,13 @@ class BulkPriceUpdatePage(_BulkPage):
         select_all.clicked.connect(lambda: self._set_all(True))
         clear = QPushButton("Clear", self)
         clear.clicked.connect(lambda: self._set_all(False))
-        update = QPushButton("Update Selected from PDM", self)
+        update = QPushButton("Calculate Selected from PDM", self)
         update.clicked.connect(self._apply)
-        for button in (scan, select_all, clear, update):
+        export_tab = QPushButton("Export Active Tab to MDB", self)
+        export_tab.clicked.connect(self._export_active)
+        export_all = QPushButton("Export All Ready Tabs", self)
+        export_all.clicked.connect(self._export_all)
+        for button in (scan, select_all, clear, update, export_tab, export_all):
             actions.addWidget(button)
         actions.addStretch(1)
         root.addLayout(actions)
@@ -130,10 +135,14 @@ class BulkPriceUpdatePage(_BulkPage):
             ["Update", "Series", "Program", "PDM Link", "Linked PDM Product", "Update Result"],
         )
         root.addWidget(self._table, 1)
+        self._tabs = QTabWidget(self)
+        self._tabs.setDocumentMode(True)
+        root.addWidget(self._tabs, 2)
         body = QWidget(self)
         body.setLayout(root)
         self.add_content(body)
         self._series = []
+        self._prepared = {}
 
     def _scan(self):
         if self._busy():
@@ -216,10 +225,10 @@ class BulkPriceUpdatePage(_BulkPage):
         def work(reporter):
             from services.bulk_pdm_price_update_service import BulkPdmPriceUpdateService
             return BulkPdmPriceUpdateService(self._context).update(
-                selected, effective_date=day, site_id=_UK_SITE_ID, reporter=reporter
+                selected, effective_date=day, site_id=_UK_SITE_ID, reporter=reporter, export=False
             )
 
-        self._start(work, self._applied, "Price Update")
+        self._start(work, self._prepared_results, "Price Update")
 
     def _applied(self, result):
         by_path = {entry.path.casefold(): entry for entry in result.results}
