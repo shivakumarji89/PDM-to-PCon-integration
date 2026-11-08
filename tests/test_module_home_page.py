@@ -270,3 +270,61 @@ def test_product_data_workspace_uses_one_persistent_source_selector(app):
         assert shared.isHidden()
     finally:
         _dispose_window(window)
+
+
+
+def test_unified_workspace_preserves_full_maintenance_workflow_and_switches_automatically(app):
+    from core.workflow import WorkflowStep
+    from core.modules import module_workflows
+    from models.snapshot import Snapshot
+    from ui.main_window import MainWindow
+
+    window = MainWindow()
+    try:
+        tile = {
+            item.module: item for item in window._module_home._module_buttons
+        }[WorkbenchModule.PRODUCT_DATA_WORKSPACE]
+        assert "Development + Maintenance" in tile._description
+        assert "automatically" in tile._description.lower()
+
+        tile.click()
+        assert window._product_data_context_active
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+        assert window._manager.steps() == list(module_workflows(WorkbenchModule.DEVELOPMENT))
+
+        pdm = Snapshot()
+        window._context.register_pdm_snapshot(pdm)
+        window._sync_product_data_mode()
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+
+        mdb = Snapshot()
+        window._context.register_mdb_import_snapshot(mdb)
+        window._sync_product_data_mode()
+
+        expected_maintenance = list(module_workflows(WorkbenchModule.MAINTENANCE))
+        assert window._active_module == WorkbenchModule.MAINTENANCE
+        assert window._product_data_context_active
+        assert window._manager.steps() == expected_maintenance
+        assert WorkflowStep.MAINTENANCE_COMPARISON in expected_maintenance
+        assert window._workspace_source_tabs.isVisible()
+
+        # Existing Maintenance actions remain attached to their original pages.
+        for step in expected_maintenance:
+            page = window._pages[step]
+            reload_button = getattr(page, "_maintenance_reload_button", None)
+            export_button = getattr(page, "_maintenance_export_mdb_button", None)
+            if reload_button is not None:
+                assert not reload_button.isHidden()
+            if export_button is not None:
+                assert not export_button.isHidden()
+
+        # Clearing the imported MDB returns to Development without deleting
+        # any Maintenance workflow registrations or page implementations.
+        window._context.register_mdb_import_snapshot(None)
+        window._sync_product_data_mode()
+        assert window._active_module == WorkbenchModule.DEVELOPMENT
+        assert window._manager.steps() == list(module_workflows(WorkbenchModule.DEVELOPMENT))
+        assert module_workflows(WorkbenchModule.MAINTENANCE) == tuple(expected_maintenance)
+        assert all(step in window._pages for step in expected_maintenance)
+    finally:
+        _dispose_window(window)
