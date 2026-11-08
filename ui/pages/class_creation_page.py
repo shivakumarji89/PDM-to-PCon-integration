@@ -811,6 +811,21 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         hint = getattr(self, "_slice_hints", {}).get(str(prop_id))
         return bool(hint.get("ignored")) if hint else False
 
+    def _development_tools_enabled(self) -> bool:
+        """Development authoring tools are also available on the editable PDM
+        source inside the unified Maintenance workspace. MDB remains read-only.
+        The Maintenance alignment/materialization pipeline is deliberately not
+        switched to the Development Article Sets materializer.
+        """
+        module = getattr(self.window(), "_active_module", None)
+        return (
+            module == WorkbenchModule.DEVELOPMENT
+            or (
+                module == WorkbenchModule.MAINTENANCE
+                and not self.is_mdb_view()
+            )
+        )
+
     def _on_attribute_master_selected(self) -> None:
         if self._populating:
             return
@@ -834,8 +849,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._selected_attr_group = group_name
         self._populate_visible_values(prop, group_name, backing)
         development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
+            self._development_tools_enabled()
         )
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
@@ -917,7 +931,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
             sliced_item = QTableWidgetItem(sliced)
             sliced_item.setData(Qt.ItemDataRole.UserRole, (prop, value, cv, group_name))
-            if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            if self._development_tools_enabled():
                 sliced_item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsSelectable
@@ -1698,8 +1712,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if mdb_attribute_ids:
             props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
         development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
+            self._development_tools_enabled()
         )
         snapshot = self._context.active_snapshot
         # Value ids that will actually get a relation (subset-confined); generic
@@ -2137,7 +2150,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                         combo.addItem(effective_code)
                     # Development Class Creation permits correction of every
                     # value code, not only inferred/configuration codes.
-                    if getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+                    if self._development_tools_enabled():
                         combo.setEditable(True)
                     pos = combo.findText(effective_code)
                     combo.setCurrentIndex(pos if pos >= 0 else 0)
@@ -2158,7 +2171,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 node.setExpanded(True)
 
     def _class_value_for(self, prop_id: str, value_id: str, group_name: str | None = None):
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self._development_tools_enabled():
             return None
         cls = self._attribute_class_for_group(group_name)
         if cls is None:
@@ -2315,15 +2328,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 self._active_group_name = meta[1] or self._active_group_name
 
         development = (
-            getattr(self.window(), "_active_module", None)
-            == WorkbenchModule.DEVELOPMENT
+            self._development_tools_enabled()
         )
         has_prop = self._selected_attr_prop is not None
         self._move_up_btn.setEnabled(development and has_prop)
         self._move_down_btn.setEnabled(development and has_prop)
 
     def _on_attr_context_menu(self, pos) -> None:
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self._development_tools_enabled():
             return
         item = self._attr_tree.itemAt(pos)
         if item is None:
@@ -2371,7 +2383,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     def _move_selected_attr_property(self, direction: int) -> None:
         """Move the property selected in the visible Attribute table."""
-        if getattr(self.window(), "_active_module", None) != WorkbenchModule.DEVELOPMENT:
+        if not self._development_tools_enabled():
             return
         if self._selected_attr_prop is None:
             return
@@ -2955,7 +2967,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             cls = self._options_class_for_group(group_name)
             cls_prop = next((a for a in (cls.properties if cls else []) if str(a.property_id) == str(option.id)), None)
             cv = next((v for v in (cls_prop.values if cls_prop else []) if str(getattr(v, "value_id", "")) == str(getattr(value, "id", ""))), None)
-            if cv is not None and getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT:
+            if cv is not None and self._development_tools_enabled():
                 sliced_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             self._opt_values.setItem(row, 1, sliced_item)
             self._opt_values.setItem(row, 2, QTableWidgetItem(self._value_relation_object(option, value)))
