@@ -15,7 +15,6 @@ from core.enums import WorkflowStep
 class WorkbenchModule(Enum):
     """Top-level functional modules of the workbench."""
 
-    PRODUCT_DATA_WORKSPACE = "product_data_workspace"
     DEVELOPMENT = "development"
     MAINTENANCE = "maintenance"
     QA_VALIDATION = "qa_validation"
@@ -36,9 +35,14 @@ class ModuleItem:
 
 MODULE_ITEMS: tuple[ModuleItem, ...] = (
     ModuleItem(
-        WorkbenchModule.PRODUCT_DATA_WORKSPACE,
-        "Product Data Workspace",
-        "Engineering and maintenance workflows for product data.",
+        WorkbenchModule.DEVELOPMENT,
+        "Development",
+        "Create and develop product engineering data.",
+    ),
+    ModuleItem(
+        WorkbenchModule.MAINTENANCE,
+        "Maintenance",
+        "Maintain and update published product packages.",
     ),
     ModuleItem(
         WorkbenchModule.QA_VALIDATION,
@@ -101,9 +105,7 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     ),
-    # Maintenance is the updated, complete workflow. Preserve its existing
-    # steps and bring across Development's final Review stage as well; the
-    # Maintenance Comparison remains an additional cross-source step.
+    # Maintenance keeps its existing workflow order.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -112,7 +114,6 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.RELATION,
         WorkflowStep.PRICING,
         WorkflowStep.PRICING_RELATION,
-        WorkflowStep.REVIEW,
         WorkflowStep.MAINTENANCE_COMPARISON,
     ),
     WorkbenchModule.BULK_UPDATE: (
