@@ -217,7 +217,7 @@ def test_articles_shell_kpis_use_real_counts(app):
 def test_articles_shell_keeps_existing_controls_and_signals(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
     for name in ("_search", "_base_len_spin", "_apply_len_btn", "_dot_base_btn", "_copy_long_btn",
-                 "_components_btn", "_clear_btn", "_group_check", "_export_mdb_btn"):
+                 "_components_btn", "_group_check", "_group_class_check"):
         assert page._shell_toolbar.isAncestorOf(getattr(page, name))
     assert page._table.isSortingEnabled()
     # the original click handlers are still connected (signal receivers unchanged)
@@ -225,15 +225,14 @@ def test_articles_shell_keeps_existing_controls_and_signals(app):
     assert page._apply_len_btn.receivers("2clicked(bool)") > 0
 
 
-def test_articles_selection_shows_detail_tab(app):
+def test_articles_selection_does_not_show_a_details_panel_in_maintenance(app):
+    # The redundant Article Details panel was removed from the Maintenance shell (9615695).
     page = _articles(WorkbenchModule.MAINTENANCE)
-    assert not page._details_box.isVisibleTo(page._detail_tabs)
-    assert page._detail_placeholder.isVisibleTo(page._detail_tabs)
+    assert not hasattr(page, "_detail_tabs")
+    assert not page._details_box.isVisibleTo(page)
     page._table.selectRow(0)
     app.processEvents()
-    assert page._details_box.isVisibleTo(page._detail_tabs)
-    assert not page._detail_placeholder.isVisibleTo(page._detail_tabs)
-    assert isinstance(page._detail_tabs, DetailTabs)
+    assert not page._details_box.isVisibleTo(page)
 
 
 @pytest.mark.parametrize("size", [(1500, 900), (1000, 640), (760, 560)])
@@ -249,7 +248,7 @@ def test_articles_shell_roundtrip_restores_legacy_details_and_toolbar(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
     page._table.selectRow(0)
     app.processEvents()
-    assert page._details_host.isVisibleTo(page) or not page._details_host.isHidden()
+    assert not page._details_box.isVisibleTo(page)  # no details panel in the Maintenance shell
     page._active_module = WorkbenchModule.DEVELOPMENT
     page._apply_shell(False)
     # every detail label is back in the original form, the toolbar in its box
@@ -258,7 +257,6 @@ def test_articles_shell_roundtrip_restores_legacy_details_and_toolbar(app):
         assert page._details_form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget() is not None
     assert page._details_host.isHidden()
     assert page._search.parent() is page._toolbar_box
-    assert page._export_mdb_btn.parent() is page._toolbar_box
     # and the shell can be re-entered
     page._apply_shell(True)
     assert page._shell_toolbar.isAncestorOf(page._search)
