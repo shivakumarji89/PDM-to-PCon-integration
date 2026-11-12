@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QDate, QThreadPool
+from PySide6.QtCore import QCoreApplication, QDate, QItemSelectionModel, QThreadPool
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.enums import WorkflowStep
@@ -37,6 +37,7 @@ def dispose(widget) -> None:
     dialog = getattr(widget, "_progress_dialog", None)
     if dialog is not None:
         dialog.hide()
+    widget._article_dialog.hide()
     widget.deleteLater()
     drain()
 
@@ -131,6 +132,7 @@ def _boxes(monkeypatch):
     monkeypatch.setattr(page_module.QMessageBox, "warning", Mock())
     monkeypatch.setattr(page_module.QMessageBox, "critical", Mock())
     monkeypatch.setattr(page_module.QMessageBox, "question", Mock(return_value=QMessageBox.StandardButton.Yes))
+    monkeypatch.setattr(page_module.QMessageBox, "exec", Mock(return_value=0))   # the Price Diagnostics dialog
 
 
 @pytest.fixture
@@ -175,9 +177,9 @@ def _open_demo(widget):
     widget._load_catalogue()
     drain()
     _select(widget._manufacturer, "MK")
-    _program(widget, "demo")
-    _select(widget._series, "DM")
-    widget._load_articles()
+    _program(widget, "demo")          # choosing a program loads its articles automatically
+    drain()
+    _select(widget._series, "DM")     # and so does choosing a series
     drain()
 
 
@@ -201,22 +203,44 @@ def _results(widget, column=2):
     return [model.text(r, column) for r in range(model.rowCount())]
 
 
-def _generate(widget, currency="EUR"):
-    widget._currency.setCurrentText(currency)
+def _generate(widget):
+    """Generation is unpriced: it only enumerates the valid SKUs (pricing is a separate, on-demand step)."""
     widget._generate()
     drain()
+
+
+def _price(widget, currency="EUR", rows=None):
+    """Price the selected SKU rows (all by default) with the chosen currency, as the Price Selected button does."""
+    widget._currency.setCurrentText(currency)
+    if rows is None:
+        widget._result_table.selectAll()
+    else:
+        selection = widget._result_table.selectionModel()
+        selection.clearSelection()
+        for row in rows:
+            selection.select(widget._result_proxy.index(row, 0),
+                             QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+    widget._price_generated_skus()
+    drain()
+
+
+def _generate_and_price(widget, currency="EUR"):
+    _generate(widget)
+    _price(widget, currency)
 
 
 def test_page_has_no_plugin_connection_controls(no_plugin, monkeypatch):
     _boxes(monkeypatch)      # the page loads its catalogue itself; with no repository configured that reports an error
     widget = PconArticleObxGeneratorPage(context=None)
     assert widget.is_ready()
-    assert not generation_available(widget) and not widget._export_button.isEnabled()
+    assert not generation_available(widget) and not widget._obx_actions_button.isEnabled()
     for removed in ("_connection_status", "_job_dir_label", "_check_button", "_install_button",
                     "_bridge", "_catalog", "_generation", "_discard_planning"):
         assert not hasattr(widget, removed)
     texts = {button.text() for button in widget.findChildren(page_module.QPushButton)}
-    assert {"Load Articles", "Export OBX", "Prepare for Validator"} <= texts
+    assert "Price Selected" in texts
+    assert {a.text() for a in widget._obx_actions_button.menu().actions()} == {"Export OBX", "Prepare for Validator"}
+    assert "Load Articles" not in texts and "Export OBX" not in texts   # articles load automatically; export is in the dropdown
     assert "Generate Valid SKUs" not in texts      # generation starts when the article dialog is accepted
     assert "Inspect Properties" not in texts and "Max SKUs:" not in texts
     assert not {"Check Connection", "Install Plugin"} & texts
@@ -243,19 +267,29 @@ def test_page_module_has_no_pcon_runtime_dependency(monkeypatch):
 # ---- the standalone workflow: catalogue -> articles -> properties -> SKUs -> OBX ----
 def test_page_runs_the_complete_standalone_workflow(gen_page, tmp_path):
     widget = gen_page
-    assert widget._article_table.rowCount() == 5
+    assert widget._article_table.rowCount() == 5            # loaded automatically when the series was chosen
     assert [widget._currency.itemText(i) for i in range(widget._currency.count())] == ["EUR", "GBP"]
     _pick(widget, "chair1")
-    assert generation_available(widget) and not widget._export_button.isEnabled()
+    assert generation_available(widget) and not widget._obx_actions_button.isEnabled()
 
     widget._price_date.setDate(QDate.fromString("2026-01-15", "yyyy-MM-dd"))
-    _generate(widget)                        # automatic: no property inspection needed
+    _generate(widget)                        # automatic: no property inspection needed, and no pricing yet
     assert _results(widget) == CHAIR1_FINALS
-    assert _results(widget, 5) == ["100.00 EUR", "125.00 EUR", "100.00 EUR"]
+    assert _results(widget, 5) == ["", "", ""]
     assert _results(widget, 4)[1] == "Material=W; Size=L"
     assert "Generated 3 valid unique SKU(s)" in widget._generation_status.text()
-    assert widget._export_button.isEnabled()
-    assert not (tmp_path / "page.obx").exists()          # generating does not write; Export does
+    assert "Pricing not run" in widget._generation_status.text()
+    assert not widget._obx_actions_button.isEnabled()        # unpriced SKUs cannot be exported
+    assert not widget._diagnostics_button.isEnabled()        # Price Selected needs selected rows
+
+    widget._result_table.selectAll()
+    assert widget._diagnostics_button.isEnabled()
+    _price(widget, "EUR")
+    assert _results(widget, 5) == ["100.00 EUR", "125.00 EUR", "100.00 EUR"]
+    assert "Price selection complete: 3 selected SKU(s) processed; 3 total priced and 0 unpriced" in \
+        widget._generation_status.text()
+    assert widget._obx_actions_button.isEnabled() and widget._export_action.isEnabled()
+    assert not (tmp_path / "page.obx").exists()          # generating and pricing do not write; Export does
 
     widget._export_obx()
     drain()
@@ -263,7 +297,6 @@ def test_page_runs_the_complete_standalone_workflow(gen_page, tmp_path):
     assert "Exported 3 SKU(s)" in widget._generation_status.text()
     assert "3 article line(s) read back" in widget._generation_status.text()
     assert widget._validation_label.text() == ""
-    assert widget._open_folder_button.isEnabled() and widget._compare_button.isEnabled()
     text = (tmp_path / "page.obx").read_text(encoding="utf-8")
     assert "DEMO_OPT.Material=W;DEMO_OPT.Size=L" in text and 'value="125.00"' in text
 
@@ -277,15 +310,22 @@ def test_selected_program_series_and_articles_reach_the_generator(tmp_path, monk
             seen.update(db_dir=self.db_dir, articles=list(article_numbers), **kwargs)
             return super().generate(article_numbers, rules, **kwargs)
 
+        def price_skus(self, skus, **kwargs):
+            seen["priced"] = (len(skus), kwargs["currency"], kwargs["price_date"])
+            return super().price_skus(skus, **kwargs)
+
     widget = PconArticleObxGeneratorPage(
         context=None, catalogue=OcdCatalogueService(generation_root), generator_factory=Spy)
     _open_demo(widget)
     _pick(widget, "chair1")
     widget._price_date.setDate(QDate.fromString("2026-02-03", "yyyy-MM-dd"))
-    _generate(widget, "GBP")
+    _generate(widget)
     assert seen["db_dir"] == generation_root / "demo" / "ANY" / "1" / "db"
     assert seen["articles"] == ["CHAIR1"]
-    assert (seen["currency"], seen["price_date"], seen["max_configurations"]) == ("GBP", "2026-02-03", None)
+    assert (seen["price"], seen["max_configurations"]) == (False, None)      # complete, unpriced enumeration
+    assert "priced" not in seen
+    _price(widget, "GBP")
+    assert seen["priced"] == (3, "GBP", "2026-02-03")                          # pricing gets the chosen currency/date
     dispose(widget)
 
 
@@ -295,21 +335,24 @@ def test_generation_reports_duplicates_and_unpriced_skus(gen_page):
     _generate(widget)
     assert _results(widget) == ["SIDE1 S", "SIDE1 L"]
     assert "2 duplicate SKU(s) removed" in widget._generation_status.text()
-    _generate(widget, "GBP")                             # SIDE1 has no GBP price
-    assert "2 without price" in widget._generation_status.text()
+    _price(widget, "GBP")                                # SIDE1 has no GBP price
+    assert "0 total priced and 2 unpriced" in widget._generation_status.text()
     assert set(_results(widget, 6)) == {
         "unpriced: no usable B price row for key (none) on %s in GBP: no row in GBP on %s; currencies valid then: EUR"
         % ((widget._price_date.date().toString("yyyyMMdd"),) * 2)}
-    assert not widget._export_button.isEnabled()          # nothing priced, nothing to export
+    assert not widget._obx_actions_button.isEnabled()      # nothing priced, nothing to export
 
 
 def test_price_diagnostics_explain_the_selected_row(gen_page):
     widget = gen_page
     assert not widget._diagnostics_button.isEnabled()      # nothing generated yet
     _pick(widget, "side1")
-    _generate(widget, "GBP")                               # SIDE1 only has an EUR price
+    _generate(widget)
+    assert not widget._diagnostics_button.isEnabled()      # generated, but no SKU rows selected
+    _price(widget, "GBP", rows=[1])                        # SIDE1 only has an EUR price
+    page_module.QMessageBox.exec.assert_called()           # pricing shows the diagnostics for the selection
+    widget._result_table.selectRow(1)                      # repricing resets the model, so select the row again
     assert widget._diagnostics_button.isEnabled()
-    widget._result_table.selectRow(1)
     text = widget._price_diagnostics_text()
     assert "SIDE1 L" in text.splitlines()[0] and "demo" in text.splitlines()[0]
     assert "price key(s) derived for this SKU: ['SIZE=L']" in text
@@ -317,20 +360,25 @@ def test_price_diagnostics_explain_the_selected_row(gen_page):
     assert "ocd_price.csv" in text and "currencies ['EUR']" in text
     assert "B:(none): 1 candidate(s) -> fixed 1 -> date 1 -> scale 1 -> currency 0" in text
     assert "result: unpriced - no usable B price row for key (none)" in text
-    _generate(widget, "EUR")
+    _price(widget, "EUR", rows=[1])
+    widget._result_table.selectRow(1)
     assert "result: 50.00 EUR" in widget._price_diagnostics_text()
+    assert _results(widget, 5)[0] == ""                    # the unselected row was not priced
 
 
 def test_currency_must_be_chosen_when_the_repository_has_several(gen_page):
     widget = gen_page
     _pick(widget, "chair1")
+    _generate(widget)
     widget._currency.setCurrentIndex(-1)
     widget._currency.setCurrentText("")
-    widget._generate()
+    widget._result_table.selectAll()
+    widget._price_generated_skus()
     drain()
     assert "Choose a currency (EUR, GBP)" in widget._generation_status.text()
     page_module.QMessageBox.critical.assert_called_once()
-    assert generation_available(widget)             # can be retried
+    assert _results(widget, 5) == ["", "", ""]
+    assert widget._diagnostics_button.isEnabled()      # can be retried
 
 
 def test_malformed_article_data_is_reported_and_the_page_recovers(gen_page):
@@ -339,7 +387,7 @@ def test_malformed_article_data_is_reported_and_the_page_recovers(gen_page):
     _generate(widget)
     assert "Malformed OCD data for article BROKEN" in widget._generation_status.text()
     assert page_module.QMessageBox.critical.call_count == 1
-    assert generation_available(widget) and not widget._export_button.isEnabled()
+    assert generation_available(widget) and not widget._obx_actions_button.isEnabled()
 
 
 def test_missing_data_tables_are_reported(monkeypatch, ocd_root, no_plugin):
@@ -357,7 +405,7 @@ def test_missing_data_tables_are_reported(monkeypatch, ocd_root, no_plugin):
 def test_export_asks_before_overwriting_and_honours_the_answer(gen_page, tmp_path):
     widget = gen_page
     _pick(widget, "chair1")
-    _generate(widget)
+    _generate_and_price(widget)
     target = tmp_path / "page.obx"
     target.write_text("old")
     page_module.QMessageBox.question.return_value = QMessageBox.StandardButton.No
@@ -373,13 +421,14 @@ def test_export_asks_before_overwriting_and_honours_the_answer(gen_page, tmp_pat
 def test_export_without_a_path_uses_the_file_dialog_and_can_be_declined(gen_page, tmp_path, monkeypatch):
     widget = gen_page
     _pick(widget, "chair1")
-    _generate(widget)
+    _generate_and_price(widget)
     chosen = tmp_path / "chosen" / "x.obx"
     dialog = _save_dialog_returns(monkeypatch, chosen)
     widget._export_obx()
     drain()
     dialog.assert_called_once()
-    assert chosen.is_file() and widget._exported_path == str(chosen)
+    assert chosen.is_file()
+    assert "Exported 3 SKU(s)" in widget._generation_status.text() and str(chosen) in widget._generation_status.text()
     monkeypatch.setattr(page_module.QFileDialog, "getSaveFileName", Mock(return_value=("", "")))
     before = widget._generation_status.text()
     widget._export_obx()
@@ -390,7 +439,7 @@ def test_export_without_a_path_uses_the_file_dialog_and_can_be_declined(gen_page
 def test_export_failure_is_reported(gen_page, tmp_path, monkeypatch):
     widget = gen_page
     _pick(widget, "chair1")
-    _generate(widget)
+    _generate_and_price(widget)
     blocker = tmp_path / "blocker"
     blocker.write_text("a file, so nothing can be created below it")
     _save_dialog_returns(monkeypatch, blocker / "x.obx")
@@ -400,17 +449,41 @@ def test_export_failure_is_reported(gen_page, tmp_path, monkeypatch):
     page_module.QMessageBox.critical.assert_called_once()
 
 
-def test_compare_with_reference_obx(gen_page, tmp_path, monkeypatch):
+def test_export_requires_priced_skus(gen_page, tmp_path):
+    widget = gen_page
+    _pick(widget, "chair1")
+    _generate(widget)                                    # generated but not priced
+    widget._export_obx()
+    drain()
+    page_module.QMessageBox.information.assert_called_with(widget, "Export OBX", "Generate valid SKUs with a price first.")
+    assert not (tmp_path / "page.obx").exists()
+
+
+def test_only_priced_skus_are_exported(gen_page, tmp_path):
     widget = gen_page
     _pick(widget, "chair1")
     _generate(widget)
+    _price(widget, "EUR", rows=[0, 2])                   # row 1 stays unpriced
+    assert _results(widget, 5) == ["100.00 EUR", "", "100.00 EUR"]
     widget._export_obx()
     drain()
-    reference = tmp_path / "reference.obx"
-    reference.write_text((tmp_path / "page.obx").read_text(encoding="utf-8"), encoding="utf-8")
-    monkeypatch.setattr(page_module.QFileDialog, "getOpenFileName", Mock(return_value=(str(reference), "")))
-    widget._compare_reference()
-    assert "3 matched, 0 only in reference, 0 only generated" in widget._validation_label.text()
+    assert "Exported 2 SKU(s)" in widget._generation_status.text()
+    text = (tmp_path / "page.obx").read_text(encoding="utf-8")
+    assert 'value="100.00"' in text and 'value="125.00"' not in text
+
+
+def test_prepare_for_validator_requires_priced_skus_and_writes_a_temporary_obx(gen_page, tmp_path):
+    widget = gen_page
+    _pick(widget, "chair1")
+    _generate(widget)
+    widget._prepare_for_validator()
+    page_module.QMessageBox.information.assert_called_with(
+        widget, "Prepare for Validator", "Generate valid SKUs with a price first.")
+    _price(widget, "EUR")
+    widget._prepare_for_validator()
+    drain()
+    assert "Temporary OBX ready (3 article line(s))" in widget._generation_status.text()
+    assert not (tmp_path / "page.obx").exists()          # the exported file is not touched
 
 
 def test_generate_without_selection_shows_message(page):
@@ -437,13 +510,12 @@ def _names(table, column=0):
 
 def test_controls_wait_for_their_prerequisites(page):
     widget = page
-    for control in (widget._manufacturer, widget._program, widget._series, widget._load_articles_button,
-                    widget._article_filter):
+    for control in (widget._manufacturer, widget._program, widget._series, widget._article_filter,
+                    widget._obx_actions_button, widget._diagnostics_button):
         assert not control.isEnabled()
     assert "automatically" in widget._catalogue_status.text().lower()
     _loaded(page)
     assert widget._manufacturer.isEnabled() and widget._program.isEnabled()
-    assert widget._load_articles_button.isEnabled()
     assert not widget._article_filter.isEnabled()        # nothing to filter yet
     assert not generation_available(widget)       # nothing selected yet
 
@@ -465,30 +537,35 @@ def test_manufacturer_program_series_cascade_and_reset(page):
     _select(widget._manufacturer, "EG")
     assert [widget._program.itemData(i).program for i in range(widget._program.count())] == ["office"]
     assert [widget._series.itemData(i) for i in range(widget._series.count())] == ["", "AX", "BX"]
-    # A program without series offers only "(all series)" and Load Articles stays available.
+    # A program without series offers only "(all series)"; choosing it loads its articles automatically.
     _select(widget._manufacturer, "MK")
     _program(widget, "found")
+    drain()
     assert [widget._series.itemData(i) for i in range(widget._series.count())] == [""]
     assert not widget._series.isEnabled()
-    assert widget._load_articles_button.isEnabled()
+    assert _names(widget._article_table) == ["FOUND1"]
 
 
 def test_changing_the_selection_clears_loaded_articles(page):
     widget = _loaded(page)
     _select(widget._manufacturer, "MK")
     _program(widget, "demo")
+    drain()
     _select(widget._series, "DM")
-    widget._load_articles()
     drain()
     widget._article_table.selectRow(0)
     assert generation_available(widget)
-    _select(widget._series, "DX")
-    assert widget._article_table.rowCount() == 0
+    page_module.QMessageBox.critical.assert_not_called()
+    _select(widget._series, "DX")                     # the change reloads the list for the new selection
+    assert widget._article_table.rowCount() == 0      # ...and drops the old one at once
     assert widget._article_count.text() == "0 of 0 articles"
-    assert "load the articles again" in widget._catalogue_status.text()
+    assert widget._catalogue_status.text().startswith("Loading articles of demo / DX")
     assert not generation_available(widget)
+    drain()
+    assert _names(widget._article_table) == ["TABLE1"]
     _program(widget, "found")
-    assert widget._article_table.rowCount() == 0
+    drain()
+    assert _names(widget._article_table) == ["FOUND1"]
 
 
 def test_load_articles_for_a_series_fills_table_and_count(page):
@@ -546,7 +623,7 @@ def test_empty_catalogue_is_reported_as_empty(tmp_path, monkeypatch):
     assert widget._manufacturer.count() == 0 and widget._program.count() == 0
     assert "No OCD catalogue data found" in widget._catalogue_status.text()
     assert not widget._manufacturer.isEnabled()
-    assert not widget._load_articles_button.isEnabled()
+    assert not widget._program.isEnabled()
     page_module.QMessageBox.critical.assert_not_called()      # empty is not a failure
     dispose(widget)
 
@@ -575,18 +652,17 @@ def test_unconfigured_repository_is_reported_as_a_failure(monkeypatch):
 def test_failed_article_load_is_reported_and_keeps_the_catalogue(page, monkeypatch):
     widget = _loaded(page)
     _select(widget._manufacturer, "MK")
-    _program(widget, "demo")
-    _select(widget._series, "DM")
 
     def boom(self, program, series_id=""):
         raise CatalogueError("disk unplugged")
 
     monkeypatch.setattr(OcdCatalogueService, "list_articles", boom)
-    widget._load_articles()
+    _program(widget, "demo")
+    widget._load_articles()                               # demo is already the first program, so load explicitly
     drain()
     assert "Loading articles failed: disk unplugged" in widget._catalogue_status.text()
     page_module.QMessageBox.critical.assert_called()
-    assert widget._manufacturer.count() == 2 and widget._load_articles_button.isEnabled()
+    assert widget._manufacturer.count() == 2 and widget._program.isEnabled()
 
 
 def test_series_without_articles_is_reported_as_empty(page, monkeypatch):
