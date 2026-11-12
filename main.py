@@ -57,6 +57,7 @@ def main() -> int:
 
     window = MainWindow()
     window.show()
+    window.verify_pdm_connection_async()
 
     return app.exec()
 

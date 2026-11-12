@@ -45,6 +45,8 @@ from services.ocd_engine.catalogue import (
     remember_loaded,
     OcdProgram,
 )
+from core.repository_workspace import check_location
+from services.ocd_engine.workspace_catalogue import WorkspaceCatalogueService
 from services.ocd_engine.generator import (
     MODE_DEFAULT,
     MODE_FIXED,
@@ -104,6 +106,15 @@ class PconArticleObxGeneratorPage(BasePage):
         self._loaded_key: tuple[str, str] | None = None    # (root, fingerprint) of the catalogue now shown
         self._check_run: ReportedTask | None = None        # the silent "has the repository changed?" check
 
+        # Manufacturer workspaces (label -> configured ``_repository``). With them, the Manufacturer selector chooses
+        # one workspace and every catalogue read, article list, generation and export is confined to it. Without them
+        # (or with an injected catalogue) the selector lists the manufacturers found in the one catalogue.
+        config = getattr(context, "config", None)
+        configured = getattr(config, "manufacturer_workspaces", None)
+        self._workspaces: dict[str, str] = dict(configured) if (configured and catalogue is None) else {}
+        self._workspace_services: dict[str, WorkspaceCatalogueService] = {}
+        self._workspace_error = ""         # why the selected workspace cannot be used; empty when it can
+
         self._programs: list[OcdProgram] = []
         self._articles: list[OcdArticle] = []
         self._properties: list[PropertyInfo] = []
@@ -114,6 +125,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._run: ReportedTask | None = None
 
         self._build_content()
+        self._fill_workspaces()
         self._set_status(self._catalogue_status, "Loading OCD catalogue automatically…")
         self.refresh()
         recalled = recall_loaded(self._catalogue_service().root) if self._catalogue_service().root else None
@@ -156,7 +168,7 @@ class PconArticleObxGeneratorPage(BasePage):
         self._manufacturer = QComboBox(self)
         self._manufacturer.setMinimumWidth(78)
         self._manufacturer.setMaximumWidth(105)
-        self._manufacturer.currentIndexChanged.connect(self._on_manufacturer_changed)
+        self._manufacturer.currentIndexChanged.connect(self._on_manufacturer_selected)
         row.addWidget(self._manufacturer)
         row.addWidget(QLabel("Program:"))
         self._program = QComboBox(self)
@@ -361,17 +373,18 @@ class PconArticleObxGeneratorPage(BasePage):
         idle = self._run is None
         has_program = self._selected_program() is not None
         has_selection = bool(self._article_table.selectedIndexes())
+        usable = not self._workspace_error
         self._manufacturer.setEnabled(idle and self._manufacturer.count() > 0)
-        self._program.setEnabled(idle and self._program.count() > 0)
+        self._program.setEnabled(idle and usable and self._program.count() > 0)
         self._series.setEnabled(idle and self._series.count() > 1)
         self._article_filter.setEnabled(bool(self._articles))
         self._fabric_property.setEnabled(idle and self._fabric_property.count() > 1)
-        has_exportable = self._outcome is not None and bool(self._outcome.exportable)
+        has_exportable = usable and self._outcome is not None and bool(self._outcome.exportable)
         self._obx_actions_button.setEnabled(idle and has_exportable)
         self._export_action.setEnabled(idle and has_exportable)
         self._validator_action.setEnabled(idle and has_exportable)
         selected_skus = bool(self._result_table.selectionModel().selectedRows()) if hasattr(self, "_result_table") else False
-        self._diagnostics_button.setEnabled(idle and self._outcome is not None and selected_skus)
+        self._diagnostics_button.setEnabled(idle and usable and self._outcome is not None and selected_skus)
 
     # --------------------------------------------------------------- helpers
     def _progress_monitor(self) -> ProgressDialog:
@@ -428,13 +441,23 @@ class PconArticleObxGeneratorPage(BasePage):
         label.setStyleSheet(f"color: {color};" if color else "")
 
     def _catalogue_service(self) -> OcdCatalogueService:
+        if self._workspaces:
+            label = self._manufacturer.currentData()
+            if label not in self._workspaces:
+                label = next(iter(self._workspaces))
+            if label not in self._workspace_services:
+                self._workspace_services[label] = WorkspaceCatalogueService.for_workspace(self._workspaces[label])
+            self._catalogue_reader = self._workspace_services[label]
+            return self._catalogue_reader
         if self._catalogue_reader is None:
             if self._catalogue_override is not None:
                 self._catalogue_reader = self._catalogue_override
             else:
                 config = getattr(self._context, "config", None)
-                self._catalogue_reader = OcdCatalogueService(
-                    getattr(config, "metatype_repository_root", "") or "")
+                root = getattr(config, "metatype_repository_root", "") or ""
+                workspaces = getattr(config, "repository_workspaces", None) or []
+                self._catalogue_reader = (WorkspaceCatalogueService(root, workspaces) if workspaces
+                                          else OcdCatalogueService(root))
         return self._catalogue_reader
 
     def _selected_program(self) -> OcdProgram | None:
@@ -470,6 +493,80 @@ class PconArticleObxGeneratorPage(BasePage):
                 selected.append(article)
         return selected
 
+    # ------------------------------------------------------- manufacturer workspace
+    def _fill_workspaces(self) -> None:
+        """List the configured manufacturer workspaces; start on the first one that can be reached."""
+        if not self._workspaces:
+            return
+        self._manufacturer.blockSignals(True)
+        self._manufacturer.clear()
+        for label in self._workspaces:
+            self._manufacturer.addItem(label, label)
+        first = next((i for i, path in enumerate(self._workspaces.values()) if check_location(path).connected), 0)
+        self._manufacturer.setCurrentIndex(first)
+        self._manufacturer.blockSignals(False)
+
+    def _workspace_available(self) -> bool:
+        """Check the selected workspace now; when it cannot be used say why and keep QA execution disabled."""
+        if not self._workspaces:
+            return True
+        label = self._manufacturer.currentData()
+        status = check_location(self._workspaces.get(label, ""))
+        was_blocked = bool(self._workspace_error)
+        self._workspace_error = "" if status.connected else status.detail
+        if not status.connected:
+            self._set_status(self._catalogue_status,
+                             f"{label} repository is not available - QA is disabled for it. {status.detail}",
+                             theme.COLOR_ERROR)
+        if was_blocked != bool(self._workspace_error):
+            self._update_controls()
+        return status.connected
+
+    def _execution_allowed(self, title: str) -> bool:
+        """False (with a message) when the selected manufacturer's workspace is unavailable."""
+        if self._workspace_available():
+            return True
+        QMessageBox.warning(self, title,
+                            f"The {self._manufacturer.currentData()} repository is not available.\n\n"
+                            f"{self._workspace_error}")
+        return False
+
+    def _clear_selection_state(self) -> None:
+        """Forget everything that came from the previous manufacturer: catalogue, articles, results, datasets."""
+        self._scan = None
+        self._programs = []
+        self._loaded_key = None
+        self._generators.clear()
+        self._articles = []
+        self._outcome = None
+        self._outcome_program = None
+        self._outcome_price_date = ""
+        for combo in (self._program, self._series):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.blockSignals(False)
+        self._article_filter.clear()
+        self._populate_articles()
+        self._refresh_fabric_choices()
+        self._result_model.clear()
+        self._generation_status.setText("No generation run yet.")
+        self._generation_status.setStyleSheet("")
+        self._validation_label.setText("")
+        self._update_controls()
+
+    def _on_manufacturer_selected(self) -> None:
+        if not self._workspaces:
+            self._on_manufacturer_changed()
+            return
+        self._clear_selection_state()
+        if not self._workspace_available():
+            return
+        recalled = recall_loaded(self._catalogue_service().root)
+        if recalled is not None:
+            self._loaded_key = (str(recalled.root), recalled.fingerprint)
+            self._apply_scan(recalled, "Catalogue up to date")
+        self._check_catalogue()
+
     # -------------------------------------------------------------- catalogue
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
@@ -487,6 +584,8 @@ class PconArticleObxGeneratorPage(BasePage):
         A failed check changes nothing, so the next check simply tries again.
         """
         if (self._run is not None and self._run.active) or (self._check_run is not None and self._check_run.active):
+            return
+        if not self._workspace_available():
             return
         service = self._catalogue_service()
         if service.root is None:
@@ -516,6 +615,8 @@ class PconArticleObxGeneratorPage(BasePage):
     def _load_catalogue(self) -> None:
         if self._run is not None and self._run.active:
             return
+        if not self._workspace_available():
+            return
         service = self._catalogue_service()
         self._set_status(self._catalogue_status, "Loading catalogue…")
 
@@ -539,6 +640,9 @@ class PconArticleObxGeneratorPage(BasePage):
             self._generators.clear()      # their datasets were read from the data that has now changed
         self._loaded_key = (str(scan.root), scan.fingerprint)
         remember_loaded(scan)
+        infos = getattr(self._catalogue_reader, "infos", None)
+        if infos and hasattr(self._context, "repository_workspaces"):
+            self._context.repository_workspaces.update(infos)
         if previous is not None and previous.root == scan.root and previous.programs == scan.programs and previous.skipped == scan.skipped:
             self._set_status(self._catalogue_status,
                              f"Catalogue up to date ({len(scan.programs)} program(s)); checking automatically.",
@@ -553,13 +657,14 @@ class PconArticleObxGeneratorPage(BasePage):
         series_id = self._series.currentData() or ""
         self._scan = scan
         self._programs = scan.programs
-        self._manufacturer.blockSignals(True)
-        self._manufacturer.clear()
-        for item in scan.manufacturers():
-            self._manufacturer.addItem(item, item)
-        index = self._manufacturer.findData(manufacturer_id)
-        self._manufacturer.setCurrentIndex(index if index >= 0 else (0 if self._manufacturer.count() else -1))
-        self._manufacturer.blockSignals(False)
+        if not self._workspaces:
+            self._manufacturer.blockSignals(True)
+            self._manufacturer.clear()
+            for item in scan.manufacturers():
+                self._manufacturer.addItem(item, item)
+            index = self._manufacturer.findData(manufacturer_id)
+            self._manufacturer.setCurrentIndex(index if index >= 0 else (0 if self._manufacturer.count() else -1))
+            self._manufacturer.blockSignals(False)
         self._on_manufacturer_changed()
         if program_name:
             index = next((i for i in range(self._program.count())
@@ -576,14 +681,16 @@ class PconArticleObxGeneratorPage(BasePage):
             return
         self._set_status(self._catalogue_status,
                          f"{headline}: {len(scan.programs)} program(s), "
-                         f"{self._manufacturer.count()} manufacturer(s).{skipped}", theme.COLOR_OK)
+                         f"{len(scan.manufacturers())} manufacturer(s).{skipped}", theme.COLOR_OK)
 
     def _on_manufacturer_changed(self) -> None:
         manufacturer_id = self._manufacturer.currentData()
         self._program.blockSignals(True)
         self._program.clear()
         if self._scan is not None and manufacturer_id:
-            for program in self._scan.programs_for(manufacturer_id):
+            programs = (sorted(self._scan.programs, key=lambda p: p.program.lower()) if self._workspaces
+                        else self._scan.programs_for(manufacturer_id))
+            for program in programs:
                 self._program.addItem(f"{program.program} ({program.article_count})", program)
         self._program.blockSignals(False)
         # Do not load the first program implicitly when only the manufacturer changes.
@@ -618,6 +725,8 @@ class PconArticleObxGeneratorPage(BasePage):
             self._load_articles()
 
     def _load_articles(self) -> None:
+        if not self._execution_allowed("Load Articles"):
+            return
         program = self._selected_program()
         if program is None:
             QMessageBox.information(self, "Load Articles", "Load the catalogue and choose a program first.")
@@ -718,6 +827,8 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # ------------------------------------------------------------- generation
     def _generate(self) -> None:
+        if not self._execution_allowed("Generate OBX"):
+            return
         program = self._selected_program()
         articles = self._selected_articles()
         if program is None or not articles:
@@ -776,6 +887,8 @@ class PconArticleObxGeneratorPage(BasePage):
 
     def _price_generated_skus(self) -> None:
         """Apply the chosen OCD CSV price list to the existing SKU rows without re-enumerating."""
+        if not self._execution_allowed("Price Selected"):
+            return
         outcome, program = self._outcome, self._outcome_program
         if outcome is None or program is None or not outcome.skus:
             QMessageBox.information(self, "Price Selected", "Generate valid SKUs first.")
@@ -857,6 +970,8 @@ class PconArticleObxGeneratorPage(BasePage):
 
     # ------------------------------------------------------------------ export
     def _export_obx(self) -> None:
+        if not self._execution_allowed("Export OBX"):
+            return
         outcome, program = self._outcome, self._outcome_program
         if outcome is None or program is None or not outcome.exportable:
             QMessageBox.information(self, "Export OBX", "Generate valid SKUs with a price first.")
@@ -886,6 +1001,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._start("Exporting OBX", work, self._on_exported, subject=Path(path).name)
 
     def _prepare_for_validator(self) -> None:
+        if not self._execution_allowed("Prepare for Validator"):
+            return
         outcome, program = self._outcome, self._outcome_program
         if outcome is None or program is None or not outcome.exportable:
             QMessageBox.information(self, "Prepare for Validator", "Generate valid SKUs with a price first.")

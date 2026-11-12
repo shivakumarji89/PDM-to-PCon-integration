@@ -85,6 +85,10 @@ class ApplicationContext:
 
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config: AppConfig = config or AppConfig()
+        #: Last verified (or failed) PDM connection check; ``None`` until one has run. See core.pdm_connection.
+        self.pdm_connection_state = None
+        #: Repository workspaces connected this session, by path (core.repository_workspace.WorkspaceInfo).
+        self.repository_workspaces: dict[str, object] = {}
         self.project: Project = Project()
         self.snapshot_manager: SnapshotManager = SnapshotManager()
         self._pdm_snapshot: Snapshot | None = None
@@ -152,6 +156,18 @@ class ApplicationContext:
             factory = self._service_factories.get(service_type, service_type)
             self._services[service_type] = factory(self)
         return self._services[service_type]  # type: ignore[return-value]
+
+    def connect_repository_workspace(self, path: str):
+        """Validate a repository workspace and load its manufacturer context from its data.
+
+        The result is recorded by path whether or not it is reachable, so an unavailable workspace stays visible
+        as unavailable; the configured path itself is never changed.
+        """
+        from core.repository_workspace import connect_workspace
+
+        info = connect_workspace(path)
+        self.repository_workspaces[str(path)] = info
+        return info
 
     def workflow_session(self, name: str) -> dict[str, object]:
         """Return persistent UI-independent state for a long-running workflow."""

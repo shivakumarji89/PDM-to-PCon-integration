@@ -203,7 +203,7 @@ class _ElidedLabel(QLabel):
 class _StatusItem(QWidget):
     """Icon + status dot + label + value, used in the header and the footer."""
 
-    _GOOD = {"configured", "available", "loaded", "ready"}
+    _GOOD = {"connected", "available", "loaded", "ready"}
 
     def __init__(self, icon: str, label: str, value: str, *, icon_color: str = "#4A5565", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -579,6 +579,8 @@ class ModuleHomePage(QWidget):
         # --- status strip ---------------------------------------------------
         strip = _StatusStrip()
         self._repository_status = _StatusItem("folder", "Active Repository", "Not checked")
+        self._hm_repository_status = _StatusItem("folder", "HM Repository", "Not checked")
+        self._knoll_repository_status = _StatusItem("folder", "Knoll Repository", "Not checked")
         self._pdm_status = _StatusItem("database", "PDM Database", "Not checked")
         self._pdm_controls = QWidget()
         self._pdm_controls_layout = QHBoxLayout(self._pdm_controls)
@@ -596,6 +598,8 @@ class ModuleHomePage(QWidget):
         self._status_strip = strip
         strip.set_items((
             self._repository_status,
+            self._hm_repository_status,
+            self._knoll_repository_status,
             self._pdm_group,
             self._mdb_status,
             self._application_status,
@@ -682,22 +686,69 @@ class ModuleHomePage(QWidget):
         wash(w * .94, h * .90, w * .34, h * .30, "#9BCB55", 80)
         wash(w * .30, h * .30, w * .28, h * .22, "#BFE08C", 28)
 
+    def _refresh_manufacturer_repository_status(self, config) -> None:
+        """HM and Knoll are each checked on their own configured workspace; neither result affects the other."""
+        from core.repository_workspace import check_location
+
+        items = {"HM": self._hm_repository_status, "Knoll": self._knoll_repository_status}
+        workspaces = getattr(config, "manufacturer_workspaces", {}) or {}
+        for label, item in items.items():
+            status = check_location(workspaces.get(label, ""))
+            if status.connected:
+                item.set_value("Connected", "Connected")
+                item.setToolTip(status.path)
+            else:
+                item.set_value("Not connected", f"Not connected - {status.detail}")
+                item.setToolTip(status.detail)
+
+    def _refresh_repository_status(self, config, context) -> None:
+        """Connected only for locations that can be listed on this computer; otherwise say why not."""
+        from core.repository_workspace import check_location
+
+        roots = getattr(config, "repository_browser_roots", {}) or {}
+        checks = {name: check_location(path) for name, path in roots.items()}
+        workspaces = [check_location(path) for path in getattr(config, "repository_workspaces", []) or []]
+        connected = [name for name, status in checks.items() if status.connected]
+        known = getattr(context, "repository_workspaces", {}) or {}
+        manufacturers = sorted({m for w in workspaces if w.connected
+                                for m in getattr(known.get(w.path), "manufacturers", ())})
+        shown = connected + manufacturers
+        problems = [s.detail for s in [*checks.values(), *workspaces] if not s.connected]
+        tip = "\n".join([*(f"{n}: {roots[n]}" for n in connected), *problems])
+        if shown:
+            self._repository_status.set_value("Connected", ", ".join(shown))
+        else:
+            reason = problems[0] if problems else "No repository configured"
+            self._repository_status.set_value("Unavailable", f"Not connected - {reason}")
+        self._repository_status.setToolTip(tip or "No repository configured")
+
     def refresh_status(self) -> None:
-        """Show configured/loaded state without claiming an untested DB connection."""
+        """Show verified connection state; a configured but unverified or unreachable target is never shown as connected."""
         context = self._context
         if context is None:
             return
         config = getattr(context, "config", None)
         if config is not None:
             preset = config.active_pdm_preset() or "Custom configuration"
-            self._pdm_status.set_value("Configured", f"{config.pdm_server}/{config.pdm_database}")
-            self._pdm_status.setToolTip(f"{preset} · {config.pdm_server}/{config.pdm_database}")
-            roots = getattr(config, "repository_browser_roots", {}) or {}
-            available = [name for name, path in roots.items() if Path(path).is_dir()]
-            self._repository_status.set_value(
-                "Available" if available else "Path not found",
-                ", ".join(available) if available else "Configured repository folders not found",
-            )
+            label = f"{config.pdm_server}/{config.pdm_database}"
+            state = getattr(context, "pdm_connection_state", None)
+            # Selection (always the configured database) and verification (what a live connection showed) are
+            # separate: the text names the selection, the suffix and dot report the verification.
+            if state is not None and state.label == label:
+                if state.verified:
+                    self._pdm_status.set_value("Connected", f"{label} · Connected")
+                    self._pdm_status.setToolTip(f"{preset} · connected to {label}")
+                else:
+                    self._pdm_status.set_value("Not connected", f"{label} · Not connected")
+                    self._pdm_status.setToolTip(f"{preset} · {state.message}")
+            elif getattr(self, "_pdm_verifying", False):
+                self._pdm_status.set_value("Verifying", f"{label} · Verifying…")
+                self._pdm_status.setToolTip(f"{preset} · checking connection")
+            else:
+                self._pdm_status.set_value("Not verified", f"{label} · Not verified")
+                self._pdm_status.setToolTip(f"{preset} · connection not yet verified")
+            self._refresh_repository_status(config, context)
+            self._refresh_manufacturer_repository_status(config)
         imported = getattr(context, "mdb_import_snapshot", None)
         self._mdb_status.set_value(
             "Loaded" if imported is not None else "Not loaded",
@@ -706,7 +757,7 @@ class ModuleHomePage(QWidget):
 
 
 class _StatusStrip(QWidget):
-    """White rounded strip holding the four footer status items."""
+    """White rounded strip holding the footer status items."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

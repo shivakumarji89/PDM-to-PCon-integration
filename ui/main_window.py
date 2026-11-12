@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.application_context import ApplicationContext
+from core.config import AppConfig
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
@@ -82,7 +83,7 @@ class MainWindow(QMainWindow):
         self.resize(1360, 860)
 
         # Shared application context (services + state) for the whole window.
-        self._context = ApplicationContext()
+        self._context = ApplicationContext(AppConfig.load())
         saved_xocd = QSettings().value("xocd/svnPath", "", type=str)
         if saved_xocd:
             self._context.config.xocd_svn_path = saved_xocd
@@ -682,15 +683,72 @@ class MainWindow(QMainWindow):
         self._toggle_navigator_action.setEnabled(False)
         self._toggle_navigator_action.setChecked(False)
         self._module_placeholder.hide()
+        self._module_home.refresh_status()
         self._module_home.show()
         self._stack.setCurrentWidget(self._module_home)
         self.statusBar().showMessage("Select a module", 4000)
 
+    def verify_pdm_connection_async(self) -> None:
+        """Check the selected database in the background and update the status strip when done."""
+        from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+        from core.pdm_connection import verify_connection
+
+        context, home = self._context, self._module_home
+
+        class _Done(QObject):
+            finished = Signal()
+
+        done = _Done(self)
+
+        def finish() -> None:
+            home._pdm_verifying = False
+            home.refresh_status()
+
+        done.finished.connect(finish)      # queued to the UI thread: the signal is emitted from the worker
+
+        class _Worker(QRunnable):
+            def run(self) -> None:
+                try:
+                    verify_connection(context)
+                finally:
+                    done.finished.emit()
+
+        home._pdm_verifying = True
+        home.refresh_status()
+        QThreadPool.globalInstance().start(_Worker())
+
     def _on_database_changed(self, name: str) -> None:
-        """Switch the active PDM database and re-sync the product hierarchy."""
-        if not self._context.config.set_pdm_database(name):
+        """Switch the active PDM database, verify the connection and re-sync the product hierarchy.
+
+        The config is changed only if a live connection to the chosen database succeeds; otherwise the previous
+        database stays active, the selector goes back to it and the failure is reported.
+        """
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from core.pdm_connection import switch_pdm_database
+
+        if name == self._context.config.active_pdm_preset():
             return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = switch_pdm_database(self._context, name)
+        finally:
+            QApplication.restoreOverrideCursor()
         cfg = self._context.config
+        if not result.ok:
+            active = cfg.active_pdm_preset()
+            if active:
+                self._database_selector.blockSignals(True)
+                self._database_selector.setCurrentText(active)
+                self._database_selector.blockSignals(False)
+            self._module_home.refresh_status()
+            self.statusBar().showMessage(
+                f"PDM database not switched; still on {cfg.pdm_server}/{cfg.pdm_database}", 8000)
+            QMessageBox.warning(
+                self, "PDM database",
+                f"Could not switch to {name}.\n\n{result.error}\n\n"
+                f"Still using {cfg.pdm_server}/{cfg.pdm_database}.")
+            return
+        self._module_home.refresh_status()
         self.statusBar().showMessage(
             f"PDM database set to {name} ({cfg.pdm_server}/{cfg.pdm_database})", 6000
         )

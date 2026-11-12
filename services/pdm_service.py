@@ -166,6 +166,12 @@ class PDMService(BaseService):
         self._connected = True
         return products
 
+    def _source_label(self) -> str:
+        cfg = getattr(self.context, "config", None)
+        if cfg is None:
+            return ""
+        return f"{cfg.pdm_server}/{cfg.pdm_database}".casefold()
+
     # -- cached product listing (identity-only registry) ------------------
     def get_cached_products(self, force_refresh: bool = False) -> list[Product]:
         """Return the product hierarchy, preferring the on-disk registry cache.
@@ -190,6 +196,9 @@ class PDMService(BaseService):
             data = json.loads(self._REGISTRY_CACHE.read_text(encoding="utf-8"))
             if data.get("schema_version") != self._REGISTRY_SCHEMA_VERSION:
                 return None
+            # The cache is only valid for the database it was read from; a switch must never serve another's rows.
+            if data.get("source") != self._source_label():
+                return None
             products = [
                 Product(
                     id=entry.get("id"),
@@ -213,6 +222,7 @@ class PDMService(BaseService):
             self._REGISTRY_CACHE.parent.mkdir(parents=True, exist_ok=True)
             payload = {
                 "schema_version": self._REGISTRY_SCHEMA_VERSION,
+                "source": self._source_label(),
                 "saved_at": datetime.now(timezone.utc).isoformat(),
                 "count": len(products),
                 "products": [
@@ -261,6 +271,7 @@ class PDMService(BaseService):
             )
             payload = {
                 "schema_version": self._SNAPSHOT_SCHEMA_VERSION,
+                "source": self._source_label(),
                 "saved_at": datetime.now(timezone.utc).isoformat(),
                 "family_name": family_name,
                 "product": (
