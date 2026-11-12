@@ -121,7 +121,7 @@ class PconArticleObxGeneratorPage(BasePage):
             # Another page instance already loaded this repository: show it without reading anything.
             self._loaded_key = (str(recalled.root), recalled.fingerprint)
             self._apply_scan(recalled, "Catalogue up to date")
-        QTimer.singleShot(0, self._check_catalogue)
+        QTimer.singleShot(0, self, self._check_catalogue)
         self._catalogue_poll.start()
 
     # ------------------------------------------------------------------ build
@@ -502,7 +502,7 @@ class PconArticleObxGeneratorPage(BasePage):
                                  f"Catalogue up to date ({len(self._scan.programs)} program(s)); checking automatically.",
                                  theme.COLOR_OK)
                 return
-            QTimer.singleShot(0, self._load_catalogue)    # not from inside this task's completion callback
+            QTimer.singleShot(0, self, self._load_catalogue)    # not from inside this task's completion callback
 
         def failed(message: str) -> None:
             self._check_run = None

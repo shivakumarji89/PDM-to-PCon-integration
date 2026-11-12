@@ -688,3 +688,15 @@ def test_catalogue_uses_the_configured_repository_root(ocd_root):
     drain()
     assert widget._manufacturer.count() == 2
     dispose(widget)
+
+
+def test_deleting_the_page_before_its_startup_callbacks_run_is_safe(ocd_root):
+    """The startup catalogue check is queued with singleShot; it must not run against a deleted page."""
+    from PySide6.QtCore import QEvent
+
+    widget = PconArticleObxGeneratorPage(context=None, catalogue=OcdCatalogueService(ocd_root))
+    widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)    # the page is gone, the timer is pending
+    for _ in range(5):
+        QCoreApplication.processEvents()                                    # raised "already deleted" before
+    drain()
