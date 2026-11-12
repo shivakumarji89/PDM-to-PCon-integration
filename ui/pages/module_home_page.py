@@ -1,7 +1,7 @@
 """Front module selector for MK Product Workbench.
 
 The page follows the approved reference design: a header with resource status,
-six module launchers orbiting a central illustration (dashed ring, gears and a
+five module launchers orbiting a central illustration (dashed ring, gears and a
 seated engineer), and a status strip. The orbit is drawn in a fixed design
 space and scaled uniformly, so the launchers keep their relative positions at
 any window size.
@@ -33,7 +33,6 @@ _FONT_FAMILY = "Segoe UI"
 
 # (module, number, icon, accent, description) - positions follow the reference.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.DEVELOPMENT, "01", "code", _GREEN, "CAD & Data Workflows\nPDM – pCon Integration"),
     (WorkbenchModule.MAINTENANCE, "02", "database", _RED, "Article Update,\nPricing and Relations"),
     (WorkbenchModule.METATYPE, "03", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
     (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
@@ -44,7 +43,6 @@ _PRIMARY_MODULES = (
 # Design space of the orbit stage (reference image coordinates, y offset 85).
 _DESIGN_W, _DESIGN_H, _DESIGN_Y0 = 1536.0, 790.0, 85.0
 _TILE_RECTS = {
-    WorkbenchModule.DEVELOPMENT: (166, 457, 316, 223),
     WorkbenchModule.MAINTENANCE: (217, 183, 301, 220),
     WorkbenchModule.METATYPE: (626, 106, 285, 196),
     WorkbenchModule.OAP: (1019, 183, 301, 220),
@@ -369,7 +367,7 @@ class _ModuleTile(QAbstractButton):
 
 
 class _OrbitStage(QWidget):
-    """Central ring + illustration with the six module tiles positioned around it."""
+    """Central ring + illustration with the module tiles positioned around it."""
 
     module_selected = Signal(object)
 
