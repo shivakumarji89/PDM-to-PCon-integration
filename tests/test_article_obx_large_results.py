@@ -74,9 +74,11 @@ def test_the_page_shows_the_complete_set_with_no_cap_and_no_widget_item_per_cell
     assert widget._result_model.rowCount() == TOTAL
     assert not hasattr(widget._result_table, "item")             # a view over the model, not a QTableWidget
     assert f"Generated {TOTAL:,} valid unique SKU(s) from {TOTAL:,} configuration(s)" in widget._generation_status.text()
-    assert widget._export_button.isEnabled() and widget._diagnostics_button.isEnabled()
+    assert widget._export_action.isEnabled()
+    assert not widget._diagnostics_button.isEnabled()             # "Price Selected" needs a selected SKU
     widget._result_table.selectRow(5)
     assert [i.row() for i in widget._result_table.selectionModel().selectedRows()] == [5]
+    assert widget._diagnostics_button.isEnabled()
 
 
 def test_completion_is_reported_only_after_the_results_are_published(gen_page, monkeypatch):
