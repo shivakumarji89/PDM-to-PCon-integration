@@ -37,17 +37,17 @@ _PRIMARY_MODULES = (
     (WorkbenchModule.METATYPE, "02", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
     (WorkbenchModule.QA_VALIDATION, "03", "check", _GREEN, "OBX Validation\nData Quality Checks"),
     (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
-    (WorkbenchModule.BULK_UPDATE, "05", "cube", _RED, "Mass Updates and\nData Operations"),
+    (WorkbenchModule.BULK_UPDATE, "05", "cube", _GREEN, "Mass Updates and\nData Operations"),
 )
 
 # Design space of the orbit stage (reference image coordinates, y offset 85).
 _DESIGN_W, _DESIGN_H, _DESIGN_Y0 = 1536.0, 790.0, 85.0
 _TILE_RECTS = {
-    WorkbenchModule.MAINTENANCE: (217, 457, 298, 186),
+    WorkbenchModule.MAINTENANCE: (217, 494, 298, 186),
     WorkbenchModule.METATYPE: (217, 183, 301, 220),
     WorkbenchModule.QA_VALIDATION: (626, 106, 285, 196),
     WorkbenchModule.OAP: (1019, 183, 301, 220),
-    WorkbenchModule.BULK_UPDATE: (1055, 457, 316, 223),
+    WorkbenchModule.BULK_UPDATE: (1019, 457, 301, 223),
 }
 _RING_CENTER = (768.0, 470.0)
 _RING_RADIUS = 268.0
