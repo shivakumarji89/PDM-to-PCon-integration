@@ -487,61 +487,115 @@ class _OrbitStage(QWidget):
             p.drawPath(leaf)
             p.restore()
 
-        # legs and shoes
+        # Seated figure: chair and lower body sit behind the torso.
+        p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor("#3B4048"))
-        legs = QPainterPath()
-        legs.addRoundedRect(QRectF(652, 596, 238, 48), 24, 24)
-        p.drawPath(legs)
-        for sx in (692, 846):
-            p.setBrush(QColor("#7CC242"))
-            p.setPen(QPen(QColor("#FFFFFF"), 4))
-            p.drawEllipse(QPointF(sx, 650), 36, 14)
-            p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(QRectF(650, 590, 280, 58), 29, 29)
+        p.drawRoundedRect(QRectF(680, 625, 58, 28), 14, 14)
+        p.drawRoundedRect(QRectF(842, 625, 58, 28), 14, 14)
 
-        # torso
+        # Trousers and shoes, kept mostly behind the laptop.
+        p.setBrush(QColor("#303B4A"))
+        trousers = QPainterPath()
+        trousers.moveTo(710, 570)
+        trousers.lineTo(835, 570)
+        trousers.lineTo(855, 640)
+        trousers.lineTo(790, 640)
+        trousers.lineTo(770, 612)
+        trousers.lineTo(748, 640)
+        trousers.lineTo(686, 640)
+        trousers.closeSubpath()
+        p.drawPath(trousers)
         p.setBrush(QColor("#FFFFFF"))
-        p.setPen(QPen(QColor("#E3E7EC"), 1.5))
-        torso = QPainterPath()
-        torso.moveTo(704, 482)
-        torso.cubicTo(740, 462, 800, 470, 836, 492)
-        torso.lineTo(844, 610)
-        torso.lineTo(700, 610)
-        torso.closeSubpath()
-        p.drawPath(torso)
+        p.drawRoundedRect(QRectF(670, 636, 86, 25), 12, 12)
+        p.drawRoundedRect(QRectF(823, 636, 86, 25), 12, 12)
+        p.setBrush(QColor("#78BD3B"))
+        p.drawRoundedRect(QRectF(677, 641, 72, 15), 8, 8)
+        p.drawRoundedRect(QRectF(830, 641, 72, 15), 8, 8)
+
+        # Neck and a structured shirt silhouette.
+        p.setBrush(QColor("#E9A77F"))
+        p.drawRoundedRect(QRectF(744, 461, 48, 43), 13, 13)
+        shirt = QPainterPath()
+        shirt.moveTo(718, 480)
+        shirt.cubicTo(735, 468, 755, 465, 775, 469)
+        shirt.cubicTo(807, 470, 831, 482, 850, 501)
+        shirt.lineTo(843, 613)
+        shirt.cubicTo(800, 623, 741, 621, 697, 612)
+        shirt.lineTo(700, 503)
+        shirt.cubicTo(704, 492, 709, 485, 718, 480)
+        shirt.closeSubpath()
+        p.setPen(QPen(QColor("#D7E2EA"), 2))
+        p.setBrush(QColor("#356B86"))
+        p.drawPath(shirt)
         p.setPen(Qt.PenStyle.NoPen)
 
-        # raised arm pointing at the gear
-        arm = QPen(QColor("#F2B48A"), 22, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        p.setPen(arm)
-        p.drawLine(QPointF(842, 512), QPointF(918, 432))
-        p.setPen(QPen(QColor("#FFFFFF"), 30, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawLine(QPointF(838, 508), QPointF(858, 488))
-        p.setPen(QPen(QColor("#F2B48A"), 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawLine(QPointF(918, 432), QPointF(934, 418))
-        p.setPen(Qt.PenStyle.NoPen)
+        # Collar gives the neck a clear connection to the shirt.
+        collar = QPainterPath()
+        collar.moveTo(739, 476)
+        collar.lineTo(766, 493)
+        collar.lineTo(791, 476)
+        collar.lineTo(779, 466)
+        collar.lineTo(750, 466)
+        collar.closeSubpath()
+        p.setBrush(QColor("#F4F7F9"))
+        p.drawPath(collar)
 
-        # head and hair
-        p.setBrush(QColor("#F2B48A"))
-        p.drawEllipse(QPointF(748, 452), 34, 38)
-        p.setBrush(QColor("#1C2430"))
+        # Left arm: short sleeve, forearm and hand resting near the keyboard.
+        p.setPen(QPen(QColor("#2B5C76"), 27, Qt.PenStyle.SolidLine,
+                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(711, 508), QPointF(696, 548))
+        p.setPen(QPen(QColor("#E9A77F"), 18, Qt.PenStyle.SolidLine,
+                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(696, 548), QPointF(752, 574))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#E9A77F"))
+        p.drawEllipse(QPointF(756, 576), 10, 8)
+
+        # Right arm: sleeve remains attached to the shoulder; forearm reaches
+        # naturally toward the small gear, with a simple hand at the end.
+        p.setPen(QPen(QColor("#2B5C76"), 31, Qt.PenStyle.SolidLine,
+                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(831, 505), QPointF(858, 520))
+        p.setPen(QPen(QColor("#E9A77F"), 23, Qt.PenStyle.SolidLine,
+                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(858, 520), QPointF(913, 460))
+        p.drawLine(QPointF(913, 460), QPointF(951, 424))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#E9A77F"))
+        p.drawEllipse(QPointF(955, 420), 10, 8)
+
+        # Head, ears and hair: balanced proportions and a clean silhouette.
+        p.setBrush(QColor("#E9A77F"))
+        p.drawEllipse(QPointF(756, 434), 34, 39)
+        p.drawEllipse(QPointF(722, 440), 6, 10)
+        p.drawEllipse(QPointF(790, 440), 6, 10)
         hair = QPainterPath()
-        hair.moveTo(712, 452)
-        hair.cubicTo(700, 410, 740, 396, 770, 410)
-        hair.cubicTo(790, 420, 786, 438, 780, 446)
-        hair.cubicTo(760, 436, 730, 436, 712, 452)
+        hair.moveTo(722, 438)
+        hair.cubicTo(716, 413, 735, 394, 759, 394)
+        hair.cubicTo(784, 394, 799, 411, 792, 438)
+        hair.cubicTo(780, 429, 765, 424, 748, 426)
+        hair.cubicTo(738, 427, 729, 432, 722, 438)
+        hair.closeSubpath()
+        p.setBrush(QColor("#263447"))
         p.drawPath(hair)
 
-        # laptop
-        p.setBrush(QColor("#2D3238"))
-        screen = QPolygonF([QPointF(722, 548), QPointF(866, 544), QPointF(852, 624), QPointF(712, 628)])
+        # Laptop is the foreground object, overlapping the waist and hands.
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#252D38"))
+        screen = QPolygonF([
+            QPointF(704, 548), QPointF(872, 544),
+            QPointF(855, 632), QPointF(690, 636),
+        ])
         p.drawPolygon(screen)
-        p.setBrush(QColor("#4A515A"))
-        p.drawPolygon(QPolygonF([QPointF(706, 630), QPointF(852, 626), QPointF(862, 640), QPointF(700, 644)]))
-        p.setBrush(QColor("#8A929C"))
-        p.drawEllipse(QPointF(790, 586), 4, 4)
-        # forearm resting on laptop
-        p.setPen(QPen(QColor("#F2B48A"), 14, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawLine(QPointF(726, 540), QPointF(760, 556))
+        p.setBrush(QColor("#414D5B"))
+        p.drawPolygon(QPolygonF([
+            QPointF(690, 636), QPointF(855, 632),
+            QPointF(870, 646), QPointF(678, 650),
+        ]))
+        p.setBrush(QColor("#AAB5C0"))
+        p.drawEllipse(QPointF(786, 590), 4, 4)
+
 
 
 class ModuleHomePage(QWidget):
