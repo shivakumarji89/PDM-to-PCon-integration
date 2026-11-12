@@ -206,10 +206,12 @@ class _StatusItem(QWidget):
     _GOOD = {"connected", "available", "loaded", "ready"}
 
     def __init__(self, icon: str, label: str, value: str, *, icon_color: str = "#4A5565",
-                 icon_size: int = 34, font_size: int = 12, parent: QWidget | None = None) -> None:
+                 icon_size: int = 34, font_size: int = 12, show_value: bool = True,
+                 parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = "ready"
         self._font_size = font_size
+        self._show_value = show_value
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -237,6 +239,7 @@ class _StatusItem(QWidget):
         )
         self._first.setText(self._label)
         self._second.setText(detail or value)
+        self._second.setVisible(self._show_value)
         self._first.setStyleSheet(f"color:{_INK}; font-size:{self._font_size}px; font-weight:700; background:transparent;")
         self._second.setStyleSheet(f"color:{_MUTED}; font-size:{self._font_size}px; font-weight:400; background:transparent;")
         self.setToolTip(detail or value)
@@ -667,7 +670,7 @@ class ModuleHomePage(QWidget):
         # Active Repository is the parent concept; HM and Knoll are the two
         # independent manufacturer workspaces nested beneath it.
         self._repository_status = _StatusItem(
-            "folder", "Active Repository", "Not checked", icon_size=22, font_size=11
+            "folder", "Active Repository", "Not checked", icon_size=22, font_size=11, show_value=False
         )
         self._hm_repository_status = _CompactRepositoryStatus("HM")
         self._knoll_repository_status = _CompactRepositoryStatus("Knoll")
