@@ -205,16 +205,19 @@ class _StatusItem(QWidget):
 
     _GOOD = {"connected", "available", "loaded", "ready"}
 
-    def __init__(self, icon: str, label: str, value: str, *, icon_color: str = "#4A5565", parent: QWidget | None = None) -> None:
+    def __init__(self, icon: str, label: str, value: str, *, icon_color: str = "#4A5565",
+                 icon_size: int = 34, font_size: int = 12, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = "ready"
+        self._font_size = font_size
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.addWidget(_IconWidget(icon, icon_color, 34))
+        layout.setSpacing(6 if icon_size < 24 else 8)
+        layout.addWidget(_IconWidget(icon, icon_color, icon_size))
         self._dot = QLabel()
-        self._dot.setFixedSize(10, 10)
+        dot_size = 7 if icon_size < 24 else 10
+        self._dot.setFixedSize(dot_size, dot_size)
         layout.addWidget(self._dot, 0, Qt.AlignmentFlag.AlignVCenter)
         text = QVBoxLayout()
         text.setSpacing(0)
@@ -234,8 +237,8 @@ class _StatusItem(QWidget):
         )
         self._first.setText(self._label)
         self._second.setText(detail or value)
-        self._first.setStyleSheet(f"color:{_INK}; font-size:12px; font-weight:700; background:transparent;")
-        self._second.setStyleSheet(f"color:{_MUTED}; font-size:12px; font-weight:400; background:transparent;")
+        self._first.setStyleSheet(f"color:{_INK}; font-size:{self._font_size}px; font-weight:700; background:transparent;")
+        self._second.setStyleSheet(f"color:{_MUTED}; font-size:{self._font_size}px; font-weight:400; background:transparent;")
         self.setToolTip(detail or value)
 
 
@@ -578,9 +581,30 @@ class ModuleHomePage(QWidget):
 
         # --- status strip ---------------------------------------------------
         strip = _StatusStrip()
-        self._repository_status = _StatusItem("folder", "Active Repository", "Not checked")
-        self._hm_repository_status = _StatusItem("folder", "HM Repository", "Not checked")
-        self._knoll_repository_status = _StatusItem("folder", "Knoll Repository", "Not checked")
+
+        # Active Repository is the parent concept; HM and Knoll are the two
+        # independent manufacturer workspaces nested beneath it.
+        self._repository_status = _StatusItem(
+            "folder", "Active Repository", "Not checked", icon_size=22, font_size=11
+        )
+        self._hm_repository_status = _StatusItem(
+            "folder", "HM", "Not checked", icon_size=14, font_size=10
+        )
+        self._knoll_repository_status = _StatusItem(
+            "folder", "Knoll", "Not checked", icon_size=14, font_size=10
+        )
+        self._active_repository_group = QWidget()
+        repository_group_layout = QVBoxLayout(self._active_repository_group)
+        repository_group_layout.setContentsMargins(0, 0, 0, 0)
+        repository_group_layout.setSpacing(2)
+        repository_group_layout.addWidget(self._repository_status)
+        manufacturer_row = QHBoxLayout()
+        manufacturer_row.setContentsMargins(28, 0, 0, 0)
+        manufacturer_row.setSpacing(14)
+        manufacturer_row.addWidget(self._hm_repository_status)
+        manufacturer_row.addWidget(self._knoll_repository_status)
+        repository_group_layout.addLayout(manufacturer_row)
+
         self._pdm_status = _StatusItem("database", "PDM Database", "Not checked")
         self._pdm_controls = QWidget()
         self._pdm_controls_layout = QHBoxLayout(self._pdm_controls)
@@ -597,9 +621,7 @@ class ModuleHomePage(QWidget):
         self._application_status = _StatusItem("gear", "Application", "Ready")
         self._status_strip = strip
         strip.set_items((
-            self._repository_status,
-            self._hm_repository_status,
-            self._knoll_repository_status,
+            self._active_repository_group,
             self._pdm_group,
             self._mdb_status,
             self._application_status,
