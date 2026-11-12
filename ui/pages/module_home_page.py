@@ -43,11 +43,11 @@ _PRIMARY_MODULES = (
 # Design space of the orbit stage (reference image coordinates, y offset 85).
 _DESIGN_W, _DESIGN_H, _DESIGN_Y0 = 1536.0, 790.0, 85.0
 _TILE_RECTS = {
-    WorkbenchModule.MAINTENANCE: (217, 183, 301, 220),
-    WorkbenchModule.METATYPE: (626, 106, 285, 196),
-    WorkbenchModule.QA_VALIDATION: (1019, 183, 301, 220),
-    WorkbenchModule.OAP: (1055, 457, 316, 223),
-    WorkbenchModule.BULK_UPDATE: (217, 457, 298, 186),
+    WorkbenchModule.MAINTENANCE: (217, 457, 298, 186),
+    WorkbenchModule.METATYPE: (217, 183, 301, 220),
+    WorkbenchModule.QA_VALIDATION: (626, 106, 285, 196),
+    WorkbenchModule.OAP: (1019, 183, 301, 220),
+    WorkbenchModule.BULK_UPDATE: (1055, 457, 316, 223),
 }
 _RING_CENTER = (768.0, 470.0)
 _RING_RADIUS = 268.0
