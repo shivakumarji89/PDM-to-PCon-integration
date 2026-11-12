@@ -10,6 +10,7 @@ active snapshot (no database queries); edits update the in-memory members only.
 """
 from __future__ import annotations
 
+import shiboken6
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
@@ -522,7 +523,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._build_shell()
         self._shell_on = on
         for w in self._legacy_header:
-            w.setVisible(not on)
+            # The legacy header labels live in the base header that _build_shell
+            # deletes; skip any whose C++ object is already gone.
+            if shiboken6.isValid(w):
+                w.setVisible(not on)
         self._shell_header.setVisible(on)
         # Maintenance Articles no longer needs the summary KPI cards; keep them in Development.
         self._kpi_row.setVisible(on and getattr(self.window(), "_active_module", None) != WorkbenchModule.MAINTENANCE)
