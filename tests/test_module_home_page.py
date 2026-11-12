@@ -13,8 +13,8 @@ from ui.pages.module_home_page import ModuleHomePage
 PRIMARY = (
     WorkbenchModule.MAINTENANCE,
     WorkbenchModule.METATYPE,
-    WorkbenchModule.OAP,
     WorkbenchModule.QA_VALIDATION,
+    WorkbenchModule.OAP,
     WorkbenchModule.BULK_UPDATE,
 )
 
