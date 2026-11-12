@@ -142,7 +142,7 @@ def test_basepage_uses_shared_page_frame_by_default(app):
     assert page.header is page.wf.header
     assert page.header.title_label.text() == "T"
     assert page.header.description_label.text() == "D"
-    assert page.wf._main.isVisible()
+    assert page.wf._main.isVisibleTo(page)  # the page itself is never shown in this test
 
 
 def test_every_registered_workflow_has_a_distinct_glyph():

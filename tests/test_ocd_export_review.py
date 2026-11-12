@@ -34,7 +34,7 @@ class _XocdExportService:
         return {"finish": 1}
 
     @staticmethod
-    def _base_codes(snapshot):
+    def _base_codes(snapshot, selected_article_ids=None):
         return []
 
     @staticmethod
