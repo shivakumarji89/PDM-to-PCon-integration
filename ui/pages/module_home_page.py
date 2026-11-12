@@ -35,9 +35,9 @@ _FONT_FAMILY = "Segoe UI"
 _PRIMARY_MODULES = (
     (WorkbenchModule.MAINTENANCE, "01", "database", _RED, "Article Update,\nPricing and Relations"),
     (WorkbenchModule.METATYPE, "02", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
-    (WorkbenchModule.QA_VALIDATION, "03", "check", _GREEN, "OBX Validation\nData Quality Checks"),
-    (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
-    (WorkbenchModule.BULK_UPDATE, "05", "cube", _GREEN, "Mass Updates and\nData Operations"),
+    (WorkbenchModule.QA_VALIDATION, "03", "check", _RED, "OBX Validation\nData Quality Checks"),
+    (WorkbenchModule.OAP, "04", "nodes", _GREEN, "Options, Conditions\nand Parametric Approach"),
+    (WorkbenchModule.BULK_UPDATE, "05", "cube", _RED, "Mass Updates and\nData Operations"),
 )
 
 # Design space of the orbit stage (reference image coordinates, y offset 85).
