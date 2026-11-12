@@ -31,13 +31,13 @@ _INK = "#1B2433"
 _MUTED = "#5E6B7D"
 _FONT_FAMILY = "Segoe UI"
 
-# (module, number, icon, accent, description) - positions follow the reference.
+# Numbering and clockwise placement follow the approved five-module sequence.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.MAINTENANCE, "02", "database", _RED, "Article Update,\nPricing and Relations"),
-    (WorkbenchModule.METATYPE, "03", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
+    (WorkbenchModule.MAINTENANCE, "01", "database", _RED, "Article Update,\nPricing and Relations"),
+    (WorkbenchModule.METATYPE, "02", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
+    (WorkbenchModule.QA_VALIDATION, "03", "check", _GREEN, "OBX Validation\nData Quality Checks"),
     (WorkbenchModule.OAP, "04", "nodes", _RED, "Options, Conditions\nand Parametric Approach"),
-    (WorkbenchModule.QA_VALIDATION, "05", "check", _GREEN, "OBX Validation\nData Quality Checks"),
-    (WorkbenchModule.BULK_UPDATE, "06", "cube", _RED, "Mass Updates and\nData Operations"),
+    (WorkbenchModule.BULK_UPDATE, "05", "cube", _RED, "Mass Updates and\nData Operations"),
 )
 
 # Design space of the orbit stage (reference image coordinates, y offset 85).
@@ -45,9 +45,9 @@ _DESIGN_W, _DESIGN_H, _DESIGN_Y0 = 1536.0, 790.0, 85.0
 _TILE_RECTS = {
     WorkbenchModule.MAINTENANCE: (217, 183, 301, 220),
     WorkbenchModule.METATYPE: (626, 106, 285, 196),
-    WorkbenchModule.OAP: (1019, 183, 301, 220),
-    WorkbenchModule.QA_VALIDATION: (1055, 457, 316, 223),
-    WorkbenchModule.BULK_UPDATE: (619, 671, 298, 186),
+    WorkbenchModule.QA_VALIDATION: (1019, 183, 301, 220),
+    WorkbenchModule.OAP: (1055, 457, 316, 223),
+    WorkbenchModule.BULK_UPDATE: (217, 457, 298, 186),
 }
 _RING_CENTER = (768.0, 470.0)
 _RING_RADIUS = 268.0
