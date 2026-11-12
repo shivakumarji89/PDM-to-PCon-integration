@@ -11,7 +11,6 @@ from core.modules import WorkbenchModule
 from ui.pages.module_home_page import ModuleHomePage
 
 PRIMARY = (
-    WorkbenchModule.DEVELOPMENT,
     WorkbenchModule.MAINTENANCE,
     WorkbenchModule.METATYPE,
     WorkbenchModule.OAP,
