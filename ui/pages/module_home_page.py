@@ -242,6 +242,34 @@ class _StatusItem(QWidget):
         self.setToolTip(detail or value)
 
 
+class _CompactRepositoryStatus(QWidget):
+    """Small inline manufacturer status used beneath the Active Repository heading."""
+
+    _GOOD = {"connected", "available", "loaded", "ready"}
+
+    def __init__(self, label: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self._dot = QLabel()
+        self._dot.setFixedSize(7, 7)
+        layout.addWidget(self._dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._text = QLabel()
+        self._text.setStyleSheet(f"color:{_MUTED}; font-size:10px; background:transparent;")
+        layout.addWidget(self._text)
+        self._label = label
+        self.set_value("Not checked")
+
+    def set_value(self, value: str, detail: str = "") -> None:
+        good = value.strip().lower() in self._GOOD
+        self._dot.setStyleSheet(
+            f"background:{'#27A032' if good else '#B7BFCA'}; border-radius:3px;"
+        )
+        self._text.setText(f"{self._label}  {detail or value}")
+        self.setToolTip(detail or value)
+
+
 class _ModuleTile(QAbstractButton):
     """Clickable module launcher drawn like the reference cards."""
 
@@ -587,22 +615,19 @@ class ModuleHomePage(QWidget):
         self._repository_status = _StatusItem(
             "folder", "Active Repository", "Not checked", icon_size=22, font_size=11
         )
-        self._hm_repository_status = _StatusItem(
-            "folder", "HM", "Not checked", icon_size=14, font_size=10
-        )
-        self._knoll_repository_status = _StatusItem(
-            "folder", "Knoll", "Not checked", icon_size=14, font_size=10
-        )
+        self._hm_repository_status = _CompactRepositoryStatus("HM")
+        self._knoll_repository_status = _CompactRepositoryStatus("Knoll")
         self._active_repository_group = QWidget()
         repository_group_layout = QVBoxLayout(self._active_repository_group)
         repository_group_layout.setContentsMargins(0, 0, 0, 0)
-        repository_group_layout.setSpacing(2)
+        repository_group_layout.setSpacing(3)
         repository_group_layout.addWidget(self._repository_status)
         manufacturer_row = QHBoxLayout()
-        manufacturer_row.setContentsMargins(28, 0, 0, 0)
-        manufacturer_row.setSpacing(14)
+        manufacturer_row.setContentsMargins(42, 0, 0, 0)
+        manufacturer_row.setSpacing(16)
         manufacturer_row.addWidget(self._hm_repository_status)
         manufacturer_row.addWidget(self._knoll_repository_status)
+        manufacturer_row.addStretch(1)
         repository_group_layout.addLayout(manufacturer_row)
 
         self._pdm_status = _StatusItem("database", "PDM Database", "Not checked")
