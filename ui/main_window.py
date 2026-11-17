@@ -1674,7 +1674,17 @@ class MainWindow(QMainWindow):
         """Include the complete generated VARCOND relation set in the MDB export."""
         from PySide6.QtWidgets import QMessageBox
 
-        snapshot = self._context.active_snapshot
+        if page.is_mdb_view():
+            QMessageBox.information(
+                self, "Export VARCOND Relations",
+                "Select the PDM source to export generated VARCOND relations.",
+            )
+            return
+        snapshot = (
+            self._context.pdm_snapshot
+            if self._active_module == WorkbenchModule.MAINTENANCE
+            else self._context.active_snapshot
+        )
         if snapshot is None or snapshot.product is None:
             QMessageBox.information(self, "Export VARCOND Relations", "Load a product first.")
             return
