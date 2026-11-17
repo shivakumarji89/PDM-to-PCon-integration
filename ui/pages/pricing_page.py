@@ -292,24 +292,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._compute_btn.clicked.connect(self._on_compute)
         layout.addWidget(self._compute_btn)
 
-        self._export_btn = QPushButton("Export to MDB...", box)
-        self._export_btn.setToolTip(
-            "Review the target price lists, preview the exact plan, then write prices and text blocks "
-            "into an existing OCD MDB. Nothing is deleted; only price values of existing rows change."
-        )
-        self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._on_export_prices)
-        layout.addWidget(self._export_btn)
-
-        self._preview_btn = QPushButton("Preview Export...", box)
-        self._preview_btn.setToolTip(
-            "Dry run against an existing OCD MDB: shows which price rows would be updated "
-            "or inserted and which text blocks would be reused or created. Writes nothing."
-        )
-        self._preview_btn.setEnabled(False)
-        self._preview_btn.clicked.connect(self._on_preview_export)
-        layout.addWidget(self._preview_btn)
-
         self._pricelists_btn = QPushButton("Price Lists\u2026", box)
         self._pricelists_btn.setToolTip(
             "Define named price lists (currency + validity) with date roll-over."
@@ -566,8 +548,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._table.clearContents()
         self._table.setRowCount(0)
         self._compute_btn.setEnabled(False)
-        self._export_btn.setEnabled(False)
-        self._preview_btn.setEnabled(False)
+        self._set_header_export_enabled(False)
 
         self._price_params = params
         self._pricing_snapshot = snapshot
@@ -670,8 +651,13 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             and not getattr(self, "_pricing_running", False)
             and not pricing_requires_recompute(self._context.active_snapshot)
         )
-        self._export_btn.setEnabled(enabled)
-        self._preview_btn.setEnabled(enabled)
+        self._set_header_export_enabled(enabled)
+
+    def _set_header_export_enabled(self, enabled: bool) -> None:
+        """Enable the shared workflow-header export action for Pricing."""
+        button = getattr(self, "_maintenance_export_mdb_button", None)
+        if button is not None:
+            button.setEnabled(enabled)
 
     def _start_export_workflow(self, write: bool) -> None:
         snapshot = self._context.active_snapshot
@@ -701,8 +687,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             return
         self._last_mdb_path = mdb_path
         self._wf = {"write": write, "path": mdb_path, "snapshot": snapshot, "targets": {}}
-        self._export_btn.setEnabled(False)
-        self._preview_btn.setEnabled(False)
+        self._set_header_export_enabled(False)
         self._summary.setText("Reading price lists from the MDB...")
         self._lists_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).read_price_lists(mdb_path)
@@ -762,8 +747,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         # inputs differ when it runs, the export refuses and asks for a new preview.
         snapshot, mdb_path, targets = self._wf["snapshot"], self._wf["path"], self._wf["targets"]
         digest = result["plan_digest"]
-        self._export_btn.setEnabled(False)
-        self._preview_btn.setEnabled(False)
+        self._set_header_export_enabled(False)
         self._summary.setText("Exporting prices to MDB... the application remains available.")
         self._export_task = BackgroundTask(
             lambda _progress: PriceMdbExportService(self._context).export(
