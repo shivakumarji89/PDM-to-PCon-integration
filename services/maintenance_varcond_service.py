@@ -268,9 +268,13 @@ class MaintenanceVarCondService(BaseService):
         out: dict[str, ParentSource] = {}
         try:
             total = len(codes)
-            # SQL Server's parameter limit is 2,100; use 500-code chunks to
-            # leave ample room for future query parameters.
-            chunk_size = min(getattr(repo, "_IN_CHUNK", 500), 500)
+            # Keep source batches deliberately small. Each batch must finish
+            # its attribute query and legacy increment procedures before its
+            # parent rows can be reported complete. Large batches therefore
+            # leave the UI at 0% for too long and delay the first ETA sample.
+            # 50 parents bounds that initial wait while preserving the same
+            # source queries and rule-generation semantics.
+            chunk_size = min(getattr(repo, "_IN_CHUNK", 500), 50)
             for offset in range(0, total, chunk_size):
                 chunk = list(codes[offset:offset + chunk_size])
                 placeholders = repo._placeholders(len(chunk))
