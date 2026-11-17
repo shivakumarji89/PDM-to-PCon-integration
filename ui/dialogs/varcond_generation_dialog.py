@@ -1,8 +1,7 @@
 """PDM-style VARCOND relation browser and generator.
 
-Legacy PDM builds a list of unique PA_<article-prefix> relations. Selecting a
-relation generates one body from every parent article whose code starts with
-that prefix. Relation Prefix Length controls the relation name/grouping; it
+Legacy PDM builds a list of unique PA_<article-prefix> relations. Every relation is generated from its matching parent articles. Changing the
+prefix length regroups the already-loaded source rows and regenerates all output. Relation Prefix Length controls the relation name/grouping; it
 does not rewrite component target codes inside the VARCOND rules.
 """
 from __future__ import annotations
@@ -10,9 +9,10 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QPushButton, QPlainTextEdit,
+    QListWidgetItem, QPushButton,
     QVBoxLayout, QWidget, QSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView,
 )
@@ -27,7 +27,7 @@ class _CopyableVarCondTable(QTableWidget):
     """Read-only result table with spreadsheet-friendly Ctrl+C support."""
 
     def keyPressEvent(self, event) -> None:
-        if event.matches(event.StandardKey.Copy):
+        if event.matches(QKeySequence.StandardKey.Copy):
             ranges = self.selectedRanges()
             if not ranges:
                 return
@@ -224,8 +224,7 @@ class VarCondGenerationPanel(QWidget):
         if match:
             self._relations.setCurrentItem(match[0])
         # Do not auto-select the first relation. Opening the workflow should
-        # only build the local list; PDM generation starts after user selection
-        # or an explicit Generate / Refresh click.
+        # only build the local list; All relation outputs are generated automatically after source loading.
         self._relations.blockSignals(False)
         self._relation_count.setText(f"{self._relations.count()} Price Relation(s)")
         if hasattr(self, "_output") and (
