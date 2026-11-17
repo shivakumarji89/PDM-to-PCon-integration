@@ -73,6 +73,7 @@ class MaintenanceVarCondService(BaseService):
 
     def __init__(self, context=None, loader: SourceLoader | None = None) -> None:
         self.context = context
+        self._uses_live_loader = loader is None
         self._loader = loader or self._load_live
         self._cache: dict[str, ParentSource] = {}
         self._increment_cache: dict[str, list[tuple[int, str]]] = {}
@@ -99,9 +100,10 @@ class MaintenanceVarCondService(BaseService):
                     self._increment_cache.pop(sub, None)
 
     def sources_for(
-        self, article_codes: Sequence[str], refresh: bool = False
+        self, article_codes: Sequence[str], refresh: bool = False,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> list[ParentSource]:
-        """Cached sources for ``article_codes`` (loads only the missing ones)."""
+        """Cached sources; optionally report progress for live PDM reads."""
         codes = list(dict.fromkeys(
             (c or "").strip() for c in article_codes if (c or "").strip()
         ))
@@ -110,7 +112,12 @@ class MaintenanceVarCondService(BaseService):
         missing = [c for c in codes if c not in self._cache]
         if missing:
             self.load_count += 1
-            loaded = self._loader(missing)
+            if self._uses_live_loader:
+                loaded = self._load_live(missing, progress_callback)
+            else:
+                loaded = self._loader(missing)
+                if progress_callback:
+                    progress_callback(len(missing), len(missing), "")
             for code in missing:
                 self._cache[code] = loaded.get(code) or ParentSource(
                     parent=code, found=False
@@ -241,16 +248,22 @@ class MaintenanceVarCondService(BaseService):
         "ORDER BY attr.DisplayOrder"
     )
 
-    def _load_live(self, codes: Sequence[str]) -> dict[str, ParentSource]:
-        """Read every raw input for ``codes`` from live PDM."""
+    def _load_live(
+        self, codes: Sequence[str],
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> dict[str, ParentSource]:
+        """Read live PDM sources and report each completed parent."""
         from repositories.pdm_repository import PDMRepository
 
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
         out: dict[str, ParentSource] = {}
         try:
-            for parent in codes:
+            total = len(codes)
+            for index, parent in enumerate(codes, start=1):
                 out[parent] = self._load_parent(repo, conn, parent)
+                if progress_callback:
+                    progress_callback(index, total, parent)
         finally:
             conn.close()
         return out
