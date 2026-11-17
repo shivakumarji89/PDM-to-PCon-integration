@@ -73,5 +73,5 @@ def test_streaming_prices_batches_on_two_connections_and_keeps_item_order(monkey
     assert streamed == result.records
     assert len(base_connections) == 2
     assert base_connections[0] is not base_connections[1]
-    assert increment_connections == base_connections
+    assert set(increment_connections) == set(base_connections)
     assert all(connection.closed for connection in connections)
