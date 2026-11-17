@@ -237,12 +237,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._components_btn = QPushButton("Filter Components", box)
         self._components_btn.setToolTip("Exclude component, accessory and hardware ranges.")
         self._components_btn.clicked.connect(self._on_filter_components)
-        self._clear_btn = QPushButton("Clear", box)
-        clear_menu = QMenu(self._clear_btn)
+        clear_menu = QMenu(box)
         clear_menu.addAction("Base Length", self._on_clear_length)
         clear_menu.addAction("Long Text", self._on_clear_long)
         clear_menu.addAction("Short Text", self._on_clear_short)
-        self._clear_btn.setMenu(clear_menu)
 
         self._actions_btn = QToolButton(box)
         self._actions_btn.setText("Actions")
@@ -649,6 +647,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             ) if w is not None
         ]
         self._shell_header = WorkflowHeader(self._title, self._description, self)
+        # Articles owns its headline and toolbar row; hide the unused shared
+        # workflow toolbar region to avoid an empty floating card above title.
+        if self.wf is not None:
+            self.wf._toolbar.hide()
         self._content.insertWidget(0, self._shell_header)
 
         self._kpi_loaded = KpiCard("Loaded Articles", "0", "neutral", glyph="▤", parent=self)
@@ -935,7 +937,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             getattr(self, name, None)
             for name in (
                 "_apply_len_btn", "_dot_base_btn", "_copy_long_btn",
-                "_components_btn", "_clear_btn", "_base_len_spin", "_table",
+                "_components_btn", "_base_len_spin", "_table",
             )
         ]
 
