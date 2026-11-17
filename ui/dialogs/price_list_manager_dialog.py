@@ -35,25 +35,31 @@ class PriceListManagerDialog(QDialog):
         mode: str,
         currencies: list[str],
         effective_date: str,
+        read_only: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self._context = context
         self._snapshot = snapshot
         self._mode = mode
+        self._read_only = read_only
         self._service = context.price_list_service
         self._proposals: list[PriceListProposal] = []
         self._applied = False
 
-        title = "Create Price Lists" if mode == "new_creation" else "Prepare Price Update"
+        title = "MDB Price Lists" if read_only else ("Create Price Lists" if mode == "new_creation" else "Prepare Price Update")
         self.setWindowTitle(title)
         self.setMinimumSize(760, 460)
 
         layout = QVBoxLayout(self)
         description = (
-            "New creation: prepare the first price list for the selected currency."
-            if mode == "new_creation"
-            else "Maintenance: prepare the next price list and close the previous open list."
+            "Existing price lists in the imported MDB. This view is read-only."
+            if read_only else (
+                "Create a new price list for the selected currency. Earlier lists remain available; "
+                "their validity end dates are adjusted when the new list is applied."
+                if mode == "new_creation"
+                else "Maintenance: prepare the next price list and close the previous open list."
+            )
         )
         layout.addWidget(QLabel(
             description + "\n\nExisting price lists: double-click cells to edit. "
@@ -65,8 +71,10 @@ class PriceListManagerDialog(QDialog):
             "Price List ID", "Label", "Currency", "Valid From", "Valid To",
         ])
         self._existing_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.DoubleClicked
-            | QAbstractItemView.EditTrigger.EditKeyPressed
+            QAbstractItemView.EditTrigger.NoEditTriggers if read_only else (
+                QAbstractItemView.EditTrigger.DoubleClicked
+                | QAbstractItemView.EditTrigger.EditKeyPressed
+            )
         )
         self._existing_table.horizontalHeader().setStretchLastSection(True)
         for price_list in snapshot.price_lists:
@@ -87,7 +95,8 @@ class PriceListManagerDialog(QDialog):
         layout.addWidget(self._save_existing_button)
 
         date_row = QHBoxLayout()
-        date_row.addWidget(QLabel("Effective date:", self))
+        self._date_label = QLabel("Effective date:", self)
+        date_row.addWidget(self._date_label)
         self._date = QDateEdit(self)
         self._date.setDisplayFormat("dd-MMM-yyyy")
         self._date.setCalendarPopup(True)
@@ -119,7 +128,14 @@ class PriceListManagerDialog(QDialog):
         layout.addWidget(buttons)
 
         self._currencies = list(currencies)
-        self._refresh_proposals(self._currencies)
+        if read_only:
+            self._save_existing_button.hide()
+            self._date.hide()
+            self._date_label.hide()
+            self._table.hide()
+            self._apply_button.hide()
+        else:
+            self._refresh_proposals(self._currencies)
 
     @property
     def applied(self) -> bool:
