@@ -321,9 +321,15 @@ class VarCondGenerationPanel(QWidget):
                     property_substitutions=stream_substitutions,
                 )
                 relation_name = "PA_" + (code[:stream_prefix_length] if len(code) > stream_prefix_length else code)
+                parent_order = next(
+                    (index for index, row in enumerate(self._article_rows) if row[0] == code),
+                    len(self._article_rows),
+                )
                 _progress({
                     "kind": "rules",
                     "relation": relation_name,
+                    "parent": code,
+                    "parent_order": parent_order,
                     "rules": [rule.rule for rule in result.rules],
                     "warnings": result.warnings,
                 })
@@ -383,14 +389,26 @@ class VarCondGenerationPanel(QWidget):
         if not isinstance(payload, dict) or payload.get("kind") != "rules":
             return
         relation_name = str(payload.get("relation", ""))
+        parent_code = str(payload.get("parent", ""))
+        parent_order = int(payload.get("parent_order", len(self._article_rows)))
         rules = payload.get("rules", [])
         self._output.setUpdatesEnabled(False)
         try:
             for rule_text in rules:
+                # Completion is asynchronous, but keep the final table in the
+                # original parent-article order rather than worker-finish order.
                 row = self._output.rowCount()
+                for existing_row in range(self._output.rowCount()):
+                    existing = self._output.item(existing_row, 0)
+                    existing_order = existing.data(Qt.ItemDataRole.UserRole + 1) if existing else None
+                    if existing_order is not None and int(existing_order) > parent_order:
+                        row = existing_row
+                        break
                 self._output.insertRow(row)
                 item = QTableWidgetItem(str(rule_text))
                 item.setData(Qt.ItemDataRole.UserRole, relation_name)
+                item.setData(Qt.ItemDataRole.UserRole + 1, parent_order)
+                item.setData(Qt.ItemDataRole.UserRole + 2, parent_code)
                 self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
