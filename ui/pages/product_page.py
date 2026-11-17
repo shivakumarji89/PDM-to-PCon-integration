@@ -538,6 +538,7 @@ class ProductPage(BasePage):
         self._refresh_maintenance_source_table()
 
         link_section = QGroupBox("Product Link", page)
+        link_section.hide()
         link_layout = QHBoxLayout(link_section)
         self._establish_repository_btn = QPushButton("Establish Link", link_section)
         self._establish_repository_btn.setToolTip(_ESTABLISH_TOOLTIP)
@@ -545,7 +546,6 @@ class ProductPage(BasePage):
         self._establish_repository_btn.clicked.connect(self._on_establish_repository)
         link_layout.addWidget(self._establish_repository_btn)
         link_layout.addStretch(1)
-        layout.addWidget(link_section)
         layout.addStretch(1)
         return page
 
