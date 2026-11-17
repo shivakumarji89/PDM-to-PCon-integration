@@ -336,15 +336,13 @@ class MaintenanceVarCondService(BaseService):
                                 getattr(master, "Notes", "") or ""
                             )
 
+                # Resolve per-parent prefix lengths before loading attributes
+                # in a single bounded query per batch.
                 for code in chunk:
                     src = sources[code]
                     item = by_code.get(code)
                     if item is None or not src.components:
-                        out[code] = src
-                        if progress_callback:
-                            progress_callback(len(out), total, code)
                         continue
-
                     notes = str(getattr(item, "Notes", "") or "").split(",")[0].strip()
                     if notes.isdigit():
                         src.prefix_length = int(notes)
@@ -359,30 +357,83 @@ class MaintenanceVarCondService(BaseService):
                             "parametric codes may be incorrect."
                         )
 
-                    for attr in repo._execute(
-                        self._ATTR_SQL,
-                        (src.prefix_length, code, code),
-                        connection=conn,
-                    ):
-                        src.attributes.append((
-                            str(getattr(attr, "prop", "") or ""),
-                            str(getattr(attr, "OrderCodeValue", "") or ""),
-                        ))
+                self._load_attributes_batch(repo, conn, sources)
 
-                    for sub, _qty, _seq, _fps in src.components:
-                        if sub and sub not in src.increments:
-                            if sub not in self._increment_cache:
-                                self._increment_cache[sub] = self._fetch_increments(
-                                    repo, conn, sub
-                                )
-                            src.increments[sub] = self._increment_cache[sub]
-
+                # Increment pricing suffixes come from a legacy stored procedure
+                # that is called once per unique component and cannot be safely
+                # replaced by the snapshot's differently-filtered increment query.
+                for code in chunk:
+                    src = sources[code]
+                    if src.found and src.components:
+                        for sub, _qty, _seq, _fps in src.components:
+                            if sub and sub not in src.increments:
+                                if sub not in self._increment_cache:
+                                    self._increment_cache[sub] = self._fetch_increments(
+                                        repo, conn, sub
+                                    )
+                                src.increments[sub] = self._increment_cache[sub]
                     out[code] = src
                     if progress_callback:
                         progress_callback(len(out), total, code)
         finally:
             conn.close()
         return out
+
+    def _load_attributes_batch(self, repo, conn, sources: dict[str, ParentSource]) -> None:
+        """Load the existing attribute projection for many parents per query.
+
+        The legacy attribute SQL is retained; only its item-specific prefix
+        length and item predicates are supplied through a VALUES input table.
+        """
+        codes = [
+            code for code, src in sources.items()
+            if src.found and src.components
+        ]
+        if not codes:
+            return
+        chunk_size = min(getattr(repo, "_IN_CHUNK", 500) // 2, 250)
+        for code_chunk in repo._chunked(codes, chunk_size):
+            values_sql = ", ".join("(?, ?)" for _ in code_chunk)
+            params = []
+            for code in code_chunk:
+                params.extend((code, sources[code].prefix_length))
+            query = self._ATTR_SQL
+            query = query.replace(
+                "SELECT DISTINCT Product.Product, ",
+                "SELECT DISTINCT Item.Item AS ParentArticle, ",
+                1,
+            )
+            query = query.replace(
+                "SUBSTRING(Item.Item, ? + 1 +",
+                "SUBSTRING(Item.Item, src.PrefixLength + 1 +",
+                1,
+            )
+            query = query.replace(
+                "WHERE i2.Item = ? AND",
+                "WHERE i2.Item = Item.Item AND",
+                1,
+            )
+            query = query.replace(
+                "FROM Product INNER JOIN Item ON Product.ProductId = Item.ProductId ",
+                "FROM Product INNER JOIN Item ON Product.ProductId = Item.ProductId "
+                f"INNER JOIN (VALUES {values_sql}) "
+                "AS src(ItemCode, PrefixLength) ON src.ItemCode = Item.Item ",
+                1,
+            )
+            query = query.replace(
+                "WHERE Item.Item = ? AND",
+                "WHERE Item.Item = src.ItemCode AND",
+                1,
+            )
+            rows = repo._execute(query, tuple(params), connection=conn)
+            for row in rows:
+                parent = str(getattr(row, "ParentArticle", "") or "")
+                src = sources.get(parent)
+                if src is not None:
+                    src.attributes.append((
+                        str(getattr(row, "prop", "") or ""),
+                        str(getattr(row, "OrderCodeValue", "") or ""),
+                    ))
 
     def _load_parent(self, repo, conn, parent: str) -> ParentSource:
         src = ParentSource(parent=parent)
