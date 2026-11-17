@@ -77,12 +77,15 @@ class VarCondGenerationPanel(QWidget):
         options = QHBoxLayout()
         self._prefix = QLineEdit(self)
         self._prefix.setPlaceholderText("Optional property-class prefix")
+        # These fields retain the applied dialog values for generation only.
+        # They are intentionally hidden: the visible controls are the
+        # Exclusion… and Substitution… buttons in the options row.
         self._exclusions = QLineEdit(self)
-        self._exclusions.setPlaceholderText("Selected exclusions (managed by button)")
         self._exclusions.setReadOnly(True)
+        self._exclusions.hide()
         self._substitutions = QLineEdit(self)
-        self._substitutions.setPlaceholderText("Substitutions (managed by button)")
         self._substitutions.setReadOnly(True)
+        self._substitutions.hide()
         column = QVBoxLayout()
         column.addWidget(QLabel("Prefix"))
         column.addWidget(self._prefix)
