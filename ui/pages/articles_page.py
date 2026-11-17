@@ -1662,6 +1662,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     def _on_group_toggled(self, checked: bool) -> None:
         self._group_by_base = checked
+        if hasattr(self, "_group_check") and self._group_check.isChecked() != checked:
+            self._group_check.blockSignals(True)
+            self._group_check.setChecked(checked)
+            self._group_check.blockSignals(False)
+        if hasattr(self, "_view_combo"):
+            target = 0 if checked else 1
+            if self._view_combo.currentIndex() != target:
+                self._view_combo.blockSignals(True)
+                self._view_combo.setCurrentIndex(target)
+                self._view_combo.blockSignals(False)
         self._apply_filter()
 
     def _on_class_group_toggled(self, checked: bool) -> None:
