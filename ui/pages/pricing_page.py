@@ -271,6 +271,9 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         toolbar_layout.addWidget(self._source_tabs, 1)
         toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
         self.add_content(toolbar_row)
+        # Keep table search and record filtering with the main page controls,
+        # rather than nesting them inside the Price records group box.
+        self.add_content(self._build_filter_row())
         self.add_content(self._build_table())
         self.add_content(self._build_summary())
         self.refresh()
@@ -329,31 +332,34 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         """Refresh Pricing; price-list selection happens only during Export."""
         self.refresh()
 
-    def _build_table(self) -> QWidget:
-        box = QGroupBox("Price records", self)
-        layout = QHBoxLayout(box)
+    def _build_filter_row(self) -> QWidget:
+        row = QWidget(self)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        # Filter row above the table.
-        container = QWidget(box)
-        vlayout = _v(container)
-
-        filter_row = QWidget(container)
-        frow = QHBoxLayout(filter_row)
-        frow.setContentsMargins(0, 0, 0, 0)
-        self._search = QLineEdit(filter_row)
+        self._search = QLineEdit(row)
         self._search.setPlaceholderText("Search article, variant condition or text block...")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._schedule_filter)
-        frow.addWidget(self._search, 1)
-        frow.addWidget(QLabel("Show:", filter_row))
-        self._filter = QComboBox(filter_row)
+        layout.addWidget(self._search, 1)
+
+        layout.addWidget(QLabel("Show:", row))
+        self._filter = QComboBox(row)
         self._filter.addItems([
             _FILTER_ALL, _FILTER_BASE, _FILTER_UPCHARGE,
             _FILTER_GLOBAL, _FILTER_CHANGED, _FILTER_TEXT_ISSUES,
         ])
         self._filter.currentIndexChanged.connect(self._apply_filter)
-        frow.addWidget(self._filter)
-        vlayout.addWidget(filter_row)
+        layout.addWidget(self._filter)
+        return row
+
+    def _build_table(self) -> QWidget:
+        box = QGroupBox("Price records", self)
+        layout = QHBoxLayout(box)
+
+        container = QWidget(box)
+        vlayout = _v(container)
 
         self._table = QTableWidget(0, _NUM_COLS, container)
         self._table.setHorizontalHeaderLabels(
