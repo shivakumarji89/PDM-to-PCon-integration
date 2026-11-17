@@ -33,7 +33,7 @@ _FONT_FAMILY = "Segoe UI"
 
 # Numbering and clockwise placement follow the approved five-module sequence.
 _PRIMARY_MODULES = (
-    (WorkbenchModule.MAINTENANCE, "01", "database", _RED, "Article Update,\nPricing and Relations"),
+    (WorkbenchModule.MAINTENANCE, "01", "database", _RED, "Product Development &\nConfiguration"),
     (WorkbenchModule.METATYPE, "02", "layers", _GREEN, "Series, Articles and\nMeta Properties"),
     (WorkbenchModule.QA_VALIDATION, "03", "check", _RED, "OBX Validation\nData Quality Checks"),
     (WorkbenchModule.OAP, "04", "nodes", _GREEN, "Options, Conditions\nand Parametric Approach"),
