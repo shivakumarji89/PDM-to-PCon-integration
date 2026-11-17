@@ -278,7 +278,18 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Compute", self)
+        box.setObjectName("pricingComputeGroup")
+        # This is a compact inline control group, not a full workflow section.
+        # Override the global QGroupBox section padding so it does not make the
+        # source/compute toolbar taller than the neighbouring workflow rows.
+        box.setStyleSheet(
+            "QGroupBox#pricingComputeGroup {"
+            " margin-top: 8px; padding: 4px 6px 4px 6px;"
+            "}"
+        )
         layout = QHBoxLayout(box)
+        layout.setContentsMargins(6, 7, 6, 4)
+        layout.setSpacing(6)
 
         layout.addWidget(QLabel("Currency:", box))
         self._currency = QComboBox(box)
