@@ -535,14 +535,16 @@ class VarCondGenerationPanel(QWidget):
                 raise RuntimeError("PDM source data is not fully loaded. Wait for all relations to finish loading.")
 
         length = self._relation_length.value()
-        groups: dict[str, list[str]] = {}
-        for code in parent_codes:
+        groups: dict[str, list[tuple[str, str]]] = {}
+        for code, _label, article_id in self._article_rows:
             prefix = code[:length] if len(code) > length else code
-            groups.setdefault("PA_" + prefix, []).append(code)
+            groups.setdefault("PA_" + prefix, []).append((code, article_id))
 
         relations = []
+        xocd = getattr(self._context, "xocd_export_service", None)
         for order, relation_name in enumerate(sorted(groups, key=str.casefold), start=100):
-            codes = groups[relation_name]
+            parent_rows = groups[relation_name]
+            codes = [code for code, _article_id in parent_rows]
             if self._maintenance_check():
                 result = self._maintenance_service.generate(
                     codes, prefix="",
@@ -558,13 +560,18 @@ class VarCondGenerationPanel(QWidget):
             body = "\r\n".join(rule.rule for rule in result.rules if rule.rule)
             if not body.strip():
                 continue
+            selected_ids = {article_id for _code, article_id in parent_rows}
+            base_codes = (
+                xocd._base_codes(self._snapshot, selected_article_ids=selected_ids)
+                if xocd is not None else list(codes)
+            )
             relations.append(RelationObject(
                 name=relation_name,
                 type_code="3",
                 domain="P",
                 order=order,
                 body=body,
-                article_codes=list(codes),
+                article_codes=base_codes,
             ))
 
         if not relations:
