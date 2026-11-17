@@ -116,16 +116,14 @@ class VarCondGenerationPanel(QWidget):
         self._summary = QLabel("Merged Article VARCOND Relations", self)
         right.addWidget(self._summary)
         self._output = _CopyableVarCondTable(self)
-        self._output.setColumnCount(3)
-        self._output.setHorizontalHeaderLabels(["Relation", "Component", "VARCOND Rule"])
+        self._output.setColumnCount(1)
+        self._output.setHorizontalHeaderLabels(["VARCOND Rule"])
         self._output.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._output.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self._output.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._output.setAlternatingRowColors(True)
         self._output.verticalHeader().setVisible(False)
-        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self._output.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._output.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self._output, 1)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
@@ -241,7 +239,7 @@ class VarCondGenerationPanel(QWidget):
         relation = current.text()
         for row in range(self._output.rowCount()):
             item = self._output.item(row, 0)
-            if item and item.text() == relation:
+            if item and item.data(Qt.ItemDataRole.UserRole) == relation:
                 self._output.setCurrentCell(row, 0)
                 self._output.scrollToItem(item)
                 break
@@ -395,7 +393,7 @@ class VarCondGenerationPanel(QWidget):
         total_rules = 0
         warning_messages: list[str] = []
         needle = self._filter.text().strip().casefold()
-        rows_to_add: list[tuple[str, str, str]] = []
+        rows_to_add: list[tuple[str, str]] = []
         for index in range(self._relations.count()):
             relation_name = self._relations.item(index).text()
             relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
@@ -421,17 +419,19 @@ class VarCondGenerationPanel(QWidget):
             warning_messages.extend(result.warnings)
             total_rules += len(result.rules)
             rows_to_add.extend(
-                (relation_name, rule.article, rule.rule)
+                (relation_name, rule.rule)
                 for rule in result.rules
             )
 
         self._output.setUpdatesEnabled(False)
         try:
             self._output.setRowCount(len(rows_to_add))
-            for row, (relation_name, component, rule_text) in enumerate(rows_to_add):
-                self._output.setItem(row, 0, QTableWidgetItem(relation_name))
-                self._output.setItem(row, 1, QTableWidgetItem(component))
-                self._output.setItem(row, 2, QTableWidgetItem(rule_text))
+            for row, (relation_name, rule_text) in enumerate(rows_to_add):
+                item = QTableWidgetItem(rule_text)
+                # Keep relation identity as hidden item metadata for navigation
+                # and grouping; the visible working table contains rules only.
+                item.setData(Qt.ItemDataRole.UserRole, relation_name)
+                self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
 
