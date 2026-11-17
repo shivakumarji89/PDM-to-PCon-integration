@@ -279,21 +279,13 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Compute", self)
         box.setObjectName("pricingComputeGroup")
-        # Compact two-row control group: compute settings above, table filters
-        # below. Keeping filters here removes a separate page row and gives
-        # the price table more vertical working space.
         box.setStyleSheet(
             "QGroupBox#pricingComputeGroup {"
             " margin-top: 8px; padding: 4px 6px 4px 6px;"
             "}"
         )
-        layout = QVBoxLayout(box)
-        layout.setContentsMargins(6, 7, 6, 4)
-        layout.setSpacing(4)
-
-        compute_row = QWidget(box)
-        controls = QHBoxLayout(compute_row)
-        controls.setContentsMargins(0, 0, 0, 0)
+        controls = QHBoxLayout(box)
+        controls.setContentsMargins(6, 7, 6, 4)
         controls.setSpacing(6)
 
         controls.addWidget(QLabel("Currency:", box))
@@ -314,11 +306,18 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._date.setDate(QDate.currentDate())
         controls.addWidget(self._date)
 
-        controls.addWidget(QLabel("Site:", box))
+        # Retain the existing site parameter and default without exposing an
+        # editable Site control in the Pricing UI.
         self._site = QSpinBox(box)
         self._site.setRange(1, 999)
         self._site.setValue(1)
-        controls.addWidget(self._site)
+        self._site.hide()
+
+        self._search = QLineEdit(box)
+        self._search.setPlaceholderText("Search article, variant condition or text block...")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._schedule_filter)
+        controls.addWidget(self._search, 1)
 
         self._compute_btn = QPushButton("Compute Prices", box)
         self._compute_btn.setToolTip(
@@ -326,37 +325,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         )
         self._compute_btn.clicked.connect(self._on_compute)
         controls.addWidget(self._compute_btn)
-        controls.addStretch(1)
-        layout.addWidget(compute_row)
-
-        layout.addWidget(self._build_filter_row(box))
         return box
 
     def on_enter(self) -> None:
         """Refresh Pricing; price-list selection happens only during Export."""
         self.refresh()
-
-    def _build_filter_row(self, parent: QWidget | None = None) -> QWidget:
-        row = QWidget(parent or self)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        self._search = QLineEdit(row)
-        self._search.setPlaceholderText("Search article, variant condition or text block...")
-        self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self._schedule_filter)
-        layout.addWidget(self._search, 1)
-
-        layout.addWidget(QLabel("Show:", row))
-        self._filter = QComboBox(row)
-        self._filter.addItems([
-            _FILTER_ALL, _FILTER_BASE, _FILTER_UPCHARGE,
-            _FILTER_GLOBAL, _FILTER_CHANGED, _FILTER_TEXT_ISSUES,
-        ])
-        self._filter.currentIndexChanged.connect(self._apply_filter)
-        layout.addWidget(self._filter)
-        return row
 
     def _build_table(self) -> QWidget:
         box = QGroupBox("Price records", self)
@@ -798,18 +771,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         term = self._search.text().strip()
         cur = self._currency.currentText()
         if cur != "All" and (rec.currency or "").upper() != cur.upper():
-            return False
-        mode = self._filter.currentText()
-        if mode == _FILTER_BASE and not (not rec.is_global and rec.level == "B"):
-            return False
-        if mode == _FILTER_UPCHARGE and rec.level != "X":
-            return False
-        if mode == _FILTER_GLOBAL and not rec.is_global:
-            return False
-        if mode == _FILTER_CHANGED and rec.key() not in self._changed \
-                and rec.key() not in self._added_keys:
-            return False
-        if mode == _FILTER_TEXT_ISSUES and self._text_cells(rec)[2] not in ISSUE_STATUSES:
             return False
         if term:
             tid, tcontent, _status = self._text_cells(rec)
