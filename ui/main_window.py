@@ -1757,37 +1757,44 @@ class MainWindow(QMainWindow):
 
         created = False
         if session is None:
-            # First export must be based on a manufacturer template explicitly
-            # selected in ProductStudio's Open Repository browser. The selected
-            # SVN source is read-only; initialize() copies its MDB to the
-            # product-specific destination before any export writes occur.
             repository = self._context.maintenance_repository_info or {}
-            template_path = str(repository.get("ocd_path") or "")
-            if not repository.get("is_template") or not template_path:
+            source_mdb = str(repository.get("ocd_path") or "")
+            if not source_mdb:
                 QMessageBox.information(
                     self, title,
-                    "Open Repository and select a Seating, Tables or Knoll template first."
+                    "Open Repository and select a manufacturer template or series first."
                 )
                 return
-            if not Path(template_path).is_file():
+            if not Path(source_mdb).is_file():
                 QMessageBox.warning(
                     self, title,
-                    f"The selected template MDB was not found:\n{template_path}"
+                    f"The selected repository MDB was not found:\\n{source_mdb}"
                 )
-                return
-            directory = QFileDialog.getExistingDirectory(
-                self, "Choose a product-specific output folder for the copied MDB"
-            )
-            if not directory:
                 return
             try:
-                session = sessions.initialize(
-                    snapshot, directory, template_path=template_path
-                )
+                if repository.get("is_template"):
+                    # Template: copy to a product-specific destination. The
+                    # shared SVN template remains untouched.
+                    directory = QFileDialog.getExistingDirectory(
+                        self, "Choose a product-specific output folder for the copied MDB"
+                    )
+                    if not directory:
+                        return
+                    session = sessions.initialize(
+                        snapshot, directory, template_path=source_mdb
+                    )
+                    created = True
+                else:
+                    # Existing series repository: attach in place. No save
+                    # location dialog, copy, initialization wipe or ID reset.
+                    session = sessions.attach_existing(
+                        snapshot, source_mdb,
+                        template_kind=str(repository.get("name") or ""),
+                    )
+                    created = False
             except ExportSessionError as exc:
-                QMessageBox.warning(self, title, f"Could not create the MDB:\n{exc}")
+                QMessageBox.warning(self, title, f"Could not prepare the MDB:\\n{exc}")
                 return
-            created = True
 
         # Same snapshot preparation as the full export so base codes match.
         if not is_maintenance:
