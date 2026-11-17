@@ -309,31 +309,10 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
 
     def _price_list_currencies(self) -> list[str]:
-        """Return currencies for the price-list workflow.
-        
-        Development creates the initial price-list set for both supported
-        currencies. Maintenance continues from the currencies already present
-        in the snapshot, with the selected currency used only when no list exists.
-        """
-        snapshot = self._context.active_snapshot
-        if snapshot is None:
-            return []
-        selected = self._currency.currentText()
-        if selected == "All":
+        """Currencies to prepare from the selected PDM pricing scope."""
+        if self._currency.currentText() == "All":
             return ["GBP", "EUR"]
-        return [selected.upper()]
-
-        currencies: list[str] = []
-        for record in snapshot.price_records:
-            currency = (record.currency or "").upper()
-            if currency and currency not in currencies:
-                currencies.append(currency)
-        if currencies:
-            return currencies
-        selected = self._currency.currentText()
-        if selected != "All":
-            return [selected.upper()]
-        return ["GBP"]
+        return [self._currency.currentText().upper()]
 
     def _open_price_list_manager(self) -> None:
         snapshot = self._context.active_snapshot
