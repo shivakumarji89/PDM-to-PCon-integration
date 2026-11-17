@@ -206,6 +206,12 @@ class VarCondGenerationPanel(QWidget):
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
         current = self._relations.currentItem().text() if self._relations.currentItem() else ""
+        current_prefix = current[3:] if current.startswith("PA_") else current
+        anchor_code = next(
+            (code for code, _label, _article_id in self._article_rows
+             if current_prefix and code.startswith(current_prefix)),
+            "",
+        )
         needle = self._filter.text().strip().casefold()
         length = self._relation_length.value()
         relation_names: set[str] = set()
@@ -218,11 +224,11 @@ class VarCondGenerationPanel(QWidget):
         self._relations.clear()
         for name in sorted(relation_names, key=str.casefold):
             self._relations.addItem(QListWidgetItem(name))
-        match = self._relations.findItems(current, Qt.MatchFlag.MatchExactly) if current else []
+        target_prefix = anchor_code[:length] if anchor_code and len(anchor_code) > length else anchor_code
+        target_name = "PA_" + target_prefix if target_prefix else current
+        match = self._relations.findItems(target_name, Qt.MatchFlag.MatchExactly) if target_name else []
         if match:
             self._relations.setCurrentItem(match[0])
-        # Do not auto-select the first relation. Opening the workflow should
-        # only build the local list; All relation outputs are generated automatically after source loading.
         self._relations.blockSignals(False)
         self._relation_count.setText(f"{self._relations.count()} Price Relation(s)")
         if hasattr(self, "_output") and (
@@ -235,14 +241,16 @@ class VarCondGenerationPanel(QWidget):
 
     def _on_relation_changed(self, current, _previous) -> None:
         if current is None:
+            self._output.setRowCount(0)
+            self._summary.setText("Select a price relation to display its VARCOND rules.")
             return
-        relation = current.text()
-        for row in range(self._output.rowCount()):
-            item = self._output.item(row, 0)
-            if item and item.data(Qt.ItemDataRole.UserRole) == relation:
-                self._output.setCurrentCell(row, 0)
-                self._output.scrollToItem(item)
-                break
+        if self._maintenance_check():
+            service = self._ensure_maintenance_service()
+            if not service.has_sources([row[0] for row in self._article_rows]):
+                self._output.setRowCount(0)
+                self._summary.setText("Loading source data from PDM...")
+                return
+        self._generate_all()
 
     def _ensure_maintenance_service(self):
         from services.maintenance_varcond_service import MaintenanceVarCondService
@@ -385,40 +393,14 @@ class VarCondGenerationPanel(QWidget):
         self._substitution_button.setEnabled(True)
 
     def _on_maintenance_source_progress(self, payload) -> None:
-        """Append each completed parent's rules on the GUI thread."""
+        """Report source progress; selected rules are rendered after loading."""
         if not isinstance(payload, dict) or payload.get("kind") != "rules":
             return
-        relation_name = str(payload.get("relation", ""))
-        parent_code = str(payload.get("parent", ""))
-        parent_order = int(payload.get("parent_order", len(self._article_rows)))
-        rules = payload.get("rules", [])
-        self._output.setUpdatesEnabled(False)
-        try:
-            for rule_text in rules:
-                # Completion is asynchronous, but keep the final table in the
-                # original parent-article order rather than worker-finish order.
-                row = self._output.rowCount()
-                for existing_row in range(self._output.rowCount()):
-                    existing = self._output.item(existing_row, 0)
-                    existing_order = existing.data(Qt.ItemDataRole.UserRole + 1) if existing else None
-                    if existing_order is not None and int(existing_order) > parent_order:
-                        row = existing_row
-                        break
-                self._output.insertRow(row)
-                item = QTableWidgetItem(str(rule_text))
-                item.setData(Qt.ItemDataRole.UserRole, relation_name)
-                item.setData(Qt.ItemDataRole.UserRole + 1, parent_order)
-                item.setData(Qt.ItemDataRole.UserRole + 2, parent_code)
-                self._output.setItem(row, 0, item)
-        finally:
-            self._output.setUpdatesEnabled(True)
         if payload.get("warnings"):
             current = self._summary.toolTip()
-            new_warnings = "\n".join(str(value) for value in payload["warnings"])
-            self._summary.setToolTip("\n".join(value for value in (current, new_warnings) if value))
-        self._summary.setText(
-            f"Generating VARCOND rules · {self._output.rowCount():,} definitions displayed"
-        )
+            new_warnings = "\\n".join(str(value) for value in payload["warnings"])
+            self._summary.setToolTip("\\n".join(value for value in (current, new_warnings) if value))
+        self._summary.setText("Loading PDM sources; selected relation will appear when ready.")
 
     def _on_maintenance_sources_loaded(self, _sources) -> None:
         loaded_snapshot = self._maintenance_load_snapshot
@@ -442,14 +424,8 @@ class VarCondGenerationPanel(QWidget):
                 [row[0] for row in self._article_rows], refresh=True
             )
             return
-        # Rules were appended as each parent completed. Do not clear and
-        # regenerate the entire table at the end.
-        self._summary.setText(
-            f"{self._relations.count()} relation(s) | "
-            f"{self._output.rowCount():,} generated definition(s) | "
-            "Select cells and press Ctrl+C to copy"
-        )
-        self._finish_maintenance_progress(True, "All VARCOND rules ready")
+        self._generate_all()
+        self._finish_maintenance_progress(True, "VARCOND source data ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
         self._finish_maintenance_load()
@@ -465,67 +441,79 @@ class VarCondGenerationPanel(QWidget):
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_all(self) -> None:
-        """Generate and display all VARCOND rules for the current relation groups."""
+        """Generate only the selected PA_<prefix> relation in the working table."""
         self._current_parent_codes = [row[0] for row in self._article_rows]
         self._output.setRowCount(0)
+        selected = self._relations.currentItem()
+        if selected is None:
+            self._summary.setText("Select a price relation to display its VARCOND rules.")
+            self._summary.setToolTip("")
+            return
+
         if self._maintenance_check():
             service = self._ensure_maintenance_service()
             if self._current_parent_codes and not service.has_sources(self._current_parent_codes):
+                self._summary.setText("Loading source data from PDM...")
                 self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
                 return
 
-        total_rules = 0
-        warning_messages: list[str] = []
+        relation_name = selected.text()
+        relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
         needle = self._filter.text().strip().casefold()
-        rows_to_add: list[tuple[str, str]] = []
-        for index in range(self._relations.count()):
-            relation_name = self._relations.item(index).text()
-            relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
-            parent_codes = [
-                code for code, _label, _article_id in self._article_rows
-                if code.startswith(relation_prefix)
-                and (not needle or code.casefold().startswith(needle))
-            ]
-            if not parent_codes:
-                continue
-            if self._maintenance_check():
-                result = service.generate(
-                    parent_codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
-                )
-            else:
-                result = VarCondService(self._context).generate_live(
-                    article_codes=parent_codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
-                )
-            warning_messages.extend(result.warnings)
-            total_rules += len(result.rules)
-            rows_to_add.extend(
-                (relation_name, rule.rule)
-                for rule in result.rules
+        parent_codes = [
+            code for code, _label, _article_id in self._article_rows
+            if code.startswith(relation_prefix)
+            and (not needle or code.casefold().startswith(needle))
+        ]
+        if not parent_codes:
+            self._summary.setText(f"{relation_name} | No matching parent articles.")
+            return
+
+        if self._maintenance_check():
+            result = service.generate(
+                parent_codes, prefix="",
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
+            )
+        else:
+            result = VarCondService(self._context).generate_live(
+                article_codes=parent_codes, prefix="",
+                property_exclusions=self._exclusions.text(),
+                property_substitutions=self._substitutions.text(),
             )
 
+        rules = [rule.rule for rule in result.rules]
+        char_count = sum(len(rule) for rule in rules)
+        if rules:
+            char_count += 3 * (len(rules) - 1) + 2
+        limit = 64000
+        remaining = max(0, limit - char_count)
         self._output.setUpdatesEnabled(False)
         try:
-            self._output.setRowCount(len(rows_to_add))
-            for row, (relation_name, rule_text) in enumerate(rows_to_add):
+            self._output.setRowCount(len(rules))
+            for row, rule_text in enumerate(rules):
                 item = QTableWidgetItem(rule_text)
-                # Keep relation identity as hidden item metadata for navigation
-                # and grouping; the visible working table contains rules only.
                 item.setData(Qt.ItemDataRole.UserRole, relation_name)
                 self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
 
+        over = char_count > limit
         self._summary.setText(
-            f"{self._relations.count()} relation(s) | "
-            f"{total_rules:,} generated definition(s)"
-            + (f" | {len(warning_messages)} warning(s)" if warning_messages else "")
+            f"{relation_name} | {len(parent_codes):,} article(s) combined | "
+            f"{len(rules):,} definitions | {char_count:,} characters / {limit:,} limit | "
+            f"{remaining:,} remaining"
+            + (" | OVER LIMIT" if over else "")
             + " | Select cells and press Ctrl+C to copy"
         )
-        self._summary.setToolTip("\n".join(warning_messages))
+        self._summary.setStyleSheet("color: #b00020; font-weight: bold;" if over else "")
+        warnings = list(result.warnings)
+        if over:
+            warnings.append(
+                f"Relation body exceeds the {limit:,}-character pCon Creator limit. "
+                "Increase the relation prefix length to split the output into smaller relations."
+            )
+        self._summary.setToolTip("\\n".join(warnings))
 
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
