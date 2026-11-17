@@ -35,12 +35,12 @@ class _CopyableVarCondTable(QTableWidget):
             cols = sorted({col for area in ranges for col in range(area.leftColumn(), area.rightColumn() + 1)})
             lines = []
             for row in rows:
-                lines.append("\\t".join(
+                lines.append(chr(9).join(
                     self.item(row, col).text() if self.item(row, col) else ""
                     for col in cols
                 ))
             from PySide6.QtWidgets import QApplication
-            QApplication.clipboard().setText("\\n".join(lines))
+            QApplication.clipboard().setText(chr(10).join(lines))
             return
         super().keyPressEvent(event)
 
