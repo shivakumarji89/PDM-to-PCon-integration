@@ -116,14 +116,16 @@ class VarCondGenerationPanel(QWidget):
         self._summary = QLabel("Merged Article VARCOND Relations", self)
         right.addWidget(self._summary)
         self._output = _CopyableVarCondTable(self)
-        self._output.setColumnCount(1)
-        self._output.setHorizontalHeaderLabels(["Relation"])
+        self._output.setColumnCount(3)
+        self._output.setHorizontalHeaderLabels(["Relation", "Component", "VARCOND Rule"])
         self._output.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._output.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self._output.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._output.setAlternatingRowColors(True)
         self._output.verticalHeader().setVisible(False)
-        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._output.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._output.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self._output, 1)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
@@ -381,7 +383,7 @@ class VarCondGenerationPanel(QWidget):
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_all(self) -> None:
-        """Generate every currently grouped relation from the loaded source rows."""
+        """Generate and display all VARCOND rules for the current relation groups."""
         self._current_parent_codes = [row[0] for row in self._article_rows]
         self._output.setRowCount(0)
         if self._maintenance_check():
@@ -393,6 +395,7 @@ class VarCondGenerationPanel(QWidget):
         total_rules = 0
         warning_messages: list[str] = []
         needle = self._filter.text().strip().casefold()
+        rows_to_add: list[tuple[str, str, str]] = []
         for index in range(self._relations.count()):
             relation_name = self._relations.item(index).text()
             relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
@@ -417,21 +420,28 @@ class VarCondGenerationPanel(QWidget):
                 )
             warning_messages.extend(result.warnings)
             total_rules += len(result.rules)
+            rows_to_add.extend(
+                (relation_name, rule.article, rule.rule)
+                for rule in result.rules
+            )
 
-            # The right pane is a relation browser, not a component/rule
-            # inspector. One row represents the merged relation generated
-            # from every parent article sharing this prefix.
-            row = self._output.rowCount()
-            self._output.insertRow(row)
-            self._output.setItem(row, 0, QTableWidgetItem(relation_name))
+        self._output.setUpdatesEnabled(False)
+        try:
+            self._output.setRowCount(len(rows_to_add))
+            for row, (relation_name, component, rule_text) in enumerate(rows_to_add):
+                self._output.setItem(row, 0, QTableWidgetItem(relation_name))
+                self._output.setItem(row, 1, QTableWidgetItem(component))
+                self._output.setItem(row, 2, QTableWidgetItem(rule_text))
+        finally:
+            self._output.setUpdatesEnabled(True)
 
         self._summary.setText(
-            f"{self._output.rowCount()} merged relation(s)"
-            + (f" | {total_rules} generated definition(s)" if total_rules else "")
+            f"{self._relations.count()} relation(s) | "
+            f"{total_rules:,} generated definition(s)"
             + (f" | {len(warning_messages)} warning(s)" if warning_messages else "")
-            + " | Select a relation and press Ctrl+C to copy"
+            + " | Select cells and press Ctrl+C to copy"
         )
-        self._summary.setToolTip("\\n".join(warning_messages))
+        self._summary.setToolTip("\n".join(warning_messages))
 
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
