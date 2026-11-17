@@ -241,16 +241,14 @@ class VarCondGenerationPanel(QWidget):
 
     def _on_relation_changed(self, current, _previous) -> None:
         if current is None:
-            self._output.setRowCount(0)
-            self._summary.setText("Select a price relation to display its VARCOND rules.")
             return
-        if self._maintenance_check():
-            service = self._ensure_maintenance_service()
-            if not service.has_sources([row[0] for row in self._article_rows]):
-                self._output.setRowCount(0)
-                self._summary.setText("Loading source data from PDM...")
-                return
-        self._generate_all()
+        relation = current.text()
+        for row in range(self._output.rowCount()):
+            item = self._output.item(row, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole) == relation:
+                self._output.setCurrentCell(row, 0)
+                self._output.scrollToItem(item)
+                break
 
     def _ensure_maintenance_service(self):
         from services.maintenance_varcond_service import MaintenanceVarCondService
@@ -458,15 +456,9 @@ class VarCondGenerationPanel(QWidget):
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_all(self) -> None:
-        """Generate only the selected PA_<prefix> relation in the working table."""
+        """Generate all relation groups from the loaded source cache."""
         self._current_parent_codes = [row[0] for row in self._article_rows]
         self._output.setRowCount(0)
-        selected = self._relations.currentItem()
-        if selected is None:
-            self._summary.setText("Select a price relation to display its VARCOND rules.")
-            self._summary.setToolTip("")
-            return
-
         if self._maintenance_check():
             service = self._ensure_maintenance_service()
             if self._current_parent_codes and not service.has_sources(self._current_parent_codes):
@@ -474,63 +466,52 @@ class VarCondGenerationPanel(QWidget):
                 self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
                 return
 
-        relation_name = selected.text()
-        relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
+        total_rules = 0
+        warning_messages: list[str] = []
         needle = self._filter.text().strip().casefold()
-        parent_codes = [
-            code for code, _label, _article_id in self._article_rows
-            if code.startswith(relation_prefix)
-            and (not needle or code.casefold().startswith(needle))
-        ]
-        if not parent_codes:
-            self._summary.setText(f"{relation_name} | No matching parent articles.")
-            return
+        rows_to_add: list[tuple[str, str]] = []
+        for index in range(self._relations.count()):
+            relation_name = self._relations.item(index).text()
+            relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
+            parent_codes = [
+                code for code, _label, _article_id in self._article_rows
+                if code.startswith(relation_prefix)
+                and (not needle or code.casefold().startswith(needle))
+            ]
+            if not parent_codes:
+                continue
+            if self._maintenance_check():
+                result = service.generate(
+                    parent_codes, prefix="",
+                    property_exclusions=self._exclusions.text(),
+                    property_substitutions=self._substitutions.text(),
+                )
+            else:
+                result = VarCondService(self._context).generate_live(
+                    article_codes=parent_codes, prefix="",
+                    property_exclusions=self._exclusions.text(),
+                    property_substitutions=self._substitutions.text(),
+                )
+            warning_messages.extend(result.warnings)
+            total_rules += len(result.rules)
+            rows_to_add.extend((relation_name, rule.rule) for rule in result.rules)
 
-        if self._maintenance_check():
-            result = service.generate(
-                parent_codes, prefix="",
-                property_exclusions=self._exclusions.text(),
-                property_substitutions=self._substitutions.text(),
-            )
-        else:
-            result = VarCondService(self._context).generate_live(
-                article_codes=parent_codes, prefix="",
-                property_exclusions=self._exclusions.text(),
-                property_substitutions=self._substitutions.text(),
-            )
-
-        rules = [rule.rule for rule in result.rules]
-        char_count = sum(len(rule) for rule in rules)
-        if rules:
-            char_count += 3 * (len(rules) - 1) + 2
-        limit = 64000
-        remaining = max(0, limit - char_count)
         self._output.setUpdatesEnabled(False)
         try:
-            self._output.setRowCount(len(rules))
-            for row, rule_text in enumerate(rules):
+            self._output.setRowCount(len(rows_to_add))
+            for row, (relation_name, rule_text) in enumerate(rows_to_add):
                 item = QTableWidgetItem(rule_text)
                 item.setData(Qt.ItemDataRole.UserRole, relation_name)
                 self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
 
-        over = char_count > limit
         self._summary.setText(
-            f"{relation_name} | {len(parent_codes):,} article(s) combined | "
-            f"{len(rules):,} definitions | {char_count:,} characters / {limit:,} limit | "
-            f"{remaining:,} remaining"
-            + (" | OVER LIMIT" if over else "")
-            + " | Select cells and press Ctrl+C to copy"
+            f"{self._relations.count():,} relation(s) | "
+            f"{total_rules:,} generated definition(s) | "
+            "Select a relation on the left to jump to its rules; Ctrl+C to copy"
         )
-        self._summary.setStyleSheet("color: #b00020; font-weight: bold;" if over else "")
-        warnings = list(result.warnings)
-        if over:
-            warnings.append(
-                f"Relation body exceeds the {limit:,}-character pCon Creator limit. "
-                "Increase the relation prefix length to split the output into smaller relations."
-            )
-        self._summary.setToolTip("\n".join(warnings))
+        self._summary.setToolTip("\\n".join(warning_messages))
 
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
