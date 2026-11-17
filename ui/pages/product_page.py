@@ -492,7 +492,7 @@ class ProductPage(BasePage):
         return page
 
     def _build_repository_context(self) -> QWidget:
-        """Compose the shared Repository Workspace with Product-specific linking."""
+        """Show repository-backed source details and Product-specific linking."""
         page = QWidget(self)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
