@@ -41,7 +41,7 @@ def wf(monkeypatch, tmp_path):
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda p, t, m: state["infos"].append(m)))
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda p, t, m: state["errors"].append(m)))
 
-    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None):
+    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None, module=WorkbenchModule.MAINTENANCE):
         names = target_names or {"EUR": "EURO_2026_2", "GBP": "GBP_2026_2"}
 
         def target_exec(self):
@@ -68,7 +68,7 @@ def wf(monkeypatch, tmp_path):
         ctx.activate_snapshot_source("pdm")
         monkeypatch.setattr(ApplicationContext, "mdb_service", property(lambda self: fake))
         page = PricingPage(ctx)
-        page._active_module = WorkbenchModule.MAINTENANCE
+        page._active_module = module
         page.refresh()
         return page
 
@@ -219,3 +219,21 @@ def test_pricing_computes_eur_and_gbp_even_without_snapshot_price_lists():
     snapshot = Snapshot()
     service = PricingService.__new__(PricingService)
     assert service.target_currencies(snapshot, PriceParams(currency="USD")) == ["EUR", "GBP"]
+
+@pytest.mark.parametrize("module", [WorkbenchModule.DEVELOPMENT, WorkbenchModule.MAINTENANCE])
+def test_price_list_selection_is_centralized_in_export_for_both_modules(wf, module):
+    make, state = wf
+    fake = _OptimizedFake(_strict_lists(), linked=[21, 22])
+    page = make([_rec(10.0, "EUR")], fake, module=module)
+
+    # No separate Price Lists toolbar control or automatic setup popup.
+    assert not hasattr(page, "_pricelists_btn")
+    page.on_enter()
+    assert state["dialogs"] == []
+
+    # Export still opens the shared target-list chooser and writes to its selection.
+    page._on_export_prices()
+    assert not state["errors"], state["errors"]
+    assert state["dialogs"] and state["dialogs"][0].export_button is not None
+    assert "Export complete" in page._summary.text()
+
