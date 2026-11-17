@@ -271,9 +271,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         toolbar_layout.addWidget(self._source_tabs, 1)
         toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
         self.add_content(toolbar_row)
-        # Keep table search and record filtering with the main page controls,
-        # rather than nesting them inside the Price records group box.
-        self.add_content(self._build_filter_row())
         self.add_content(self._build_table())
         self.add_content(self._build_summary())
         self.refresh()
@@ -282,19 +279,24 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Compute", self)
         box.setObjectName("pricingComputeGroup")
-        # This is a compact inline control group, not a full workflow section.
-        # Override the global QGroupBox section padding so it does not make the
-        # source/compute toolbar taller than the neighbouring workflow rows.
+        # Compact two-row control group: compute settings above, table filters
+        # below. Keeping filters here removes a separate page row and gives
+        # the price table more vertical working space.
         box.setStyleSheet(
             "QGroupBox#pricingComputeGroup {"
             " margin-top: 8px; padding: 4px 6px 4px 6px;"
             "}"
         )
-        layout = QHBoxLayout(box)
+        layout = QVBoxLayout(box)
         layout.setContentsMargins(6, 7, 6, 4)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
-        layout.addWidget(QLabel("Currency:", box))
+        compute_row = QWidget(box)
+        controls = QHBoxLayout(compute_row)
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(6)
+
+        controls.addWidget(QLabel("Currency:", box))
         self._currency = QComboBox(box)
         self._currency.addItems(["All", "GBP", "EUR"])
         self._currency.setToolTip(
@@ -303,37 +305,39 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             "(GBP when 'All')."
         )
         self._currency.currentIndexChanged.connect(self._apply_filter)
-        layout.addWidget(self._currency)
+        controls.addWidget(self._currency)
 
-        layout.addWidget(QLabel("Effective date:", box))
+        controls.addWidget(QLabel("Effective date:", box))
         self._date = QDateEdit(box)
         self._date.setDisplayFormat("dd-MMM-yyyy")
         self._date.setCalendarPopup(True)
         self._date.setDate(QDate.currentDate())
-        layout.addWidget(self._date)
+        controls.addWidget(self._date)
 
-        layout.addWidget(QLabel("Site:", box))
+        controls.addWidget(QLabel("Site:", box))
         self._site = QSpinBox(box)
         self._site.setRange(1, 999)
         self._site.setValue(1)
-        layout.addWidget(self._site)
+        controls.addWidget(self._site)
 
         self._compute_btn = QPushButton("Compute Prices", box)
         self._compute_btn.setToolTip(
             "Pull PDM-accurate prices in batched queries and diff vs the baseline."
         )
         self._compute_btn.clicked.connect(self._on_compute)
-        layout.addWidget(self._compute_btn)
+        controls.addWidget(self._compute_btn)
+        controls.addStretch(1)
+        layout.addWidget(compute_row)
 
-        layout.addStretch(1)
+        layout.addWidget(self._build_filter_row(box))
         return box
 
     def on_enter(self) -> None:
         """Refresh Pricing; price-list selection happens only during Export."""
         self.refresh()
 
-    def _build_filter_row(self) -> QWidget:
-        row = QWidget(self)
+    def _build_filter_row(self, parent: QWidget | None = None) -> QWidget:
+        row = QWidget(parent or self)
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
