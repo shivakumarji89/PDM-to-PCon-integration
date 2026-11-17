@@ -635,6 +635,7 @@ class ProductPage(BasePage):
             WorkbenchModule.QA_VALIDATION,
         )
         self._context.activate_snapshot_source(snapshot_source_for_module(module))
+        self._repository_workspace.setVisible(repository_context)
         self._context_stack.setCurrentIndex(1 if repository_context else 0)
         if hasattr(self, "_maintenance_source_section"):
             self._maintenance_source_section.setVisible(
