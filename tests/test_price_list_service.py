@@ -78,3 +78,16 @@ def test_existing_price_list_edit_rejects_invalid_dates():
         "date_from": "20270230",
         "date_to": "99991231",
     }])
+
+
+def test_new_creation_allows_first_price_list_without_previous_list():
+    snapshot = Snapshot(price_lists=[])
+
+    proposal = _service().propose(
+        snapshot, ["GBP"], "20261117", mode="new_creation"
+    )[0]
+
+    assert proposal.list_id == "GBP_2026"
+    assert proposal.previous_id == ""
+    assert proposal.previous_date_to == ""
+    assert not proposal.conflict
