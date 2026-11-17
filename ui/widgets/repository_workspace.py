@@ -232,6 +232,23 @@ class RepositoryWorkspace(QWidget):
                 root_item.addChild(item)
             root_item.setExpanded(True)
 
+        # Bundled Seating / Tables template folders are selectable from the
+        # same series tree. They are discovered relative to the application,
+        # so no machine-specific absolute path is required.
+        template_root = Path(__file__).resolve().parents[2] / "resources" / "templates"
+        if template_root.is_dir():
+            templates_item = QTreeWidgetItem(["Templates"])
+            tree.addTopLevelItem(templates_item)
+            for template_name in ("Seating_Template", "Tables_Template"):
+                template_path = template_root / template_name
+                if not template_path.is_dir():
+                    continue
+                item = QTreeWidgetItem([template_name])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(template_path))
+                item.setToolTip(0, str(template_path))
+                templates_item.addChild(item)
+            templates_item.setExpanded(True)
+
         layout.addWidget(tree, 1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Open
