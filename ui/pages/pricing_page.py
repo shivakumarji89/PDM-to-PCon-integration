@@ -54,7 +54,6 @@ from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
     read_only_in_mdb,
 )
-from ui.dialogs.price_list_manager_dialog import PriceListManagerDialog
 from core.modules import WorkbenchModule
 
 # Map ProgressReporter log kinds to activity log levels.
@@ -301,63 +300,12 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._compute_btn.clicked.connect(self._on_compute)
         layout.addWidget(self._compute_btn)
 
-        self._pricelists_btn = QPushButton("Price Lists\u2026", box)
-        self._pricelists_btn.setToolTip(
-            "Define named price lists (currency + validity) with date roll-over."
-        )
-        self._pricelists_btn.clicked.connect(self._on_manage_price_lists)
-        layout.addWidget(self._pricelists_btn)
-
         layout.addStretch(1)
         return box
 
-    # -- price lists ------------------------------------------------------
-    def _price_list_mode(self) -> str:
-        """Select creation vs maintenance behavior from the active module."""
-        module = getattr(self.window(), "_active_module", None)
-        return "new_creation" if module == WorkbenchModule.DEVELOPMENT else "maintenance"
-
-    def _price_list_currencies(self) -> list[str]:
-        """Currencies to prepare from the selected PDM pricing scope."""
-        if self._currency.currentText() == "All":
-            return ["GBP", "EUR"]
-        return [self._currency.currentText().upper()]
-
-    def _open_price_list_manager(self) -> None:
-        snapshot = self._context.active_snapshot
-        if snapshot is None:
-            QMessageBox.information(self, "Price Lists", "Load a product first.")
-            return
-        read_only = self.is_mdb_view()
-        dialog = PriceListManagerDialog(
-            self._context,
-            snapshot,
-            mode="new_creation",
-            currencies=[] if read_only else self._price_list_currencies(),
-            effective_date=self._date.date().toString("yyyyMMdd"),
-            read_only=read_only,
-            parent=self,
-        )
-        dialog.exec()
-        if dialog.applied:
-            self.refresh()
-
-    def _on_manage_price_lists(self) -> None:
-        self._open_price_list_manager()
-
     def on_enter(self) -> None:
-        """Refresh and offer the default first-list setup for Development."""
-        snapshot = self._context.active_snapshot
+        """Refresh Pricing; price-list selection happens only during Export."""
         self.refresh()
-        if snapshot is None:
-            return
-        module = getattr(self.window(), "_active_module", None)
-        if module != WorkbenchModule.DEVELOPMENT or snapshot.price_lists:
-            return
-        if getattr(self, "_default_price_list_snapshot", None) is snapshot:
-            return
-        self._default_price_list_snapshot = snapshot
-        QTimer.singleShot(0, self._open_price_list_manager)
 
     def _build_table(self) -> QWidget:
         box = QGroupBox("Price records", self)
@@ -451,7 +399,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             )
 
     def _lockable_widgets(self) -> list:
-        return [getattr(self, "_compute_btn", None), getattr(self, "_pricelists_btn", None)]
+        return [getattr(self, "_compute_btn", None)]
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         # Reload from the snapshot whenever the page is shown, matching every
