@@ -359,25 +359,73 @@ class MaintenanceVarCondService(BaseService):
 
                 self._load_attributes_batch(repo, conn, sources)
 
-                # Increment pricing suffixes come from a legacy stored procedure
-                # that is called once per unique component and cannot be safely
-                # replaced by the snapshot's differently-filtered increment query.
+                # Fetch the legacy increment procedure results concurrently.
+                # It is still called once per unique component with identical
+                # item resolution and parameters; separate connections avoid
+                # sharing a pyodbc connection across worker threads.
+                unique_missing = list(dict.fromkeys(
+                    sub
+                    for src in sources.values() if src.found
+                    for sub, _qty, _seq, _fps in src.components
+                    if sub and sub not in self._increment_cache
+                ))
+                if unique_missing:
+                    self._load_increments_parallel(unique_missing)
+
                 for code in chunk:
                     src = sources[code]
-                    if src.found and src.components:
+                    if src.found:
                         for sub, _qty, _seq, _fps in src.components:
-                            if sub and sub not in src.increments:
-                                if sub not in self._increment_cache:
-                                    self._increment_cache[sub] = self._fetch_increments(
-                                        repo, conn, sub
-                                    )
-                                src.increments[sub] = self._increment_cache[sub]
+                            if sub:
+                                src.increments[sub] = self._increment_cache.get(sub, [])
                     out[code] = src
                     if progress_callback:
                         progress_callback(len(out), total, code)
         finally:
             conn.close()
         return out
+
+    def _load_increments_parallel(self, components: Sequence[str]) -> None:
+        """Load legacy component increments with a small bounded worker pool.
+
+        Each worker owns one PDM connection and processes multiple components.
+        The stored procedure, its item resolver and its result filtering remain
+        unchanged. Results are merged into the shared cache only on this
+        calling thread.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+        from repositories.pdm_repository import PDMRepository
+
+        workers = min(4, len(components))
+        if workers <= 1:
+            repo = PDMRepository(self.context)
+            conn = repo.get_connection()
+            try:
+                for component in components:
+                    self._increment_cache[component] = self._fetch_increments(
+                        repo, conn, component
+                    )
+            finally:
+                conn.close()
+            return
+
+        buckets = [components[index::workers] for index in range(workers)]
+
+        def load_bucket(bucket: Sequence[str]) -> dict[str, list[tuple[int, str]]]:
+            worker_repo = PDMRepository(self.context)
+            worker_conn = worker_repo.get_connection()
+            try:
+                return {
+                    component: self._fetch_increments(worker_repo, worker_conn, component)
+                    for component in bucket
+                }
+            finally:
+                worker_conn.close()
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="varcond-increment") as pool:
+            futures = [pool.submit(load_bucket, bucket) for bucket in buckets if bucket]
+            for future in futures:
+                self._increment_cache.update(future.result())
 
     def _load_attributes_batch(self, repo, conn, sources: dict[str, ParentSource]) -> None:
         """Load the existing attribute projection for many parents per query.
