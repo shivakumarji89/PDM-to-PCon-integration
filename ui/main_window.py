@@ -638,6 +638,8 @@ class MainWindow(QMainWindow):
                 export_handler = getattr(page, "_on_export_component_mdb", None)
                 if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
                     export_handler = page._on_export_prices
+                elif step == WorkflowStep.PRICING_RELATION:
+                    export_handler = lambda page=page: self._on_export_varcond_relations_mdb(page)
                 if not callable(export_handler):
                     export_handler = self._on_export_mdb
                 export_button.clicked.connect(export_handler)
@@ -1667,6 +1669,31 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("XOCD publish stopped")
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(self, "Export XOCD", message)
+
+    def _on_export_varcond_relations_mdb(self, page) -> None:
+        """Include the complete generated VARCOND relation set in the MDB export."""
+        from PySide6.QtWidgets import QMessageBox
+
+        snapshot = self._context.active_snapshot
+        if snapshot is None or snapshot.product is None:
+            QMessageBox.information(self, "Export VARCOND Relations", "Load a product first.")
+            return
+        try:
+            generated = page._varcond_panel.relation_objects_for_export()
+        except RuntimeError as exc:
+            QMessageBox.information(self, "Export VARCOND Relations", str(exc))
+            return
+
+        # Replace only generated PA_* price relations. Keep unrelated relation
+        # objects and let the standard MDB exporter build the normal package.
+        snapshot.relation_objects = [
+            relation for relation in snapshot.relation_objects
+            if not (
+                (relation.name or "").startswith("PA_")
+                and str(getattr(relation, "domain", "") or "").upper() == "P"
+            )
+        ] + generated
+        self._on_export_mdb()
 
     def _on_export_mdb(self, selected_article_ids: set[str] | None = None) -> None:
         """Export Development output as a ``pcr_data_com_ocd.mdb``.
