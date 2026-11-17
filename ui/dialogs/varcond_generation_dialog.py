@@ -285,6 +285,9 @@ class VarCondGenerationPanel(QWidget):
         stream_filter_text = self._filter.text().strip().casefold()
         stream_exclusions = self._exclusions.text()
         stream_substitutions = self._substitutions.text()
+        stream_parent_order = {
+            row[0]: index for index, row in enumerate(self._article_rows)
+        }
 
         def load_sources(_progress):
             def report_source_progress(completed, total, parent_code):
@@ -321,10 +324,7 @@ class VarCondGenerationPanel(QWidget):
                     property_substitutions=stream_substitutions,
                 )
                 relation_name = "PA_" + (code[:stream_prefix_length] if len(code) > stream_prefix_length else code)
-                parent_order = next(
-                    (index for index, row in enumerate(self._article_rows) if row[0] == code),
-                    len(self._article_rows),
-                )
+                parent_order = stream_parent_order.get(code, len(stream_parent_order))
                 _progress({
                     "kind": "rules",
                     "relation": relation_name,
