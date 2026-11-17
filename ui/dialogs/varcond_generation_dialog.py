@@ -293,24 +293,24 @@ class VarCondGenerationPanel(QWidget):
         stream_filter_text = self._filter.text().strip().casefold()
         stream_exclusions = self._exclusions.text()
         stream_substitutions = self._substitutions.text()
-        stream_parent_order = {
-            row[0]: index for index, row in enumerate(self._article_rows)
-        }
+
+        # Build the relation groups once. A relation is published as soon as
+        # every parent belonging to that prefix has completed source loading.
+        relation_groups: dict[str, list[str]] = {}
+        for code, _label, _article_id in self._article_rows:
+            if stream_filter_text and not code.casefold().startswith(stream_filter_text):
+                continue
+            prefix = code[:stream_prefix_length] if len(code) > stream_prefix_length else code
+            relation_groups.setdefault("PA_" + prefix, []).append(code)
 
         def load_sources(_progress):
             def report_source_progress(completed, total, parent_code):
                 if total <= 0:
-                    reporter.begin(
-                        1, title="Loading Price Relation",
-                        subject="All Price Relations",
-                    )
+                    reporter.begin(1, title="Loading Price Relation", subject="All Price Relations")
                     reporter.advance("No uncached PDM sources to load.")
                     return
                 if completed == 0:
-                    reporter.begin(
-                        total, title="Loading Price Relation",
-                        subject="All Price Relations",
-                    )
+                    reporter.begin(total, title="Loading Price Relation", subject="All Price Relations")
                     reporter.note(f"Reading {total:,} uncached parent article(s)...")
                     return
                 detail = f"Loaded {completed:,} / {total:,} parent articles"
@@ -318,42 +318,40 @@ class VarCondGenerationPanel(QWidget):
                     detail += f" · {parent_code}"
                 reporter.advance(detail)
 
-            # Stream already-cached parents first (if this is a partial
-            # refresh), then stream each newly completed parent from the loader.
-            # Rule generation is local because the source cache is populated
-            # before source_callback is invoked.
-            def publish_parent(source):
-                code = source.parent
-                if stream_filter_text and not code.casefold().startswith(stream_filter_text):
-                    return
-                result = service.generate(
-                    [code], prefix="",
-                    property_exclusions=stream_exclusions,
-                    property_substitutions=stream_substitutions,
-                )
-                relation_name = "PA_" + (code[:stream_prefix_length] if len(code) > stream_prefix_length else code)
-                parent_order = stream_parent_order.get(code, len(stream_parent_order))
-                _progress({
-                    "kind": "rules",
-                    "relation": relation_name,
-                    "parent": code,
-                    "parent_order": parent_order,
-                    "rules": [rule.rule for rule in result.rules],
-                    "warnings": result.warnings,
-                })
+            completed_parents: set[str] = set()
+            published_relations: set[str] = set()
 
-            # Publish cached sources not included in the new-load callback.
-            cached_codes = [
-                code for code in parent_codes
-                if not refresh and code in service._cache
-            ]
-            for code in cached_codes:
-                publish_parent(service._cache[code])
+            def publish_completed_relation(source):
+                completed_parents.add(source.parent)
+                for relation_name, group_codes in relation_groups.items():
+                    if relation_name in published_relations:
+                        continue
+                    if not all(code in completed_parents for code in group_codes):
+                        continue
+                    result = service.generate(
+                        group_codes, prefix="",
+                        property_exclusions=stream_exclusions,
+                        property_substitutions=stream_substitutions,
+                    )
+                    published_relations.add(relation_name)
+                    _progress({
+                        "kind": "relation_rules",
+                        "relation": relation_name,
+                        "parents": list(group_codes),
+                        "rules": [rule.rule for rule in result.rules],
+                        "warnings": result.warnings,
+                    })
+
+            # Cached sources count as complete immediately; newly loaded
+            # sources trigger the same relation-readiness check.
+            for code in parent_codes:
+                if not refresh and code in service._cache:
+                    publish_completed_relation(service._cache[code])
 
             sources = service.sources_for(
                 parent_codes, refresh=refresh,
                 progress_callback=report_source_progress,
-                source_callback=publish_parent,
+                source_callback=publish_completed_relation,
             )
             return sources
 
@@ -393,14 +391,29 @@ class VarCondGenerationPanel(QWidget):
         self._substitution_button.setEnabled(True)
 
     def _on_maintenance_source_progress(self, payload) -> None:
-        """Report source progress; selected rules are rendered after loading."""
-        if not isinstance(payload, dict) or payload.get("kind") != "rules":
+        """Display each complete relation immediately while other groups load."""
+        if not isinstance(payload, dict) or payload.get("kind") != "relation_rules":
             return
+        relation_name = str(payload.get("relation", ""))
+        rules = payload.get("rules", [])
+        self._output.setUpdatesEnabled(False)
+        try:
+            for rule_text in rules:
+                row = self._output.rowCount()
+                item = QTableWidgetItem(str(rule_text))
+                item.setData(Qt.ItemDataRole.UserRole, relation_name)
+                self._output.insertRow(row)
+                self._output.setItem(row, 0, item)
+        finally:
+            self._output.setUpdatesEnabled(True)
         if payload.get("warnings"):
             current = self._summary.toolTip()
-            new_warnings = "\n".join(str(value) for value in payload["warnings"])
-            self._summary.setToolTip("\n".join(value for value in (current, new_warnings) if value))
-        self._summary.setText("Loading PDM sources; selected relation will appear when ready.")
+            new_warnings = "\\n".join(str(value) for value in payload["warnings"])
+            self._summary.setToolTip("\\n".join(value for value in (current, new_warnings) if value))
+        self._summary.setText(
+            f"Generating VARCOND relations · {self._output.rowCount():,} definitions displayed "
+            f"({len(payload.get('parents', [])):,} parent article(s) in {relation_name})"
+        )
 
     def _on_maintenance_sources_loaded(self, _sources) -> None:
         loaded_snapshot = self._maintenance_load_snapshot
@@ -424,7 +437,11 @@ class VarCondGenerationPanel(QWidget):
                 [row[0] for row in self._article_rows], refresh=True
             )
             return
-        self._generate_all()
+        self._summary.setText(
+            f"{self._relations.count():,} relation(s) | "
+            f"{self._output.rowCount():,} definitions displayed | "
+            "All completed relations are ready"
+        )
         self._finish_maintenance_progress(True, "VARCOND source data ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
