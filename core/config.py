@@ -82,7 +82,7 @@ class AppConfig:
     # Manufacturer selector both read these two, and their catalogue (series/program/article) is discovered from
     # the folders and OCD data under each; nothing about series is configured. Override per machine.
     hm_repository_workspace: str = r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\_repository"
-    knoll_repository_workspace: str = r"C:\KnollSVN\Staging\HermanMiller\_repository"
+    knoll_repository_workspace: str = r"C:\KnollSVN\Staging\Knoll\_repository\kno"
 
     # Further OFML ``_repository`` workspaces merged into the Article OBX catalogue (manufacturer read from the
     # data). A missing or unreadable entry is reported, not an error.
