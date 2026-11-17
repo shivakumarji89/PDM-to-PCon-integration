@@ -302,9 +302,44 @@ class VarCondGenerationPanel(QWidget):
                     detail += f" · {parent_code}"
                 reporter.advance(detail)
 
+            # Stream already-cached parents first (if this is a partial
+            # refresh), then stream each newly completed parent from the loader.
+            # Rule generation is local because the source cache is populated
+            # before source_callback is invoked.
+            prefix_length = self._relation_length.value()
+            filter_text = self._filter.text().strip().casefold()
+            exclusions = self._exclusions.text()
+            substitutions = self._substitutions.text()
+
+            def publish_parent(source):
+                code = source.parent
+                if filter_text and not code.casefold().startswith(filter_text):
+                    return
+                result = service.generate(
+                    [code], prefix="",
+                    property_exclusions=exclusions,
+                    property_substitutions=substitutions,
+                )
+                relation_name = "PA_" + (code[:prefix_length] if len(code) > prefix_length else code)
+                _progress({
+                    "kind": "rules",
+                    "relation": relation_name,
+                    "rules": [rule.rule for rule in result.rules],
+                    "warnings": result.warnings,
+                })
+
+            # Publish cached sources not included in the new-load callback.
+            cached_codes = [
+                code for code in parent_codes
+                if code in service._cache
+            ]
+            for code in cached_codes:
+                publish_parent(service._cache[code])
+
             sources = service.sources_for(
                 parent_codes, refresh=refresh,
                 progress_callback=report_source_progress,
+                source_callback=publish_parent,
             )
             return sources
 
@@ -312,6 +347,7 @@ class VarCondGenerationPanel(QWidget):
             load_sources, cancellation_token=reporter.cancellation_token
         )
         self._maintenance_load_task = task
+        task.signals.progress.connect(self._on_maintenance_source_progress)
         task.signals.finished.connect(self._on_maintenance_sources_loaded)
         task.signals.failed.connect(self._on_maintenance_sources_failed)
         task.signals.cancelled.connect(self._on_maintenance_sources_cancelled)
@@ -342,6 +378,30 @@ class VarCondGenerationPanel(QWidget):
         self._exclusion_button.setEnabled(True)
         self._substitution_button.setEnabled(True)
 
+    def _on_maintenance_source_progress(self, payload) -> None:
+        """Append each completed parent's rules on the GUI thread."""
+        if not isinstance(payload, dict) or payload.get("kind") != "rules":
+            return
+        relation_name = str(payload.get("relation", ""))
+        rules = payload.get("rules", [])
+        self._output.setUpdatesEnabled(False)
+        try:
+            for rule_text in rules:
+                row = self._output.rowCount()
+                self._output.insertRow(row)
+                item = QTableWidgetItem(str(rule_text))
+                item.setData(Qt.ItemDataRole.UserRole, relation_name)
+                self._output.setItem(row, 0, item)
+        finally:
+            self._output.setUpdatesEnabled(True)
+        if payload.get("warnings"):
+            current = self._summary.toolTip()
+            new_warnings = "\n".join(str(value) for value in payload["warnings"])
+            self._summary.setToolTip("\n".join(value for value in (current, new_warnings) if value))
+        self._summary.setText(
+            f"Generating VARCOND rules · {self._output.rowCount():,} definitions displayed"
+        )
+
     def _on_maintenance_sources_loaded(self, _sources) -> None:
         loaded_snapshot = self._maintenance_load_snapshot
         self._finish_maintenance_load()
@@ -364,8 +424,14 @@ class VarCondGenerationPanel(QWidget):
                 [row[0] for row in self._article_rows], refresh=True
             )
             return
-        self._generate_all()
-        self._finish_maintenance_progress(True, "All price relations ready")
+        # Rules were appended as each parent completed. Do not clear and
+        # regenerate the entire table at the end.
+        self._summary.setText(
+            f"{self._relations.count()} relation(s) | "
+            f"{self._output.rowCount():,} generated definition(s) | "
+            "Select cells and press Ctrl+C to copy"
+        )
+        self._finish_maintenance_progress(True, "All VARCOND rules ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
         self._finish_maintenance_load()
