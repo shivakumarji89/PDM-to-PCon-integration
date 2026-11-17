@@ -271,14 +271,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         )
         layout.addWidget(self._view_combo)
 
-        self._group_class_check = QCheckBox("Group by Class Creation", box)
-        self._group_class_check.setChecked(False)
-        self._group_class_check.setToolTip(
-            "Add Class Creation property-group headers to the article table."
-        )
-        self._group_class_check.toggled.connect(self._on_class_group_toggled)
-        layout.addWidget(self._group_class_check)
-
         self._maintenance_export_component = "Articles"
         return box
 
@@ -536,9 +528,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         reverted otherwise. Only widget placement and styling change; every
         control, signal and data path is the existing one.
         """
-        self._group_class_check.setVisible(
-            on and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
-        )
         if on == self._shell_on:
             return
         if on and not self._shell_built:
@@ -695,7 +684,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         group_defs = (
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
-            [self._actions_btn, self._view_combo, self._group_class_check],
+            [self._actions_btn, self._view_combo],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
@@ -1355,12 +1344,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._populating = True
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
-        class_groups = (
-            self._article_class_groups(rows)
-            if self._group_class_check.isChecked()
-            and getattr(self.window(), "_active_module", None) == WorkbenchModule.MAINTENANCE
-            else None
-        )
+        # Article rows are always grouped under their Class Creation groups.
+        class_groups = self._article_class_groups(rows)
         if class_groups is not None:
             for group_name, group_rows in class_groups:
                 header_row = self._table.rowCount()
