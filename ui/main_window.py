@@ -1757,13 +1757,33 @@ class MainWindow(QMainWindow):
 
         created = False
         if session is None:
+            # First export must be based on a manufacturer template explicitly
+            # selected in ProductStudio's Open Repository browser. The selected
+            # SVN source is read-only; initialize() copies its MDB to the
+            # product-specific destination before any export writes occur.
+            repository = self._context.maintenance_repository_info or {}
+            template_path = str(repository.get("ocd_path") or "")
+            if not repository.get("is_template") or not template_path:
+                QMessageBox.information(
+                    self, title,
+                    "Open Repository and select a Seating, Tables or Knoll template first."
+                )
+                return
+            if not Path(template_path).is_file():
+                QMessageBox.warning(
+                    self, title,
+                    f"The selected template MDB was not found:\n{template_path}"
+                )
+                return
             directory = QFileDialog.getExistingDirectory(
-                self, "Create the product's MDB in folder (a pcr_data_com_ocd.mdb is written inside)"
+                self, "Choose a product-specific output folder for the copied MDB"
             )
             if not directory:
                 return
             try:
-                session = sessions.initialize(snapshot, directory)
+                session = sessions.initialize(
+                    snapshot, directory, template_path=template_path
+                )
             except ExportSessionError as exc:
                 QMessageBox.warning(self, title, f"Could not create the MDB:\n{exc}")
                 return
