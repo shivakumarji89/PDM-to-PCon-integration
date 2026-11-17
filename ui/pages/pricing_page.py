@@ -297,6 +297,13 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
             "(GBP when 'All')."
         )
         self._currency.currentIndexChanged.connect(self._apply_filter)
+
+        self._search = QLineEdit(box)
+        self._search.setPlaceholderText("Search article, variant condition or text block...")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._schedule_filter)
+        controls.addWidget(self._search, 1)
+
         controls.addWidget(self._currency)
 
         controls.addWidget(QLabel("Effective date:", box))
@@ -312,12 +319,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._site.setRange(1, 999)
         self._site.setValue(1)
         self._site.hide()
-
-        self._search = QLineEdit(box)
-        self._search.setPlaceholderText("Search article, variant condition or text block...")
-        self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self._schedule_filter)
-        controls.addWidget(self._search, 1)
 
         self._compute_btn = QPushButton("Compute Prices", box)
         self._compute_btn.setToolTip(
