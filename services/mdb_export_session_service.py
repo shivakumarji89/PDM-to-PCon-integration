@@ -141,6 +141,7 @@ class MdbExportSessionService(BaseService):
 
     def initialize(
         self, snapshot: Snapshot, dest: str | Path, template_kind: str | None = None,
+        template_path: str | Path | None = None,
     ) -> MdbExportSession:
         """Create the product's MDB from its category template - exactly once.
 
@@ -161,10 +162,14 @@ class MdbExportSessionService(BaseService):
         kind = (template_kind or snapshot.generation_template
                 or _ocd.OcdExportService._infer_template(product)).strip().lower()
         kind = _ocd._TEMPLATE_ALIASES.get(kind, kind)
-        template = _ocd._template_for_kind(kind)
+        # A template selected from Open Repository takes precedence over the
+        # legacy bundled-template resolver. The selected source is copied into
+        # the product output; the shared SVN template is never modified.
+        template = Path(template_path) if template_path else _ocd._template_for_kind(kind)
         if template is None or not Path(template).is_file():
+            source = str(template) if template_path else str(_ocd._TEMPLATE_ROOT)
             raise ExportSessionError(
-                f"Bundled '{kind}' MDB template is missing under {_ocd._TEMPLATE_ROOT}."
+                f"Selected '{kind}' MDB template is missing: {source}."
             )
 
         mdb = Path(dest)
