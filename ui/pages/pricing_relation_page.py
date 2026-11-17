@@ -49,12 +49,20 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
             content_stretch=True,
         )
         self._init_source_tabs(context)
+        self._content.removeWidget(self._source_tabs)
         # PDM uses the legacy-style per-relation VARCOND workspace as the
         # primary UI. The older aggregate PA_PRICING generator is retained only
         # for inspecting imported PA_* relation objects in the MDB view.
         self._toolbar = self._build_toolbar()
         self._view = self._build_view()
         self._varcond_workflow = self._build_varcond_workflow(context)
+        self._source_controls_row = QWidget(self)
+        source_controls = QHBoxLayout(self._source_controls_row)
+        source_controls.setContentsMargins(0, 0, 0, 0)
+        source_controls.setSpacing(8)
+        source_controls.addWidget(self._source_tabs, 0)
+        source_controls.addWidget(self._varcond_panel.controls_widget, 1)
+        self.add_content(self._source_controls_row)
         self.add_content(self._toolbar)
         self.add_content(self._view)
         self.add_content(self._varcond_workflow)
@@ -100,6 +108,7 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._view.setVisible(mdb)
         self._varcond_workflow.setVisible(not mdb)
         self._varcond_panel.setEnabled(not mdb)
+        self._varcond_panel.controls_widget.setVisible(not mdb)
 
     def on_enter(self) -> None:
         """Show the per-relation VARCOND workflow for PDM, imported relations for MDB."""
