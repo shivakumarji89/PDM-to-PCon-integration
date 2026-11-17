@@ -69,8 +69,9 @@ def test_basic_non_syteline_headers_and_item_query(tmp_path):
     assert (tmp_path / "sp.txt").read_text(encoding="utf-8").startswith("Item\tSuper Description\tSeq")
     assert (tmp_path / "desc.txt").read_text(encoding="utf-8").startswith("Lang\tItem\tDescription")
     assert v.text2.startswith("\tFeat1\tFeat2") and v.text2.endswith("\tFeat20")
-    # 2438-2441 count pass and 2473 main pass: query executed twice
-    assert len(sql_calls(h, ITEM_Q)) == 2
+    # 2438-2441 count pass and 2473 main pass share ONE execution (legacy ran the query twice;
+    # the second run only re-read the same rows, so the count list is built from the first)
+    assert len(sql_calls(h, ITEM_Q)) == 1
     assert v.arrayList23 == ["A1", "B2"] and v.item_count == 2
     assert [r["LongItem"] for r in v.item_rows] == ["A1", "B2"]
     assert v.num5 == 0 and v.right == "" and v.text4 == ""

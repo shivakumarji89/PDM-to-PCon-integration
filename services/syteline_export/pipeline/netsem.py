@@ -120,8 +120,8 @@ def index_of(text: str, needle: str) -> int:
     return text.find(needle)
 
 
-def list_index_of(items: Sequence[Any], value: Any) -> int:
-    """``ArrayList.IndexOf``: first equal element or -1 (no bool/int coercion)."""
+def _list_index_of_scan(items: Sequence[Any], value: Any) -> int:
+    """The original element-by-element ``ArrayList.IndexOf`` (any iterable)."""
     value_is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
     for position, item in enumerate(items):
         checkpoint()
@@ -130,6 +130,34 @@ def list_index_of(items: Sequence[Any], value: Any) -> int:
             if item == value:
                 return position
     return -1
+
+
+def list_index_of(items: Sequence[Any], value: Any) -> int:
+    """``ArrayList.IndexOf``: first equal element or -1 (no bool/int coercion)."""
+    if not isinstance(items, (list, tuple)):
+        return _list_index_of_scan(items, value)
+    if not items:
+        return -1
+    checkpoint()
+    value_is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    start = 0
+    while True:
+        # ``list.index`` scans in C. It finds the next element equal to ``value`` (or
+        # identical to it); the legacy type rule and a real ``==`` are then re-checked, so a
+        # candidate it accepts but ArrayList would not (bool vs int, NaN, mixed types) is
+        # skipped and the scan resumes after it. The result is the first element the original
+        # per-element loop would have returned.
+        try:
+            position = items.index(value, start)
+        except ValueError:
+            return -1
+        item = items[position]
+        item_is_number = isinstance(item, (int, float)) and not isinstance(item, bool)
+        if (item_is_number and value_is_number) or type(item) is type(value):
+            if item == value:
+                return position
+        checkpoint()
+        start = position + 1
 
 
 def list_contains(items: Sequence[Any], value: Any) -> bool:

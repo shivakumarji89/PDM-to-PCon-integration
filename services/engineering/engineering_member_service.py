@@ -21,19 +21,36 @@ from services.engineering.engineering_repository import EngineeringRepository
 class EngineeringMemberService(BaseService):
     """Relocate members between engineering families (business logic only)."""
 
+    @staticmethod
+    def index_articles(snapshot: Snapshot | None) -> dict:
+        """``{article.id: article}`` for one-pass lookups of many members.
+
+        The first article wins when an id repeats, exactly like the linear scan in
+        :meth:`get_article`. Build it once per pass and hand it to ``get_article``.
+        """
+        index: dict = {}
+        if snapshot is not None:
+            for article in snapshot.articles:
+                index.setdefault(article.id, article)
+        return index
+
     def get_article(
-        self, snapshot: Snapshot | None, member: MemberArticle | None
+        self, snapshot: Snapshot | None, member: MemberArticle | None,
+        index: dict | None = None,
     ) -> Article | None:
         """Return the source Article that ``member`` represents, or ``None``.
 
         Read-only lookup by ``member.article_id`` against ``snapshot.articles``.
-        Never mutates the snapshot or the engineering model.
+        Never mutates the snapshot or the engineering model. Callers resolving many
+        members pass ``index=index_articles(snapshot)`` to avoid one scan per member.
         """
         if snapshot is None or member is None:
             return None
         article_id = getattr(member, "article_id", "")
         if not article_id:
             return None
+        if index is not None:
+            return index.get(article_id)
         for article in snapshot.articles:
             if article.id == article_id:
                 return article
@@ -147,9 +164,10 @@ class EngineeringMemberService(BaseService):
         if snapshot is None or snapshot.engineering is None:
             return 0
         groups: dict[str, list[tuple[MemberArticle, str]]] = {}
+        article_index = self.index_articles(snapshot)
         for family in snapshot.engineering.families:
             for member in family.members:
-                article = self.get_article(snapshot, member)
+                article = self.get_article(snapshot, member, index=article_index)
                 code = (article.code if article is not None else "") or ""
                 if not code:
                     continue

@@ -628,12 +628,26 @@ class EngineeringReductionService(BaseService):
         except Exception:
             decoded = {}
 
+        # First property wins for a duplicated id, exactly like the linear scan this replaces.
+        first_property_by_id: dict[str, object] = {}
+        for candidate in snapshot.properties:
+            first_property_by_id.setdefault(str(candidate.id), candidate)
+        # ``effective_codes`` depends only on the pid, so each class computes it once per
+        # property instead of once per article per property (cleared for every class).
+        effective_codes_cache: dict[str, list[str]] = {}
+
         def effective_codes(pid: str) -> list[str]:
+            cached = effective_codes_cache.get(pid)
+            if cached is None:
+                cached = effective_codes_cache[pid] = _effective_codes(pid)
+            return cached
+
+        def _effective_codes(pid: str) -> list[str]:
             assignment = assignments_by_prop.get(pid)
             if assignment is None:
                 return []
             result: list[str] = []
-            prop = next((p for p in snapshot.properties if str(p.id) == pid), None)
+            prop = first_property_by_id.get(pid)
             by_name: dict[str, list[str]] = {}
             if prop is not None:
                 for pv in getattr(prop, "values", []) or []:
@@ -662,6 +676,7 @@ class EngineeringReductionService(BaseService):
         sets: list[ArticleSet] = []
         for pc in classes:
             checkpoint()
+            effective_codes_cache.clear()
             article_ids = [str(a) for a in pc.article_ids]
             attributes = self._set_attributes(
                 article_ids,
@@ -699,6 +714,51 @@ class EngineeringReductionService(BaseService):
             # PDM properties are retained as-is; this lookup is used only to
             # identify Class Creation values that explicitly carry ModelSuffix.
             property_by_id = {str(p.id): p for p in snapshot.properties}
+            # Loop-invariant per class: the shared base length of every article in the class
+            # (only needed by articles without a manual boundary) and each ModelSuffix
+            # property's valid suffix codes. Both used to be rebuilt for every article.
+            class_prefix_len: int | None = None
+            suffix_codes_by_pid: dict[str, set[str] | None] = {}
+
+            def suffix_codes_for(pid: str, assignment) -> set[str] | None:
+                if pid in suffix_codes_by_pid:
+                    return suffix_codes_by_pid[pid]
+                suffix_codes: set[str] | None = None
+                prop = property_by_id.get(pid)
+                if prop is not None:
+                    suffix_value_ids = {
+                        str(getattr(value, "id", "") or "")
+                        for value in (getattr(prop, "values", []) or [])
+                        if (getattr(value, "model_suffix", "") or "").strip()
+                    }
+                    if suffix_value_ids:
+                        suffix_codes = {
+                            (getattr(class_value, "code", "") or "").strip()
+                            for class_value in (getattr(assignment, "values", []) or [])
+                            if str(getattr(class_value, "value_id", "") or "") in suffix_value_ids
+                            and (getattr(class_value, "code", "") or "").strip()
+                        }
+                        # A missing class code may still be resolved from the
+                        # existing PDM OrderCodeValue/config-code mapping.
+                        for value in getattr(prop, "values", []) or []:
+                            if str(getattr(value, "id", "") or "") not in suffix_value_ids:
+                                continue
+                            code = (getattr(value, "code", "") or "").strip()
+                            if not code:
+                                code = (decoded.get(pid, {}) or {}).get(str(value.id), "") or ""
+                            if code:
+                                suffix_codes.add(code.strip())
+                            # Some PDM feature values carry the suffix marker
+                            # separately from OrderCodeValue. Treat that explicit
+                            # marker as a valid segment only at this placement and
+                            # configured width; prefer OrderCodeValue when present.
+                            model_suffix = (
+                                getattr(value, "model_suffix", "") or ""
+                            ).strip()
+                            if model_suffix:
+                                suffix_codes.add(model_suffix)
+                suffix_codes_by_pid[pid] = suffix_codes
+                return suffix_codes
 
             for article_id in article_ids:
                 original = code_of.get(article_id, "")
@@ -716,12 +776,14 @@ class EngineeringReductionService(BaseService):
                     except (TypeError, ValueError):
                         base_length_for_article = 0
                 else:
-                    base_length_for_article = self._common_prefix_len(
-                        [
-                            extract_pdm_exact_article_code(code_of.get(a, "")).match_key
-                            for a in article_ids
-                        ]
-                    )
+                    if class_prefix_len is None:
+                        class_prefix_len = self._common_prefix_len(
+                            [
+                                extract_pdm_exact_article_code(code_of.get(a, "")).match_key
+                                for a in article_ids
+                            ]
+                        )
+                    base_length_for_article = class_prefix_len
 
                 base = pre_dot[:base_length_for_article]
                 remaining = pre_dot[base_length_for_article:]
@@ -756,41 +818,9 @@ class EngineeringReductionService(BaseService):
                     width = max(0, int(getattr(assignment, "width", 0) or 0))
                     if width <= 0 or len(suffix_remaining) < width:
                         continue
-                    prop = property_by_id.get(pid)
-                    if prop is None:
+                    suffix_codes = suffix_codes_for(pid, assignment)
+                    if suffix_codes is None:
                         continue
-                    suffix_value_ids = {
-                        str(getattr(value, "id", "") or "")
-                        for value in (getattr(prop, "values", []) or [])
-                        if (getattr(value, "model_suffix", "") or "").strip()
-                    }
-                    if not suffix_value_ids:
-                        continue
-                    suffix_codes = {
-                        (getattr(class_value, "code", "") or "").strip()
-                        for class_value in (getattr(assignment, "values", []) or [])
-                        if str(getattr(class_value, "value_id", "") or "") in suffix_value_ids
-                        and (getattr(class_value, "code", "") or "").strip()
-                    }
-                    # A missing class code may still be resolved from the
-                    # existing PDM OrderCodeValue/config-code mapping.
-                    for value in getattr(prop, "values", []) or []:
-                        if str(getattr(value, "id", "") or "") not in suffix_value_ids:
-                            continue
-                        code = (getattr(value, "code", "") or "").strip()
-                        if not code:
-                            code = (decoded.get(pid, {}) or {}).get(str(value.id), "") or ""
-                        if code:
-                            suffix_codes.add(code.strip())
-                        # Some PDM feature values carry the suffix marker
-                        # separately from OrderCodeValue. Treat that explicit
-                        # marker as a valid segment only at this placement and
-                        # configured width; prefer OrderCodeValue when present.
-                        model_suffix = (
-                            getattr(value, "model_suffix", "") or ""
-                        ).strip()
-                        if model_suffix:
-                            suffix_codes.add(model_suffix)
                     slice_code = suffix_remaining[:width]
                     suffix_remaining = suffix_remaining[width:]
                     if slice_code in suffix_codes:

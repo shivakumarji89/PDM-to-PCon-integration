@@ -40,7 +40,10 @@ function Format-SqlValue($v) {
     return "'$s'"
 }
 
-$result = [ordered]@{ ok = $true; results = @() }
+# Generic lists, not ``@()`` + ``+=``: array ``+=`` copies the whole array on every append, which made
+# large result sets and many-op batches quadratic. ``List.Add`` is amortised O(1) and serialises to the
+# same JSON arrays (``[]`` / one-element / many).
+$result = [ordered]@{ ok = $true; results = [System.Collections.Generic.List[object]]::new() }
 $conn = $null
 $rs = $null
 $identities = @{}
@@ -146,7 +149,7 @@ try {
                 }
                 "query" {
                     $rs = $conn.Execute($op.sql)
-                    $rows = @()
+                    $rows = [System.Collections.Generic.List[object]]::new()
                     if ($null -ne $rs) {
                         $names = @(); for ($i = 0; $i -lt $rs.Fields.Count; $i++) { $names += $rs.Fields[$i].Name }
                         while (-not $rs.EOF) {
@@ -156,7 +159,7 @@ try {
                                 if ($v -is [System.DBNull]) { $v = $null }
                                 $obj[$names[$i]] = $v
                             }
-                            $rows += [pscustomobject]$obj
+                            $rows.Add([pscustomobject]$obj)
                             $rs.MoveNext()
                         }
                         $rs.Close()
@@ -173,7 +176,7 @@ try {
             $r.error = "$($_.Exception.Message)"
             $result.ok = $false
         }
-        $result.results += [pscustomobject]$r
+        $result.results.Add([pscustomobject]$r)
         if ($useTx -and -not $result.ok) { break }
     }
 
@@ -186,7 +189,7 @@ try {
 }
 catch {
     $result.ok = $false
-    $result.results += [pscustomobject]@{ op = "connect"; ok = $false; error = "$($_.Exception.Message)" }
+    $result.results.Add([pscustomobject]@{ op = "connect"; ok = $false; error = "$($_.Exception.Message)" })
 }
 finally {
     if ($rs) {

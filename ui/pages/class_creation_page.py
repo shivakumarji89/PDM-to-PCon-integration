@@ -889,6 +889,19 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         article_codes = {str(a.id): a.code for a in snapshot.articles} if snapshot else {}
         article_values = (snapshot.article_property_value_ids or {}) if snapshot else {}
         product_values = (snapshot.product_property_value_ids or {}) if snapshot else {}
+        # value id -> codes of the articles carrying it, in article order. One pass over the
+        # articles replaces a scan of every article for every displayed value. An article's own
+        # value links win; product-level links are the fallback when it has none. Only string ids
+        # can equal ``str(value.id)``, and an article is listed once per occurrence in the snapshot.
+        linked_by_value: dict[str, list[str]] = {}
+        if snapshot and (article_values or product_values):
+            for article in snapshot.articles:
+                carried = (
+                    article_values.get(str(article.id))
+                    or product_values.get(str(article.product_id), [])
+                )
+                for carried_id in {c for c in carried if isinstance(c, str)}:
+                    linked_by_value.setdefault(carried_id, []).append(article_codes[str(article.id)])
         for value in _by_display_order(displayed):
             cv = class_values.get(str(getattr(value, "id", "")))
             pdm_code = (getattr(value, "code", "") or "").strip()
@@ -898,14 +911,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
             row = self._attr_values.rowCount()
             self._attr_values.insertRow(row)
-            linked_articles = [
-                article_codes[str(article.id)]
-                for article in (snapshot.articles if snapshot else [])
-                if str(value.id) in (
-                    article_values.get(str(article.id))
-                    or product_values.get(str(article.product_id), [])
-                )
-            ] if article_values or product_values else []
+            linked_articles = linked_by_value.get(str(value.id), [])
             value_label = value.value or "-"
             if article_values or product_values:
                 value_label += " (linked)" if linked_articles else " (remaining)"
@@ -1496,13 +1502,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None or snapshot.engineering is None:
             return []
         member_service = self._context.engineering_member_service
+        article_index = member_service.index_articles(snapshot)
         rows: list[tuple[str, str]] = []
         for family in snapshot.engineering.families:
             for member in family.members:
                 base = member.reduced_article or ""
                 if not base:
                     continue
-                article = member_service.get_article(snapshot, member)
+                article = member_service.get_article(snapshot, member, index=article_index)
                 code = article.code if article is not None else ""
                 rows.append((code or base, code[len(base):]))
         return rows

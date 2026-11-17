@@ -279,9 +279,12 @@ class P00Mixin:
         self.threadStage = "8"
         # CommandTimeout = 600 in legacy; the Db default (900s) applies here.
         self.update_status_label("Loading Items...")
-        # count pass (2436-2442): feeds only the "(n of N)" status text in the per-item loop (2493) via arrayList23.Count
+        # Legacy ran this (heaviest) query twice: a count pass (2436-2442) that only feeds the
+        # "(n of N)" status text in the per-item loop (2493) via arrayList23.Count, and the main
+        # pass (2473). One execution serves both, so the two can no longer disagree either.
+        item_rows = self.q("c1", text, tuple(p))
         v.arrayList23 = []
-        for row in self.q("c1", text, tuple(p)):
+        for row in item_rows:
             self.check_abort()
             v.arrayList23.append(tostr(row["LongItem"]))
         v.item_count = len(v.arrayList23)
@@ -300,6 +303,6 @@ class P00Mixin:
         for n in range(27, 45):
             self.check_abort()
             setattr(v, "arrayList%d" % n, [])
-        # main pass (2473): the query is executed a second time, as in legacy
-        v.item_rows = self.q("c1", text, tuple(p))
+        # main pass (2473): reuses the rows fetched above (legacy re-executed the query)
+        v.item_rows = item_rows
         return None

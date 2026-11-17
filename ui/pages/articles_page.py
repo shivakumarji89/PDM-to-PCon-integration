@@ -381,13 +381,17 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         tree.clear()
         snapshot = self._context.active_snapshot
         select_item = self._add_set_row(None, "All sets")
-        for base, article_ids, base_len, prop_count, optional in self._set_rows(snapshot):
+        code_of = (
+            {str(a.id): (a.code or "") for a in snapshot.articles}
+            if snapshot is not None else {}
+        )
+        for base, article_ids, base_len, prop_count, optional in self._set_rows(snapshot, code_of):
             ids = frozenset(str(a) for a in article_ids)
             label = (
                 f"{base}: {len(article_ids)} articles \u2013 {prop_count} properties"
                 + (f" ({len(optional)} optional)" if optional else "")
             )
-            maxlen = self._set_max_code_len(snapshot, article_ids)
+            maxlen = self._set_max_code_len(snapshot, article_ids, code_of)
             self._set_len_by_ids[ids] = base_len or maxlen
             item = self._add_set_row(ids, label)
             if optional:
@@ -401,7 +405,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         tree.setCurrentItem(select_item)
         self._syncing = False
 
-    def _set_rows(self, snapshot):
+    def _set_rows(self, snapshot, code_of=None):
         """Yield (base, article_ids, base_length, property_count, optional) for
         each Article Sets row: base masters when the materialised article_sets
         exist (merge same-base classes), else the property-structure classes
@@ -436,8 +440,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                     member = members_by_article.get(str(aid))
                     base = (getattr(member, "reduced_article", "") if member else "") or ""
                     base = base or "Set"
-                    entry = by_base.setdefault(base, {"ids": [], "props": set()})
-                    if str(aid) not in entry["ids"]:
+                    entry = by_base.setdefault(base, {"ids": [], "seen": set(), "props": set()})
+                    if str(aid) not in entry["seen"]:
+                        entry["seen"].add(str(aid))
                         entry["ids"].append(str(aid))
                     entry["props"].update(set_props.get(str(aid), set()))
             for base, entry in by_base.items():
@@ -448,7 +453,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                        len(m.property_names), m.optional_property_names)
         else:
             for cls in svc.classify_by_properties(snapshot):
-                prefix = self._set_prefix(snapshot, cls.article_ids) or "Set"
+                prefix = self._set_prefix(snapshot, cls.article_ids, code_of) or "Set"
                 yield (prefix, cls.article_ids, None, len(cls.property_names), ())
 
     def _add_set_row(self, ids, label: str):
@@ -993,10 +998,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         families = list(engineering.families) if engineering is not None else []
         self._families = families
         member_service = self._context.engineering_member_service
+        article_index = member_service.index_articles(snapshot)
         rows: list[tuple] = []
         for family in families:
             for member in family.members:
-                article = member_service.get_article(snapshot, member)
+                article = member_service.get_article(snapshot, member, index=article_index)
                 rows.append((family, member, article))
         return rows
 
@@ -1083,22 +1089,26 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         return None
 
     @staticmethod
-    def _set_max_code_len(snapshot, article_ids) -> int:
-        """The longest article-code length in the set (spinbox upper bound)."""
+    def _set_max_code_len(snapshot, article_ids, code_of=None) -> int:
+        """The longest article-code length in the set (spinbox upper bound).
+
+        ``code_of`` (``{str(id): code}``) may be passed to share one map across many sets."""
         if snapshot is None:
             return 0
-        code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
+        if code_of is None:
+            code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
         return max(
             (len(code_of.get(str(a), "")) for a in article_ids), default=0
         )
 
     @staticmethod
-    def _set_prefix(snapshot, article_ids) -> str:
+    def _set_prefix(snapshot, article_ids, code_of=None) -> str:
         """The longest article-code prefix common to every article in the set -
         the natural 'shortened article' shown for the set (uncapped)."""
         if snapshot is None:
             return ""
-        code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
+        if code_of is None:
+            code_of = {str(a.id): (a.code or "") for a in snapshot.articles}
         codes = [c for c in (code_of.get(str(a), "") for a in article_ids) if c]
         if not codes:
             return ""
@@ -1564,6 +1574,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         default_len = self._default_base_len()
         groups: dict[str, dict] = {}
         order_keys: list[str] = []
+        # id(member) -> the bases it was grouped under, so each group's export ids can be
+        # gathered in one pass over ``rows`` (it used to rescan every row for every group).
+        bases_of_member: dict[int, list[str]] = {}
         for family, member, article in rows:
             code = article.code if article is not None else ""
             if (
@@ -1583,8 +1596,17 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 groups[base] = group
                 order_keys.append(base)
             group["members"].append(member)
+            member_bases = bases_of_member.setdefault(id(member), [])
+            if base not in member_bases:
+                member_bases.append(base)
             if remaining:
                 group["remainders"].add(remaining)
+        article_ids_by_base: dict[str, set[str]] = {base: set() for base in order_keys}
+        for _family, member, article in rows:
+            if article is None:
+                continue
+            for base in bases_of_member.get(id(member), ()):
+                article_ids_by_base[base].add(str(article.id))
         for order, base in enumerate(order_keys):
             group = groups[base]
             members = group["members"]
@@ -1640,12 +1662,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             order_item.setData(Qt.ItemDataRole.DisplayRole, order)
             self._set_readonly(order_item)
             self._table.setItem(row, _COL_ORDER, order_item)
-            article_ids = {
-                str(article.id)
-                for _family, member, article in rows
-                if article is not None and any(member is grouped for grouped in members)
-            }
-            self._set_export_checkbox(row, article_ids)
+            self._set_export_checkbox(row, article_ids_by_base[base])
 
     def _set_export_checkbox(self, row: int, article_ids: set[str]) -> None:
         item = QTableWidgetItem()

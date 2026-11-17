@@ -239,8 +239,11 @@ class PDMService(BaseService):
                     for p in products
                 ],
             }
+            # Machine cache read back with json.loads: compact output (no ``indent``) keeps the
+            # C encoder on the fast path and the file small.
             self._REGISTRY_CACHE.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
             )
         except OSError:
             # Cache writing is best-effort and must never break a load.
@@ -292,7 +295,9 @@ class PDMService(BaseService):
                 "value_range": dict(snapshot.value_range),
                 "product_range": dict(snapshot.product_range),
             }
-            text = json.dumps(payload, ensure_ascii=False, indent=1)
+            # No ``indent``: it forces the pure-Python encoder and roughly doubles the file. The
+            # cache is machine-written and only ever parsed with json.loads.
+            text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             checkpoint()
             from tempfile import NamedTemporaryFile
             import os
