@@ -548,7 +548,6 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         buttons = (
             (self._apply_len_btn, "secondary"), (self._dot_base_btn, "secondary"),
             (self._copy_long_btn, "secondary"), (self._components_btn, "secondary"),
-            (self._clear_btn, "danger"),
         )
         if on:
             body.removeWidget(self._table)
@@ -668,8 +667,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # every control stays reachable at any width (see _apply_shell).
         self._toolbar_legacy_layout = self._toolbar_box.layout()
         self._toolbar_widgets = [
-            (self._toolbar_legacy_layout.itemAt(i).widget(), self._toolbar_legacy_layout.stretch(i))
+            (item.widget(), self._toolbar_legacy_layout.stretch(i))
             for i in range(self._toolbar_legacy_layout.count())
+            if (item := self._toolbar_legacy_layout.itemAt(i)) is not None
+            and item.widget() is not None
         ]
         self._shell_toolbar = QFrame(self)
         self._shell_toolbar.setObjectName("wfShellToolbar")
