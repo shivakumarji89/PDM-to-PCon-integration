@@ -36,6 +36,8 @@ families verified here and remain only in ``VarCondService``'s opt-in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
+from time import perf_counter
 from typing import Callable, Sequence
 
 from services.base_service import BaseService
@@ -292,6 +294,7 @@ class MaintenanceVarCondService(BaseService):
             for offset in range(0, total, chunk_size):
                 chunk = list(codes[offset:offset + chunk_size])
                 placeholders = repo._placeholders(len(chunk))
+                stage_started = perf_counter()
                 item_rows = repo._execute(
                     "SELECT i.ItemId, i.Item, i.Notes, pr.ProductCategoryId "
                     "FROM Item i INNER JOIN Product p ON i.ProductId = p.ProductId "
@@ -299,6 +302,9 @@ class MaintenanceVarCondService(BaseService):
                     f"WHERE i.Item IN ({placeholders})",
                     tuple(chunk), connection=conn,
                 )
+                logger = logging.getLogger(__name__)
+                logger.info("VARCOND parent metadata query: parents=%d elapsed=%.3fs",
+                            len(chunk), perf_counter() - stage_started)
                 by_code = {str(row.Item): row for row in item_rows}
                 sources = {code: ParentSource(parent=code) for code in chunk}
                 for code, src in sources.items():
@@ -310,6 +316,7 @@ class MaintenanceVarCondService(BaseService):
                     row.ItemId: str(row.Item) for row in item_rows
                 }
                 item_ids = list(item_id_to_code)
+                bom_started = perf_counter()
                 if item_ids:
                     for id_chunk in repo._chunked(item_ids, chunk_size):
                         id_placeholders = repo._placeholders(len(id_chunk))
@@ -336,6 +343,10 @@ class MaintenanceVarCondService(BaseService):
                                 str(comp.ComponentSequence or ""),
                                 str(comp.FeaturePositionString or ""),
                             ))
+
+                logger.info("VARCOND BOM query stage: parents=%d components=%d elapsed=%.3fs",
+                            len(chunk), sum(len(src.components) for src in sources.values()),
+                            perf_counter() - bom_started)
 
                 # Resolve category fallback notes once for the whole batch.
                 category_ids = list(dict.fromkeys(
@@ -375,80 +386,133 @@ class MaintenanceVarCondService(BaseService):
                             "parametric codes may be incorrect."
                         )
 
+                attributes_started = perf_counter()
                 self._load_attributes_batch(repo, conn, sources)
+                logger.info("VARCOND attribute stage: parents=%d elapsed=%.3fs",
+                            len(chunk), perf_counter() - attributes_started)
 
-                # Fetch the legacy increment procedure results concurrently.
-                # It is still called once per unique component with identical
-                # item resolution and parameters; separate connections avoid
-                # sharing a pyodbc connection across worker threads.
-                unique_missing = list(dict.fromkeys(
-                    sub
-                    for src in sources.values() if src.found
-                    for sub, _qty, _seq, _fps in src.components
-                    if sub and sub not in self._increment_cache
-                ))
-                if unique_missing:
-                    self._load_increments_parallel(unique_missing)
+                # Publish each parent as soon as its own component increments
+                # are ready. A slow component no longer holds back unrelated parents.
+                parents_by_component: dict[str, list[str]] = {}
+                pending_by_parent: dict[str, set[str]] = {}
+                for code, src in sources.items():
+                    if not src.found:
+                        pending_by_parent[code] = set()
+                        continue
+                    missing_for_parent = {
+                        sub for sub, _qty, _seq, _fps in src.components
+                        if sub and sub not in self._increment_cache
+                    }
+                    pending_by_parent[code] = missing_for_parent
+                    for sub in missing_for_parent:
+                        parents_by_component.setdefault(sub, []).append(code)
 
-                for code in chunk:
+                published: set[str] = set()
+
+                def publish_ready(code: str) -> None:
+                    if code in published:
+                        return
                     src = sources[code]
                     if src.found:
                         for sub, _qty, _seq, _fps in src.components:
                             if sub:
                                 src.increments[sub] = self._increment_cache.get(sub, [])
                     out[code] = src
-                    # Publish a fully resolved parent immediately. The caller
-                    # caches it before generating its rules and streaming them
-                    # to the UI; incomplete component increments are never shown.
+                    published.add(code)
                     if source_callback:
                         source_callback(src)
                     if progress_callback:
                         progress_callback(len(out), total, code)
+
+                # Parents needing no new procedure calls can be displayed now.
+                for code in chunk:
+                    if not pending_by_parent[code]:
+                        publish_ready(code)
+
+                unique_missing = list(parents_by_component)
+                if unique_missing:
+                    self._load_increments_parallel(
+                        unique_missing,
+                        component_callback=lambda sub, _rows: self._publish_increment_dependents(
+                            sub, parents_by_component, pending_by_parent,
+                            sources, published, publish_ready
+                        ),
+                    )
+
+                # Defensive completion for parents with no BOM / no components.
+                for code in chunk:
+                    if code not in published:
+                        publish_ready(code)
         finally:
             conn.close()
         return out
 
-    def _load_increments_parallel(self, components: Sequence[str]) -> None:
-        """Load legacy component increments with a small bounded worker pool.
+    @staticmethod
+    def _publish_increment_dependents(
+        component: str,
+        parents_by_component: dict[str, list[str]],
+        pending_by_parent: dict[str, set[str]],
+        sources: dict[str, ParentSource],
+        published: set[str],
+        publish_ready: Callable[[str], None],
+    ) -> None:
+        """Mark one component complete and publish newly-ready parents."""
+        for parent in parents_by_component.get(component, ()):
+            pending = pending_by_parent[parent]
+            pending.discard(component)
+            if not pending and parent not in published:
+                publish_ready(parent)
 
-        Each worker owns one PDM connection and processes multiple components.
-        The stored procedure, its item resolver and its result filtering remain
-        unchanged. Results are merged into the shared cache only on this
-        calling thread.
+    def _load_increments_parallel(
+        self,
+        components: Sequence[str],
+        component_callback: Callable[[str, list[tuple[int, str]]], None] | None = None,
+    ) -> None:
+        """Load component increments with at most four concurrent PDM sessions.
+
+        Results are collected as individual calls finish, so callers can publish
+        parent articles without waiting for the slowest component in the batch.
+        The legacy resolver, stored procedure and parameters are unchanged.
         """
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from time import perf_counter
+        import logging
         from repositories.pdm_repository import PDMRepository
 
+        logger = logging.getLogger(__name__)
         workers = min(4, len(components))
-        if workers <= 1:
-            repo = PDMRepository(self.context)
-            conn = repo.get_connection()
-            try:
-                for component in components:
-                    self._increment_cache[component] = self._fetch_increments(
-                        repo, conn, component
-                    )
-            finally:
-                conn.close()
+        if workers <= 0:
             return
 
-        buckets = [components[index::workers] for index in range(workers)]
-
-        def load_bucket(bucket: Sequence[str]) -> dict[str, list[tuple[int, str]]]:
+        def load_component(component: str):
             worker_repo = PDMRepository(self.context)
             worker_conn = worker_repo.get_connection()
+            started = perf_counter()
             try:
-                return {
-                    component: self._fetch_increments(worker_repo, worker_conn, component)
-                    for component in bucket
-                }
+                rows = self._fetch_increments(worker_repo, worker_conn, component)
+                return component, rows, perf_counter() - started
             finally:
                 worker_conn.close()
 
+        started = perf_counter()
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="varcond-increment") as pool:
-            futures = [pool.submit(load_bucket, bucket) for bucket in buckets if bucket]
-            for future in futures:
-                self._increment_cache.update(future.result())
+            futures = {
+                pool.submit(load_component, component): component
+                for component in components
+            }
+            for future in as_completed(futures):
+                component, rows, elapsed = future.result()
+                self._increment_cache[component] = rows
+                logger.info(
+                    "VARCOND increment loaded: component=%s rows=%d elapsed=%.3fs",
+                    component, len(rows), elapsed,
+                )
+                if component_callback:
+                    component_callback(component, rows)
+        logger.info(
+            "VARCOND increment stage complete: components=%d workers=%d elapsed=%.3fs",
+            len(components), workers, perf_counter() - started,
+        )
 
     def _load_attributes_batch(self, repo, conn, sources: dict[str, ParentSource]) -> None:
         """Load the existing attribute projection for many parents per query.
