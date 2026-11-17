@@ -41,8 +41,8 @@ MODULE_ITEMS: tuple[ModuleItem, ...] = (
     ),
     ModuleItem(
         WorkbenchModule.MAINTENANCE,
-        "Maintenance",
-        "Maintain and update published product packages.",
+        "ProductStudio",
+        "Product Development & Configuration",
     ),
     ModuleItem(
         WorkbenchModule.QA_VALIDATION,
