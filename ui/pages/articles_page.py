@@ -196,13 +196,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACE_2)
 
+        # Keep the complete control strip grouped at the right edge.
+        layout.addStretch(1)
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search code or description...")
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumWidth(170)
         self._search.setMaximumWidth(230)
         self._search.textChanged.connect(self._schedule_filter)
-        layout.addWidget(self._search, 1)
+        layout.addWidget(self._search)
 
         base_label = QLabel("Base:", box)
         self._base_len_spin = QSpinBox(box)
@@ -269,6 +271,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._view_combo.currentIndexChanged.connect(
             lambda index: self._on_group_toggled(bool(self._view_combo.itemData(index)))
         )
+        # Match the Actions menu button to the view selector's dimensions.
+        self._actions_btn.setFixedSize(self._view_combo.sizeHint())
         layout.addWidget(self._view_combo)
 
         self._maintenance_export_component = "Articles"
@@ -665,7 +669,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             (self._toolbar_legacy_layout.itemAt(i).widget(), self._toolbar_legacy_layout.stretch(i))
             for i in range(self._toolbar_legacy_layout.count())
         ]
-        self._shell_toolbar = FlowFrame(self, theme.SPACE_2)
+        self._shell_toolbar = QFrame(self)
         self._shell_toolbar.setObjectName("wfShellToolbar")
         self._shell_toolbar.setStyleSheet(
             f"QFrame#wfShellToolbar {{ background: {theme.WB_SURFACE}; border: 1px solid {theme.WB_BORDER}; "
@@ -675,9 +679,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             f"border-radius: 4px; background: {theme.WB_SURFACE}; }} "
             f"QCheckBox::indicator:checked {{ background: {theme.WB_GREEN}; border-color: {theme.WB_GREEN}; }}"
         )
-        self._shell_toolbar_flow = self._shell_toolbar.flow
+        self._shell_toolbar_flow = QHBoxLayout(self._shell_toolbar)
         self._shell_toolbar_flow.setContentsMargins(theme.SPACE_3, 6, theme.SPACE_3, 6)
-        self._shell_toolbar.flow._spacing = theme.SPACE_2
+        self._shell_toolbar_flow.setSpacing(theme.SPACE_2)
+        self._shell_toolbar_flow.addStretch(1)
         # Related controls travel together when the toolbar wraps.
         loose = [w for w, _ in self._toolbar_widgets]
         base_label = loose[loose.index(self._base_len_spin) - 1]
