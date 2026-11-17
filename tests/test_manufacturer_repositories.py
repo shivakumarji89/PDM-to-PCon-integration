@@ -67,18 +67,23 @@ def config_for(hm, knoll, tmp_path=None) -> AppConfig:
 
 
 # ------------------------------------------------------------------ home page
+def shown(item) -> str:
+    """The status text without its manufacturer label (the compact widget renders "<label>  <status>")."""
+    return item._text.text().split("  ", 1)[1]
+
+
 def home(config: AppConfig) -> ModuleHomePage:
     return ModuleHomePage(ApplicationContext(config))
 
 
 def test_both_repositories_connected(workspaces):
     page = home(config_for(*workspaces))
-    assert page._hm_repository_status._second.text() == "Connected"
-    assert page._knoll_repository_status._second.text() == "Connected"
+    assert shown(page._hm_repository_status) == "Connected"
+    assert shown(page._knoll_repository_status) == "Connected"
     assert page._hm_repository_status._dot.styleSheet().startswith(GREEN)
     assert page._knoll_repository_status._dot.styleSheet().startswith(GREEN)
-    assert page._hm_repository_status._first.text() == "HM Repository"
-    assert page._knoll_repository_status._first.text() == "Knoll Repository"
+    assert page._hm_repository_status._text.text().startswith("HM  ")
+    assert page._knoll_repository_status._text.text().startswith("Knoll  ")
 
 
 @pytest.mark.parametrize("down", ["hm", "knoll"])
@@ -88,18 +93,18 @@ def test_one_unavailable_repository_does_not_affect_the_other(workspaces, tmp_pa
     page = home(config_for(gone if down == "hm" else hm, gone if down == "knoll" else knoll))
     bad, good = ((page._hm_repository_status, page._knoll_repository_status) if down == "hm"
                  else (page._knoll_repository_status, page._hm_repository_status))
-    assert bad._second.text().startswith("Not connected")
+    assert shown(bad).startswith("Not connected")
     assert not bad._dot.styleSheet().startswith(GREEN)
     assert "Folder not found" in bad.toolTip() and str(gone) in bad.toolTip()
-    assert good._second.text() == "Connected" and good._dot.styleSheet().startswith(GREEN)
+    assert shown(good) == "Connected" and good._dot.styleSheet().startswith(GREEN)
 
 
 def test_both_unavailable_each_reports_its_own_reason(tmp_path):
     page = home(config_for(tmp_path / "no_hm", tmp_path / "no_knoll"))
     assert str(tmp_path / "no_hm") in page._hm_repository_status.toolTip()
     assert str(tmp_path / "no_knoll") in page._knoll_repository_status.toolTip()
-    assert page._hm_repository_status._second.text().startswith("Not connected")
-    assert page._knoll_repository_status._second.text().startswith("Not connected")
+    assert shown(page._hm_repository_status).startswith("Not connected")
+    assert shown(page._knoll_repository_status).startswith("Not connected")
 
 
 def test_status_is_independent_of_active_repository_and_pdm(workspaces, tmp_path):
@@ -108,16 +113,18 @@ def test_status_is_independent_of_active_repository_and_pdm(workspaces, tmp_path
     config.repository_browser_roots = {"Seating": str(tmp_path / "no_seating")}      # Active Repository unavailable
     page = home(config)
     assert page._repository_status._second.text().startswith("Not connected")
-    assert page._hm_repository_status._second.text() == "Connected"
-    assert page._knoll_repository_status._second.text() == "Connected"
+    assert shown(page._hm_repository_status) == "Connected"
+    assert shown(page._knoll_repository_status) == "Connected"
     assert page._pdm_status._first.text() == "PDM Database"                           # separate item, untouched
 
 
-def test_status_strip_keeps_module_order_and_adds_the_two_items(workspaces):
+def test_hm_and_knoll_are_grouped_under_active_repository_ahead_of_pdm(workspaces):
     page = home(config_for(*workspaces))
     items = page._status_strip._items
-    assert items.index(page._repository_status) < items.index(page._hm_repository_status) \
-        < items.index(page._knoll_repository_status) < items.index(page._pdm_group)
+    group = page._active_repository_group
+    assert items.index(group) < items.index(page._pdm_group)
+    assert page._repository_status.parent() is group
+    assert page._hm_repository_status.parent() is group and page._knoll_repository_status.parent() is group
     assert page._mdb_status in items and page._application_status in items
 
 
@@ -127,8 +134,8 @@ def test_refresh_status_notices_a_repository_coming_and_going(workspaces, tmp_pa
     page = home(config)
     config.knoll_repository_workspace = str(tmp_path / "unplugged")
     page.refresh_status()
-    assert page._knoll_repository_status._second.text().startswith("Not connected")
-    assert page._hm_repository_status._second.text() == "Connected"
+    assert shown(page._knoll_repository_status).startswith("Not connected")
+    assert shown(page._hm_repository_status) == "Connected"
 
 
 def test_configured_paths_come_from_config_and_can_be_overridden(tmp_path, monkeypatch):
