@@ -1626,7 +1626,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             QMessageBox.information(self, "Export Selected Articles",
                 "Tick at least one article in the Export column before exporting.")
             return
-        handler = getattr(self.window(), "_on_export_mdb", None)
+        window = self.window()
+        handler = getattr(window, "_on_export_articles_to_mdb", None) or getattr(
+            window, "_on_export_mdb", None
+        )
         if callable(handler):
             handler(selected_article_ids=ids)
 

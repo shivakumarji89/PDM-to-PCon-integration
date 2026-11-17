@@ -21,6 +21,7 @@ from models.snapshot import Snapshot
 from models.maintenance_snapshot import MaintenanceSnapshot
 from services.article_service import ArticleService
 from services.obx_service import OBXService
+from services.mdb_export_session_service import MdbExportSessionService
 from services.mdb_service import MDBService
 from services.xocd_export_service import XocdExportService
 from services.xocd_svn_service import XocdSvnService
@@ -29,6 +30,7 @@ from services.price_update_service import PriceUpdateService
 from services.version_update_service import VersionUpdateService
 from services.sif_validation_service import SifValidationService  # CET SIF (disconnectable)
 from services.obx_validation_service import ObxValidationService
+from services.article_mdb_export_service import ArticleMdbExportService
 from services.article_obx.article_obx_service import ArticleObxService
 from services.article_obx.article_permutation_service import ArticlePermutationService
 from services.pip_service import PipService
@@ -356,6 +358,14 @@ class ApplicationContext:
     @property
     def mdb_service(self) -> MDBService:
         return self.get_service(MDBService)
+
+    @property
+    def mdb_export_session_service(self) -> MdbExportSessionService:
+        return self.get_service(MdbExportSessionService)
+
+    @property
+    def article_mdb_export_service(self) -> ArticleMdbExportService:
+        return self.get_service(ArticleMdbExportService)
 
     @property
     def mdb_reverse_engineering_service(self) -> MdbReverseEngineeringService:

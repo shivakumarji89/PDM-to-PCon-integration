@@ -1721,6 +1721,80 @@ class MainWindow(QMainWindow):
                if standardised else ""),
         )
 
+    def _on_export_articles_to_mdb(self, selected_article_ids: set[str] | None = None) -> None:
+        """ProductStudio Articles export into the product's single MDB.
+
+        First export creates the MDB from the category template (asking for a
+        folder once); later exports reuse the same file. All logic lives in
+        ``MdbExportSessionService`` / ``ArticleMdbExportService``.
+        """
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from services.mdb_export_session_service import ExportSessionError
+
+        title = "Export Articles to MDB"
+        is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
+        if snapshot is None or snapshot.product is None:
+            QMessageBox.information(self, title, "Load a product first.")
+            return
+        if not selected_article_ids:
+            QMessageBox.information(self, title, "Tick at least one article in the Export column first.")
+            return
+
+        sessions = self._context.mdb_export_session_service
+        try:
+            session = sessions.get_active(snapshot)
+        except ExportSessionError as exc:
+            answer = QMessageBox.question(
+                self, title, f"{exc}\n\nDiscard the old session and create a new MDB?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            sessions.discard(snapshot)
+            session = None
+
+        created = False
+        if session is None:
+            directory = QFileDialog.getExistingDirectory(
+                self, "Create the product's MDB in folder (a pcr_data_com_ocd.mdb is written inside)"
+            )
+            if not directory:
+                return
+            try:
+                session = sessions.initialize(snapshot, directory)
+            except ExportSessionError as exc:
+                QMessageBox.warning(self, title, f"Could not create the MDB:\n{exc}")
+                return
+            created = True
+
+        # Same snapshot preparation as the full export so base codes match.
+        if not is_maintenance:
+            psvc = self._context.price_update_service
+            psvc.apply_registry(snapshot, psvc.registry_path())
+        export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
+        result = self._context.article_mdb_export_service.export_to_session(
+            export_snapshot, session, selected_article_ids
+        )
+        if not result.get("ok"):
+            QMessageBox.critical(
+                self, title,
+                "Export failed. The MDB was not changed by this export.\n\n"
+                f"{result.get('error', 'unknown error')}\n\nMDB: {session.mdb_path}",
+            )
+            return
+        text = (
+            f"{'Created new MDB' if created else 'Updated existing MDB'}:\n{session.mdb_path}\n\n"
+            f"Articles inserted: {result['inserted']}\n"
+            f"Articles updated: {result['updated']}\n"
+            f"Articles skipped (unchanged or ambiguous): {result['skipped']}\n"
+            f"Code schemes created: {result['schemes_created']}"
+        )
+        if result.get("warnings"):
+            text += "\n\nWarnings:\n" + "\n".join(f"• {m}" for m in result["warnings"][:8])
+        QMessageBox.information(self, title, text)
+
     def _on_export_snapshot_excel(self) -> None:
         """Export the loaded snapshot to a multi-sheet Excel review workbook."""
         from PySide6.QtWidgets import QFileDialog, QMessageBox

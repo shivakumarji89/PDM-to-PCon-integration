@@ -205,6 +205,17 @@ class OcdExportService(BaseService):
             mdb = mdb / "pcr_data_com_ocd.mdb"
         result.mdb_path = str(mdb)
 
+        # This legacy path copies a fresh template and wipes every product table.
+        # Never let it run over a product's active incremental export MDB.
+        sessions = getattr(self.context, "mdb_export_session_service", None)
+        if sessions is not None and sessions.session_for_mdb_path(mdb) is not None:
+            result.error = (
+                f"{mdb} is the active ProductStudio export MDB for a product. "
+                "The full re-export would erase its incrementally exported data; "
+                "choose a different folder."
+            )
+            return result
+
         try:
             mdb_svc.copy_template(template, mdb)
         except OSError as exc:
@@ -587,14 +598,16 @@ class OcdExportService(BaseService):
         self, snapshot: Snapshot, package_id: Any, comgroup_id: Any,
         series_id: str, protos: dict[str, dict[str, Any]],
         price_lists: dict[str, dict[str, Any]], material_map_id: Any,
-        result: OcdExportResult,
+        result: OcdExportResult, selected_article_ids: set[str] | None = None,
     ) -> list[tuple[str, list[dict[str, Any]]]]:
-        """Assemble every ``tCOMd_`` insert batch, parent tables first."""
+        """Assemble every ``tCOMd_`` insert batch, parent tables first.
+
+        ``selected_article_ids`` limits the base articles (``None`` = all)."""
         xocd = self.context.xocd_export_service
         classes = self.context.engineering_class_service.get_classes(snapshot)
         codes = xocd._value_code_map(snapshot)
         digits = xocd._value_lengths(snapshot)
-        base_codes = xocd._base_codes(snapshot)
+        base_codes = xocd._base_codes(snapshot, selected_article_ids)
         token_by_base = xocd._group_token_by_base(snapshot, classes)
 
         text_rows, text_index = self._text(snapshot, package_id, protos["tCOMd_Text"])
