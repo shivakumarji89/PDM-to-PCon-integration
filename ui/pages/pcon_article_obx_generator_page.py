@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from services.article_obx.ocd_repository_obx import export_obx
 from services.article_obx.validator_handoff import shared_handoff
+from ui.dialogs.basket_validation_dialog import BasketValidationDialog
 from services.ocd_engine.catalogue import (
     CatalogueScan,
     OcdArticle,
@@ -123,6 +124,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._outcome_price_date = ""
         self._validator_handoff = shared_handoff()
         self._run: ReportedTask | None = None
+        self._exported_obx_paths: list[Path] = []
+        self._basket_validation_dialog = None
 
         self._build_content()
         self._fill_workspaces()
@@ -231,6 +234,10 @@ class PconArticleObxGeneratorPage(BasePage):
             "Apply the selected currency and price date from ocd_price.csv to the already-generated SKU list. "
             "This does not enumerate SKUs again.")
         row.addWidget(self._diagnostics_button)
+        self._basket_validation_button = self._button("Basket Validation", self._on_basket_validation)
+        self._basket_validation_button.setToolTip(
+            "Validate through pCon.basket CE: OBX import, article update, migration handling, OBX export and validation.")
+        row.addWidget(self._basket_validation_button)
         layout.addLayout(row)
 
         self._catalogue_status = QLabel("", self)
@@ -385,6 +392,41 @@ class PconArticleObxGeneratorPage(BasePage):
         self._validator_action.setEnabled(idle and has_exportable)
         selected_skus = bool(self._result_table.selectionModel().selectedRows()) if hasattr(self, "_result_table") else False
         self._diagnostics_button.setEnabled(idle and usable and self._outcome is not None and selected_skus)
+        dialog = self._basket_validation_dialog
+        self._basket_validation_button.setEnabled(idle and not (dialog is not None and dialog.isVisible()))
+
+    def _basket_validation_files(self) -> list[Path]:
+        """OBX files exported in this session that still exist; otherwise the user picks them."""
+        files = [p for p in dict.fromkeys(self._exported_obx_paths) if p.is_file()]
+        if files:
+            return files
+        picked, _ = QFileDialog.getOpenFileNames(
+            self, "Basket Validation - choose OBX file(s)",
+            self._settings.value(_SETTINGS_PREFIX + "outputPath", "", type=str), "OBX files (*.obx)")
+        return [Path(p) for p in picked]
+
+    def _on_basket_validation(self) -> None:
+        """Basket Validation: behaviour lives in ``services.basket_validation``; the dialog runs it in a QThread."""
+        if self._run is not None and self._run.active:
+            return
+        files = self._basket_validation_files()
+        if not files:
+            self._set_status(self._catalogue_status,
+                             "Basket Validation: no OBX file selected. Export OBX first or choose a file.", theme.COLOR_WARNING)
+            return
+        dialog = BasketValidationDialog(files, parent=self)
+        self._basket_validation_dialog = dialog
+        dialog.finished.connect(lambda _=0: self._on_basket_validation_closed(dialog))
+        self._update_controls()
+        dialog.open()
+
+    def _on_basket_validation_closed(self, dialog) -> None:
+        self._update_controls()
+        if dialog.result is not None:
+            self._set_status(self._catalogue_status, f"Basket Validation: {dialog.result.overall} - {dialog.result.message}",
+                             theme.COLOR_OK if dialog.result.passed else theme.COLOR_ERROR)
+        elif dialog.error:
+            self._set_status(self._catalogue_status, f"Basket Validation could not run: {dialog.error}", theme.COLOR_ERROR)
 
     # --------------------------------------------------------------- helpers
     def _progress_monitor(self) -> ProgressDialog:
@@ -1027,6 +1069,8 @@ class PconArticleObxGeneratorPage(BasePage):
         self._validation_label.setText(" ".join(snapshot.problems))
 
     def _on_exported(self, summary) -> None:
+        if getattr(summary, "path", None):
+            self._exported_obx_paths.append(Path(summary.path))
         text = (f"Exported {summary.exported} SKU(s) to {summary.path}; "
                 f"{summary.article_lines} article line(s) read back")
         if summary.skipped_unpriced:

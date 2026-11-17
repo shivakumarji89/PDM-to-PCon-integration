@@ -245,6 +245,83 @@ def test_page_has_no_plugin_connection_controls(no_plugin, monkeypatch):
     assert "Inspect Properties" not in texts and "Max SKUs:" not in texts
     assert not {"Check Connection", "Install Plugin"} & texts
     assert widget.header.title_label.text() == "Article OBX Generator (OCD Engine)"
+
+
+# ---- Basket Validation: button + isolated entry point (runner behaviour: tests/test_basket_validation.py) ----
+def test_basket_validation_button_matches_the_existing_controls(page):
+    widget = page
+    buttons = [b for b in widget.findChildren(page_module.QPushButton) if b.text() == "Basket Validation"]
+    assert len(buttons) == 1
+    button = buttons[0]
+    assert button is widget._basket_validation_button
+    price = widget._diagnostics_button
+    assert button.parent() is price.parent() and button.minimumHeight() == price.minimumHeight()
+    # Same stylesheet as its neighbour apart from the per-button object name.
+    assert button.styleSheet().replace(button.objectName(), "X") == price.styleSheet().replace(price.objectName(), "X")
+    assert button.isEnabled()                          # idle; it needs no catalogue or generated SKUs
+    assert {b.text() for b in widget.findChildren(page_module.QPushButton)} >= {"Price Selected", "Basket Validation"}
+    assert {a.text() for a in widget._obx_actions_button.menu().actions()} == {"Export OBX", "Prepare for Validator"}
+
+
+def test_basket_validation_click_opens_the_dialog_for_the_exported_obx(page, tmp_path, monkeypatch):
+    obx = tmp_path / "exported.obx"
+    obx.write_text("<x/>")
+    shown = []
+
+    class FakeDialog:
+        result = None
+        error = None
+
+        def __init__(self, files, parent=None):
+            shown.append(list(files))
+            self.finished = Mock()
+
+        def open(self):
+            pass
+
+        def isVisible(self):
+            return True
+
+    monkeypatch.setattr(page_module, "BasketValidationDialog", FakeDialog)
+    page._exported_obx_paths.append(obx)
+    page._basket_validation_button.click()
+    assert shown == [[obx]]
+    assert not page._basket_validation_button.isEnabled()     # disabled while the dialog is open
+    page_module.QMessageBox.information.assert_not_called()
+
+
+def test_basket_validation_without_files_asks_for_a_file_and_starts_nothing(page, monkeypatch):
+    monkeypatch.setattr(page_module.QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: ([], "")))
+    created = []
+    monkeypatch.setattr(page_module, "BasketValidationDialog", lambda *a, **k: created.append(1))
+    page._basket_validation_button.click()
+    assert created == []
+    assert "no OBX file selected" in page._catalogue_status.text()
+
+
+def test_basket_validation_entry_is_enabled_and_pulls_in_no_ocd_engine_or_playwright():
+    import subprocess
+    import sys
+    from pathlib import Path
+    from services.basket_validation import entry
+    assert entry.BASKET_VALIDATION_ENABLED is True
+    code = ("import sys, services.basket_validation.entry as e; "
+            "bad = [m for m in sys.modules if m.startswith(('playwright', 'services.ocd_engine', 'services.article_obx'))]; "
+            "print('LOADED:' + ','.join(bad))")
+    result = subprocess.run([sys.executable, "-B", "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("LOADED:"), result.stdout
+
+
+def test_basket_validation_button_is_disabled_while_a_task_runs(page):
+    widget = page
+    assert widget._basket_validation_button.isEnabled()
+    widget._run = Mock()
+    widget._update_controls()
+    assert not widget._basket_validation_button.isEnabled()
+    widget._run = None
+    widget._update_controls()
+    assert widget._basket_validation_button.isEnabled()
     dispose(widget)
 
 
