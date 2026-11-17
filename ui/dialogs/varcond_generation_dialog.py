@@ -46,13 +46,24 @@ class VarCondGenerationPanel(QWidget):
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
-        filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Relation / Article Filter:"))
-        self._filter = QLineEdit(self)
-        self._filter.setPlaceholderText("Filter article codes (starts with)")
+
+        # Expose these controls so the page can align them with PDM / MDB.
+        self.controls_widget = QWidget(self)
+        controls = QHBoxLayout(self.controls_widget)
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(8)
+        controls.addWidget(QLabel("Filter:", self.controls_widget))
+        self._filter = QLineEdit(self.controls_widget)
+        self._filter.setPlaceholderText("Article code starts with...")
         self._filter.textChanged.connect(self._refresh_relations)
-        filter_row.addWidget(self._filter, 1)
-        self._relation_length = QSpinBox(self)
+        controls.addWidget(self._filter, 1)
+        self._exclusion_button = QPushButton("Exclusion…", self.controls_widget)
+        self._exclusion_button.clicked.connect(self._edit_exclusions)
+        controls.addWidget(self._exclusion_button)
+        self._substitution_button = QPushButton("Substitution…", self.controls_widget)
+        self._substitution_button.clicked.connect(self._edit_substitutions)
+        controls.addWidget(self._substitution_button)
+        self._relation_length = QSpinBox(self.controls_widget)
         self._relation_length.setRange(1, 30)
         self._relation_length.setPrefix("Relation Prefix Length: ")
         self._relation_length.setToolTip(
@@ -60,8 +71,7 @@ class VarCondGenerationPanel(QWidget):
             "parent article. Articles sharing that prefix are generated together."
         )
         self._relation_length.valueChanged.connect(self._refresh_relations)
-        filter_row.addWidget(self._relation_length)
-        root.addLayout(filter_row)
+        controls.addWidget(self._relation_length)
 
         split = QHBoxLayout()
         left = QVBoxLayout()
@@ -74,23 +84,13 @@ class VarCondGenerationPanel(QWidget):
         split.addLayout(left, 1)
 
         right = QVBoxLayout()
-        options = QHBoxLayout()
-        # These fields retain the applied dialog values for generation only.
-        # They are intentionally hidden: the visible controls are the
-        # Exclusion… and Substitution… buttons in the options row.
+        # Hidden fields retain applied dialog values for relation generation.
         self._exclusions = QLineEdit(self)
         self._exclusions.setReadOnly(True)
         self._exclusions.hide()
         self._substitutions = QLineEdit(self)
         self._substitutions.setReadOnly(True)
         self._substitutions.hide()
-        self._exclusion_button = QPushButton("Exclusion…", self)
-        self._exclusion_button.clicked.connect(self._edit_exclusions)
-        options.addWidget(self._exclusion_button)
-        self._substitution_button = QPushButton("Substitution…", self)
-        self._substitution_button.clicked.connect(self._edit_substitutions)
-        options.addWidget(self._substitution_button)
-        right.addLayout(options)
         self._summary = QLabel("Select a relation to preview its generated body.", self)
         right.addWidget(self._summary)
         self._output = QPlainTextEdit(self)
