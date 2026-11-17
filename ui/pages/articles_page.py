@@ -242,16 +242,17 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         clear_menu.addAction("Long Text", self._on_clear_long)
         clear_menu.addAction("Short Text", self._on_clear_short)
 
-        self._actions_btn = QToolButton(box)
-        self._actions_btn.setText("Actions")
-        self._actions_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        actions_menu = QMenu(self._actions_btn)
-        actions_menu.addAction("Base to Dot (All)", self._on_base_to_dot_all)
-        actions_menu.addAction("Copy Text", self._on_copy_long_to_short)
-        actions_menu.addAction("Filter Components", self._on_filter_components)
-        actions_menu.addMenu(clear_menu)
-        self._actions_btn.setMenu(actions_menu)
-        layout.addWidget(self._actions_btn)
+        self._actions_combo = QComboBox(box)
+        self._actions_combo.addItem("Actions", None)
+        self._actions_combo.addItem("Base to Dot (All)", "base_to_dot")
+        self._actions_combo.addItem("Copy Text", "copy_text")
+        self._actions_combo.addItem("Filter Components", "filter_components")
+        self._actions_combo.addItem("Clear Base Length", "clear_length")
+        self._actions_combo.addItem("Clear Long Text", "clear_long")
+        self._actions_combo.addItem("Clear Short Text", "clear_short")
+        self._actions_combo.setToolTip("Choose an article action.")
+        self._actions_combo.activated.connect(self._on_actions_combo_activated)
+        layout.addWidget(self._actions_combo)
 
         self._group_check = QCheckBox("Group by Base", box)
         self._group_check.setChecked(self._group_by_base)
@@ -270,11 +271,28 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             lambda index: self._on_group_toggled(bool(self._view_combo.itemData(index)))
         )
         # Match the Actions menu button to the view selector's dimensions.
-        self._actions_btn.setFixedSize(self._view_combo.sizeHint())
+        self._actions_combo.setFixedSize(self._view_combo.sizeHint())
         layout.addWidget(self._view_combo)
 
         self._maintenance_export_component = "Articles"
         return box
+
+    def _on_actions_combo_activated(self, index: int) -> None:
+        action = self._actions_combo.itemData(index)
+        handlers = {
+            "base_to_dot": self._on_base_to_dot_all,
+            "copy_text": self._on_copy_long_to_short,
+            "filter_components": self._on_filter_components,
+            "clear_length": self._on_clear_length,
+            "clear_long": self._on_clear_long,
+            "clear_short": self._on_clear_short,
+        }
+        handler = handlers.get(action)
+        if handler is not None:
+            handler()
+        self._actions_combo.blockSignals(True)
+        self._actions_combo.setCurrentIndex(0)
+        self._actions_combo.blockSignals(False)
 
     def _build_body(self) -> QWidget:
         container = QWidget(self)
@@ -304,7 +322,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         source_toolbar_layout.setContentsMargins(0, 0, 0, 0)
         source_toolbar_layout.setSpacing(theme.SPACE_3)
         source_toolbar_layout.addWidget(self._source_tabs, 0)
-        source_toolbar_layout.addWidget(self._toolbar_box, 1)
+        source_toolbar_layout.addStretch(1)
+        self._toolbar_box.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
+        )
+        source_toolbar_layout.addWidget(self._toolbar_box, 0, Qt.AlignmentFlag.AlignRight)
         self.add_content(self._source_toolbar_row)
         layout.addWidget(self._build_table(), 1)
         return container
@@ -692,7 +714,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         group_defs = (
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
-            [self._actions_btn, self._view_combo],
+            [self._actions_combo, self._view_combo],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
