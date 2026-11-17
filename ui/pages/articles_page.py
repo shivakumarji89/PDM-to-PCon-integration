@@ -168,6 +168,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
         self.refresh()
 
+    #: on_enter() materialises Article Sets between two refreshes, so the host keeps its own.
+    ENTER_IS_PLAIN_REFRESH = False
+
     def on_enter(self) -> None:
         """Refresh when returning from another workflow.
 
@@ -2080,7 +2083,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     # -- lifecycle ---------------------------------------------------------
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
-        self.refresh()
+        if not self._host_activating:
+            self.refresh()
 
     def is_ready(self) -> bool:
         snapshot = self._context.active_snapshot

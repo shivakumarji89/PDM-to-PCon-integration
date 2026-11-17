@@ -403,7 +403,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         # Reload from the snapshot whenever the page is shown, matching every
         # other data page so navigating in always reflects the current product.
         super().showEvent(event)
-        self.refresh()
+        if not self._host_activating:
+            self.refresh()
 
     def is_ready(self) -> bool:
         snapshot = self._context.active_snapshot

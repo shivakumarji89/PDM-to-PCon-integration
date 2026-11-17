@@ -24,6 +24,17 @@ from ui.components.workflow_layout import WorkflowHeader, WorkflowPageLayout
 class BasePage(QWidget):
     """Common scaffold for workspace pages."""
 
+    #: True while ``WorkspaceHost.activate`` is switching this page in. ``showEvent`` refreshes
+    #: are skipped then: the host refreshes the page itself immediately afterwards, so the
+    #: show-time refresh was an identical rebuild of the same data.
+    _host_activating = False
+
+    #: True when ``on_enter()`` is exactly ``refresh()`` (the default below). The host then
+    #: refreshes once, through ``on_enter``, instead of calling ``refresh()`` and ``on_enter()``
+    #: back to back. Pages whose ``on_enter`` does more (or does not always call ``refresh()``)
+    #: set this to False so the host keeps its own refresh before ``on_enter``.
+    ENTER_IS_PLAIN_REFRESH = True
+
     def __init__(
         self,
         title: str,

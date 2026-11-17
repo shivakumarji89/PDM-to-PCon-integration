@@ -1366,6 +1366,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # The Articles reduction mutates the snapshot IN PLACE (same object), so
         # id() can't detect it - re-render when the grouping inputs (article_sets)
         # or overrides have changed since the last populate, and not otherwise.
+        if self._host_activating:
+            return                      # the host refreshes right after switching the page in
         if source_changed or self._render_signature() != getattr(self, "_last_render_sig", None):
             self.refresh()
 

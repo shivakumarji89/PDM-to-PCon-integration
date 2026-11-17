@@ -126,6 +126,9 @@ class TextPage(MaintenanceSourceMixin, BasePage):
         return self._table
 
     # -- data --------------------------------------------------------------
+    #: on_enter() rebuilds text blocks itself and never calls refresh() for generated snapshots.
+    ENTER_IS_PLAIN_REFRESH = False
+
     def on_enter(self) -> None:
         """Load imported MDB text as-is; derive text only for generated snapshots."""
         self._sync_source()
@@ -162,7 +165,8 @@ class TextPage(MaintenanceSourceMixin, BasePage):
         # Reload from the snapshot whenever the page is shown, matching every
         # other data page so navigating in always reflects the current product.
         super().showEvent(event)
-        self.refresh()
+        if not self._host_activating:
+            self.refresh()
 
     def _schedule_filter(self) -> None:
         """Debounce search typing so the table rebuilds once, not per keystroke."""

@@ -110,6 +110,9 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_panel.setEnabled(not mdb)
         self._varcond_panel.controls_widget.setVisible(not mdb)
 
+    #: on_enter() does not call refresh() for the PDM view (it regenerates the relations).
+    ENTER_IS_PLAIN_REFRESH = False
+
     def on_enter(self) -> None:
         """Show the per-relation VARCOND workflow for PDM, imported relations for MDB."""
         self._sync_source()

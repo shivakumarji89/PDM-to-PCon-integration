@@ -201,6 +201,9 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
         return box
 
     # -- data --------------------------------------------------------------
+    #: on_enter() ensures relation objects / value tables before its refresh.
+    ENTER_IS_PLAIN_REFRESH = False
+
     def on_enter(self) -> None:
         """Load preserved relations; derive them only when the snapshot has none."""
         self._sync_source()
@@ -257,7 +260,8 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().showEvent(event)
-        if self._resync_on_show():
+        source_changed = self._resync_on_show()
+        if source_changed and not self._host_activating:
             self.refresh()
 
     def _schedule_filter(self) -> None:

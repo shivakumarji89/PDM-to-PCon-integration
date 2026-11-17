@@ -38,11 +38,19 @@ class WorkspaceHost:
                 previous.deactivate()
 
         page = self._pages[step]
-        self._stack.setCurrentWidget(page)
+        # ``showEvent`` refreshes fire synchronously inside setCurrentWidget; the refresh below
+        # covers them, so pages skip theirs while this flag is set.
+        page._host_activating = True
+        try:
+            self._stack.setCurrentWidget(page)
+        finally:
+            page._host_activating = False
         # QStackedWidget does not call the workspace's refresh hook when the
         # page becomes current. Refresh on activation so workflows always
-        # reflect the latest shared ApplicationContext snapshot.
-        page.refresh()
+        # reflect the latest shared ApplicationContext snapshot. A page whose
+        # on_enter() is just refresh() is refreshed by on_enter() alone.
+        if not getattr(page, "ENTER_IS_PLAIN_REFRESH", False):
+            page.refresh()
         page.activate()
         page.on_enter()
 
