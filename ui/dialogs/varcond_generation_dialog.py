@@ -46,7 +46,7 @@ class _CopyableVarCondTable(QTableWidget):
 
 
 class VarCondGenerationPanel(QWidget):
-    """PDM-style relation list on the left and selected relation body on right."""
+    """PDM relation list on the left and merged relation names on the right."""
 
     def __init__(
         self, context, parent: QWidget | None = None,
@@ -113,19 +113,17 @@ class VarCondGenerationPanel(QWidget):
         self._substitutions = QLineEdit(self)
         self._substitutions.setReadOnly(True)
         self._substitutions.hide()
-        self._summary = QLabel("Select a relation to preview its generated body.", self)
+        self._summary = QLabel("Merged Article VARCOND Relations", self)
         right.addWidget(self._summary)
         self._output = _CopyableVarCondTable(self)
-        self._output.setColumnCount(3)
-        self._output.setHorizontalHeaderLabels(["Relation", "Component", "VARCOND Rule"])
+        self._output.setColumnCount(1)
+        self._output.setHorizontalHeaderLabels(["Relation"])
         self._output.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._output.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self._output.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._output.setAlternatingRowColors(True)
         self._output.verticalHeader().setVisible(False)
-        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self._output.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._output.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self._output, 1)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
@@ -403,17 +401,20 @@ class VarCondGenerationPanel(QWidget):
                     property_substitutions=self._substitutions.text(),
                 )
             warning_messages.extend(result.warnings)
-            for rule in result.rules:
-                row = self._output.rowCount()
-                self._output.insertRow(row)
-                for col, value in enumerate((relation_name, rule.article, rule.rule)):
-                    self._output.setItem(row, col, QTableWidgetItem(value))
             total_rules += len(result.rules)
 
+            # The right pane is a relation browser, not a component/rule
+            # inspector. One row represents the merged relation generated
+            # from every parent article sharing this prefix.
+            row = self._output.rowCount()
+            self._output.insertRow(row)
+            self._output.setItem(row, 0, QTableWidgetItem(relation_name))
+
         self._summary.setText(
-            f"{self._relations.count()} relation(s) | {total_rules} generated definition(s)"
+            f"{self._output.rowCount()} merged relation(s)"
+            + (f" | {total_rules} generated definition(s)" if total_rules else "")
             + (f" | {len(warning_messages)} warning(s)" if warning_messages else "")
-            + " | Select cells and press Ctrl+C to copy"
+            + " | Select a relation and press Ctrl+C to copy"
         )
         self._summary.setToolTip("\\n".join(warning_messages))
 
