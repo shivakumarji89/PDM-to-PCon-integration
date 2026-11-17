@@ -603,7 +603,7 @@ class MainWindow(QMainWindow):
 
 
     def _configure_maintenance_page_actions(self, steps) -> None:
-        """Add consistent Reload and Export MDB actions to Maintenance workflow headers."""
+        """Add workflow actions, omitting redundant Reload on the Product page."""
         from PySide6.QtWidgets import QPushButton
 
         maintenance_steps = tuple(module_workflows(WorkbenchModule.MAINTENANCE))
@@ -617,11 +617,10 @@ class MainWindow(QMainWindow):
             if header is None or not hasattr(header, "add_action"):
                 continue
 
-            if not hasattr(page, "_maintenance_reload_button"):
+            if step != WorkflowStep.PRODUCT and not hasattr(page, "_maintenance_reload_button"):
                 reload_button = QPushButton("↻  Reload", page)
                 reload_button.setToolTip("Reload this workflow from the current Maintenance snapshot")
-                reload_handler = page._on_reload_product if step == WorkflowStep.PRODUCT else page.refresh
-                reload_button.clicked.connect(reload_handler)
+                reload_button.clicked.connect(page.refresh)
                 page._maintenance_reload_button = reload_button
             if step == WorkflowStep.PRODUCT and not hasattr(page, "_maintenance_refresh_pdm_button"):
                 refresh_pdm_button = QPushButton("↻  Refresh PDM", page)
@@ -645,7 +644,8 @@ class MainWindow(QMainWindow):
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
             if getattr(page, "_maintenance_actions_header", None) is not header:
-                header.add_action(page._maintenance_reload_button, "secondary")
+                if step != WorkflowStep.PRODUCT:
+                    header.add_action(page._maintenance_reload_button, "secondary")
                 if step == WorkflowStep.PRODUCT:
                     header.add_action(page._maintenance_refresh_pdm_button, "secondary")
                 header.add_action(page._maintenance_export_mdb_button, "secondary")
