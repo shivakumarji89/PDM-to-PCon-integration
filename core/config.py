@@ -18,6 +18,7 @@ OVERRIDABLE: dict[str, type] = {
     "xocd_svn_path": str,
     "metatype_repository_root": str,
     "repository_browser_roots": dict,
+    "template_browser_roots": dict,
     "repository_workspaces": list,
     "hm_repository_workspace": str,
     "knoll_repository_workspace": str,
@@ -69,6 +70,12 @@ class AppConfig:
     repository_browser_roots: dict[str, str] = field(default_factory=lambda: {
         "Seating": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Seating\Seating",
         "Tables": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\Tables\Tables",
+    })
+
+    # Published MDB templates shown in the Open Repository selector.
+    template_browser_roots: dict[str, str] = field(default_factory=lambda: {
+        "Herman Miller": r"C:\HermanMillerOFMLSVN\Staging\HermanMiller\WS\1_WS_Templates",
+        "Knoll": r"C:\KnollSVN\Staging\Knoll\WS\_TEMPLATE_KNO",
     })
 
     # OFML ``_repository`` workspace of each manufacturer. The home-page repository status and the QA module's
