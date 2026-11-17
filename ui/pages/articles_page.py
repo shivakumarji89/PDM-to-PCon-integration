@@ -34,6 +34,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QPushButton,
+    QToolButton,
+    QComboBox,
     QTableWidget,
     QTableWidgetItem,
     QSpinBox,
@@ -189,88 +191,95 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
+        box = QGroupBox(self)
         layout = QHBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACE_2)
 
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search code or description...")
         self._search.setClearButtonEnabled(True)
-        self._search.setMinimumWidth(240)
+        self._search.setMinimumWidth(170)
+        self._search.setMaximumWidth(230)
         self._search.textChanged.connect(self._schedule_filter)
         layout.addWidget(self._search, 1)
 
+        base_label = QLabel("Base:", box)
         self._base_len_spin = QSpinBox(box)
         self._base_len_spin.setRange(0, 999)
         self._base_len_spin.setValue(0)
+        self._base_len_spin.setMaximumWidth(72)
         self._base_len_spin.setToolTip(
             "Manual base length for selected rows. If no rows are selected, "
-            "applies to all currently filtered rows. Turn off Group by Base "
-            "to select individual line items. Development Class Creation "
-            "remains the authoritative source for the automatically generated base."
+            "applies to all currently filtered rows. Class Creation remains "
+            "the authoritative source for automatically generated bases."
         )
-        layout.addWidget(QLabel("Base Length:", box))
+        layout.addWidget(base_label)
         layout.addWidget(self._base_len_spin)
 
-        self._apply_len_btn = QPushButton("Apply Length", box)
-        self._apply_len_btn.setToolTip(
-            "Apply the selected base length to the currently filtered Article rows."
-        )
+        self._apply_len_btn = QPushButton("Apply", box)
+        self._apply_len_btn.setToolTip("Apply base length to selected or filtered articles.")
         self._apply_len_btn.clicked.connect(self._on_apply_base_length)
         layout.addWidget(self._apply_len_btn)
 
+        # Keep the existing action handlers, but expose infrequent actions in
+        # one compact menu instead of occupying permanent toolbar space.
         self._dot_base_btn = QPushButton("Base to Dot (All)", box)
         self._dot_base_btn.setToolTip(
-            "Set every article's base to the characters before its first dot. "
-            "Articles without a dot use their full code. Does not edit relations."
+            "Set every article's base to the characters before its first dot."
         )
         self._dot_base_btn.clicked.connect(self._on_base_to_dot_all)
-        layout.addWidget(self._dot_base_btn)
-
         self._copy_long_btn = QPushButton("Copy Text", box)
-        self._copy_long_btn.setToolTip(
-            "Copy each shown article's Long Text into its Short Text."
-        )
+        self._copy_long_btn.setToolTip("Copy each shown article's Long Text into Short Text.")
         self._copy_long_btn.clicked.connect(self._on_copy_long_to_short)
-        layout.addWidget(self._copy_long_btn)
-
         self._components_btn = QPushButton("Filter Components", box)
-        self._components_btn.setToolTip(
-            "Exclude component / accessory / hardware ranges from the snapshot "
-            "so every workspace shows the main product only."
-        )
+        self._components_btn.setToolTip("Exclude component, accessory and hardware ranges.")
         self._components_btn.clicked.connect(self._on_filter_components)
-        layout.addWidget(self._components_btn)
-
         self._clear_btn = QPushButton("Clear", box)
-        self._clear_btn.setToolTip("Clear a field on the articles currently shown.")
         clear_menu = QMenu(self._clear_btn)
         clear_menu.addAction("Base Length", self._on_clear_length)
         clear_menu.addAction("Long Text", self._on_clear_long)
         clear_menu.addAction("Short Text", self._on_clear_short)
         self._clear_btn.setMenu(clear_menu)
-        layout.addWidget(self._clear_btn)
+
+        self._actions_btn = QToolButton(box)
+        self._actions_btn.setText("Actions")
+        self._actions_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        actions_menu = QMenu(self._actions_btn)
+        actions_menu.addAction("Base to Dot (All)", self._on_base_to_dot_all)
+        actions_menu.addAction("Copy Text", self._on_copy_long_to_short)
+        actions_menu.addAction("Filter Components", self._on_filter_components)
+        actions_menu.addMenu(clear_menu)
+        self._actions_btn.setMenu(actions_menu)
+        layout.addWidget(self._actions_btn)
 
         self._group_check = QCheckBox("Group by Base", box)
         self._group_check.setChecked(self._group_by_base)
         self._group_check.setToolTip(
-            "Show one row per Base Article (the reduced prefix) instead of every "
-            "line item. Text edits apply to all line items of the base."
+            "Show one row per Base Article. Text edits apply to all line items in that base."
         )
         self._group_check.toggled.connect(self._on_group_toggled)
-        layout.addWidget(self._group_check)
+        self._group_check.hide()  # retained as the internal compatibility/state control
+
+        self._view_combo = QComboBox(box)
+        self._view_combo.addItem("Grouped", True)
+        self._view_combo.addItem("Individual", False)
+        self._view_combo.setToolTip("Choose grouped base rows or individual article rows.")
+        self._view_combo.setCurrentIndex(0 if self._group_by_base else 1)
+        self._view_combo.currentIndexChanged.connect(
+            lambda index: self._on_group_toggled(bool(self._view_combo.itemData(index)))
+        )
+        layout.addWidget(self._view_combo)
 
         self._group_class_check = QCheckBox("Group by Class Creation", box)
         self._group_class_check.setChecked(False)
         self._group_class_check.setToolTip(
-            "Add Class Creation property-group headers. Articles remain visible "
-            "individually unless Group by Base is also enabled."
+            "Add Class Creation property-group headers to the article table."
         )
         self._group_class_check.toggled.connect(self._on_class_group_toggled)
         layout.addWidget(self._group_class_check)
 
         self._maintenance_export_component = "Articles"
-
-
         return box
 
     def _build_body(self) -> QWidget:
@@ -293,7 +302,16 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
         layout.addWidget(top_row, 0)
         self._toolbar_box = self._build_toolbar()
-        layout.addWidget(self._toolbar_box, 0)
+        # Keep the source tabs and article controls on the same horizontal
+        # strip so the table starts immediately beneath them.
+        self._content.removeWidget(self._source_tabs)
+        self._source_toolbar_row = QWidget(self)
+        source_toolbar_layout = QHBoxLayout(self._source_toolbar_row)
+        source_toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        source_toolbar_layout.setSpacing(theme.SPACE_3)
+        source_toolbar_layout.addWidget(self._source_tabs, 0)
+        source_toolbar_layout.addWidget(self._toolbar_box, 1)
+        self.add_content(self._source_toolbar_row)
         layout.addWidget(self._build_table(), 1)
         return container
 
@@ -439,6 +457,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._group_check.blockSignals(True)
             self._group_check.setChecked(group)
             self._group_check.blockSignals(False)
+            if hasattr(self, "_view_combo"):
+                self._view_combo.blockSignals(True)
+                self._view_combo.setCurrentIndex(0 if group else 1)
+                self._view_combo.blockSignals(False)
         self._apply_filter()
 
     def _build_table(self) -> QWidget:
@@ -562,7 +584,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             self._table.setAlternatingRowColors(True)
             self._table.verticalHeader().setDefaultSectionSize(30)
             toolbar.hide()
-            body.insertWidget(body.indexOf(toolbar) + 1, self._shell_toolbar)
+            self._source_toolbar_row.layout().replaceWidget(toolbar, self._shell_toolbar)
+            toolbar.setParent(self)
             self._shell_toolbar.show()
             self._table.setMinimumHeight(150)
             # The table's content-based size hint must not size the page: the
@@ -585,7 +608,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
             body.addWidget(self._table, 1)
             self._top_row.show()
             self._shell_toolbar.hide()
-            body.removeWidget(self._shell_toolbar)
+            self._source_toolbar_row.layout().replaceWidget(self._shell_toolbar, toolbar)
+            self._shell_toolbar.setParent(self)
             for group_layout, widgets in self._toolbar_groups:
                 for widget in widgets:
                     group_layout.removeWidget(widget)
@@ -671,8 +695,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         group_defs = (
             [self._search],
             [base_label, self._base_len_spin, self._apply_len_btn],
-            [self._dot_base_btn, self._copy_long_btn, self._components_btn],
-            [self._group_check, self._group_class_check],
+            [self._actions_btn, self._view_combo, self._group_class_check],
         )
         self._toolbar_groups = []
         for index, widgets in enumerate(group_defs):
@@ -822,6 +845,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 self._group_check.blockSignals(True)
                 self._group_check.setChecked(self._group_by_base)
                 self._group_check.blockSignals(False)
+            if hasattr(self, "_view_combo"):
+                self._view_combo.blockSignals(True)
+                self._view_combo.setCurrentIndex(0 if self._group_by_base else 1)
+                self._view_combo.blockSignals(False)
             self._last_module = module
         key = snapshot.id if snapshot is not None else None
         if key != self._snapshot_key:
