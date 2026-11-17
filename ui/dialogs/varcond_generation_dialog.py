@@ -555,7 +555,7 @@ class VarCondGenerationPanel(QWidget):
                     property_exclusions=self._exclusions.text(),
                     property_substitutions=self._substitutions.text(),
                 )
-            body = "\\r\\n".join(rule.rule for rule in result.rules if rule.rule)
+            body = "\r\n".join(rule.rule for rule in result.rules if rule.rule)
             if not body.strip():
                 continue
             relations.append(RelationObject(
