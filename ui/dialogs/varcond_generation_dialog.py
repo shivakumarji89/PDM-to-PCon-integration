@@ -12,7 +12,7 @@ from typing import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QPushButton, QPlainTextEdit, QFileDialog,
+    QListWidgetItem, QPushButton, QPlainTextEdit,
     QVBoxLayout, QWidget, QSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView,
 )
@@ -99,19 +99,6 @@ class VarCondGenerationPanel(QWidget):
         right.addWidget(self._output, 1)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
-
-        buttons = QHBoxLayout()
-        generate = QPushButton("Generate / Refresh", self)
-        generate.clicked.connect(self._on_generate_clicked)
-        buttons.addWidget(generate)
-        copy_btn = QPushButton("Copy", self)
-        copy_btn.clicked.connect(self._copy)
-        buttons.addWidget(copy_btn)
-        save_btn = QPushButton("Save...", self)
-        save_btn.clicked.connect(self._save)
-        buttons.addWidget(save_btn)
-        buttons.addStretch(1)
-        root.addLayout(buttons)
 
         self._article_rows: list[tuple[str, str, str]] = []
         self._selected_exclusions: set[str] = set()
@@ -211,10 +198,6 @@ class VarCondGenerationPanel(QWidget):
         else:
             self._output.clear()
             self._summary.setText("No relation selected.")
-
-    def _on_generate_clicked(self) -> None:
-        """Explicit Generate / Refresh: re-read PDM (Maintenance path only)."""
-        self._generate_selected(refresh=True)
 
     def _ensure_maintenance_service(self):
         from services.maintenance_varcond_service import MaintenanceVarCondService
@@ -492,16 +475,3 @@ class VarCondGenerationPanel(QWidget):
             ))
             self._generate_selected()
 
-    def _copy(self) -> None:
-        from PySide6.QtWidgets import QApplication
-        QApplication.clipboard().setText(self._output.toPlainText())
-
-    def _save(self) -> None:
-        item = self._relations.currentItem()
-        default_name = (item.text() if item else "varcond") + ".txt"
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save VARCOND relation", default_name, "Text files (*.txt)"
-        )
-        if path:
-            with open(path, "w", encoding="utf-8", newline="") as handle:
-                handle.write(self._output.toPlainText())
