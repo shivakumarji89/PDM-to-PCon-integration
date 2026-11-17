@@ -267,19 +267,12 @@ class VarCondGenerationPanel(QWidget):
         self._summary.setText(f"Loading source data for {len(parent_codes)} parent articles from PDM...")
         self._output.setRowCount(0)
         reporter = ProgressReporter(self)
-        reporter.begin(
-            2,
-            title="Loading Price Relation",
-            subject="All Price Relations",
-        )
-        reporter.note(f"Loading PDM source data for {len(parent_codes)} parent article(s)...")
         monitor = self._maintenance_progress_monitor()
         monitor.bind(reporter)
-        # ProgressReporter.note() is not rendered by ProgressDialog. Set visible
-        # labels directly so this workflow never shows the generic "-" placeholders.
+        # The service starts the reporter with the exact number of uncached
+        # parents, then advances it after each parent has been fully loaded.
         monitor.set_family("Maintenance · PDM source loading")
-        monitor.set_step(f"Reading source data for {len(parent_codes)} parent article(s)...")
-        monitor.set_progress(10)
+        monitor.set_step(f"Preparing {len(parent_codes):,} parent article(s)...")
         monitor.show()
         monitor.raise_()
         self._maintenance_reporter = reporter
@@ -289,8 +282,30 @@ class VarCondGenerationPanel(QWidget):
         self._exclusion_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
         def load_sources(_progress):
-            sources = service.sources_for(parent_codes, refresh=refresh)
-            reporter.advance("PDM source data loaded; preparing relation output...")
+            def report_source_progress(completed, total, parent_code):
+                if total <= 0:
+                    reporter.begin(
+                        1, title="Loading Price Relation",
+                        subject="All Price Relations",
+                    )
+                    reporter.advance("No uncached PDM sources to load.")
+                    return
+                if completed == 0:
+                    reporter.begin(
+                        total, title="Loading Price Relation",
+                        subject="All Price Relations",
+                    )
+                    reporter.note(f"Reading {total:,} uncached parent article(s)...")
+                    return
+                detail = f"Loaded {completed:,} / {total:,} parent articles"
+                if parent_code:
+                    detail += f" · {parent_code}"
+                reporter.advance(detail)
+
+            sources = service.sources_for(
+                parent_codes, refresh=refresh,
+                progress_callback=report_source_progress,
+            )
             return sources
 
         task = BackgroundTask(
