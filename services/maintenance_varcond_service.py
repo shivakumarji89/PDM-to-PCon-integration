@@ -110,6 +110,8 @@ class MaintenanceVarCondService(BaseService):
         if refresh:
             self.invalidate(codes)
         missing = [c for c in codes if c not in self._cache]
+        if progress_callback:
+            progress_callback(0, len(missing), "")
         if missing:
             self.load_count += 1
             if self._uses_live_loader:
