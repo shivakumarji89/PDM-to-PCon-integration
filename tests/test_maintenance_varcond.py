@@ -216,6 +216,39 @@ def test_unknown_parent_is_reported_not_silently_cached_as_found():
     assert result.rules == [] and result.text == ""
 
 
+
+def test_parent_publishes_only_after_all_its_component_increments_finish():
+    first = ParentSource(parent="P1", components=[
+        ("A.1F", 1, "1", ""), ("B.1F", 1, "2", ""),
+    ])
+    second = ParentSource(parent="P2", components=[("B.1F", 1, "1", "")])
+    sources = {"P1": first, "P2": second}
+    parents_by_component = {"A.1F": ["P1"], "B.1F": ["P1", "P2"]}
+    pending = {"P1": {"A.1F", "B.1F"}, "P2": {"B.1F"}}
+    published = set()
+    ready = []
+
+    def publish(parent):
+        published.add(parent)
+        ready.append(parent)
+
+    MaintenanceVarCondService._publish_increment_dependents(
+        "A.1F", parents_by_component, pending, sources, published, publish
+    )
+    assert ready == []
+
+    MaintenanceVarCondService._publish_increment_dependents(
+        "B.1F", parents_by_component, pending, sources, published, publish
+    )
+    assert set(ready) == {"P1", "P2"}
+    assert len(ready) == 2
+
+    # Repeated completion notifications cannot publish a parent twice.
+    MaintenanceVarCondService._publish_increment_dependents(
+        "B.1F", parents_by_component, pending, sources, published, publish
+    )
+    assert len(ready) == 2
+
 # -- legacy source access (fake DB) -------------------------------------------
 class _Row:
     def __init__(self, **kw):
