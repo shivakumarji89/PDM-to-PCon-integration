@@ -136,6 +136,7 @@ class RepositoryWorkspace(QWidget):
         self._pool = QThreadPool.globalInstance()
         self._repository_path_value = ""
         self._repository_load_token = 0
+        self._selected_is_template = False
         self._build_ui()
 
     @property
@@ -295,6 +296,13 @@ class RepositoryWorkspace(QWidget):
             return
         self._repository_load_token += 1
         token = self._repository_load_token
+        template_roots = getattr(self._context.config, "template_browser_roots", {}) or {}
+        selected = Path(path).resolve()
+        self._selected_is_template = any(
+            selected.parent == Path(root).resolve()
+            for root in template_roots.values()
+            if Path(root).is_dir()
+        )
         try:
             inspection = self._context.maintenance_repository_link_service.inspect_repository(path)
         except Exception as error:
@@ -362,6 +370,7 @@ class RepositoryWorkspace(QWidget):
         if token != self._repository_load_token:
             return
         repository, _data, snapshot, total_rows = payload
+        repository["is_template"] = self._selected_is_template
         classification_dialog = _RepositoryClassTypeDialog(snapshot, self)
         if classification_dialog.exec() != QDialog.DialogCode.Accepted:
             self._repository_extract_reporter.finish(
@@ -403,6 +412,7 @@ class RepositoryWorkspace(QWidget):
             run.reporter.request_cancel()
         self._repository_load_token += 1
         self._repository_path_value = ""
+        self._selected_is_template = False
         self._context.register_maintenance_repository_info(None)
         self._repository_path.setText("Not connected")
         self._repository_status.setText(
