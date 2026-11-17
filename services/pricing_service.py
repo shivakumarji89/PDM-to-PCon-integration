@@ -11,14 +11,18 @@ are a separate subsystem; they are NOT included here yet. This report covers the
 directly portable increment prices only.
 """
 from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
-
-from core.cancellation import (
-    checkpoint, commit, OperationCancelled, current_token, cancellation_scope,
-)
-
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
+
+from core.cancellation import (
+    OperationCancelled,
+    cancellation_scope,
+    checkpoint,
+    commit,
+    current_token,
+)
 
 from core.errors import PDMQueryError
 from models.price_record import PriceRecord
@@ -294,10 +298,10 @@ class PricingService(BaseService):
     ) -> PriceComputeResult:
         """Compute prices while delivering each completed item to the UI.
 
-        Base prices are fetched in small set-based batches to avoid extra base-price
-        round trips. Article upcharges use PDM's inline query and Global upcharges
-        use PDM's catalogue-scoped query. Each item's base + upcharge records are
-        emitted immediately, so the UI does not wait for the whole 10-item batch.
+        Base prices are fetched in small set-based batches. Upcharge retrieval
+        continues to use the existing Article and Global repository methods.
+        Up to two batches run concurrently on worker-owned connections; completed
+        results are emitted in original item order so the UI stream stays stable.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
