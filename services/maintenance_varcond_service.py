@@ -102,6 +102,7 @@ class MaintenanceVarCondService(BaseService):
     def sources_for(
         self, article_codes: Sequence[str], refresh: bool = False,
         progress_callback: Callable[[int, int, str], None] | None = None,
+        source_callback: Callable[[ParentSource], None] | None = None,
     ) -> list[ParentSource]:
         """Cached sources; optionally report progress for live PDM reads."""
         codes = list(dict.fromkeys(
@@ -115,15 +116,27 @@ class MaintenanceVarCondService(BaseService):
         if missing:
             self.load_count += 1
             if self._uses_live_loader:
-                loaded = self._load_live(missing, progress_callback)
+                def cache_loaded(source: ParentSource) -> None:
+                    self._cache[source.parent] = source
+                    if source_callback:
+                        source_callback(source)
+                loaded = self._load_live(
+                    missing, progress_callback, source_callback=cache_loaded
+                )
             else:
                 loaded = self._loader(missing)
+                for code in missing:
+                    source = loaded.get(code) or ParentSource(parent=code, found=False)
+                    self._cache[code] = source
+                    if source_callback:
+                        source_callback(source)
                 if progress_callback:
                     progress_callback(len(missing), len(missing), "")
             for code in missing:
-                self._cache[code] = loaded.get(code) or ParentSource(
-                    parent=code, found=False
-                )
+                if code not in self._cache:
+                    self._cache[code] = loaded.get(code) or ParentSource(
+                        parent=code, found=False
+                    )
         return [self._cache[c] for c in codes]
 
     # -- generation (local; no PDM access) ---------------------------------
@@ -253,6 +266,7 @@ class MaintenanceVarCondService(BaseService):
     def _load_live(
         self, codes: Sequence[str],
         progress_callback: Callable[[int, int, str], None] | None = None,
+        source_callback: Callable[[ParentSource], None] | None = None,
     ) -> dict[str, ParentSource]:
         """Read live PDM sources with batched parent and BOM queries.
 
@@ -383,6 +397,11 @@ class MaintenanceVarCondService(BaseService):
                             if sub:
                                 src.increments[sub] = self._increment_cache.get(sub, [])
                     out[code] = src
+                    # Publish a fully resolved parent immediately. The caller
+                    # caches it before generating its rules and streaming them
+                    # to the UI; incomplete component increments are never shown.
+                    if source_callback:
+                        source_callback(src)
                     if progress_callback:
                         progress_callback(len(out), total, code)
         finally:
