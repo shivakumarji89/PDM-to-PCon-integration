@@ -254,7 +254,13 @@ class MaintenanceVarCondService(BaseService):
         self, codes: Sequence[str],
         progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> dict[str, ParentSource]:
-        """Read live PDM sources and report each completed parent."""
+        """Read live PDM sources with batched parent and BOM queries.
+
+        Parent metadata, BOM rows and category master notes are fetched in
+        bounded batches. Attribute rows and the legacy increment procedure
+        remain per-parent/per-unique-component to preserve their exact SQL and
+        stored-procedure semantics.
+        """
         from repositories.pdm_repository import PDMRepository
 
         repo = PDMRepository(self.context)
@@ -262,10 +268,118 @@ class MaintenanceVarCondService(BaseService):
         out: dict[str, ParentSource] = {}
         try:
             total = len(codes)
-            for index, parent in enumerate(codes, start=1):
-                out[parent] = self._load_parent(repo, conn, parent)
-                if progress_callback:
-                    progress_callback(index, total, parent)
+            # SQL Server's parameter limit is 2,100; use 500-code chunks to
+            # leave ample room for future query parameters.
+            chunk_size = min(getattr(repo, "_IN_CHUNK", 500), 500)
+            for offset in range(0, total, chunk_size):
+                chunk = list(codes[offset:offset + chunk_size])
+                placeholders = repo._placeholders(len(chunk))
+                item_rows = repo._execute(
+                    "SELECT i.ItemId, i.Item, i.Notes, pr.ProductCategoryId "
+                    "FROM Item i INNER JOIN Product p ON i.ProductId = p.ProductId "
+                    "INNER JOIN ProductRange pr ON p.ProductRangeId = pr.ProductRangeId "
+                    f"WHERE i.Item IN ({placeholders})",
+                    tuple(chunk), connection=conn,
+                )
+                by_code = {str(row.Item): row for row in item_rows}
+                sources = {code: ParentSource(parent=code) for code in chunk}
+                for code, src in sources.items():
+                    if code not in by_code:
+                        src.found = False
+                        src.warnings.append(f"{code}: article was not found in live PDM.")
+
+                item_id_to_code = {
+                    row.ItemId: str(row.Item) for row in item_rows
+                }
+                item_ids = list(item_id_to_code)
+                if item_ids:
+                    for id_chunk in repo._chunked(item_ids, chunk_size):
+                        id_placeholders = repo._placeholders(len(id_chunk))
+                        component_rows = repo._execute(
+                            "SELECT itco.ItemId AS ParentItemId, sub.Item AS SubItem, "
+                            "itco.Quantity, itco.ComponentSequence, "
+                            "itco.FeaturePositionString "
+                            "FROM ItemComponents itco "
+                            "INNER JOIN Item sub ON itco.SubItemId = sub.ItemId "
+                            f"WHERE itco.ItemId IN ({id_placeholders}) "
+                            "ORDER BY itco.ItemId, CONVERT(INT, itco.ComponentSequence)",
+                            tuple(id_chunk), connection=conn,
+                        )
+                        for comp in component_rows:
+                            parent = item_id_to_code.get(comp.ParentItemId)
+                            if parent is None:
+                                continue
+                            try:
+                                qty = int(getattr(comp, "Quantity", 1) or 1)
+                            except (TypeError, ValueError):
+                                qty = 1
+                            sources[parent].components.append((
+                                str(comp.SubItem or "").strip(), qty,
+                                str(comp.ComponentSequence or ""),
+                                str(comp.FeaturePositionString or ""),
+                            ))
+
+                # Resolve category fallback notes once for the whole batch.
+                category_ids = list(dict.fromkeys(
+                    getattr(row, "ProductCategoryId", None)
+                    for row in item_rows
+                    if getattr(row, "ProductCategoryId", None) is not None
+                ))
+                master_notes: dict[object, str] = {}
+                if category_ids:
+                    for master in repo.fetch_category_master_notes(
+                        category_ids, connection=conn
+                    ):
+                        category_id = getattr(master, "ProductCategoryId", None)
+                        if category_id not in master_notes:
+                            master_notes[category_id] = str(
+                                getattr(master, "Notes", "") or ""
+                            )
+
+                for code in chunk:
+                    src = sources[code]
+                    item = by_code.get(code)
+                    if item is None or not src.components:
+                        out[code] = src
+                        if progress_callback:
+                            progress_callback(len(out), total, code)
+                        continue
+
+                    notes = str(getattr(item, "Notes", "") or "").split(",")[0].strip()
+                    if notes.isdigit():
+                        src.prefix_length = int(notes)
+                    if src.prefix_length <= 0:
+                        category_id = getattr(item, "ProductCategoryId", None)
+                        token = master_notes.get(category_id, "").split(",")[0].strip()
+                        if token.isdigit():
+                            src.prefix_length = int(token)
+                    if src.prefix_length <= 0:
+                        src.warnings.append(
+                            f"{code}: article prefix length is undefined; "
+                            "parametric codes may be incorrect."
+                        )
+
+                    for attr in repo._execute(
+                        self._ATTR_SQL,
+                        (src.prefix_length, code, code),
+                        connection=conn,
+                    ):
+                        src.attributes.append((
+                            str(getattr(attr, "prop", "") or ""),
+                            str(getattr(attr, "OrderCodeValue", "") or ""),
+                        ))
+
+                    for sub, _qty, _seq, _fps in src.components:
+                        if sub and sub not in src.increments:
+                            if sub not in self._increment_cache:
+                                self._increment_cache[sub] = self._fetch_increments(
+                                    repo, conn, sub
+                                )
+                            src.increments[sub] = self._increment_cache[sub]
+
+                    out[code] = src
+                    if progress_callback:
+                        progress_callback(len(out), total, code)
         finally:
             conn.close()
         return out
