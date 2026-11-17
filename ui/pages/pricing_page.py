@@ -216,7 +216,7 @@ _TEXT_ISSUE_FG = QColor(176, 0, 32)
 
 @read_only_in_mdb(
     "_on_compute", "_on_pricing_finished", "_on_pricing_failed",
-    "_open_price_list_manager", "_on_manage_price_lists", "_on_export_prices",
+    "_on_export_prices",
     "_on_preview_export",
 )
 class PricingPage(MaintenanceSourceMixin, BasePage):
@@ -318,8 +318,10 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         snapshot = self._context.active_snapshot
         if snapshot is None:
             return []
-        if self._price_list_mode() == "new_creation":
+        selected = self._currency.currentText()
+        if selected == "All":
             return ["GBP", "EUR"]
+        return [selected.upper()]
 
         currencies: list[str] = []
         for record in snapshot.price_records:
@@ -338,13 +340,14 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None:
             QMessageBox.information(self, "Price Lists", "Load a product first.")
             return
-        mode = self._price_list_mode()
+        read_only = self.is_mdb_view()
         dialog = PriceListManagerDialog(
             self._context,
             snapshot,
-            mode=mode,
-            currencies=self._price_list_currencies(),
+            mode="new_creation",
+            currencies=[] if read_only else self._price_list_currencies(),
             effective_date=self._date.date().toString("yyyyMMdd"),
+            read_only=read_only,
             parent=self,
         )
         dialog.exec()
