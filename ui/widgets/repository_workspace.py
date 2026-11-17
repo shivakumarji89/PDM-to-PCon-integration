@@ -180,19 +180,6 @@ class RepositoryWorkspace(QWidget):
         repository_layout.addLayout(buttons)
         layout.addWidget(repository_section)
 
-        source_section = QGroupBox("Data Sources", self)
-        source_layout = QVBoxLayout(source_section)
-        source_layout.setContentsMargins(8, 6, 8, 8)
-        source_layout.setSpacing(6)
-        source_note = QLabel(
-            "Repository provides the published engineered baseline. "
-            "Workflows consume the shared repository snapshot.",
-            source_section,
-        )
-        source_note.setObjectName("pageSubtitle")
-        source_note.setWordWrap(True)
-        source_layout.addWidget(source_note)
-        layout.addWidget(source_section)
         layout.addStretch(1)
 
     def refresh(self) -> None:
