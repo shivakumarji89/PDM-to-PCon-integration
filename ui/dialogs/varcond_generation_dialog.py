@@ -398,8 +398,8 @@ class VarCondGenerationPanel(QWidget):
             return
         if payload.get("warnings"):
             current = self._summary.toolTip()
-            new_warnings = "\\n".join(str(value) for value in payload["warnings"])
-            self._summary.setToolTip("\\n".join(value for value in (current, new_warnings) if value))
+            new_warnings = "\n".join(str(value) for value in payload["warnings"])
+            self._summary.setToolTip("\n".join(value for value in (current, new_warnings) if value))
         self._summary.setText("Loading PDM sources; selected relation will appear when ready.")
 
     def _on_maintenance_sources_loaded(self, _sources) -> None:
@@ -513,7 +513,7 @@ class VarCondGenerationPanel(QWidget):
                 f"Relation body exceeds the {limit:,}-character pCon Creator limit. "
                 "Increase the relation prefix length to split the output into smaller relations."
             )
-        self._summary.setToolTip("\\n".join(warnings))
+        self._summary.setToolTip("\n".join(warnings))
 
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
