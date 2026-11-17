@@ -642,6 +642,8 @@ class MainWindow(QMainWindow):
                     export_handler = self._on_export_mdb
                 export_button.clicked.connect(export_handler)
                 page._maintenance_export_mdb_button = export_button
+                if step == WorkflowStep.PRICING and hasattr(page, "_restore_export_buttons"):
+                    page._restore_export_buttons()
 
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
