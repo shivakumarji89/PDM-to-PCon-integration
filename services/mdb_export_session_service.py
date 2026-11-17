@@ -88,6 +88,88 @@ class MdbExportSessionService(BaseService):
             raise ExportSessionError("Export session belongs to a different product.")
         return session
 
+    def attach_existing(
+        self, snapshot: Snapshot, mdb_path: str | Path, template_kind: str = "",
+    ) -> MdbExportSession:
+        """Attach an existing series repository MDB without copying or clearing it.
+
+        This path is used only when the user opens a normal series repository.
+        The MDB remains at its original repository location and all existing
+        rows and identifiers are preserved.
+        """
+        key = self.product_key(snapshot)
+        if self.load(snapshot) is not None:
+            raise ExportSessionError("This product already has an MDB export session.")
+        mdb = Path(mdb_path).resolve()
+        if not mdb.is_file():
+            raise ExportSessionError(f"Selected repository MDB does not exist: {mdb}")
+        mdb_svc = self.context.mdb_service
+        if not mdb_svc.is_available():
+            raise ExportSessionError("32-bit PowerShell / ACE OLEDB bridge unavailable.")
+
+        queries = {
+            "package": "SELECT * FROM tCOMd_Package",
+            **{f"proto:{table}": f"SELECT TOP 1 * FROM [{table}]"
+               for table in _ocd._PRODUCT_TABLES},
+        }
+        try:
+            data = mdb_svc.read_tables(mdb, queries)
+        except RuntimeError as exc:
+            raise ExportSessionError(f"Selected repository MDB schema is not usable: {exc}") from exc
+        if not data["package"]:
+            raise ExportSessionError("Selected repository MDB has no tCOMd_Package row.")
+        package = data["package"][0]
+        package_id = package.get("com_PackageID")
+        if package_id is None:
+            raise ExportSessionError("Selected repository MDB package has no ID.")
+
+        comgroup_id = package.get("com_ComGroupID")
+        manufacturer_id = _ocd._MATERIAL_MANUFACTURER
+        if package.get("com_ManufacturerID") is not None:
+            rows = mdb_svc.read_table(
+                mdb,
+                "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
+                f"WHERE com_ManufacturerID = {int(package['com_ManufacturerID'])}",
+            )
+            if rows and rows[0].get("reg_ManufacturerCode"):
+                manufacturer_id = str(rows[0]["reg_ManufacturerCode"])
+
+        prototypes = {}
+        for table in _ocd._PRODUCT_TABLES:
+            rows = data[f"proto:{table}"]
+            if not rows:
+                continue
+            proto = dict(rows[0])
+            proto.pop(_ocd._PK.get(table, ""), None)
+            for column in [name for name in proto if str(name).startswith("sys_tmp")]:
+                proto.pop(column, None)
+            prototypes[table] = proto
+
+        product = snapshot.product
+        program_code = str(package.get("reg_ProgramCode") or
+                           snapshot.generation_program or XocdExportService.program_key(product)).strip()
+        series_id = str(package.get("com_ComGroupCode") or
+                        snapshot.generation_series or XocdExportService.series_id(product)).strip()
+        session = MdbExportSession(
+            product_key=key,
+            mdb_path=str(mdb),
+            product_code=str(getattr(product, "code", "") or ""),
+            product_name=str(getattr(product, "name", "") or ""),
+            template_kind=template_kind,
+            manufacturer_id=manufacturer_id,
+            package_id=package_id,
+            comgroup_id=comgroup_id,
+            program_code=program_code,
+            series_id=series_id,
+            created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            prototypes=prototypes,
+        )
+        try:
+            self.save(session)
+        except OSError as exc:
+            raise ExportSessionError(f"Could not save the export session: {exc}") from exc
+        return session
+
     def get_active(self, snapshot: Snapshot) -> MdbExportSession | None:
         """The loaded product's session, or ``None`` when no MDB exists yet.
 
