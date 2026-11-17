@@ -216,8 +216,8 @@ def test_articles_shell_kpis_use_real_counts(app):
 
 def test_articles_shell_keeps_existing_controls_and_signals(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
-    for name in ("_search", "_base_len_spin", "_apply_len_btn", "_dot_base_btn", "_copy_long_btn",
-                 "_components_btn", "_group_check", "_group_class_check"):
+    for name in ("_search", "_base_len_spin", "_apply_len_btn", "_actions_btn",
+                 "_view_combo", "_group_class_check"):
         assert page._shell_toolbar.isAncestorOf(getattr(page, name))
     assert page._table.isSortingEnabled()
     # the original click handlers are still connected (signal receivers unchanged)
