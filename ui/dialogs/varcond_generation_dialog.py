@@ -75,8 +75,6 @@ class VarCondGenerationPanel(QWidget):
 
         right = QVBoxLayout()
         options = QHBoxLayout()
-        self._prefix = QLineEdit(self)
-        self._prefix.setPlaceholderText("Optional property-class prefix")
         # These fields retain the applied dialog values for generation only.
         # They are intentionally hidden: the visible controls are the
         # Exclusion… and Substitution… buttons in the options row.
@@ -86,10 +84,6 @@ class VarCondGenerationPanel(QWidget):
         self._substitutions = QLineEdit(self)
         self._substitutions.setReadOnly(True)
         self._substitutions.hide()
-        column = QVBoxLayout()
-        column.addWidget(QLabel("Prefix"))
-        column.addWidget(self._prefix)
-        options.addLayout(column, 1)
         self._exclusion_button = QPushButton("Exclusion…", self)
         self._exclusion_button.clicked.connect(self._edit_exclusions)
         options.addWidget(self._exclusion_button)
@@ -264,7 +258,6 @@ class VarCondGenerationPanel(QWidget):
         self._relations.setEnabled(False)
         self._filter.setEnabled(False)
         self._relation_length.setEnabled(False)
-        self._prefix.setEnabled(False)
         self._exclusion_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
         def load_sources(_progress):
@@ -303,7 +296,6 @@ class VarCondGenerationPanel(QWidget):
         self._relations.setEnabled(True)
         self._filter.setEnabled(True)
         self._relation_length.setEnabled(True)
-        self._prefix.setEnabled(True)
         self._exclusion_button.setEnabled(True)
         self._substitution_button.setEnabled(True)
 
@@ -367,7 +359,7 @@ class VarCondGenerationPanel(QWidget):
                 return
             result = service.generate(
                 parent_codes,
-                prefix=self._prefix.text(),
+                prefix="",
                 property_exclusions=self._exclusions.text(),
                 property_substitutions=self._substitutions.text(),
             )
