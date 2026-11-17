@@ -281,6 +281,11 @@ class VarCondGenerationPanel(QWidget):
         self._relation_length.setEnabled(False)
         self._exclusion_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
+        stream_prefix_length = self._relation_length.value()
+        stream_filter_text = self._filter.text().strip().casefold()
+        stream_exclusions = self._exclusions.text()
+        stream_substitutions = self._substitutions.text()
+
         def load_sources(_progress):
             def report_source_progress(completed, total, parent_code):
                 if total <= 0:
@@ -306,21 +311,16 @@ class VarCondGenerationPanel(QWidget):
             # refresh), then stream each newly completed parent from the loader.
             # Rule generation is local because the source cache is populated
             # before source_callback is invoked.
-            prefix_length = self._relation_length.value()
-            filter_text = self._filter.text().strip().casefold()
-            exclusions = self._exclusions.text()
-            substitutions = self._substitutions.text()
-
             def publish_parent(source):
                 code = source.parent
-                if filter_text and not code.casefold().startswith(filter_text):
+                if stream_filter_text and not code.casefold().startswith(stream_filter_text):
                     return
                 result = service.generate(
                     [code], prefix="",
-                    property_exclusions=exclusions,
-                    property_substitutions=substitutions,
+                    property_exclusions=stream_exclusions,
+                    property_substitutions=stream_substitutions,
                 )
-                relation_name = "PA_" + (code[:prefix_length] if len(code) > prefix_length else code)
+                relation_name = "PA_" + (code[:stream_prefix_length] if len(code) > stream_prefix_length else code)
                 _progress({
                     "kind": "rules",
                     "relation": relation_name,
@@ -331,7 +331,7 @@ class VarCondGenerationPanel(QWidget):
             # Publish cached sources not included in the new-load callback.
             cached_codes = [
                 code for code in parent_codes
-                if code in service._cache
+                if not refresh and code in service._cache
             ]
             for code in cached_codes:
                 publish_parent(service._cache[code])
