@@ -416,13 +416,23 @@ class ProductPage(BasePage):
         return box
 
     def _build_context(self) -> QWidget:
-        """Product context panel whose content follows the active module."""
-        box = QGroupBox("Engineering Context", self)
+        """Repository workspace first, followed by the module's engineering context."""
+        box = QWidget(self)
         layout = QVBoxLayout(box)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        product_section = QGroupBox("Product", box)
+        self._repository_workspace = RepositoryWorkspace(self._context, box)
+        self._repository_workspace.repository_loaded.connect(self._on_shared_repository_loaded)
+        self._repository_workspace.repository_cleared.connect(self._on_shared_repository_cleared)
+        layout.addWidget(self._repository_workspace)
+
+        engineering_section = QGroupBox("Engineering Context", box)
+        engineering_layout = QVBoxLayout(engineering_section)
+        engineering_layout.setContentsMargins(8, 8, 8, 8)
+        engineering_layout.setSpacing(6)
+
+        product_section = QGroupBox("Product", engineering_section)
         product_form = QFormLayout(product_section)
         product_form.setContentsMargins(8, 4, 8, 6)
         product_form.setSpacing(4)
@@ -449,15 +459,13 @@ class ProductPage(BasePage):
         product_form.addRow("Status:", self._info_status)
         product_form.addRow("Super Product:", self._info_super)
         product_form.addRow("New Product:", self._info_new)
-        layout.addWidget(product_section)
+        engineering_layout.addWidget(product_section)
 
-        self._context_stack = QStackedWidget(box)
+        self._context_stack = QStackedWidget(engineering_section)
         self._context_stack.addWidget(self._build_standard_context())
-        self._repository_workspace = RepositoryWorkspace(self._context, box)
-        self._repository_workspace.repository_loaded.connect(self._on_shared_repository_loaded)
-        self._repository_workspace.repository_cleared.connect(self._on_shared_repository_cleared)
         self._context_stack.addWidget(self._build_repository_context())
-        layout.addWidget(self._context_stack, 1)
+        engineering_layout.addWidget(self._context_stack, 1)
+        layout.addWidget(engineering_section, 1)
 
         self._context_module: WorkbenchModule | None = None
         self.set_module(None)
@@ -489,8 +497,6 @@ class ProductPage(BasePage):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-
-        layout.addWidget(self._repository_workspace)
 
         # Maintenance compares the two independently loaded sources visually.
         # This is informational only: it does not validate either snapshot or
