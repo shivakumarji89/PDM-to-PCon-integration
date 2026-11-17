@@ -1,8 +1,9 @@
-"""PDM-style VARCOND relation browser and generator.
+"""Fast PDM-style VARCOND relation browser.
 
-Legacy PDM builds a list of unique PA_<article-prefix> relations. Every relation is generated from its matching parent articles. Changing the
-prefix length regroups the already-loaded source rows and regenerates all output. Relation Prefix Length controls the relation name/grouping; it
-does not rewrite component target codes inside the VARCOND rules.
+The panel displays unique PA_<article-prefix> relation names from the active
+snapshot. Prefix changes regroup the already-loaded article codes locally.
+Full component/attribute/VARCOND source loading is intentionally deferred to
+the workflow that actually consumes generated rules.
 """
 from __future__ import annotations
 
@@ -55,8 +56,8 @@ class VarCondGenerationPanel(QWidget):
         super().__init__(parent)
         self._context = context
         self._snapshot = context.active_snapshot
-        # Maintenance only: generate from the cached legacy-source service.
-        # Development (check absent/False) keeps VarCondService.generate_live.
+        # Retained for compatibility with callers; this relation browser does
+        # not query PDM or generate component rules while displaying names.
         self._maintenance_check = maintenance_check or (lambda: False)
         self._maintenance_service = None
         self._maintenance_snapshot = None
@@ -153,14 +154,9 @@ class VarCondGenerationPanel(QWidget):
         self._relation_length.setValue(max_length)
         self._refresh_relations()
         self._summary.setText(
-            f"{len(self._article_rows)} parent articles with BOM in the snapshot. "
-            "Loading source data for all relations..."
+            f"{self._relations.count()} merged relation(s) from "
+            f"{len(self._article_rows):,} snapshot parent articles."
         )
-        self._current_parent_codes = [row[0] for row in self._article_rows]
-        if self._maintenance_check() and self._current_parent_codes:
-            self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
-        else:
-            self._generate_all()
 
     def refresh_from_snapshot(self) -> None:
         """Refresh the article-code scope after a product snapshot is loaded."""
@@ -197,11 +193,10 @@ class VarCondGenerationPanel(QWidget):
         self._relation_length.setValue(max_length)
         self._refresh_relations()
         self._current_parent_codes = [row[0] for row in self._article_rows]
-        self._summary.setText(f"{len(self._article_rows)} parent articles available.")
-        if self._maintenance_check() and self._current_parent_codes:
-            self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
-        else:
-            self._generate_all()
+        self._summary.setText(
+            f"{self._relations.count()} merged relation(s) from "
+            f"{len(self._article_rows):,} snapshot parent articles."
+        )
 
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
@@ -221,16 +216,11 @@ class VarCondGenerationPanel(QWidget):
         match = self._relations.findItems(current, Qt.MatchFlag.MatchExactly) if current else []
         if match:
             self._relations.setCurrentItem(match[0])
-        # Do not auto-select the first relation. Opening the workflow should
-        # only build the local list; All relation outputs are generated automatically after source loading.
+        # Do not auto-select the first relation. The right pane is a local
+        # mirror of the merged relation names; no PDM source load is required.
         self._relations.blockSignals(False)
         self._relation_count.setText(f"{self._relations.count()} Price Relation(s)")
-        if hasattr(self, "_output") and (
-            not self._maintenance_check()
-            or (self._maintenance_service is not None and self._maintenance_service.has_sources(
-                [row[0] for row in self._article_rows]
-            ))
-        ):
+        if hasattr(self, "_output"):
             self._generate_all()
 
     def _on_relation_changed(self, current, _previous) -> None:
@@ -381,57 +371,21 @@ class VarCondGenerationPanel(QWidget):
         self._summary.setText(f"PDM relation loading cancelled: {message}")
 
     def _generate_all(self) -> None:
-        """Generate every currently grouped relation from the loaded source rows."""
+        """Show each currently merged relation once; perform no PDM reads."""
         self._current_parent_codes = [row[0] for row in self._article_rows]
-        self._output.setRowCount(0)
-        if self._maintenance_check():
-            service = self._ensure_maintenance_service()
-            if self._current_parent_codes and not service.has_sources(self._current_parent_codes):
-                self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
-                return
-
-        total_rules = 0
-        warning_messages: list[str] = []
-        needle = self._filter.text().strip().casefold()
-        for index in range(self._relations.count()):
-            relation_name = self._relations.item(index).text()
-            relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
-            parent_codes = [
-                code for code, _label, _article_id in self._article_rows
-                if code.startswith(relation_prefix)
-                and (not needle or code.casefold().startswith(needle))
-            ]
-            if not parent_codes:
-                continue
-            if self._maintenance_check():
-                result = service.generate(
-                    parent_codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
-                )
-            else:
-                result = VarCondService(self._context).generate_live(
-                    article_codes=parent_codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
-                )
-            warning_messages.extend(result.warnings)
-            total_rules += len(result.rules)
-
-            # The right pane is a relation browser, not a component/rule
-            # inspector. One row represents the merged relation generated
-            # from every parent article sharing this prefix.
-            row = self._output.rowCount()
-            self._output.insertRow(row)
+        names = [
+            self._relations.item(index).text()
+            for index in range(self._relations.count())
+        ]
+        self._output.setRowCount(len(names))
+        for row, relation_name in enumerate(names):
             self._output.setItem(row, 0, QTableWidgetItem(relation_name))
-
         self._summary.setText(
-            f"{self._output.rowCount()} merged relation(s)"
-            + (f" | {total_rules} generated definition(s)" if total_rules else "")
-            + (f" | {len(warning_messages)} warning(s)" if warning_messages else "")
-            + " | Select a relation and press Ctrl+C to copy"
+            f"{len(names)} merged relation(s) from "
+            f"{len(self._current_parent_codes):,} snapshot parent articles"
+            " | Prefix changes regroup locally"
         )
-        self._summary.setToolTip("\\n".join(warning_messages))
+        self._summary.setToolTip("Relation names are derived from article codes in the active snapshot.")
 
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
