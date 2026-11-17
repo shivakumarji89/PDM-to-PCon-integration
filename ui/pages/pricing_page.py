@@ -251,7 +251,16 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         self._filter_timer.setInterval(200)
         self._filter_timer.timeout.connect(self._apply_filter)
 
-        self.add_content(self._build_toolbar())
+        # Keep the PDM / MDB source selector and pricing controls on one row.
+        # The source widget owns its indicator stretch, so it expands between
+        # the tabs and the right-aligned Compute controls.
+        toolbar_row = QWidget(self)
+        toolbar_layout = QHBoxLayout(toolbar_row)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(8)
+        toolbar_layout.addWidget(self._source_tabs, 1)
+        toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
+        self.add_content(toolbar_row)
         self.add_content(self._build_table())
         self.add_content(self._build_summary())
         self.refresh()
