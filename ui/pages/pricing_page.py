@@ -233,14 +233,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         # Pricing places the source tabs beside its compute controls; remove
         # the mixin's standalone content slot so the tabs occupy only one row.
         self._content.removeWidget(self._source_tabs)
-        # Keep this page's header and working rows compact without changing the
-        # shared workflow layout used by other pages.
-        if self.wf is not None:
-            self.wf.layout().setSpacing(8)
-        if self.header is not None and self.header.layout() is not None:
-            self.header.layout().setContentsMargins(12, 4, 12, 4)
-        self._content.setSpacing(6)
-
         self._records: list[PriceRecord] = []
         #: Diff state keyed like PriceRecord.key(): "added" / "changed" / prior value.
         self._added_keys: set = set()
