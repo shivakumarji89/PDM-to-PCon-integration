@@ -232,22 +232,29 @@ class RepositoryWorkspace(QWidget):
                 root_item.addChild(item)
             root_item.setExpanded(True)
 
-        # Bundled Seating / Tables template folders are selectable from the
-        # same series tree. They are discovered relative to the application,
-        # so no machine-specific absolute path is required.
-        template_root = Path(__file__).resolve().parents[2] / "resources" / "templates"
-        if template_root.is_dir():
-            templates_item = QTreeWidgetItem(["Templates"])
-            tree.addTopLevelItem(templates_item)
-            for template_name in ("Seating_Template", "Tables_Template"):
-                template_path = template_root / template_name
-                if not template_path.is_dir():
-                    continue
-                item = QTreeWidgetItem([template_name])
+        # Manufacturer-specific SVN template roots. Each immediate child
+        # directory is a selectable template series, alongside normal
+        # published repositories in this same dialog.
+        template_roots = getattr(self._context.config, "template_browser_roots", {}) or {}
+        for manufacturer, root_text in template_roots.items():
+            template_root = Path(root_text)
+            if not template_root.is_dir():
+                continue
+            manufacturer_item = QTreeWidgetItem([f"{manufacturer} Templates"])
+            tree.addTopLevelItem(manufacturer_item)
+            try:
+                template_dirs = sorted(
+                    (entry for entry in template_root.iterdir() if entry.is_dir()),
+                    key=lambda entry: entry.name.casefold(),
+                )
+            except OSError:
+                template_dirs = []
+            for template_path in template_dirs:
+                item = QTreeWidgetItem([template_path.name])
                 item.setData(0, Qt.ItemDataRole.UserRole, str(template_path))
                 item.setToolTip(0, str(template_path))
-                templates_item.addChild(item)
-            templates_item.setExpanded(True)
+                manufacturer_item.addChild(item)
+            manufacturer_item.setExpanded(True)
 
         layout.addWidget(tree, 1)
         buttons = QDialogButtonBox(
