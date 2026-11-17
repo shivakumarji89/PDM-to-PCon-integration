@@ -513,6 +513,64 @@ class VarCondGenerationPanel(QWidget):
         )
         self._summary.setToolTip("\\n".join(warning_messages))
 
+    def relation_objects_for_export(self):
+        """Build complete PA_<prefix> price relations from the current VARCOND settings.
+
+        Export deliberately ignores the left-side text filter: a filtered view
+        must never produce a partial MDB. The selected prefix length and the
+        current exclusions/substitutions are retained.
+        """
+        from models.relation_object import RelationObject
+
+        if self._maintenance_load_task is not None:
+            raise RuntimeError("Wait for PDM source loading to finish before exporting VARCOND relations.")
+
+        parent_codes = [row[0] for row in self._article_rows]
+        if not parent_codes:
+            raise RuntimeError("No parent articles with BOM data are available to export.")
+
+        if self._maintenance_check():
+            service = self._ensure_maintenance_service()
+            if not service.has_sources(parent_codes):
+                raise RuntimeError("PDM source data is not fully loaded. Wait for all relations to finish loading.")
+
+        length = self._relation_length.value()
+        groups: dict[str, list[str]] = {}
+        for code in parent_codes:
+            prefix = code[:length] if len(code) > length else code
+            groups.setdefault("PA_" + prefix, []).append(code)
+
+        relations = []
+        for order, relation_name in enumerate(sorted(groups, key=str.casefold), start=100):
+            codes = groups[relation_name]
+            if self._maintenance_check():
+                result = self._maintenance_service.generate(
+                    codes, prefix="",
+                    property_exclusions=self._exclusions.text(),
+                    property_substitutions=self._substitutions.text(),
+                )
+            else:
+                result = VarCondService(self._context).generate_live(
+                    article_codes=codes, prefix="",
+                    property_exclusions=self._exclusions.text(),
+                    property_substitutions=self._substitutions.text(),
+                )
+            body = "\\r\\n".join(rule.rule for rule in result.rules if rule.rule)
+            if not body.strip():
+                continue
+            relations.append(RelationObject(
+                name=relation_name,
+                type_code="3",
+                domain="P",
+                order=order,
+                body=body,
+                article_codes=list(codes),
+            ))
+
+        if not relations:
+            raise RuntimeError("No VARCOND rules were generated; nothing was exported.")
+        return relations
+
     def _extract_relation_properties(self, parent_codes: list[str]) -> list[str]:
         """Single shared extractor for the selected relation's normalized properties."""
         if not self._snapshot:
