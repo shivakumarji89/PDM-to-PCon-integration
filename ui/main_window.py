@@ -11,6 +11,8 @@ behavior is page navigation.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QSettings, QProcess
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
