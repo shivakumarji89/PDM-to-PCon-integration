@@ -172,6 +172,10 @@ class RelationMdbExportService(BaseService):
             if len(object_matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Relation Object name '{name}'."}
             if retained_object is not None:
+                if object_matches and self._int(object_matches[0].get("com_RelObjID")) != retained_obj_id:
+                    return {"ok": False, "error": (
+                        f"Renaming Relation Object to '{name}' would collide with an existing object."
+                    )}
                 obj_id = retained_obj_id
                 if self._key(retained_object.get("com_RelObjName")) != name_key:
                     updates.append({"op": "update", "table": "tCOMd_RelObj",
@@ -196,6 +200,10 @@ class RelationMdbExportService(BaseService):
                 return {"ok": False, "error": f"Duplicate MDB Relation name '{relation_name}'."}
             body = str(getattr(rel, "body", "") or "")
             if retained_relation is not None:
+                if relation_matches and self._int(relation_matches[0].get("com_RelationID")) != retained_relation_id:
+                    return {"ok": False, "error": (
+                        f"Renaming Relation to '{relation_name}' would collide with an existing relation."
+                    )}
                 relation_id = retained_relation_id
                 changed = {}
                 if self._key(retained_relation.get("com_RelationName")) != self._key(relation_name):
