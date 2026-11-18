@@ -286,7 +286,6 @@ class TextMdbExportService(BaseService):
 
         # Link property and value text references through the selected
         # class/property natural keys; source IDs are not MDB surrogate IDs.
-        classes = self.context.engineering_class_service.get_classes(snapshot)
         assignments_by_class: dict[str, dict[str, Any]] = {}
         for article_id in selected:
             for cls in classes_for_article(snapshot, classes, article_id):
