@@ -430,6 +430,79 @@ class MaintenanceSourceMixin:
                 + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
             )
             return
+        if component == "Text":
+            snapshot = self._context.active_snapshot
+            if snapshot is None:
+                QMessageBox.warning(self, "Export Text", "Load the PDM product first.")
+                return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_article_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_article_ids:
+                QMessageBox.information(
+                    self, "Export Text",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                return
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Text", str(exc))
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, "Export Text",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                return
+            from services.text_mdb_export_service import TextMdbExportService
+            service = TextMdbExportService(self._context)
+            preview = service.export_to_session(
+                snapshot, session, selected_article_ids=selected_article_ids, dry_run=True
+            )
+            if not preview.get("ok"):
+                QMessageBox.warning(self, "Export Text", preview.get("error", "Preview failed."))
+                return
+            counts = preview.get("counts", {})
+            summary = (
+                f"Destination: {session.mdb_path}\\n\\n"
+                + "\\n".join(
+                    f"{name.replace('_', ' ').title()}: {count}"
+                    for name, count in counts.items()
+                )
+                + "\\n\\nOnly selected-article Text blocks will be inserted or updated. "
+                  "Existing Text IDs and unrelated MDB rows will be preserved."
+            )
+            if QMessageBox.question(
+                self, "Confirm Text Export", summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            result = service.export_to_session(
+                snapshot, session, selected_article_ids=selected_article_ids
+            )
+            if not result.get("ok"):
+                QMessageBox.critical(self, "Export Text", result.get("error", "Export failed."))
+                return
+            QMessageBox.information(
+                self, "Export Text",
+                "Text export completed.\\n\\n"
+                + "\\n".join(
+                    f"{name.replace('_', ' ').title()}: {count}"
+                    for name, count in result.get("counts", {}).items()
+                )
+                + f"\\n\\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+            )
+            return
         if component != "Articles":
             QMessageBox.information(
                 self,
