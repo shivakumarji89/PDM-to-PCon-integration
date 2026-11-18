@@ -146,14 +146,20 @@ class TextMdbExportService(BaseService):
                     entry["short"] = short
                 if long and not entry["long"]:
                     entry["long"] = long
-        article_text_blocks = [
-            block
-            for code, values in article_text_by_base.items()
-            for block in (
-                TextBlock(name=code, type_code="artshort", en=values["short"]),
-                TextBlock(name=code, type_code="artlong", en=values["long"]),
-            )
-        ]
+        existing_article_text = {
+            (self._key(block.type_code), self._key(block.name)): block
+            for block in blocks if self._key(block.type_code) in {"artshort", "artlong"}
+        }
+        article_text_blocks = []
+        for code, values in article_text_by_base.items():
+            for type_code, source_text in (
+                ("artshort", values["short"]), ("artlong", values["long"])
+            ):
+                existing_block = existing_article_text.get((type_code, self._key(code)))
+                article_text_blocks.append(
+                    existing_block if existing_block is not None
+                    else TextBlock(name=code, type_code=type_code, en=source_text)
+                )
         article_text_keys = {
             ("artshort", self._key(block.name)) for block in article_text_blocks
         } | {
