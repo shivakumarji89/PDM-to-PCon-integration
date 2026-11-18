@@ -309,7 +309,7 @@ class TextMdbExportService(BaseService):
                 if property_text_id is None:
                     continue
                 if class_id is None:
-                    return {**result, "ok": False, "error": (
+                    return {"ok": False, "error": (
                         f"Class Creation must be exported before Text for class '{class_name}'."
                     )}
                 prop_rows = [
@@ -318,7 +318,7 @@ class TextMdbExportService(BaseService):
                     and self._key(row.get("com_PropName")) == prop_name
                 ]
                 if len(prop_rows) != 1:
-                    return {**result, "ok": False, "error": (
+                    return {"ok": False, "error": (
                         f"Properties & Values must be exported before Text for '{class_name}:{prop_name}'."
                     )}
                 mdb_prop = prop_rows[0]
@@ -363,7 +363,7 @@ class TextMdbExportService(BaseService):
                         and self._key(row.get("com_PropValueFrom")) == self._key(code)
                     ]
                     if len(value_rows) != 1:
-                        return {**result, "ok": False, "error": (
+                        return {"ok": False, "error": (
                             f"Properties & Values must be exported before Text for '{prop_name}={code}'."
                         )}
                     if str(value_rows[0].get("com_TextID") or "") != str(value_text_id):
