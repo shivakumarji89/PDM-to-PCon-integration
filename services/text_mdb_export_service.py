@@ -128,11 +128,23 @@ class TextMdbExportService(BaseService):
         }
         if not language_columns:
             return {"ok": False, "error": "The session MDB has no supported tCOMd_Text language columns."}
+        text_columns = [
+            "com_TextID", "com_TextName", "com_TextTypeCode", "com_PackageID",
+            *dict.fromkeys(language_columns.values()),
+        ]
         try:
             data = db.read_tables(session.mdb_path, {
                 "package": f"SELECT com_PackageID FROM tCOMd_Package WHERE com_PackageID = {int(package_id)}",
-                "texts": "SELECT * FROM tCOMd_Text",
-                "articles": "SELECT com_ArticleID, com_ArticleCode, com_PackageID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
+                "texts": (
+                    "SELECT " + ", ".join(text_columns)
+                    + f" FROM tCOMd_Text WHERE com_PackageID = {int(package_id)}"
+                ),
+                "text_max": "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text",
+                "articles": (
+                    "SELECT com_ArticleID, com_ArticleCode, com_PackageID, "
+                    "com_ShortTextID, com_LongTextID FROM tCOMd_Article "
+                    f"WHERE com_PackageID = {int(package_id)}"
+                ),
             })
         except Exception as exc:
             return {"ok": False, "error": f"Could not read the session MDB: {exc}"}
@@ -144,7 +156,7 @@ class TextMdbExportService(BaseService):
                 continue
             key = (self._key(row.get("com_TextTypeCode")), self._key(row.get("com_TextName")))
             existing.setdefault(key, []).append(row)
-        next_id = self._next_id(data["texts"], "com_TextID")
+        next_id = max(self._next_id(data["texts"], "com_TextID"),\n                       self._int((data.get("text_max") or [{}])[0].get("max_id")) + 1)
         inserts: list[dict[str, Any]] = []
         updates: list[dict[str, Any]] = []
         text_id_by_key: dict[tuple[str, str], Any] = {}
