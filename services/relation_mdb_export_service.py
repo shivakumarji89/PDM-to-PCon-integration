@@ -70,12 +70,18 @@ class RelationMdbExportService(BaseService):
         scope = build_class_creation_scope(snapshot, selected)
         classes = self.context.engineering_class_service.get_classes(snapshot)
         selected_class_names: dict[str, set[str]] = {}
+        property_class_names: dict[str, set[str]] = {}
         for aid, code in selected_entries:
+            applicable = classes_for_article(snapshot, classes, aid)
             selected_class_names.setdefault(code, set()).update(
-                str(getattr(cls, "name", "") or "")
-                for cls in classes_for_article(snapshot, classes, aid)
+                str(getattr(cls, "name", "") or "") for cls in applicable
                 if getattr(cls, "name", "")
             )
+            for cls in applicable:
+                for assignment in getattr(cls, "properties", []) or []:
+                    pid = str(getattr(assignment, "property_id", "") or "")
+                    if pid:
+                        property_class_names.setdefault(pid, set()).add(str(cls.name))
         selected_property_ids = set(scope.property_ids) | set(scope.option_ids)
         selected_value_ids = {
             str(v) for values in list(scope.property_value_ids.values()) + list(scope.option_value_ids.values())
@@ -121,7 +127,7 @@ class RelationMdbExportService(BaseService):
             "article_classes": "SELECT com_ArticleClassID, com_ArticleID, com_ClassID, com_RelObjID FROM tCOMd_ArticleClass",
             "classes": "SELECT com_ClassID, com_ClassName, com_PackageID FROM tCOMd_Class",
             "properties": "SELECT com_PropertyID, com_ClassID, com_PropName, com_RelObjID FROM tCOMd_Property",
-            "values": "SELECT com_ValueID, com_PropertyID, com_RelObjID FROM tCOMd_PropValue",
+            "values": "SELECT com_ValueID, com_PropertyID, com_PropValueFrom, com_RelObjID FROM tCOMd_PropValue",
         }
         try:
             data = db.read_tables(session.mdb_path, tables)
@@ -236,14 +242,76 @@ class RelationMdbExportService(BaseService):
                                   and str(r.get("com_ClassID")) == str(class_rows[0].get("com_ClassID"))]
                     if len(candidates) == 1:
                         ref_updates[("article_class", str(candidates[0]["com_ArticleClassID"]))] = {"com_RelObjID": obj_id}
-            for prop_id in set(getattr(rel, "property_ids", []) or []) | ({str(getattr(rel, "property_id", ""))} if getattr(rel, "property_id", "") else set()):
-                prop_rows = [r for r in data["properties"] if str(r.get("com_PropertyID")) == str(prop_id)]
-                if len(prop_rows) == 1:
-                    ref_updates[("property", str(prop_id))] = {"com_RelObjID": obj_id}
-            for value_id in set(getattr(rel, "value_ids", []) or []) | ({str(getattr(rel, "value_id", ""))} if getattr(rel, "value_id", "") else set()):
-                value_rows = [r for r in data["values"] if str(r.get("com_ValueID")) == str(value_id)]
-                if len(value_rows) == 1:
-                    ref_updates[("value", str(value_id))] = {"com_RelObjID": obj_id}
+            source_property_ids = (
+                set(getattr(rel, "property_ids", []) or [])
+                | ({str(getattr(rel, "property_id", ""))} if getattr(rel, "property_id", "") else set())
+            )
+            source_props = {
+                str(p.id): p for p in (getattr(snapshot, "properties", []) or [])
+                if getattr(p, "id", None) is not None
+            }
+            source_options = {
+                str(o.id): o for o in (getattr(snapshot, "options", []) or [])
+                if getattr(o, "id", None) is not None
+            }
+            class_rows_by_name = {
+                self._key(r.get("com_ClassName")): r for r in data["classes"]
+                if str(r.get("com_PackageID")) == str(package_id)
+            }
+            property_rows_by_source: dict[str, list[dict[str, Any]]] = {}
+            for source_id in source_property_ids:
+                source = source_props.get(str(source_id)) or source_options.get(str(source_id))
+                source_name = str(getattr(source, "name", "") or "")
+                prop_name = self._key(xocd._prop_ident(source_name)) if source_name else ""
+                for class_name in property_class_names.get(str(source_id), set()):
+                    class_row = class_rows_by_name.get(self._key(class_name))
+                    if class_row is None:
+                        continue
+                    matches = [
+                        row for row in data["properties"]
+                        if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
+                        and self._key(row.get("com_PropName")) == prop_name
+                    ]
+                    if len(matches) == 1:
+                        mdb_property_id = str(matches[0].get("com_PropertyID"))
+                        ref_updates[("property", mdb_property_id)] = {"com_RelObjID": obj_id}
+                        property_rows_by_source.setdefault(str(source_id), []).extend(matches)
+
+            # Source value IDs are not MDB surrogate IDs. Resolve them by
+            # (selected class, normalized property, exported value code).
+            value_parent: dict[str, str] = {}
+            for value in getattr(snapshot, "property_values", []) or []:
+                value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "property_id", "") or "")
+            for value in getattr(snapshot, "option_values", []) or []:
+                value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "option_id", "") or "")
+            source_value_ids = (
+                set(getattr(rel, "value_ids", []) or [])
+                | ({str(getattr(rel, "value_id", ""))} if getattr(rel, "value_id", "") else set())
+            )
+            value_codes = xocd._value_code_map(snapshot)
+            for source_value_id in source_value_ids:
+                parent_id = value_parent.get(str(source_value_id), "")
+                source = source_props.get(parent_id) or source_options.get(parent_id)
+                source_name = str(getattr(source, "name", "") or "")
+                prop_name = self._key(xocd._prop_ident(source_name)) if source_name else ""
+                code = self._key(value_codes.get(str(source_value_id), ""))
+                if not prop_name or not code:
+                    continue
+                for class_name in property_class_names.get(parent_id, set()):
+                    class_row = class_rows_by_name.get(self._key(class_name))
+                    if class_row is None:
+                        continue
+                    mdb_props = [
+                        row for row in data["properties"]
+                        if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
+                        and self._key(row.get("com_PropName")) == prop_name
+                    ]
+                    for mdb_prop in mdb_props:
+                        for mdb_value in data["values"]:
+                            if (str(mdb_value.get("com_PropertyID")) == str(mdb_prop.get("com_PropertyID"))
+                                    and self._key(mdb_value.get("com_PropValueFrom")) == code):
+                                mdb_value_id = str(mdb_value.get("com_ValueID"))
+                                ref_updates[("value", mdb_value_id)] = {"com_RelObjID": obj_id}
 
         table_for_kind = {"article": "tCOMd_Article", "article_class": "tCOMd_ArticleClass",
                           "property": "tCOMd_Property", "value": "tCOMd_PropValue"}
