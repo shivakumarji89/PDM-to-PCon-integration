@@ -192,9 +192,9 @@ class RelationMdbExportService(BaseService):
         if not object_proto or not relation_proto or not link_proto:
             return {"ok": False, "error": "The session is missing one or more Relation Object table prototypes."}
 
-        next_obj = self._next_id(data["objects"], "com_RelObjID")
-        next_relation = self._next_id(data["relations"], "com_RelationID")
-        next_link = self._next_id(data["links"], "com_RelObjRelID")
+        next_obj = max(self._next_id(data["objects"], "com_RelObjID"), self._int((data.get("object_max") or [{}])[0].get("max_id")) + 1)
+        next_relation = max(self._next_id(data["relations"], "com_RelationID"), self._int((data.get("relation_max") or [{}])[0].get("max_id")) + 1)
+        next_link = max(self._next_id(data["links"], "com_RelObjRelID"), self._int((data.get("link_max") or [{}])[0].get("max_id")) + 1)
         existing_link_keys = {
             (str(row.get("com_RelObjID")), str(row.get("com_RelationID")),
              str(row.get("com_RelObjTypeCode")), str(row.get("com_RelObjDomainCode")),
@@ -429,9 +429,13 @@ class RelationMdbExportService(BaseService):
             return {**result, "ok": False, "error": batch.first_error() or "Relations MDB transaction failed."}
         try:
             verified = db.read_tables(session.mdb_path, {
-                "objects": "SELECT com_RelObjID FROM tCOMd_RelObj",
-                "relations": "SELECT com_RelationID FROM tCOMd_Relation",
-                "links": "SELECT com_RelObjRelID FROM tCOMd_RelObjRel",
+                "objects": f"SELECT com_RelObjID FROM tCOMd_RelObj WHERE com_PackageID = {package_filter}",
+                "relations": f"SELECT com_RelationID FROM tCOMd_Relation WHERE com_PackageID = {package_filter}",
+                "links": (
+                    "SELECT com_RelObjRelID FROM tCOMd_RelObjRel WHERE com_RelObjID IN "
+                    "(SELECT com_RelObjID FROM tCOMd_RelObj "
+                    f"WHERE com_PackageID = {package_filter})"
+                ),
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Relations were written but read-back failed: {exc}"}
