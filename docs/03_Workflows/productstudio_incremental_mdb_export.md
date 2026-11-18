@@ -129,17 +129,33 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 
 ## Validation status
 
-Evidence below was produced locally on Windows 11, 64-bit Python 3.12.0, `QT_QPA_PLATFORM=offscreen`, at commit `ca9d56b` (branch `feature/incremental-class-creation`). No GitHub Actions run has been verified for this commit from this environment (`gh` is not installed); CI status is **pending**.
+Evidence was produced locally on Windows 11, 64-bit Python 3.12.0, `QT_QPA_PLATFORM=offscreen`. Commit `9e79d52` (branch `feature/incremental-class-creation`) is the tested tree. No GitHub Actions run has been verified (`gh` is not installed here); CI is **pending**.
 
-| Gate | Result | Level |
+| Gate (commit `9e79d52`) | Result | Level |
 |---|---|---|
-| Focused incremental MDB + pricing set (the workflow's command) | 158 passed, 6 subtests, 2.4 s | unit/simulated |
-| `tests/test_mdb_export_session.py` against real 32-bit ACE (PowerShell 32) on **generated stand-in templates** | 14 passed, 718 s (each test 60-95 s) | integration, real ACE; NOT the real ProductStudio template |
-| Whole suite, one process per test file (all files except the session file above) | 5,510 passed, 12 failed, 15 skipped | mixed |
-| Whole suite in a single process | aborts with a Windows access violation inside `tests/test_pricing_worker_lifecycle.py::test_destroying_page_before_failure_reports_without_second_exception` (`QCoreApplication.processEvents`) in one run; the same file passes 3/3 in isolation; a second single-process run of `main` did not crash, so it is non-deterministic | Qt lifecycle, open |
+| Focused incremental MDB + pricing set (the workflow's command) | 158 passed, 6 subtests, 2 s | unit/simulated |
+| The 7 previously failing files (snapshot consistency, source tabs, Maintenance VARCOND, Metatype staged writer, home page, Phase 3 workspaces, workflow shell) | 189 passed, 0 failed | unit/UI |
+| Whole suite, **one pytest process** (`python -X faulthandler -m pytest -q tests`) | 5,536 passed, 15 skipped, 22 subtests, 0 failed, exit 0, 783 s | mixed |
+| Whole suite, **one process per test file** (174 files) | 5,536 passed, 15 skipped, 0 failed, every file exit 0, 1,310 s | mixed |
+| `tests/test_mdb_export_session.py` on real 32-bit ACE with generated stand-in templates (inside both runs above) | 14 passed, about 12 min | real ACE; NOT the real ProductStudio template |
 
-### The 12 per-file failures are not caused by this branch
-Seven files fail identically on `main` (805030a): `test_maintenance_snapshot_consistency` (3), `test_maintenance_source_tabs` (1), `test_maintenance_varcond` (3), `test_metatype_staged_writer` (1), `test_phase3_database_and_workspaces` (1), `test_workflow_shell` (2) all fail with the same counts on `main`; `test_module_home_page` fails 1 on the branch and 3 on `main` (flaky). Causes seen: tests referencing removed widgets (`ArticlesPage._actions_btn`, `PricingPage._pricelists_btn`), Windows path expectations in the Metatype/workspace tests, and the Maintenance VARCOND cache expectations. They are pre-existing and remain an **open gate**: they were not fixed here, and no test was removed or skipped.
+### The 12 earlier failures
+All were reproduced on the branch, compared with `main` (`805030a`) and root-caused. Only one was a production defect.
+
+| Test(s) | Cause | Kind |
+|---|---|---|
+| `test_maintenance_varcond` x3 | Fake `_load_live` lacked the `progress_callback`/`source_callback` added in `0bceb99`, so every load raised; tests also drove the Generate button/prefix field removed in `02109aa` and assumed PDM is read on selection (it is read once when the workflow opens). | obsolete test |
+| (found while fixing the above) Development VARCOND | Since `a52c937` selecting a relation only displayed cached rules, so in Development a second relation stayed on "Waiting for this relation to finish loading" forever. Fixed in `VarCondGenerationPanel._on_relation_changed`: generate on selection when not cached; cached rules are dropped when prefix length, filter, exclusions or substitutions change (they were previously served stale). `test_varcond_background` expectations were updated (selection generates; return to a superseded relation regenerates). | **production defect** |
+| `test_workflow_shell` x2, `test_maintenance_source_tabs` x1 | `_actions_btn` became `_actions_combo` (`8341429`), `_pricelists_btn` was removed (price lists live in the Pricing export, `0b48c7e`), `_group_class_check` was removed (`76623ff`), the toolbar has a leading stretch, and rows are always grouped so column sorting is off. | obsolete test |
+| `test_maintenance_snapshot_consistency` x3 | Articles always insert Class Creation group header rows (`76623ff`); tests counted them as articles. | obsolete test |
+| `test_phase3_database_and_workspaces` x1 | Knoll default workspace deliberately corrected in `a1a92d6`. | obsolete test |
+| `test_metatype_staged_writer` x1 | Review text shows the resolved real path; on Windows `realpath` normalises directory case (`pytest-of-SIAOCA`). | Windows path |
+| `test_module_home_page` x1 (3 on `main` under load) | Product page intentionally has Refresh PDM, not Reload; the intermittent extra failure was `MainWindow`'s Product page loading the catalogue from live SQL Server when the on-disk registry cache is stale, overrunning the 10 s thread-pool drain. The tests now stub the catalogue load. | obsolete test + isolation |
+
+Module order on the home page is unchanged and still asserted.
+
+### Qt access violation (open, not reproduced)
+One earlier single-process run on this branch, and one on `main`, aborted with a Windows access violation inside `QCoreApplication.processEvents` in `test_pricing_worker_lifecycle.py::test_destroying_page_before_failure_reports_without_second_exception` (the test deliberately deletes the page mid-run). It could **not** be reproduced afterwards: the file passed 80/80 times under 4x concurrency; the Pricing/VARCOND group passed 4/4 in one process; the preceding-files prefix run passed on the branch (1,715) and on `main` (no crash, 16 failures); the complete single-process run on `9e79d52` passed. The crash is therefore non-deterministic and **not proven fixed**. A possible contributor is state leaked by the failing tests that are now fixed, but this is a hypothesis. Keep running the full suite in one process in CI and treat any recurrence as a release blocker.
 
 ### Not validated (external requirements)
 - **Real ProductStudio MDB template**: none is in the repository or workspace. Stages other than Articles/session have not been run against the real schema; do not claim ACE parity for Class Creation, Properties, Text, Relations, Pricing or VARCOND until run with the real template under 32-bit Python + ACE.
