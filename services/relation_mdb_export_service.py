@@ -114,6 +114,22 @@ class RelationMdbExportService(BaseService):
                 or bool(prop_ids & selected_property_ids)
                 or bool(value_ids & selected_value_ids)
             )
+            # A relation object is shared by all of its bindings. Do not
+            # export only part of its references: its body could then be
+            # reachable from an incomplete set of classes / values / articles.
+            if relevant and explicitly_bound:
+                outside_articles = article_bindings - base_codes
+                outside_classes = {
+                    (code, name) for code, name in class_bindings
+                    if code not in base_codes or name not in selected_class_names.get(code, set())
+                }
+                outside_properties = prop_ids - selected_property_ids
+                outside_values = value_ids - selected_value_ids
+                if outside_articles or outside_classes or outside_properties or outside_values:
+                    return {"ok": False, "error": (
+                        f"Relation Object '{getattr(rel, 'name', '')}' is shared beyond the selected articles. "
+                        "Select all articles that use its bindings before exporting Relations."
+                    )}
             # Unbound authored relations are product-level and remain in scope.
             if relevant or not explicitly_bound:
                 chosen.append(rel)
