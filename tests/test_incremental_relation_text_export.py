@@ -1,3 +1,4 @@
+from copy import deepcopy
 from types import SimpleNamespace
 
 from services.relation_mdb_export_service import RelationMdbExportService
@@ -210,6 +211,17 @@ def test_relation_export_inserts_only_missing_rows_and_links_selected_article(tm
     assert rows["articles"][0]["com_RelObjID"] == 1
     assert len(rows["objects"]) == len(rows["relations"]) == len(rows["links"]) == 1
 
+    before = deepcopy(rows)
+    repeated = RelationMdbExportService(context).export_to_session(
+        snapshot, session, {"a1"},
+    )
+    assert repeated["ok"], repeated
+    assert repeated["verified"] is True
+    assert repeated["counts"]["relation_objects_inserted"] == 0
+    assert repeated["counts"]["relations_inserted"] == 0
+    assert repeated["counts"]["relation_links_inserted"] == 0
+    assert rows == before
+
 
 def test_text_export_inserts_text_and_links_selected_base_article(tmp_path):
     from models.text_block import TextBlock
@@ -262,3 +274,12 @@ def test_text_export_inserts_text_and_links_selected_base_article(tmp_path):
     assert rows["articles"][0]["com_LongTextID"] == 2
     assert {row["com_TextName"] for row in rows["texts"]} == {"BASE"}
     assert {row["com_TextTypeCode"] for row in rows["texts"]} == {"artshort", "artlong"}
+
+    before = deepcopy(rows)
+    repeated = TextMdbExportService(context).export_to_session(
+        snapshot, session, {"a1"},
+    )
+    assert repeated["ok"], repeated
+    assert repeated["verified"] is True
+    assert repeated["counts"]["texts_inserted"] == 0
+    assert rows == before
