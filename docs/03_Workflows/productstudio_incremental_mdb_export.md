@@ -11,7 +11,7 @@ copied once; later workflows never re-copy it, never wipe it and never renumber 
 | `services/mdb_export_session_service.py` | Product key, persistence, recovery, one-time `initialize()`, `record_workflow()`. |
 | `services/article_mdb_export_service.py` | `export_to_session()` — Articles workflow. |
 | `services/class_creation_mdb_export_service.py` | `export_to_session()` — article-scoped Class Creation, CodeScheme body extension, and ArticleClass links. |
-| `services/properties_values_mdb_export_service.py` | `export_to_session()` — selected-article Properties and Values, adding only missing `tCOMd_Property` / `tCOMd_PropValue` rows. |
+| `services/properties_values_mdb_export_service.py` | `export_to_session()` — selected-article Properties and Values, adding only missing `tCOMd_Property` / `tCOMd_PropValue` rows. |\n| `services/text_mdb_export_service.py` | `export_to_session()` — selected-article Text upsert, retaining Text IDs and linking Article / Property / PropValue text references. |\n| `services/relation_mdb_export_service.py` | `export_to_session()` — selected-article Relation Object, Relation and RelObjRel upsert with entity back-references. |\n| `services/price_mdb_export_service.py` | Existing price-list / price-row exporter, now routed to the active Maintenance product session and filtered to selected article base codes (global prices remain product-level). |
 | `services/mdb_service.py` | Unchanged: the only MDB I/O gateway (transactional `execute_batch`). |
 | `ui/main_window.py::_on_export_articles_to_mdb` | Dialogs only; called from the Articles page "Export to MDB". |
 
@@ -92,8 +92,26 @@ Object references are reused only when an unambiguous matching row already exist
 those fields remain NULL for their owning workflows. It does not write Text, Relation, Article,
 Class, CodeScheme, Price, or Value Combination tables.
 
-## Remaining workflows
+## Implemented: Relations / Relation Objects
 
-Relations, Text and Prices still need incremental session exporters. Each must reuse the same
-product MDB and must not call the legacy full exporter. Value Combination tables are excluded
-from the current scope.
+The Relation page's Export to MDB action now uses the active product session and the Articles-page Export selection. It selects relation objects by article, article/class, property or value bindings; unbound authored relations are treated as product-level. It inserts only missing tCOMd_RelObj, tCOMd_Relation and tCOMd_RelObjRel rows, retains existing IDs, updates changed relation bodies in place, and resolves source property/value identities through class/property/value natural keys before updating com_RelObjID references. The write is transactional and followed by table-count checks.
+
+## Implemented: Text
+
+The Text page's Export to MDB action now uses the active product session and the same Articles-page selection. It exports selected base-article descriptions and selected class property / option text blocks. Existing Text IDs are retained; changed translations are updated in place; missing rows are inserted. It then links selected Article, Property and PropValue rows to their Text IDs. Price text remains owned by the pricing exporter. Text reads are package-scoped, with a separate global TextID maximum query.
+
+## Implemented: Pricing / Price Export
+
+In Maintenance, the Pricing export / preview workflow now uses the active product MDB session rather than asking the user to choose a second MDB. It requires the Articles-page selection and filters article price records to selected base article codes; global price records remain product-level. Existing price-list target review, preview digest, non-destructive price upsert and read-back verification remain in use. Successful exports are recorded in session workflow status. Development's existing destination-file flow is unchanged.
+
+## Remaining validation and performance work
+
+The new Relations and Text session exporters and Maintenance Pricing session routing are committed to the feature branch, but their tests have not yet been executed. Remaining work before production use:
+
+- Run targeted tests for Articles, Class Creation, Properties & Values, Relations, Text and Pricing.
+- Run the full pytest suite and resolve regressions.
+- Validate writes against real Windows 32-bit ACE MDB files, including repeat exports, pre-existing IDs, duplicate natural keys, transaction rollback and foreign-key references.
+- Benchmark large product MDBs; optimize relation/property/value reads and batch sizes based on measurements.
+- Verify price-list routing and global-price behaviour against a real Maintenance session MDB.
+
+Value Combination tables remain explicitly out of scope. Do not use the legacy full exporter for these incremental workflows.
