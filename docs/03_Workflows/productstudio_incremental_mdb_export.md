@@ -10,6 +10,7 @@ copied once; later workflows never re-copy it, never wipe it and never renumber 
 | `models/mdb_export_session.py` | `MdbExportSession`: MDB path, package / ComGroup / manufacturer ids, template boilerplate rows, `article_map`, `scheme_map`, `workflow_status`. |
 | `services/mdb_export_session_service.py` | Product key, persistence, recovery, one-time `initialize()`, `record_workflow()`. |
 | `services/article_mdb_export_service.py` | `export_to_session()` — Articles workflow. |
+| `services/class_creation_mdb_export_service.py` | `export_to_session()` — Class Creation, properties, values, code-scheme extension, ArticleClass and ArtBase. |
 | `services/mdb_service.py` | Unchanged: the only MDB I/O gateway (transactional `execute_batch`). |
 | `ui/main_window.py::_on_export_articles_to_mdb` | Dialogs only; called from the Articles page "Export to MDB". |
 

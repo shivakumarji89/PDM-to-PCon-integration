@@ -272,6 +272,56 @@ class MaintenanceSourceMixin:
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         component = getattr(self, "_maintenance_export_component", "workflow data")
+        if component == "Class Creation":
+            snapshot = self._context.active_snapshot
+            if snapshot is None:
+                QMessageBox.warning(self, "Export Class Creation", "Load the PDM product first.")
+                return
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Class Creation", str(exc))
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, "Export Class Creation",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                return
+            from services.class_creation_mdb_export_service import ClassCreationMdbExportService
+            service = ClassCreationMdbExportService(self._context)
+            preview = service.export_to_session(snapshot, session, dry_run=True)
+            if not preview.get("ok"):
+                QMessageBox.warning(self, "Export Class Creation", preview.get("error", "Preview failed."))
+                return
+            counts = preview.get("counts", {})
+            summary = (
+                f"Destination: {session.mdb_path}\\n\\n"
+                + "\\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                              for name, count in counts.items())
+                + "\\n\\nExisting IDs and unrelated MDB rows will be preserved."
+            )
+            if preview.get("warnings"):
+                summary += "\\n\\nWarnings:\\n" + "\\n".join(preview["warnings"][:8])
+            if QMessageBox.question(
+                self, "Confirm Class Creation Export", summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            result = service.export_to_session(snapshot, session)
+            if not result.get("ok"):
+                QMessageBox.critical(self, "Export Class Creation", result.get("error", "Export failed."))
+                return
+            QMessageBox.information(
+                self, "Export Class Creation",
+                "Class Creation export completed.\\n\\n"
+                + "\\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                              for name, count in result.get("counts", {}).items())
+                + f"\\n\\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+            )
+            return
         if component != "Articles":
             QMessageBox.information(
                 self,
