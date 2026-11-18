@@ -366,6 +366,10 @@ class PricingService(BaseService):
                         worker_conn,
                         site_id=params.site_id,
                     )
+                    # A database call cannot be interrupted safely; observe
+                    # cancellation immediately when it returns, before touching
+                    # its result or issuing any further query.
+                    checkpoint()
                     base_by_item = {str(row.Item): row for row in base_rows}
                     completed = []
                     for item in chunk:
