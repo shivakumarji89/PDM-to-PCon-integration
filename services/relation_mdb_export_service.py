@@ -38,6 +38,7 @@ class RelationMdbExportService(BaseService):
         selected = {str(v) for v in (selected_article_ids or set()) if str(v)}
         if not selected:
             return {"ok": False, "error": "Select one or more articles in the Articles page Export column first."}
+        workflow_name = str(workflow or self.WORKFLOW)
         sessions = self.context.mdb_export_session_service
         try:
             if sessions.product_key(snapshot) != session.product_key:
@@ -381,7 +382,7 @@ class RelationMdbExportService(BaseService):
         if dry_run:
             return result
         if not plan:
-            sessions.record_workflow(session, self.WORKFLOW, counts)
+            sessions.record_workflow(session, workflow_name, counts)
             sessions.save(session)
             result["verified"] = True
             return result
@@ -400,7 +401,7 @@ class RelationMdbExportService(BaseService):
                 or len(verified["relations"]) < len(data["relations"]) + counts["relations_inserted"]
                 or len(verified["links"]) < len(data["links"]) + counts["relation_links_inserted"]):
             return {**result, "ok": False, "error": "Relations read-back count verification failed."}
-        sessions.record_workflow(session, self.WORKFLOW, counts)
+        sessions.record_workflow(session, workflow_name, counts)
         try:
             sessions.save(session)
         except OSError as exc:
