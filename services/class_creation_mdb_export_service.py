@@ -6,6 +6,7 @@ are separate workflows. Selection comes from the Articles page Export column.
 """
 from __future__ import annotations
 
+from copy import copy
 from pathlib import Path
 import re
 from typing import Any
@@ -118,18 +119,24 @@ class ClassCreationMdbExportService(BaseService):
                         continue
                     existing_class = selected_classes_by_name.get(name)
                     if existing_class is None:
-                        selected_classes_by_name[name] = cls
+                        # Work on a detached class/property list. The engineering
+                        # snapshot is shared by later workflows and must remain
+                        # unchanged when selected variants are unioned.
+                        selected_class = copy(cls)
+                        selected_class.properties = list(
+                            getattr(cls, "properties", []) or []
+                        )
+                        selected_classes_by_name[name] = selected_class
                         continue
                     existing_property_ids = {
                         str(getattr(assignment, "property_id", "") or "")
                         for assignment in getattr(existing_class, "properties", []) or []
                     }
-                    existing_class.properties.extend(
-                        assignment
-                        for assignment in (getattr(cls, "properties", []) or [])
-                        if str(getattr(assignment, "property_id", "") or "")
-                        not in existing_property_ids
-                    )
+                    for assignment in getattr(cls, "properties", []) or []:
+                        property_id = str(getattr(assignment, "property_id", "") or "")
+                        if property_id and property_id not in existing_property_ids:
+                            existing_class.properties.append(assignment)
+                            existing_property_ids.add(property_id)
             class_names_by_base[base_code] = list(selected_classes_by_name)
             class_objects_by_base[base_code] = list(selected_classes_by_name.values())
 
