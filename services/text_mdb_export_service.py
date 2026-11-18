@@ -103,7 +103,7 @@ class TextMdbExportService(BaseService):
             prop = prop_by_id.get(str(prop_id))
             if prop is None:
                 continue
-            key = text_block_name(prop.name)
+            key = text_block_name(assignment_property_names.get(str(prop_id), prop.name))
             property_text_key = assignment_text_names.get(str(prop_id), key)
             selected_names.add(("property", self._key(property_text_key)))
             for value in getattr(prop, "values", []) or []:
@@ -119,7 +119,7 @@ class TextMdbExportService(BaseService):
             option = option_by_id.get(str(option_id))
             if option is None:
                 continue
-            key = text_block_name(option.name)
+            key = text_block_name(assignment_property_names.get(str(option_id), option.name))
             option_text_key = assignment_text_names.get(str(option_id), key)
             selected_names.add(("option", self._key(option_text_key)))
             for value in getattr(option, "values", []) or []:
