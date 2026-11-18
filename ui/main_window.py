@@ -1751,6 +1751,15 @@ class MainWindow(QMainWindow):
         except RuntimeError as exc:
             QMessageBox.information(self, title, str(exc))
             return
+        if QMessageBox.question(
+            self, title,
+            "This creates a NEW full MDB export of the whole product (articles, classes, relations, "
+            "prices ...) from the bundled template. It does not update an existing MDB, and the "
+            "ProductStudio session MDB is not modified.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
         runner = self._exports()
         if not runner.begin(title):
             self._export_already_running(title)
@@ -1769,16 +1778,9 @@ class MainWindow(QMainWindow):
             if kind == "message":
                 QMessageBox.information(self, title, value)
                 return
-            # Replace only generated PA_* price relations. Keep unrelated relation
-            # objects and let the standard MDB exporter build the normal package.
-            snapshot.relation_objects = [
-                relation for relation in snapshot.relation_objects
-                if not (
-                    (relation.name or "").startswith("PA_")
-                    and str(getattr(relation, "domain", "") or "").upper() == "P"
-                )
-            ] + value
-            self._on_export_mdb()
+            # The generated relations go onto the export's isolated snapshot copy only; the live
+            # workspace snapshot is not touched.
+            self._on_export_mdb(generated_relations=value)
 
         def failed(message: str) -> None:
             runner.end()
@@ -1806,7 +1808,10 @@ class MainWindow(QMainWindow):
         )
         return True
 
-    def _on_export_mdb(self, selected_article_ids: set[str] | None = None) -> None:
+    def _on_export_mdb(
+        self, selected_article_ids: set[str] | None = None,
+        generated_relations: list | None = None,
+    ) -> None:
         """Export Development output as a ``pcr_data_com_ocd.mdb``.
 
         Copies the category template, wipes its example product, and writes the
@@ -1836,6 +1841,18 @@ class MainWindow(QMainWindow):
         )
         if not directory:
             return
+        # A full export builds a new MDB; never replace an existing file without being told.
+        overwrite = False
+        if (Path(directory) / "pcr_data_com_ocd.mdb").exists():
+            if QMessageBox.question(
+                self, "Export MDB",
+                f"{Path(directory) / 'pcr_data_com_ocd.mdb'} already exists.\n\nThe export creates a "
+                "new full MDB and would replace it. Overwrite?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            overwrite = True
         runner = self._exports()
         if not runner.begin("Export MDB"):
             self._export_already_running("Export MDB")
@@ -1860,10 +1877,16 @@ class MainWindow(QMainWindow):
             raise
 
         def work(emit):
+            if generated_relations is not None:
+                from services.pricing_relation_service import prepare_price_relation_export
+
+                emit("Preparing the price relations...")
+                prepare_price_relation_export(self._context, export_snapshot, generated_relations)
             emit("Writing the MDB export...")
+            options = {"overwrite": True} if overwrite else {}
             return service.export(
                 export_snapshot, directory, kind,
-                selected_article_ids=selected_article_ids,
+                selected_article_ids=selected_article_ids, **options,
             )
 
         def finished(result) -> None:

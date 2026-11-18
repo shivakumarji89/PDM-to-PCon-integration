@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.progress import ProgressReporter
+from services.pricing_relation_service import price_relation_names
 from services.varcond_service import VarCondService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
@@ -682,8 +683,11 @@ class VarCondGenerationPanel(QWidget):
                 base_codes = plan.xocd.base_codes_from_entries(plan.base_entries, selected_ids)
             else:
                 base_codes = plan.xocd._base_codes(plan.snapshot, selected_article_ids=selected_ids)
+            # Relation object ``P_<prefix>``; its relation is ``PA_<prefix>`` (the group name).
+            object_name, defined_name = price_relation_names(relation_name[len("PA_"):])
             relations.append(RelationObject(
-                name=relation_name,
+                name=object_name,
+                relation_name=defined_name,
                 type_code="3",
                 domain="P",
                 order=order,

@@ -154,10 +154,17 @@ def test_base_codes_from_entries_equal_base_codes_for_any_selection():
 # relation export
 # --------------------------------------------------------------------------------------
 GOLDEN_EXPORT = {
-    "default": (None, "", "", "2234b15153e79fcba928b66298c3e8849d30c1b7e93fb1c79970f31f9b513e96", 5),
+    "default": (None, "", "", "a79f95f4a7c406ddfb05a76284079a9bf2d44c26c8365d3168bf064d8d04aa26", 5),
     "len6_excl_subst": (6, "Overall_width", "Fabric_Type=FT",
-                        "f223bb9f9e338313b7a0b52791a75634b1ace67e6843a6f743e7c4644227f2b3", 2),
+                        "383eeeb08f2496c584508404f22d679f477f74a175a0764984833a7813c2b61c", 2),
 }
+
+
+def _with_price_relation_names(relations):
+    """The oracle predates the naming fix: only the names differ (``PA_x`` object -> ``P_x`` / ``PA_x``)."""
+    import dataclasses
+
+    return [dataclasses.replace(r, name="P_" + r.name[3:], relation_name=r.name) for r in relations]
 
 
 def _reference_relation_objects_for_export(self):
@@ -247,7 +254,7 @@ def test_relation_export_equals_the_original_and_asks_for_each_prefix_once(app, 
     relations = panel.relation_objects_for_export()
     shared_queries = fakes.increment_queries()
     fakes.FakeLiveRepo.calls = []
-    reference = _reference_relation_objects_for_export(panel)
+    reference = _with_price_relation_names(_reference_relation_objects_for_export(panel))
 
     assert fakes.relation_digest(relations) == digest and len(relations) == count
     assert fakes.relation_digest(reference) == digest
@@ -316,7 +323,7 @@ def test_maintenance_relation_export_uses_the_cached_service_and_equals_the_orig
     panel._maintenance_service = Service()
 
     relations = panel.relation_objects_for_export()
-    reference = _reference_relation_objects_for_export(panel)
+    reference = _with_price_relation_names(_reference_relation_objects_for_export(panel))
 
     assert fakes.relation_digest(relations) == fakes.relation_digest(reference) and len(relations) == 5
 
@@ -527,6 +534,8 @@ def _messages(monkeypatch):
     for kind in ("information", "warning", "critical"):
         monkeypatch.setattr(QMessageBox, kind, staticmethod(
             lambda parent, title, text, *a, _kind=kind, **k: messages.append((_kind, title, text))))
+    # The "creates a NEW full MDB" notice: the tests accept it.
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
     return messages
 
 
@@ -543,7 +552,8 @@ def test_varcond_relation_export_generates_on_a_worker_then_exports(window, monk
     real_build = VarCondGenerationPanel.build_relation_objects
     monkeypatch.setattr(VarCondGenerationPanel, "build_relation_objects", staticmethod(
         lambda plan, emit=None: threads.append(on_gui_thread()) or real_build(plan, emit)))
-    window._on_export_mdb = lambda *a, **k: exported.append([r.name for r in snapshot.relation_objects])
+    window._on_export_mdb = lambda *a, **k: exported.append([r.name for r in k["generated_relations"]])
+    before = list(snapshot.relation_objects)
 
     window._on_export_varcond_relations_mdb(page)
     assert window._exports().busy                      # returned while the worker runs
@@ -551,9 +561,26 @@ def test_varcond_relation_export_generates_on_a_worker_then_exports(window, monk
 
     assert threads == [False]
     assert not window._exports().busy and messages == []
-    assert exported[0][0] == "KEEP_ME"                  # unrelated relations are kept, old PA_* replaced
-    assert exported[0][1:] == ["PA_GESCRNNS.105508F", "PA_GESCRNNU.105508F", "PA_GESCRNPU.105508F",
-                               "PA_RYTWKRNS.220110F", "PA_RYTWKRNU.220110F"]
+    # Generated relation objects are P_<prefix>; the live snapshot is not touched by the export.
+    assert exported[0] == ["P_GESCRNNS.105508F", "P_GESCRNNU.105508F", "P_GESCRNPU.105508F",
+                           "P_RYTWKRNS.220110F", "P_RYTWKRNU.220110F"]
+    assert snapshot.relation_objects == before and [r.name for r in before] == ["PA_OLD", "KEEP_ME"]
+
+
+def test_varcond_relation_export_declining_the_new_mdb_notice_exports_nothing(window, monkeypatch):
+    messages = _messages(monkeypatch)
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(
+        lambda parent, title, text, *a, **k: asked.append(text) or QMessageBox.StandardButton.No))
+    fakes.install(monkeypatch)
+    panel = VarCondGenerationPanel(window._context)
+    page = SimpleNamespace(is_mdb_view=lambda: False, _varcond_panel=panel)
+    window._on_export_mdb = lambda *a, **k: pytest.fail("must not export after the user declined")
+
+    window._on_export_varcond_relations_mdb(page)
+
+    assert len(asked) == 1 and "creates a NEW full MDB" in asked[0]
+    assert not window._exports().busy and messages == []
 
 
 def test_varcond_relation_export_tells_the_user_when_nothing_was_generated(window, monkeypatch):

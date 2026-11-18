@@ -28,6 +28,7 @@ import copy
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from core.export_readiness import relation_object_key, resolve_entity_bindings
 from models.snapshot import Snapshot
 from models.relation_object import RelationObject
 from services.base_service import BaseService
@@ -371,3 +372,107 @@ class PricingRelationService(BaseService):
         product = snapshot.product
         code = (product.code if product else "") or "PRODUCT"
         return f"PA_PRICING_{code}"
+
+
+# ---------------------------------------------------------------------------
+# Generated price relations in the full MDB export
+# ---------------------------------------------------------------------------
+class PriceRelationExportError(RuntimeError):
+    """The generated price relations cannot be exported safely; the message names the cause."""
+
+
+_BLOCKED = "Price relation export blocked:\n"
+
+
+def price_relation_names(prefix: str) -> tuple[str, str]:
+    """``(relation object name, relation name)`` of a price relation: ``P_<prefix>`` / ``PA_<prefix>``.
+
+    ``OcdExportService`` derives the relation name from the object name by inserting an ``A`` after
+    the domain letter, so ``P_x`` yields ``PA_x`` (the legacy PDM and golden-MDB convention).
+    """
+    return f"P_{prefix}", f"PA_{prefix}"
+
+
+def remove_superseded_price_relations(
+    existing: list[RelationObject], generated: list[RelationObject]
+) -> list[RelationObject]:
+    """``existing`` without the price relations ``generated`` supersedes.
+
+    Removed: a price-domain Action that collides by object or relation name with a generated one, and
+    a price-domain Action without MDB ids named ``PA_*`` (the old generated naming). Everything else -
+    B_/A_ relations, imported price containers that are not regenerated, manual relations - is kept.
+    """
+    object_names = {rel.name for rel in generated}
+    relation_names = {rel.relation_name for rel in generated if rel.relation_name}
+
+    def superseded(rel: RelationObject) -> bool:
+        if str(rel.domain or "").upper() != "P" or str(rel.type_code or "") != "3":
+            return False
+        if rel.name in object_names or (rel.relation_name and rel.relation_name in relation_names):
+            return True
+        imported = bool(str(rel.rel_obj_id or "").strip() or str(rel.relation_id or "").strip())
+        return not imported and (rel.name or "").startswith("PA_")
+
+    return [rel for rel in existing if not superseded(rel)]
+
+
+def merge_generated_price_relations(
+    existing: list[RelationObject], generated: list[RelationObject]
+) -> list[RelationObject]:
+    """:func:`remove_superseded_price_relations` followed by ``generated``."""
+    return remove_superseded_price_relations(existing, generated) + list(generated)
+
+
+def validate_price_relation_bindings(
+    generated: list[RelationObject], merged: list[RelationObject],
+    valid_codes: set[str] | None = None,
+) -> None:
+    """Raise :class:`PriceRelationExportError` unless every generated relation binds real articles.
+
+    Checks, per relation: it names at least one article; each article is one the export contains
+    (``valid_codes``, when given); and across ``merged``: no article is claimed by two different
+    relation objects and every generated relation keeps at least one article after imported bindings
+    take precedence. Nothing is repaired or guessed.
+    """
+    problems: list[str] = []
+    for rel in generated:
+        label = rel.relation_name or rel.name
+        codes = [str(code).strip() for code in rel.article_codes if str(code).strip()]
+        if not codes:
+            problems.append(f"{label}: no articles to bind (no engineering article maps to this prefix)")
+        elif valid_codes is not None:
+            unknown = sorted(code for code in codes if code not in valid_codes)
+            if unknown:
+                problems.append(f"{label}: article(s) not in the export: {', '.join(unknown[:5])}"
+                                + (" ..." if len(unknown) > 5 else ""))
+    if problems:
+        raise PriceRelationExportError(_BLOCKED + "\n".join(problems))
+
+    articles, _classes, conflicts = resolve_entity_bindings(merged)
+    if conflicts:
+        raise PriceRelationExportError(_BLOCKED + "\n".join(message for _entity, message in conflicts[:10]))
+    for rel in generated:
+        key = relation_object_key(rel)
+        if not any(articles.get(str(code)) == key for code in rel.article_codes):
+            problems.append(f"{rel.relation_name or rel.name}: every article is already bound to another "
+                            "relation object, so this relation would be unreachable")
+    if problems:
+        raise PriceRelationExportError(_BLOCKED + "\n".join(problems))
+
+
+def prepare_price_relation_export(context, export_snapshot: Snapshot, generated: list[RelationObject]) -> None:
+    """Put ``generated`` onto the isolated ``export_snapshot`` and validate it (never the live snapshot).
+
+    Superseded price relations are removed first; if no other relation object remains they are
+    derived (B_/A_), so the export keeps the same configuration relations as the plain export.
+    """
+    export_snapshot.relation_objects = remove_superseded_price_relations(
+        export_snapshot.relation_objects or [], generated)
+    context.engineering_relation_service.ensure_relation_objects(export_snapshot)
+    export_snapshot.relation_objects = list(export_snapshot.relation_objects) + list(generated)
+
+    valid_codes = None
+    xocd = getattr(context, "xocd_export_service", None)
+    if xocd is not None and hasattr(xocd, "_base_codes"):
+        valid_codes = set(xocd._base_codes(export_snapshot))
+    validate_price_relation_bindings(generated, export_snapshot.relation_objects, valid_codes)

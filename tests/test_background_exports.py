@@ -275,6 +275,48 @@ def test_full_mdb_export_reports_a_failed_result_and_an_exception(window, monkey
     assert pump(lambda: False, timeout=0.05) or True
 
 
+def test_full_mdb_export_never_overwrites_an_existing_mdb_without_confirmation(window, monkeypatch, tmp_path):
+    Dialogs(monkeypatch)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
+    (tmp_path / "pcr_data_com_ocd.mdb").write_bytes(b"PRECIOUS")
+    calls, asked = [], []
+
+    def export(snapshot, directory, kind, selected_article_ids=None, **options):
+        calls.append(options)
+        return SimpleNamespace(ok=True, error="", template="seating", mdb_path=str(tmp_path / "x.mdb"),
+                               table_counts={"tCOMd_Article": 1})
+
+    _install(monkeypatch, window, "ocd_export_service", SimpleNamespace(export=export))
+    answer = [QMessageBox.StandardButton.No]
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(
+        lambda parent, title, text, *a, **k: asked.append(text) or answer[0]))
+
+    window._on_export_mdb()                                  # declined: nothing runs
+    assert len(asked) == 1 and "already exists" in asked[0] and "Overwrite?" in asked[0]
+    assert calls == [] and not window._exports().busy
+
+    answer[0] = QMessageBox.StandardButton.Yes               # confirmed: the service is told explicitly
+    window._on_export_mdb()
+    assert pump(lambda: calls and not window._exports().busy)
+    assert calls == [{"overwrite": True}]
+
+
+def test_full_mdb_export_to_a_new_folder_asks_nothing_and_does_not_request_overwrite(window, monkeypatch, tmp_path):
+    Dialogs(monkeypatch)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: pytest.fail("no question expected")))
+    calls = []
+
+    def export(snapshot, directory, kind, selected_article_ids=None, **options):
+        calls.append(options)
+        return SimpleNamespace(ok=True, error="", template="seating", mdb_path="x", table_counts={})
+
+    _install(monkeypatch, window, "ocd_export_service", SimpleNamespace(export=export))
+    window._on_export_mdb()
+    assert pump(lambda: calls and not window._exports().busy)
+    assert calls == [{}]
+
+
 def test_full_mdb_export_without_a_loaded_product_or_folder_does_nothing(window, monkeypatch):
     dialogs = Dialogs(monkeypatch)
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: ""))
