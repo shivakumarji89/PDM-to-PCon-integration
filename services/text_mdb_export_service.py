@@ -294,8 +294,6 @@ class TextMdbExportService(BaseService):
         value_updates = []
         for class_name, assignments in assignments_by_class.items():
             class_id = class_id_by_name.get(self._key(class_name))
-            if class_id is None:
-                continue
             for source_id, assignment in assignments.items():
                 source_prop = prop_by_id.get(source_id) or option_by_id.get(source_id)
                 source_name = str(getattr(assignment, "property_name", "") or
@@ -303,20 +301,28 @@ class TextMdbExportService(BaseService):
                 if not source_name:
                     continue
                 prop_name = self._key(xocd._prop_ident(source_name))
+                text_name = self._key(str(getattr(assignment, "text_block", "") or text_block_name(source_name)))
+                property_text_id = (
+                    text_id_by_key.get(("property", text_name))
+                    or text_id_by_key.get(("option", text_name))
+                )
+                if property_text_id is None:
+                    continue
+                if class_id is None:
+                    return {**result, "ok": False, "error": (
+                        f"Class Creation must be exported before Text for class '{class_name}'."
+                    )}
                 prop_rows = [
                     row for row in data["properties"]
                     if str(row.get("com_ClassID")) == str(class_id)
                     and self._key(row.get("com_PropName")) == prop_name
                 ]
                 if len(prop_rows) != 1:
-                    continue
+                    return {**result, "ok": False, "error": (
+                        f"Properties & Values must be exported before Text for '{class_name}:{prop_name}'."
+                    )}
                 mdb_prop = prop_rows[0]
-                text_name = self._key(str(getattr(assignment, "text_block", "") or text_block_name(source_name)))
-                property_text_id = (
-                    text_id_by_key.get(("property", text_name))
-                    or text_id_by_key.get(("option", text_name))
-                )
-                if property_text_id is not None and str(mdb_prop.get("com_TextID") or "") != str(property_text_id):
+                if str(mdb_prop.get("com_TextID") or "") != str(property_text_id):
                     property_updates.append({"op": "update", "table": "tCOMd_Property",
                                              "set": {"com_TextID": property_text_id},
                                              "where": {"com_PropertyID": mdb_prop.get("com_PropertyID")}})
@@ -356,7 +362,11 @@ class TextMdbExportService(BaseService):
                         if str(row.get("com_PropertyID")) == str(mdb_prop.get("com_PropertyID"))
                         and self._key(row.get("com_PropValueFrom")) == self._key(code)
                     ]
-                    if len(value_rows) == 1 and str(value_rows[0].get("com_TextID") or "") != str(value_text_id):
+                    if len(value_rows) != 1:
+                        return {**result, "ok": False, "error": (
+                            f"Properties & Values must be exported before Text for '{prop_name}={code}'."
+                        )}
+                    if str(value_rows[0].get("com_TextID") or "") != str(value_text_id):
                         value_updates.append({"op": "update", "table": "tCOMd_PropValue",
                                               "set": {"com_TextID": value_text_id},
                                               "where": {"com_ValueID": value_rows[0].get("com_ValueID")}})
