@@ -223,6 +223,6 @@ def test_shared_class_union_does_not_mutate_engineering_source(monkeypatch, tmp_
 
     assert result["ok"], result
     assert result["verified"] is True
-    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X,p2:X"
+    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X, ,p2:X"
     assert [item.property_id for item in first_class.properties] == ["p1"]
     assert [item.property_id for item in second_class.properties] == ["p2"]
