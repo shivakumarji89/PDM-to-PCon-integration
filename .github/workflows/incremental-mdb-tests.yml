@@ -16,6 +16,7 @@ on:
       - "tests/test_incremental_relation_text_export.py"
       - "tests/test_properties_values_mdb_export_service.py"
       - "tests/test_article_mdb_export_service.py"
+      - "tests/test_article_mdb_export_parity.py"
       - "tests/test_class_creation_selection.py"
       - "tests/test_engineering_relation_service.py"
       - "tests/test_price_mdb_export_service.py"
@@ -52,6 +53,7 @@ jobs:
             tests/test_incremental_relation_text_export.py \
             tests/test_properties_values_mdb_export_service.py \
             tests/test_article_mdb_export_service.py \
+            tests/test_article_mdb_export_parity.py \
             tests/test_class_creation_selection.py \
             tests/test_engineering_relation_service.py \
             tests/test_price_mdb_export_service.py \
