@@ -323,7 +323,32 @@ class RelationMdbExportService(BaseService):
                 next_link += 1
 
         # Apply relation-object references only to entities in the selected scope.
+        # Resolve source IDs once; relation objects often share the same property/value graph.
         ref_updates: dict[tuple[str, str], dict[str, Any]] = {}
+        source_props = {
+            str(p.id): p for p in (getattr(snapshot, "properties", []) or [])
+            if getattr(p, "id", None) is not None
+        }
+        source_options = {
+            str(o.id): o for o in (getattr(snapshot, "options", []) or [])
+            if getattr(o, "id", None) is not None
+        }
+        class_rows_by_name = {
+            self._key(r.get("com_ClassName")): r for r in data["classes"]
+            if str(r.get("com_PackageID")) == str(package_id)
+        }
+        value_parent: dict[str, str] = {}
+        for value in getattr(snapshot, "property_values", []) or []:
+            value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "property_id", "") or "")
+        for value in getattr(snapshot, "option_values", []) or []:
+            value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "option_id", "") or "")
+        for source_prop in getattr(snapshot, "properties", []) or []:
+            for value in getattr(source_prop, "values", []) or []:
+                value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_prop, "id", "") or ""))
+        for source_option in getattr(snapshot, "options", []) or []:
+            for value in getattr(source_option, "values", []) or []:
+                value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_option, "id", "") or ""))
+        value_codes = xocd._value_code_map(snapshot)
         for rel in chosen:
             key = self._key(getattr(rel, "name", ""))
             obj_id = object_id_by_name.get(key)
@@ -357,19 +382,6 @@ class RelationMdbExportService(BaseService):
                 set(getattr(rel, "property_ids", []) or [])
                 | ({str(getattr(rel, "property_id", ""))} if getattr(rel, "property_id", "") else set())
             )
-            source_props = {
-                str(p.id): p for p in (getattr(snapshot, "properties", []) or [])
-                if getattr(p, "id", None) is not None
-            }
-            source_options = {
-                str(o.id): o for o in (getattr(snapshot, "options", []) or [])
-                if getattr(o, "id", None) is not None
-            }
-            class_rows_by_name = {
-                self._key(r.get("com_ClassName")): r for r in data["classes"]
-                if str(r.get("com_PackageID")) == str(package_id)
-            }
-            property_rows_by_source: dict[str, list[dict[str, Any]]] = {}
             for source_id in source_property_ids:
                 source = source_props.get(str(source_id)) or source_options.get(str(source_id))
                 source_name = str(getattr(source, "name", "") or "")
@@ -397,26 +409,13 @@ class RelationMdbExportService(BaseService):
                         )}
                     mdb_property_id = str(matches[0].get("com_PropertyID"))
                     ref_updates[("property", mdb_property_id)] = {"com_RelObjID": obj_id}
-                    property_rows_by_source.setdefault(str(source_id), []).extend(matches)
 
             # Source value IDs are not MDB surrogate IDs. Resolve them by
             # (selected class, normalized property, exported value code).
-            value_parent: dict[str, str] = {}
-            for value in getattr(snapshot, "property_values", []) or []:
-                value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "property_id", "") or "")
-            for value in getattr(snapshot, "option_values", []) or []:
-                value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "option_id", "") or "")
-            for source_prop in getattr(snapshot, "properties", []) or []:
-                for value in getattr(source_prop, "values", []) or []:
-                    value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_prop, "id", "") or ""))
-            for source_option in getattr(snapshot, "options", []) or []:
-                for value in getattr(source_option, "values", []) or []:
-                    value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_option, "id", "") or ""))
             source_value_ids = (
                 set(getattr(rel, "value_ids", []) or [])
                 | ({str(getattr(rel, "value_id", ""))} if getattr(rel, "value_id", "") else set())
             )
-            value_codes = xocd._value_code_map(snapshot)
             for source_value_id in source_value_ids:
                 parent_id = value_parent.get(str(source_value_id), "")
                 source = source_props.get(parent_id) or source_options.get(parent_id)
