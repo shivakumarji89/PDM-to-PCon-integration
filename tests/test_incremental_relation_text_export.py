@@ -32,3 +32,37 @@ def test_incremental_export_id_helpers_advance_past_existing_rows():
     assert TextMdbExportService._next_id(
         [{"com_TextID": 4}, {"com_TextID": 9}], "com_TextID"
     ) == 10
+
+
+
+def test_varcond_incremental_export_requires_complete_prefix_groups():
+    from types import SimpleNamespace
+
+    from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
+
+    panel = SimpleNamespace(
+        _maintenance_load_task=None,
+        _article_rows=[
+            ("ABC100", "Article 1", "a1"),
+            ("ABC200", "Article 2", "a2"),
+            ("XYZ100", "Article 3", "a3"),
+        ],
+        _relation_length=SimpleNamespace(value=lambda: 3),
+        _maintenance_check=lambda: False,
+        _maintenance_service=None,
+        _context=SimpleNamespace(xocd_export_service=None),
+        _snapshot=object(),
+        _exclusions=SimpleNamespace(text=lambda: ""),
+        _substitutions=SimpleNamespace(text=lambda: ""),
+    )
+
+    try:
+        VarCondGenerationPanel.prepare_relation_export(panel, {"a1"})
+    except RuntimeError as exc:
+        assert "Select every article" in str(exc)
+    else:
+        raise AssertionError("A partial shared VARCOND group must be rejected.")
+
+    plan = VarCondGenerationPanel.prepare_relation_export(panel, {"a1", "a2"})
+    assert [name for name, _rows in plan.groups] == ["PA_ABC"]
+    assert {article_id for _code, article_id in plan.groups[0][1]} == {"a1", "a2"}
