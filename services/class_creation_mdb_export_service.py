@@ -98,6 +98,22 @@ class ClassCreationMdbExportService(BaseService):
             "texts": [r for r in data["texts"] if str(r.get("com_PackageID")) == str(package_id)],
             "relobjs": [r for r in data["relobjs"] if str(r.get("com_PackageID")) == str(package_id)],
         }
+        # Every retained Article ID must still point to the expected base code.
+        actual_articles = {
+            (str(row.get("com_ArticleID")), self._key(row.get("com_ArticleCode")))
+            for row in package_rows["articles"]
+        }
+        invalid_articles = [
+            code for code, article_id in article_ids.items()
+            if (str(article_id), self._key(code)) not in actual_articles
+        ]
+        if invalid_articles:
+            return {"ok": False, "error": (
+                "The session Article mapping no longer matches the MDB for: "
+                + ", ".join(invalid_articles[:10])
+                + ". Re-export Articles or repair the MDB before Class Creation."
+            )}
+
         existing_classes = package_rows["classes"]
         existing_properties = data["properties"]
         existing_values = data["values"]
@@ -144,9 +160,16 @@ class ClassCreationMdbExportService(BaseService):
         relation_objects = self.context.engineering_relation_service.ensure_relation_objects(snapshot)
         property_relobj: dict[str, Any] = {}
         value_relobj: dict[str, Any] = {}
+        existing_relobj_ids = {
+            str(row.get("com_RelObjID")) for row in package_rows["relobjs"]
+        }
         for rel in relation_objects:
             raw_id = getattr(rel, "rel_obj_id", None)
             rel_id = self._int(raw_id)
+            # A PDM-side numeric identifier is not an MDB FK unless the target
+            # row is already present in this product's package.
+            if rel_id and str(rel_id) not in existing_relobj_ids:
+                rel_id = 0
             if not rel_id:
                 matches = relobj_index.get(self._key(getattr(rel, "name", "")), [])
                 rel_id = self._int(matches[0]) if len(matches) == 1 else 0
