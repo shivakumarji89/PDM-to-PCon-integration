@@ -140,6 +140,8 @@ class RelationMdbExportService(BaseService):
         package_relations = [r for r in data["relations"] if str(r.get("com_PackageID")) == str(package_id)]
         object_by_name: dict[str, list[dict[str, Any]]] = {}
         relation_by_name: dict[str, list[dict[str, Any]]] = {}
+        object_by_id = {str(row.get("com_RelObjID")): row for row in package_objects}
+        relation_by_id = {str(row.get("com_RelationID")): row for row in package_relations}
         for row in package_objects:
             object_by_name.setdefault(self._key(row.get("com_RelObjName")), []).append(row)
         for row in package_relations:
@@ -164,10 +166,18 @@ class RelationMdbExportService(BaseService):
             if not name:
                 continue
             name_key = self._key(name)
+            retained_obj_id = self._int(getattr(rel, "rel_obj_id", ""))
+            retained_object = object_by_id.get(str(retained_obj_id)) if retained_obj_id else None
             object_matches = object_by_name.get(name_key, [])
             if len(object_matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Relation Object name '{name}'."}
-            if object_matches:
+            if retained_object is not None:
+                obj_id = retained_obj_id
+                if self._key(retained_object.get("com_RelObjName")) != name_key:
+                    updates.append({"op": "update", "table": "tCOMd_RelObj",
+                                    "set": {"com_RelObjName": name},
+                                    "where": {"com_RelObjID": obj_id}})
+            elif object_matches:
                 obj_id = self._int(object_matches[0].get("com_RelObjID"))
             else:
                 obj_id = next_obj
@@ -179,11 +189,23 @@ class RelationMdbExportService(BaseService):
 
             relation_name = str(getattr(rel, "relation_name", "") or
                                 OcdExportService._relation_name(name)).strip()
+            retained_relation_id = self._int(getattr(rel, "relation_id", ""))
+            retained_relation = relation_by_id.get(str(retained_relation_id)) if retained_relation_id else None
             relation_matches = relation_by_name.get(self._key(relation_name), [])
             if len(relation_matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Relation name '{relation_name}'."}
             body = str(getattr(rel, "body", "") or "")
-            if relation_matches:
+            if retained_relation is not None:
+                relation_id = retained_relation_id
+                changed = {}
+                if self._key(retained_relation.get("com_RelationName")) != self._key(relation_name):
+                    changed["com_RelationName"] = relation_name
+                if str(retained_relation.get("com_RelationBody") or "") != body:
+                    changed["com_RelationBody"] = body
+                if changed:
+                    updates.append({"op": "update", "table": "tCOMd_Relation",
+                                    "set": changed, "where": {"com_RelationID": relation_id}})
+            elif relation_matches:
                 relation_id = self._int(relation_matches[0].get("com_RelationID"))
                 if str(relation_matches[0].get("com_RelationBody") or "") != body:
                     updates.append({"op": "update", "table": "tCOMd_Relation",
