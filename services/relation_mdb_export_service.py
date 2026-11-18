@@ -159,7 +159,7 @@ class RelationMdbExportService(BaseService):
         existing_link_keys = {
             (str(row.get("com_RelObjID")), str(row.get("com_RelationID")),
              str(row.get("com_RelObjTypeCode")), str(row.get("com_RelObjDomainCode")),
-             str(row.get("com_RelationOrder")))
+             str(self._int(row.get("com_RelationOrder"))))
             for row in data["links"]
         }
         inserts: list[dict[str, Any]] = []
