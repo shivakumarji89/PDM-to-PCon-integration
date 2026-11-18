@@ -430,10 +430,15 @@ class MaintenanceSourceMixin:
                 + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
             )
             return
-        if component == "Text":
+        if component in ("Text", "Relation Object"):
+            title = "Text" if component == "Text" else "Relations"
+            if component == "Text":
+                from services.text_mdb_export_service import TextMdbExportService as ExportService
+            else:
+                from services.relation_mdb_export_service import RelationMdbExportService as ExportService
             snapshot = self._context.active_snapshot
             if snapshot is None:
-                QMessageBox.warning(self, "Export Text", "Load the PDM product first.")
+                QMessageBox.warning(self, f"Export {title}", "Load the PDM product first.")
                 return
             window = self.window()
             articles_page = next(
@@ -447,7 +452,7 @@ class MaintenanceSourceMixin:
             )
             if not selected_article_ids:
                 QMessageBox.information(
-                    self, "Export Text",
+                    self, f"Export {title}",
                     "Select one or more articles in the Articles page Export column first.",
                 )
                 return
@@ -455,21 +460,20 @@ class MaintenanceSourceMixin:
                 sessions = self._context.mdb_export_session_service
                 session = sessions.get_active(snapshot)
             except Exception as exc:
-                QMessageBox.warning(self, "Export Text", str(exc))
+                QMessageBox.warning(self, f"Export {title}", str(exc))
                 return
             if session is None:
                 QMessageBox.information(
-                    self, "Export Text",
+                    self, f"Export {title}",
                     "Export Articles first to initialize this product's MDB session.",
                 )
                 return
-            from services.text_mdb_export_service import TextMdbExportService
-            service = TextMdbExportService(self._context)
+            service = ExportService(self._context)
             preview = service.export_to_session(
                 snapshot, session, selected_article_ids=selected_article_ids, dry_run=True
             )
             if not preview.get("ok"):
-                QMessageBox.warning(self, "Export Text", preview.get("error", "Preview failed."))
+                QMessageBox.warning(self, f"Export {title}", preview.get("error", "Preview failed."))
                 return
             counts = preview.get("counts", {})
             summary = (
@@ -478,11 +482,11 @@ class MaintenanceSourceMixin:
                     f"{name.replace('_', ' ').title()}: {count}"
                     for name, count in counts.items()
                 )
-                + "\\n\\nOnly selected-article Text blocks will be inserted or updated. "
-                  "Existing Text IDs and unrelated MDB rows will be preserved."
+                + f"\\n\\nOnly selected-article {title} data will be inserted or updated. "
+                  "Existing IDs and unrelated MDB rows will be preserved."
             )
             if QMessageBox.question(
-                self, "Confirm Text Export", summary,
+                self, f"Confirm {title} Export", summary,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             ) != QMessageBox.StandardButton.Yes:
@@ -491,11 +495,11 @@ class MaintenanceSourceMixin:
                 snapshot, session, selected_article_ids=selected_article_ids
             )
             if not result.get("ok"):
-                QMessageBox.critical(self, "Export Text", result.get("error", "Export failed."))
+                QMessageBox.critical(self, f"Export {title}", result.get("error", "Export failed."))
                 return
             QMessageBox.information(
-                self, "Export Text",
-                "Text export completed.\\n\\n"
+                self, f"Export {title}",
+                f"{title} export completed.\\n\\n"
                 + "\\n".join(
                     f"{name.replace('_', ' ').title()}: {count}"
                     for name, count in result.get("counts", {}).items()
