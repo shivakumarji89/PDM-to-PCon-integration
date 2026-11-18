@@ -13,6 +13,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from core.application_context import ApplicationContext
@@ -74,10 +75,18 @@ def _page(cls, ctx):
     return page
 
 
+def _article_row_indexes(page):
+    """Rows holding articles; Articles always inserts Class Creation group header rows (76623ff)."""
+    table = page._table
+    return [
+        r for r in range(table.rowCount())
+        if table.item(r, 0) is not None
+        and table.item(r, 0).data(Qt.ItemDataRole.UserRole) != "__class_group_header__"
+    ]
+
+
 def _codes(page):
-    return {
-        page._table.item(r, 0).text() for r in range(page._table.rowCount())
-    }
+    return {page._table.item(r, 0).text() for r in _article_row_indexes(page)}
 
 
 # -- shared source wrapper --------------------------------------------------
@@ -135,7 +144,7 @@ def test_articles_switch_leaks_no_stale_selection_or_filter():
     page._group_check.setChecked(False)
     page._table.selectRow(0)
     page._source_tabs.set_source("mdb")
-    assert page._table.rowCount() == 2
+    assert len(_article_row_indexes(page)) == 2
     assert not (_codes(page) & {f"PDM{i:03d}" for i in range(5)})
     assert page._active_set_ids is None
 
@@ -177,7 +186,8 @@ def test_maintenance_article_field_edit_marks_pdm_snapshot_modified(monkeypatch)
 
     calls = []
     monkeypatch.setattr(ctx.snapshot_manager, "mark_modified", lambda: calls.append(1))
-    item = page._table.item(0, 6)  # Relation Object
+    first_article_row = _article_row_indexes(page)[0]  # row 0 is a Class Creation group header
+    item = page._table.item(first_article_row, 6)  # Relation Object
     assert item is not None
     item.setText("PA_MAINTENANCE_TEST")
 
