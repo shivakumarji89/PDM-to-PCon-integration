@@ -25,7 +25,6 @@ on:
       - "tests/test_pricing_export_workflow.py"
       - "tests/test_pricing_parallel_batches.py"
       - "tests/test_pricing_page_text_blocks.py"
-      - "tests/test_maintenance_varcond.py"
       - ".github/workflows/incremental-mdb-tests.yml"
 
 jobs:
@@ -65,4 +64,3 @@ jobs:
             tests/test_pricing_export_workflow.py \
             tests/test_pricing_parallel_batches.py \
             tests/test_pricing_page_text_blocks.py \
-            tests/test_maintenance_varcond.py
