@@ -639,7 +639,7 @@ class MainWindow(QMainWindow):
                 if step == WorkflowStep.PRICING and hasattr(page, "_on_export_prices"):
                     export_handler = page._on_export_prices
                 elif step == WorkflowStep.PRICING_RELATION:
-                    export_handler = lambda page=page: self._on_export_varcond_relations_mdb(page)
+                    export_handler = lambda _checked=False, page=page: self._on_export_varcond_relations_mdb(page)
                 if not callable(export_handler):
                     export_handler = self._on_export_mdb
                 export_button.clicked.connect(export_handler)
