@@ -15,6 +15,8 @@ def test_streaming_prices_batches_on_two_connections_and_keeps_item_order(monkey
     connections = []
     base_connections = []
     increment_connections = []
+    active_connections = 0
+    max_active_connections = 0
 
     class Connection:
         def __init__(self, number):
@@ -22,12 +24,19 @@ def test_streaming_prices_batches_on_two_connections_and_keeps_item_order(monkey
             self.closed = False
 
         def close(self):
-            self.closed = True
+            nonlocal active_connections
+            with lock:
+                if not self.closed:
+                    self.closed = True
+                    active_connections -= 1
 
     def get_connection(self):
+        nonlocal active_connections, max_active_connections
         with lock:
             connection = Connection(len(connections))
             connections.append(connection)
+            active_connections += 1
+            max_active_connections = max(max_active_connections, active_connections)
             return connection
 
     def fetch_base(self, items, currency, mydate, connection=None, site_id=1):
@@ -74,4 +83,8 @@ def test_streaming_prices_batches_on_two_connections_and_keeps_item_order(monkey
     assert len(base_connections) == 2
     assert base_connections[0] is not base_connections[1]
     assert set(increment_connections) == set(base_connections)
+    # Two worker-owned connections overlap; the final coordinator lookup opens
+    # its connection only after both workers have closed theirs.
+    assert max_active_connections == 2
+    assert active_connections == 0
     assert all(connection.closed for connection in connections)
