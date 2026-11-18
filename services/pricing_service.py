@@ -270,13 +270,9 @@ class PricingService(BaseService):
                 )
                 all_records.extend(records)
                 unresolved.extend(unres)
-        if all_records:
-            checkpoint()
-            conn = repo.get_connection()
-            try:
-                self._attach_product_codes(all_records, repo, conn, params.site_id)
-            finally:
-                conn.close()
+            self._attach_product_codes(all_records, repo, conn, params.site_id)
+        finally:
+            conn.close()
 
         commit()
         snapshot.price_records = self._accumulate_currencies(
