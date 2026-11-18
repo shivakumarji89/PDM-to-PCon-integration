@@ -277,6 +277,22 @@ class MaintenanceSourceMixin:
             if snapshot is None:
                 QMessageBox.warning(self, "Export Class Creation", "Load the PDM product first.")
                 return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_article_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_article_ids:
+                QMessageBox.information(
+                    self, "Export Class Creation",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                return
             try:
                 sessions = self._context.mdb_export_session_service
                 session = sessions.get_active(snapshot)
@@ -291,7 +307,7 @@ class MaintenanceSourceMixin:
                 return
             from services.class_creation_mdb_export_service import ClassCreationMdbExportService
             service = ClassCreationMdbExportService(self._context)
-            preview = service.export_to_session(snapshot, session, dry_run=True)
+            preview = service.export_to_session(snapshot, session, selected_article_ids=selected_article_ids, dry_run=True)
             if not preview.get("ok"):
                 QMessageBox.warning(self, "Export Class Creation", preview.get("error", "Preview failed."))
                 return
@@ -310,7 +326,7 @@ class MaintenanceSourceMixin:
                 QMessageBox.StandardButton.No,
             ) != QMessageBox.StandardButton.Yes:
                 return
-            result = service.export_to_session(snapshot, session)
+            result = service.export_to_session(snapshot, session, selected_article_ids=selected_article_ids)
             if not result.get("ok"):
                 QMessageBox.critical(self, "Export Class Creation", result.get("error", "Export failed."))
                 return

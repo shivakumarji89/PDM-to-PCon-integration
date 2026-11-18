@@ -10,7 +10,7 @@ copied once; later workflows never re-copy it, never wipe it and never renumber 
 | `models/mdb_export_session.py` | `MdbExportSession`: MDB path, package / ComGroup / manufacturer ids, template boilerplate rows, `article_map`, `scheme_map`, `workflow_status`. |
 | `services/mdb_export_session_service.py` | Product key, persistence, recovery, one-time `initialize()`, `record_workflow()`. |
 | `services/article_mdb_export_service.py` | `export_to_session()` — Articles workflow. |
-| `services/class_creation_mdb_export_service.py` | `export_to_session()` — Class Creation, properties, values, code-scheme extension, ArticleClass and ArtBase. |
+| `services/class_creation_mdb_export_service.py` | `export_to_session()` — article-scoped Class Creation, CodeScheme body extension, and ArticleClass links. |
 | `services/mdb_service.py` | Unchanged: the only MDB I/O gateway (transactional `execute_batch`). |
 | `ui/main_window.py::_on_export_articles_to_mdb` | Dialogs only; called from the Articles page "Export to MDB". |
 
@@ -58,19 +58,27 @@ but `_build()` now accepts `selected_article_ids`, and the export refuses to tar
 
 ## Implemented: Class Creation
 
-Class Creation reads `session.article_ids()` and incrementally upserts Classes,
-Properties, PropValues, CodeSchemes, ArticleClass and ArtBase. It uses
-`engineering_class_service.get_classes(snapshot)` and the Development
-`OcdExportService._code_schemes()` mapping. Existing primary keys and
-unrelated rows are preserved. Text and Relation records are not created by
-this workflow; their IDs are linked only when already present.
+Class Creation uses the Export-column article selection from the Articles page.
+One selected source article resolves only its related classes; multiple selected
+articles resolve the union of their related classes. When several selected
+variants share one base article, their class links are unioned and linked once
+to that retained MDB Article row.
 
-The UI export action requires an existing Articles-created session MDB. It
-previews the operation counts and warnings before asking for confirmation.
-All writes run in one MDBService transaction followed by table read-back.
+The incremental workflow inserts only **`tCOMd_Class`** and
+**`tCOMd_ArticleClass`** rows, and extends the selected **`tCOMd_CodeScheme`**
+bodies in place. It reuses existing Class IDs, Article IDs and CodeScheme IDs,
+adds only missing class rows and article/class links, and never deletes
+unrelated rows. Properties and values belong to their own later workflows.
+
+The Class Creation page uses the same selected article IDs to filter the
+Attribute and Options workspaces. Visual definitions remain product-wide.
+The export preview and actual write use the same selection and mapping.
+
+Value Combination tables are explicitly outside the current implementation
+scope.
 
 ## Remaining workflows
 
-Value-combination tables, Relations, Text and prices still need incremental
-session exporters. Each must reuse the same product MDB and must not call the
-legacy full exporter.
+Properties, Values, Relations, Text and Prices still need incremental session
+exporters. Each must reuse the same product MDB and must not call the legacy
+full exporter. Value Combination tables are excluded from the current scope.
