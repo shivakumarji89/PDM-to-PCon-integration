@@ -12,6 +12,7 @@ from typing import Any
 
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
+from models.text_block import TextBlock
 from services.base_service import BaseService
 from services.class_creation_selection_service import build_class_creation_scope, classes_for_article
 from services.engineering.engineering_text_service import text_block_name
@@ -114,8 +115,55 @@ class TextMdbExportService(BaseService):
                 if code:
                     selected_names.add(("optionvalue", self._key(f"{key}_{code}")))
 
-        chosen = [b for b in blocks
-                  if (self._key(b.type_code), self._key(b.name)) in selected_names]
+        # Match ArticleMdbExportService's price-base-first mapping for
+        # article descriptions. EngineeringTextService's display keys use the
+        # reduced article first, which can differ when a price-base override exists.
+        selected_base_by_article = {aid: code for aid, code in selected_entries}
+        article_by_id = {
+            str(getattr(article, "id", "")): article
+            for article in (getattr(snapshot, "articles", []) or [])
+            if getattr(article, "id", None) is not None
+        }
+        article_text_by_base: dict[str, dict[str, str]] = {}
+        for family in getattr(getattr(snapshot, "engineering", None), "families", []) or []:
+            for member in getattr(family, "members", []) or []:
+                article_id = str(getattr(member, "article_id", "") or "")
+                base_code = selected_base_by_article.get(article_id)
+                if not base_code:
+                    continue
+                article = article_by_id.get(article_id)
+                product_type = (
+                    self.context.product_type_name(article.product_id)
+                    if article is not None and getattr(article, "product_id", None) is not None
+                    else ""
+                )
+                entry = article_text_by_base.setdefault(base_code, {"short": "", "long": ""})
+                short = str(getattr(member, "short_description", "") or
+                            product_type or (getattr(article, "description", "") if article else "") or "")
+                long = str(getattr(member, "long_description", "") or
+                           product_type or (getattr(article, "name", "") if article else "") or "")
+                if short and not entry["short"]:
+                    entry["short"] = short
+                if long and not entry["long"]:
+                    entry["long"] = long
+        article_text_blocks = [
+            block
+            for code, values in article_text_by_base.items()
+            for block in (
+                TextBlock(name=code, type_code="artshort", en=values["short"]),
+                TextBlock(name=code, type_code="artlong", en=values["long"]),
+            )
+        ]
+        article_text_keys = {
+            ("artshort", self._key(block.name)) for block in article_text_blocks
+        } | {
+            ("artlong", self._key(block.name)) for block in article_text_blocks
+        }
+        chosen = [
+            b for b in blocks
+            if (self._key(b.type_code), self._key(b.name)) in selected_names
+            and (self._key(b.type_code), self._key(b.name)) not in article_text_keys
+        ] + article_text_blocks
         if not chosen:
             return {"ok": False, "error": "No Text blocks are related to the selected articles."}
 
