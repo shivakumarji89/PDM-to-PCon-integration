@@ -428,21 +428,52 @@ class RelationMdbExportService(BaseService):
         if not batch.ok:
             return {**result, "ok": False, "error": batch.first_error() or "Relations MDB transaction failed."}
         try:
-            verified = db.read_tables(session.mdb_path, {
-                "objects": f"SELECT com_RelObjID FROM tCOMd_RelObj WHERE com_PackageID = {package_filter}",
-                "relations": f"SELECT com_RelationID FROM tCOMd_Relation WHERE com_PackageID = {package_filter}",
-                "links": (
-                    "SELECT com_RelObjRelID FROM tCOMd_RelObjRel WHERE com_RelObjID IN "
-                    "(SELECT com_RelObjID FROM tCOMd_RelObj "
-                    f"WHERE com_PackageID = {package_filter})"
-                ),
-            })
+            verified = db.read_tables(session.mdb_path, tables)
         except Exception as exc:
             return {**result, "ok": False, "error": f"Relations were written but read-back failed: {exc}"}
         if (len(verified["objects"]) < len(data["objects"]) + counts["relation_objects_inserted"]
                 or len(verified["relations"]) < len(data["relations"]) + counts["relations_inserted"]
                 or len(verified["links"]) < len(data["links"]) + counts["relation_links_inserted"]):
             return {**result, "ok": False, "error": "Relations read-back count verification failed."}
+        verified_objects = {self._int(row.get("com_RelObjID")): row for row in verified["objects"]}
+        verified_relations = {self._int(row.get("com_RelationID")): row for row in verified["relations"]}
+        for rel in chosen:
+            name = str(getattr(rel, "name", "") or "").strip()
+            name_key = self._key(name)
+            obj_id = object_id_by_name.get(name_key)
+            relation_id = relation_id_by_name.get(name_key)
+            if obj_id is None or relation_id is None:
+                continue
+            object_row = verified_objects.get(obj_id)
+            relation_row = verified_relations.get(relation_id)
+            expected_relation_name = str(getattr(rel, "relation_name", "") or
+                                         OcdExportService._relation_name(name)).strip()
+            if object_row is None or self._key(object_row.get("com_RelObjName")) != name_key:
+                return {**result, "ok": False, "error": f"Relation Object read-back verification failed for '{name}'."}
+            if (relation_row is None
+                    or self._key(relation_row.get("com_RelationName")) != self._key(expected_relation_name)
+                    or str(relation_row.get("com_RelationBody") or "") != str(getattr(rel, "body", "") or "")):
+                return {**result, "ok": False, "error": f"Relation read-back verification failed for '{expected_relation_name}'."}
+        pk_by_table = {
+            "tCOMd_RelObj": ("objects", "com_RelObjID"),
+            "tCOMd_Relation": ("relations", "com_RelationID"),
+            "tCOMd_Article": ("articles", "com_ArticleID"),
+            "tCOMd_ArticleClass": ("article_classes", "com_ArticleClassID"),
+            "tCOMd_Property": ("properties", "com_PropertyID"),
+            "tCOMd_PropValue": ("values", "com_ValueID"),
+        }
+        for operation in updates:
+            table_name, pk_name = pk_by_table[operation["table"]]
+            identity = str(operation["where"][pk_name])
+            row = next((item for item in verified[table_name]
+                        if str(item.get(pk_name)) == identity), None)
+            if row is None or any(
+                str(row.get(column) or "") != str(value or "")
+                for column, value in operation["set"].items()
+            ):
+                return {**result, "ok": False, "error": (
+                    f"Relation update read-back verification failed for {operation['table']} row {identity}."
+                )}
         sessions.record_workflow(session, workflow_name, counts)
         try:
             sessions.save(session)
