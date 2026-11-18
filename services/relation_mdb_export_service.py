@@ -93,6 +93,11 @@ class RelationMdbExportService(BaseService):
         all_relations = self.context.engineering_relation_service.ensure_relation_objects(snapshot)
         chosen = []
         for rel in all_relations:
+            is_price_relation = str(getattr(rel, "domain", "") or "").upper() == "P"
+            if workflow_name == "pricing_relations" and not is_price_relation:
+                continue
+            if workflow_name != "pricing_relations" and is_price_relation:
+                continue
             article_bindings = {str(v) for v in (getattr(rel, "article_codes", []) or [])}
             class_bindings = {
                 (str(code), str(name))
