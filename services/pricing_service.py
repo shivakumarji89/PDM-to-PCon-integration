@@ -11,7 +11,16 @@ are a separate subsystem; they are NOT included here yet. This report covers the
 directly portable increment prices only.
 """
 from __future__ import annotations
-from core.cancellation import checkpoint, commit, OperationCancelled
+
+from concurrent.futures import ThreadPoolExecutor
+
+from core.cancellation import (
+    OperationCancelled,
+    cancellation_scope,
+    checkpoint,
+    commit,
+    current_token,
+)
 
 from dataclasses import dataclass, field, replace
 from typing import Any, Sequence
@@ -290,10 +299,10 @@ class PricingService(BaseService):
     ) -> PriceComputeResult:
         """Compute prices while delivering each completed item to the UI.
 
-        Base prices are fetched in small set-based batches to avoid extra base-price
-        round trips. Article upcharges use PDM's inline query and Global upcharges
-        use PDM's catalogue-scoped query. Each item's base + upcharge records are
-        emitted immediately, so the UI does not wait for the whole 10-item batch.
+        Base prices are fetched in small set-based batches. Upcharge retrieval
+        continues to use the existing Article and Global repository methods.
+        Up to two batches run concurrently on worker-owned connections; completed
+        results are emitted in original item order so the UI stream stays stable.
         """
         snapshot = snapshot if snapshot is not None else self.context.active_snapshot
         result = PriceComputeResult()
@@ -337,65 +346,46 @@ class PricingService(BaseService):
 
         repo = PDMRepository(self.context)
         checkpoint()
+        # Keep one coordinator connection for the final product-code lookup.
+        # Each pricing worker opens and owns its own connection; connections are
+        # never shared across threads.
         conn = repo.get_connection()
+        token = current_token()
         if reporter is not None:
             reporter.note("Connected to PDM.")
 
-        try:
-            for cur_index, cur in enumerate(currencies):
-                checkpoint()
-                cparams = replace(params, currency=cur, program_code=program_code)
-
-                for start in range(0, n, step):
+        def price_chunk(start: int, chunk: list[str], currency: str, cparams):
+            """Run one existing pricing batch on a worker-owned PDM connection."""
+            with cancellation_scope(token):
+                worker_repo = PDMRepository(self.context)
+                worker_conn = worker_repo.get_connection()
+                try:
                     checkpoint()
-                    chunk = items[start:start + step]
-
-                    if reporter is not None:
-                        first = start + 1
-                        last = min(start + len(chunk), n)
-                        reporter.note(
-                            f"Pricing {cur} {first}-{last}/{n}: fetching base prices..."
-                        )
-
-                    # One set-based base-price query for the whole small chunk.
-                    # This preserves the low round-trip behaviour of the current
-                    # implementation.
-                    base_rows = repo.fetch_item_base_prices(
+                    base_rows = worker_repo.fetch_item_base_prices(
                         chunk,
-                        cur,
+                        currency,
                         params.mydate,
-                        conn,
+                        worker_conn,
                         site_id=params.site_id,
                     )
-                    checkpoint()
                     base_by_item = {str(row.Item): row for row in base_rows}
-
-                    # Fetch each item's increments separately so the completed
-                    # item's records can be emitted immediately. Global items use
-                    # PDM's scoped query; Article items use the inline query.
-                    for offset, item in enumerate(chunk):
+                    completed = []
+                    for item in chunk:
                         checkpoint()
-                        item_no = start + offset + 1
-
-                        if reporter is not None:
-                            reporter.note(
-                                f"Pricing {cur} {item_no}/{n}: "
-                                f"fetching option upcharges for {item}..."
-                            )
-
                         if item in super_codes:
-                            inc_rows = repo.fetch_global_option_increment_prices(
-                                [item], cur, params.mydate, params.site_id, conn,
+                            inc_rows = worker_repo.fetch_global_option_increment_prices(
+                                [item], currency, params.mydate, params.site_id,
+                                worker_conn,
                                 catalogue_id=self._global_catalogue(snapshot, params),
                                 program_code=program_code,
                             )
                         else:
-                            inc_rows = repo.fetch_article_option_increment_prices(
+                            inc_rows = worker_repo.fetch_article_option_increment_prices(
                                 [item],
-                                cur,
+                                currency,
                                 params.mydate,
                                 params.site_id,
-                                conn,
+                                worker_conn,
                                 program_code=program_code,
                             )
                         checkpoint()
@@ -407,32 +397,67 @@ class PricingService(BaseService):
                             prefix_by_item,
                             cparams,
                         )
+                        completed.append((item, records, unres))
+                    return start, completed
+                finally:
+                    worker_conn.close()
 
-                        all_records.extend(records)
-                        unresolved.extend(unres)
+        try:
+            for cur_index, cur in enumerate(currencies):
+                checkpoint()
+                cparams = replace(params, currency=cur, program_code=program_code)
+                chunks = [
+                    (start, items[start:start + step])
+                    for start in range(0, n, step)
+                ]
+                worker_count = min(2, len(chunks))
+                if reporter is not None:
+                    reporter.note(
+                        f"Pricing {cur}: processing {len(chunks)} batches "
+                        f"with {worker_count} worker(s)..."
+                    )
 
-                        # Deliver this item's completed records immediately.
-                        if on_batch is not None and records:
-                            on_batch(records)
+                # executor.map yields in submission order. Workers may finish in
+                # a different order, but records and UI batches remain in the
+                # original PDM item order.
+                with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                    futures = executor.map(
+                        lambda batch: price_chunk(
+                            batch[0], batch[1], cur, cparams
+                        ),
+                        chunks,
+                    )
+                    for start, completed in futures:
+                        checkpoint()
+                        for offset, (item, records, unres) in enumerate(completed):
+                            item_no = start + offset + 1
+                            all_records.extend(records)
+                            unresolved.extend(unres)
 
-                        pid = product_by_item.get(item)
-                        if pid:
-                            products_seen.add(pid)
+                            # Preserve item-granular UI streaming and progress.
+                            if on_batch is not None and records:
+                                on_batch(records)
 
-                        if reporter is not None:
-                            overall_processed = cur_index * n + item_no
-                            reporter.advance(
-                                f"Pricing {cur} {item_no}/{n} items..."
-                            )
-                            reporter.set_metrics([
-                                ("items", "Items Priced",
-                                 overall_processed, f" / {n * ncur}"),
-                                ("records", "Price Records",
-                                 len(all_records), ""),
-                                ("products", "Products",                                 len(products_seen), f" / {total_products}"),
-                                ("unresolved", "Unresolved",
-                                 len(unresolved), ""),
-                            ])
+                            pid = product_by_item.get(item)
+                            if pid:
+                                products_seen.add(pid)
+
+                            if reporter is not None:
+                                overall_processed = cur_index * n + item_no
+                                reporter.advance(
+                                    f"Pricing {cur} {item_no}/{n} items..."
+                                )
+                                reporter.set_metrics([
+                                    ("items", "Items Priced",
+                                     overall_processed, f" / {n * ncur}"),
+                                    ("records", "Price Records",
+                                     len(all_records), ""),
+                                    ("products", "Products",
+                                     len(products_seen), f" / {total_products}"),
+                                    ("unresolved", "Unresolved",
+                                     len(unresolved), ""),
+                                ])
+
             self._attach_product_codes(all_records, repo, conn, params.site_id)
         finally:
             conn.close()
