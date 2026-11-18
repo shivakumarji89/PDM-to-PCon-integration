@@ -173,9 +173,15 @@ class TextMdbExportService(BaseService):
         inserts: list[dict[str, Any]] = []
         updates: list[dict[str, Any]] = []
         text_id_by_key: dict[tuple[str, str], Any] = {}
+        planned_mdb_keys: set[tuple[str, str]] = set()
         for block in chosen:
             type_code = _TEXT_TYPE_OCD.get(block.type_code, block.type_code)
             key = (self._key(type_code), self._key(block.name))
+            if key in planned_mdb_keys:
+                return {"ok": False, "error": (
+                    f"Multiple source Text blocks map to the same MDB key: {type_code}/{block.name}."
+                )}
+            planned_mdb_keys.add(key)
             matches = existing.get(key, [])
             if len(matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Text key: {type_code}/{block.name}."}
@@ -342,8 +348,26 @@ class TextMdbExportService(BaseService):
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Text was written but read-back failed: {exc}"}
-        if len(verified["texts"]) < len(data["texts"]) + len(inserts):
-            return {**result, "ok": False, "error": "Text read-back count verification failed."}
+        text_ids_found = {str(row.get("com_TextID")) for row in verified["texts"]}
+        expected_text_ids = {str(value) for value in text_id_by_key.values()}
+        if not expected_text_ids.issubset(text_ids_found):
+            return {**result, "ok": False, "error": "Text ID read-back verification failed."}
+        for table_name, pk_name, operations, rows in (
+            ("articles", "com_ArticleID", article_updates, verified["articles"]),
+            ("properties", "com_PropertyID", property_updates, verified["properties"]),
+            ("values", "com_ValueID", value_updates, verified["values"]),
+        ):
+            by_id = {str(row.get(pk_name)): row for row in rows}
+            for operation in operations:
+                identity = str(operation["where"][pk_name])
+                actual = by_id.get(identity)
+                if actual is None or any(
+                    str(actual.get(column) or "") != str(value or "")
+                    for column, value in operation["set"].items()
+                ):
+                    return {**result, "ok": False, "error": (
+                        f"Text link read-back verification failed for {table_name} row {identity}."
+                    )}
         sessions.record_workflow(session, self.WORKFLOW, counts)
         try:
             sessions.save(session)
