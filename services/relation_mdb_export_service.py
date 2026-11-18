@@ -173,7 +173,7 @@ class RelationMdbExportService(BaseService):
                 continue
             name_key = self._key(name)
             retained_obj_id = self._int(getattr(rel, "rel_obj_id", ""))
-            retained_object = object_by_id.get(str(retained_obj_id)) if retained_obj_id else None
+            retained_object = object_by_id.get(retained_obj_id) if retained_obj_id else None
             object_matches = object_by_name.get(name_key, [])
             if len(object_matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Relation Object name '{name}'."}
@@ -200,7 +200,7 @@ class RelationMdbExportService(BaseService):
             relation_name = str(getattr(rel, "relation_name", "") or
                                 OcdExportService._relation_name(name)).strip()
             retained_relation_id = self._int(getattr(rel, "relation_id", ""))
-            retained_relation = relation_by_id.get(str(retained_relation_id)) if retained_relation_id else None
+            retained_relation = relation_by_id.get(retained_relation_id) if retained_relation_id else None
             relation_matches = relation_by_name.get(self._key(relation_name), [])
             if len(relation_matches) > 1:
                 return {"ok": False, "error": f"Duplicate MDB Relation name '{relation_name}'."}
