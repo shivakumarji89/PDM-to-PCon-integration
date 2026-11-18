@@ -120,16 +120,53 @@ class RelationMdbExportService(BaseService):
         if not chosen:
             return {"ok": False, "error": "No Relation Objects are related to the selected articles."}
 
+        package_filter = str(int(package_id))
         tables = {
-            "package": f"SELECT com_PackageID FROM tCOMd_Package WHERE com_PackageID = {int(package_id)}",
-            "objects": "SELECT com_RelObjID, com_RelObjName, com_PackageID FROM tCOMd_RelObj",
-            "relations": "SELECT com_RelationID, com_RelationName, com_RelationBody, com_PackageID FROM tCOMd_Relation",
-            "links": "SELECT com_RelObjRelID, com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, com_RelationOrder FROM tCOMd_RelObjRel",
-            "articles": "SELECT com_ArticleID, com_ArticleCode, com_RelObjID, com_PackageID FROM tCOMd_Article",
-            "article_classes": "SELECT com_ArticleClassID, com_ArticleID, com_ClassID, com_RelObjID FROM tCOMd_ArticleClass",
-            "classes": "SELECT com_ClassID, com_ClassName, com_PackageID FROM tCOMd_Class",
-            "properties": "SELECT com_PropertyID, com_ClassID, com_PropName, com_RelObjID FROM tCOMd_Property",
-            "values": "SELECT com_ValueID, com_PropertyID, com_PropValueFrom, com_RelObjID FROM tCOMd_PropValue",
+            "package": f"SELECT com_PackageID FROM tCOMd_Package WHERE com_PackageID = {package_filter}",
+            "objects": (
+                "SELECT com_RelObjID, com_RelObjName, com_PackageID FROM tCOMd_RelObj "
+                f"WHERE com_PackageID = {package_filter}"
+            ),
+            "relations": (
+                "SELECT com_RelationID, com_RelationName, com_RelationBody, com_PackageID "
+                f"FROM tCOMd_Relation WHERE com_PackageID = {package_filter}"
+            ),
+            "links": (
+                "SELECT com_RelObjRelID, com_RelObjID, com_RelationID, com_RelObjTypeCode, "
+                "com_RelObjDomainCode, com_RelationOrder FROM tCOMd_RelObjRel "
+                "WHERE com_RelObjID IN (SELECT com_RelObjID FROM tCOMd_RelObj "
+                f"WHERE com_PackageID = {package_filter})"
+            ),
+            "articles": (
+                "SELECT com_ArticleID, com_ArticleCode, com_RelObjID, com_PackageID "
+                f"FROM tCOMd_Article WHERE com_PackageID = {package_filter}"
+            ),
+            "article_classes": (
+                "SELECT com_ArticleClassID, com_ArticleID, com_ClassID, com_RelObjID "
+                "FROM tCOMd_ArticleClass WHERE com_ArticleID IN "
+                "(SELECT com_ArticleID FROM tCOMd_Article "
+                f"WHERE com_PackageID = {package_filter})"
+            ),
+            "classes": (
+                "SELECT com_ClassID, com_ClassName, com_PackageID FROM tCOMd_Class "
+                f"WHERE com_PackageID = {package_filter}"
+            ),
+            "properties": (
+                "SELECT com_PropertyID, com_ClassID, com_PropName, com_RelObjID "
+                "FROM tCOMd_Property WHERE com_ClassID IN "
+                "(SELECT com_ClassID FROM tCOMd_Class "
+                f"WHERE com_PackageID = {package_filter})"
+            ),
+            "values": (
+                "SELECT com_ValueID, com_PropertyID, com_PropValueFrom, com_RelObjID "
+                "FROM tCOMd_PropValue WHERE com_PropertyID IN "
+                "(SELECT com_PropertyID FROM tCOMd_Property WHERE com_ClassID IN "
+                "(SELECT com_ClassID FROM tCOMd_Class "
+                f"WHERE com_PackageID = {package_filter}))"
+            ),
+            "object_max": "SELECT MAX(com_RelObjID) AS max_id FROM tCOMd_RelObj",
+            "relation_max": "SELECT MAX(com_RelationID) AS max_id FROM tCOMd_Relation",
+            "link_max": "SELECT MAX(com_RelObjRelID) AS max_id FROM tCOMd_RelObjRel",
         }
         try:
             data = db.read_tables(session.mdb_path, tables)
