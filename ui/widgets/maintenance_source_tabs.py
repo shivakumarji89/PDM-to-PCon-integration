@@ -477,12 +477,12 @@ class MaintenanceSourceMixin:
                 return
             counts = preview.get("counts", {})
             summary = (
-                f"Destination: {session.mdb_path}\\n\\n"
-                + "\\n".join(
+                f"Destination: {session.mdb_path}\n\n"
+                + "\n".join(
                     f"{name.replace('_', ' ').title()}: {count}"
                     for name, count in counts.items()
                 )
-                + f"\\n\\nOnly selected-article {title} data will be inserted or updated. "
+                + f"\n\nOnly selected-article {title} data will be inserted or updated. "
                   "Existing IDs and unrelated MDB rows will be preserved."
             )
             if QMessageBox.question(
@@ -499,12 +499,12 @@ class MaintenanceSourceMixin:
                 return
             QMessageBox.information(
                 self, f"Export {title}",
-                f"{title} export completed.\\n\\n"
-                + "\\n".join(
+                f"{title} export completed.\n\n"
+                + "\n".join(
                     f"{name.replace('_', ' ').title()}: {count}"
                     for name, count in result.get("counts", {}).items()
                 )
-                + f"\\n\\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+                + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
             )
             return
         if component != "Articles":
