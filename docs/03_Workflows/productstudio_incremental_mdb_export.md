@@ -122,6 +122,7 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 - Relation and Text exporters build in-memory indexes for class/property/value natural-key lookups instead of repeatedly scanning the same MDB row lists.
 - Price export keeps the existing optimized MDB reads and filters article price records to selected base article codes before preview/write. Product-level global prices remain included, including global-only exports.
 - Price computation processes up to two batches concurrently, with one PDM connection owned by each worker. Results are emitted in original item order; the final product-code lookup opens its own connection only after the workers finish.
+- The concurrency regression test verifies two overlapping worker connections, stable result order and connection cleanup. A live SQL Server timing benchmark on representative large products remains pending.
 - Relation links are deduplicated in memory before transactional inserts.
 
 ## Validation status
