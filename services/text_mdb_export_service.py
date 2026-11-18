@@ -104,7 +104,7 @@ class TextMdbExportService(BaseService):
             if option is None:
                 continue
             key = text_block_name(option.name)
-            selected_names.add(("property", self._key(key)))
+            selected_names.add(("option", self._key(key)))
             for value in getattr(option, "values", []) or []:
                 value_id = str(getattr(value, "id", "") or "")
                 allowed = scope.option_value_ids.get(str(option_id))
@@ -112,7 +112,7 @@ class TextMdbExportService(BaseService):
                     continue
                 code = str(getattr(value, "code", "") or "").strip().replace("#", "")
                 if code:
-                    selected_names.add(("propvalue", self._key(f"{key}_{code}")))
+                    selected_names.add(("optionvalue", self._key(f"{key}_{code}")))
 
         chosen = [b for b in blocks
                   if (self._key(b.type_code), self._key(b.name)) in selected_names]
@@ -144,6 +144,18 @@ class TextMdbExportService(BaseService):
                     "SELECT com_ArticleID, com_ArticleCode, com_PackageID, "
                     "com_ShortTextID, com_LongTextID FROM tCOMd_Article "
                     f"WHERE com_PackageID = {int(package_id)}"
+                ),
+                "classes": (
+                    "SELECT com_ClassID, com_ClassName FROM tCOMd_Class "
+                    f"WHERE com_PackageID = {int(package_id)}"
+                ),
+                "properties": (
+                    "SELECT com_PropertyID, com_ClassID, com_PropName, com_TextID "
+                    "FROM tCOMd_Property"
+                ),
+                "values": (
+                    "SELECT com_ValueID, com_PropertyID, com_PropValueFrom, com_TextID "
+                    "FROM tCOMd_PropValue"
                 ),
             })
         except Exception as exc:
@@ -186,6 +198,84 @@ class TextMdbExportService(BaseService):
                 inserts.append({"op": "insert", "table": "tCOMd_Text",
                                 "rows": [{"com_TextID": text_id, **proto, **values}]})
 
+        # Link property and value text references through the selected
+        # class/property natural keys; source IDs are not MDB surrogate IDs.
+        classes = self.context.engineering_class_service.get_classes(snapshot)
+        assignments_by_class: dict[str, dict[str, Any]] = {}
+        for article_id in selected:
+            for cls in __import__(
+                "services.class_creation_selection_service",
+                fromlist=["classes_for_article"],
+            ).classes_for_article(snapshot, classes, article_id):
+                bucket = assignments_by_class.setdefault(str(cls.name), {})
+                for assignment in getattr(cls, "properties", []) or []:
+                    bucket[str(getattr(assignment, "property_id", "") or "")] = assignment
+        class_id_by_name = {
+            self._key(row.get("com_ClassName")): row.get("com_ClassID")
+            for row in data["classes"]
+        }
+        property_updates = []
+        value_updates = []
+        for class_name, assignments in assignments_by_class.items():
+            class_id = class_id_by_name.get(self._key(class_name))
+            if class_id is None:
+                continue
+            for source_id, assignment in assignments.items():
+                source_prop = prop_by_id.get(source_id) or option_by_id.get(source_id)
+                source_name = str(getattr(assignment, "property_name", "") or
+                                   getattr(source_prop, "name", "") or "")
+                if not source_name:
+                    continue
+                prop_name = self._key(xocd._prop_ident(source_name))
+                prop_rows = [
+                    row for row in data["properties"]
+                    if str(row.get("com_ClassID")) == str(class_id)
+                    and self._key(row.get("com_PropName")) == prop_name
+                ]
+                if len(prop_rows) != 1:
+                    continue
+                mdb_prop = prop_rows[0]
+                text_name = self._key(str(getattr(assignment, "text_block", "") or text_block_name(source_name)))
+                property_text_id = (
+                    text_id_by_key.get(("property", text_name))
+                    or text_id_by_key.get(("option", text_name))
+                )
+                if property_text_id is not None and str(mdb_prop.get("com_TextID") or "") != str(property_text_id):
+                    property_updates.append({"op": "update", "table": "tCOMd_Property",
+                                             "set": {"com_TextID": property_text_id},
+                                             "where": {"com_PropertyID": mdb_prop.get("com_PropertyID")}})
+                source_values = list(getattr(assignment, "values", []) or [])
+                if not source_values and source_prop is not None:
+                    source_values = list(getattr(source_prop, "values", []) or [])
+                for source_value in source_values:
+                    value_id = str(getattr(source_value, "value_id", "") or getattr(source_value, "id", "") or "")
+                    allowed = (
+                        scope.property_value_ids.get(source_id)
+                        if source_id in scope.property_ids
+                        else scope.option_value_ids.get(source_id)
+                    )
+                    if allowed is not None and value_id not in allowed:
+                        continue
+                    code = str(getattr(source_value, "code", "") or value_code_map.get(value_id, "")).strip().replace("#", "")
+                    if not code:
+                        continue
+                    value_text_name = self._key(f"{text_block_name(source_name)}_{code}")
+                    value_text_id = (
+                        text_id_by_key.get(("propvalue", value_text_name))
+                        or text_id_by_key.get(("optionvalue", value_text_name))
+                    )
+                    if value_text_id is None:
+                        continue
+                    value_rows = [
+                        row for row in data["values"]
+                        if str(row.get("com_PropertyID")) == str(mdb_prop.get("com_PropertyID"))
+                        and self._key(row.get("com_PropValueFrom")) == self._key(code)
+                    ]
+                    if len(value_rows) == 1 and str(value_rows[0].get("com_TextID") or "") != str(value_text_id):
+                        value_updates.append({"op": "update", "table": "tCOMd_PropValue",
+                                              "set": {"com_TextID": value_text_id},
+                                              "where": {"com_ValueID": value_rows[0].get("com_ValueID")}})
+
         # Link article short/long text references without changing article IDs.
         article_rows = [r for r in data["articles"]
                         if str(r.get("com_PackageID")) == str(package_id)
@@ -210,10 +300,10 @@ class TextMdbExportService(BaseService):
                 article_updates.append({"op": "update", "table": "tCOMd_Article",
                                         "set": set_values, "where": {"com_ArticleID": aid}})
 
-        plan = inserts + updates + article_updates
+        plan = inserts + updates + property_updates + value_updates + article_updates
         counts = {"selected_articles": len(selected), "base_articles": len(base_codes),
                   "text_blocks_selected": len(chosen), "texts_inserted": len(inserts),
-                  "texts_updated": len(updates), "articles_linked": len(article_updates)}
+                  "texts_updated": len(updates), "properties_linked": len(property_updates),\n                  "values_linked": len(value_updates), "articles_linked": len(article_updates)}
         result = {"ok": True, "dry_run": dry_run, "mdb_path": session.mdb_path,
                   "counts": counts, "operations": len(plan)}
         if dry_run:
@@ -229,7 +319,7 @@ class TextMdbExportService(BaseService):
         try:
             verified = db.read_tables(session.mdb_path, {
                 "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM tCOMd_Text",
-                "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
+                "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",\n                "properties": "SELECT com_PropertyID, com_TextID FROM tCOMd_Property",\n                "values": "SELECT com_ValueID, com_TextID FROM tCOMd_PropValue",
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Text was written but read-back failed: {exc}"}
