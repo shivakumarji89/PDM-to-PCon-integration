@@ -147,7 +147,7 @@ class PropertiesValuesMdbExportService(BaseService):
                 "classes": "SELECT com_ClassID, com_ClassName, com_PackageID FROM tCOMd_Class",
                 "articles": "SELECT com_ArticleID, com_ArticleCode, com_PackageID FROM tCOMd_Article",
                 "properties": (
-                    "SELECT com_PropertyID, com_ClassID, com_PropName, com_PackageID "
+                    "SELECT com_PropertyID, com_ClassID, com_PropName "
                     "FROM tCOMd_Property"
                 ),
                 "values": (
