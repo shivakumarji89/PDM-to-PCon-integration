@@ -18,7 +18,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QSettings, QThread, QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings, QThread, QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from core.application_context import ApplicationContext
@@ -198,6 +198,9 @@ def window(app, monkeypatch, tmp_path):
     yield window
     window.close()
     assert QThreadPool.globalInstance().waitForDone(10000)
+    QCoreApplication.processEvents()
+    window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
 
 

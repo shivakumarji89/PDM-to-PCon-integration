@@ -20,7 +20,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QSettings, QThread, QThreadPool
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings, QThread, QThreadPool
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from services.varcond_service import VarCondResult, VarCondRule, VarCondService
@@ -222,13 +222,14 @@ def _panel(maintenance=False):
 
 
 def _maintenance_panel(monkeypatch):
-    """A Maintenance panel whose PDM source load is stubbed out (tests never reach a database)."""
-    from services.maintenance_varcond_service import MaintenanceVarCondService
+    """A panel in Maintenance mode that never starts the real background PDM source load.
 
-    monkeypatch.setattr(MaintenanceVarCondService, "_load_live",
-                        lambda self, codes, progress_callback=None, source_callback=None: {})
-    panel = _panel(maintenance=True)
-    assert pump(lambda: panel._maintenance_load_task is None)
+    It is built in Development mode (so construction starts no load, no progress dialog and no worker) and
+    switched afterwards; the tests then install a stand-in cached service."""
+    mode = {"maintenance": False}
+    context = fakes.build_context()
+    panel = VarCondGenerationPanel(context, maintenance_check=lambda: mode["maintenance"])
+    mode["maintenance"] = True
     return panel
 
 
@@ -365,6 +366,9 @@ def panel(app):
     panel._filter_timer.setInterval(30)
     yield panel
     QThreadPool.globalInstance().waitForDone(10000)
+    QCoreApplication.processEvents()
+    panel.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
 
 
@@ -512,6 +516,9 @@ def window(app, monkeypatch, tmp_path):
     yield window
     window.close()
     assert QThreadPool.globalInstance().waitForDone(10000)
+    QCoreApplication.processEvents()
+    window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
 
 

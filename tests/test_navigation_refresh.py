@@ -55,6 +55,24 @@ def _app():
     return QApplication.instance() or QApplication([])
 
 
+_STACKS: list = []
+
+
+@pytest.fixture(autouse=True)
+def _tear_down_pages():
+    """``WorkspaceHost.activate`` schedules ``QTimer.singleShot(0, page.auto_fit_tables)``. Run those timers while
+    the pages are alive and delete the widgets explicitly; otherwise they fire (or crash) inside a later,
+    unrelated test after the pages were garbage-collected."""
+    yield
+    QCoreApplication.processEvents()
+    while _STACKS:
+        stack = _STACKS.pop()
+        stack.close()
+        stack.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
+
+
 def _legacy_activate(host: WorkspaceHost, step) -> None:
     """The host's behaviour before this change: show (pages refresh in showEvent), refresh,
     activate, on_enter."""
@@ -88,6 +106,7 @@ def _build(count=90, steps=tuple(PAGES)):
     ctx.activate_snapshot_source("pdm")
     ctx.engineering_initialization_service.initialize(snapshot)
     stack.show()
+    _STACKS.append(stack)
     return ctx, stack, WorkspaceHost(stack, pages), pages
 
 
@@ -247,6 +266,7 @@ def test_refreshing_hidden_pages_after_a_load_materialises_snapshot_data():
     reads, even if the page is never opened. Deferring those refreshes would change an export."""
     ctx = ApplicationContext()
     stack = QStackedWidget()
+    _STACKS.append(stack)
     stack._active_module = WorkbenchModule.DEVELOPMENT
     pages = {step: PAGES[step](ctx, stack) for step in PAGES}
     for page in pages.values():
