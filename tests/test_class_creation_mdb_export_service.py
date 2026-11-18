@@ -63,7 +63,7 @@ def _fixture(tmp_path):
         "schemes": [{
             "com_CodeSchemeID": 1,
             "com_CodeSchemeName": "BASE",
-            "com_CodeSchemeBody": "@,@,@",
+            "com_CodeSchemeBody": "@,@,@,@",
             "com_PackageID": 10,
         }],
     }
@@ -155,7 +155,7 @@ def test_one_selected_article_exports_only_its_class(tmp_path):
     assert result["counts"]["article_classes_inserted"] == 1
     assert [row["com_ClassName"] for row in db.data["classes"]] == ["Desk_Attribute"]
     assert [row["com_ClassID"] for row in db.data["article_classes"]] == [1]
-    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,p1:X"
+    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X"
     # Export selection and unioning must not mutate the engineering source.
     assert [len(cls.properties) for cls in source_classes] == [1, 1]
 
@@ -177,7 +177,7 @@ def test_multiple_selected_variants_sharing_a_base_union_their_classes_once(tmp_
         "Desk_Attribute", "Desk_Options",
     }
     assert len({row["com_ArticleID"] for row in db.data["article_classes"]}) == 1
-    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,p1:X,o1:X"
+    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X,o1:X"
     assert [len(cls.properties) for cls in source_classes] == [1, 1]
 
 
