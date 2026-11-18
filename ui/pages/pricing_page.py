@@ -657,7 +657,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 str(code) for article_id, code in self._context.xocd_export_service.base_code_entries(snapshot)
                 if str(article_id) in {str(value) for value in selected_ids} and str(code or "").strip()
             }
-            if not base_codes:
+            has_article_prices = any(
+                not bool(getattr(record, "is_global", False))
+                for record in snapshot.price_records
+            )
+            if has_article_prices and not base_codes:
                 QMessageBox.warning(
                     self, "Export Prices",
                     "The selected articles do not resolve to base article codes.",
