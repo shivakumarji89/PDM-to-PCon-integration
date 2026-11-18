@@ -26,16 +26,17 @@ def _article(article_id, code):
 
 
 def _member(article_id, reduced, **extra):
-    return SimpleNamespace(
-        id=f"member-{article_id}",
-        article_id=article_id,
-        reduced_article=reduced,
-        relation_object="",
-        code_scheme="",
-        short_description="",
-        long_description="",
-        **extra,
-    )
+    values = {
+        "id": f"member-{article_id}",
+        "article_id": article_id,
+        "reduced_article": reduced,
+        "relation_object": "",
+        "code_scheme": "",
+        "short_description": "",
+        "long_description": "",
+    }
+    values.update(extra)
+    return SimpleNamespace(**values)
 
 
 def test_no_dot_split_fallback_when_development_has_no_reduced_base():
