@@ -389,18 +389,19 @@ def test_opening_the_panel_does_not_generate_until_a_relation_is_selected(panel,
 def test_typing_in_the_filter_regenerates_once_after_a_pause_on_a_worker(panel, monkeypatch):
     live = LiveRecorder(monkeypatch)
     _select(panel, "PA_GESCRNNS.105508F")
+    assert pump(lambda: len(live.calls) == 1 and _table_rules(panel))   # selecting generates the relation
     for text in ("G", "GE", "GES", "GESC", "GESCR", "GESCRN", "GESCRNN"):
         panel._filter.setText(text)
-    assert live.calls == [], "no generation per keystroke"
+    assert len(live.calls) == 1, "no generation per keystroke"
     assert panel._relations.count() == 5, "the list is rebuilt only after the pause"
 
-    assert pump(lambda: len(live.calls) == 1 and _table_rules(panel))
+    assert pump(lambda: len(live.calls) == 2 and _table_rules(panel) == ["call2: $VARCOND = 'GESCRNNS.105508F' IF"])
     pump(lambda: False, timeout=0.15)
 
-    assert len(live.calls) == 1 and live.calls[0]["on_gui"] is False
+    assert len(live.calls) == 2 and live.calls[1]["on_gui"] is False
     assert panel._relations.count() == 2 and panel._filter.text() == "GESCRNN"
-    assert live.calls[0]["codes"] == ["GESCRNNS.105508F"]
-    assert _table_rules(panel) == ["call1: $VARCOND = 'GESCRNNS.105508F' IF"]
+    assert live.calls[1]["codes"] == ["GESCRNNS.105508F"]
+    assert _table_rules(panel) == ["call2: $VARCOND = 'GESCRNNS.105508F' IF"]
 
 
 def test_reentering_the_panel_asks_twice_but_generates_once(panel, monkeypatch):
@@ -425,10 +426,13 @@ def test_the_table_shows_only_the_selected_relations_rules(panel, monkeypatch):
     gate.set()
     assert pump(lambda: panel._live_task is None)
 
-    assert _table_rules(panel) == [], "another relation's rules must not appear"
-    assert "Waiting for this relation to finish loading" in panel._summary.text()
-    _select(panel, "PA_GESCRNNU.105508F")           # coming back shows the finished result
-    assert _table_rules(panel) == ["call1: $VARCOND = 'GESCRNNU.105508F' IF"]
+    # Only the newly selected relation is shown; the superseded relation's result never appears.
+    assert pump(lambda: _table_rules(panel))
+    assert _table_rules(panel) == ["call2: $VARCOND = 'RYTWKRNU.220110F' IF"]
+    assert all("GESCRNNU" not in rule for rule in _table_rules(panel))
+    _select(panel, "PA_GESCRNNU.105508F")           # coming back regenerates it: the first run was superseded
+    assert pump(lambda: _table_rules(panel) == ["call3: $VARCOND = 'GESCRNNU.105508F' IF"])
+    assert pump(lambda: panel._live_task is None)
 
 
 def test_a_newer_generation_supersedes_a_slow_older_one(panel, monkeypatch):

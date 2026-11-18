@@ -238,6 +238,7 @@ class VarCondGenerationPanel(QWidget):
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
         self._filter_timer.stop()          # this rebuild supersedes a pending debounced one
+        self._rules_by_relation.clear()    # prefix length / filter changed: cached rules no longer apply
         current = self._relations.currentItem().text() if self._relations.currentItem() else ""
         current_prefix = current[3:] if current.startswith("PA_") else current
         anchor_code = next(
@@ -276,7 +277,14 @@ class VarCondGenerationPanel(QWidget):
         if current is None:
             self._output.setRowCount(0)
             return
-        self._display_relation_rules(current.text())
+        name = current.text()
+        if name not in self._rules_by_relation:
+            # Only the selected relation is ever generated, so selecting another one must request
+            # its rules (Development: live PDM worker; Maintenance: local, from the cached sources).
+            self._display_relation_rules(name)
+            self._generate_all()
+            return
+        self._display_relation_rules(name)
 
     def _display_relation_rules(self, relation_name: str) -> None:
         """Show only the rules belonging to the currently selected relation."""
@@ -797,6 +805,7 @@ class VarCondGenerationPanel(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._selected_exclusions = {name for name, row in rows.items() if row.checkState() == Qt.CheckState.Checked}
             self._exclusions.setText(",".join(sorted(self._selected_exclusions, key=str.casefold)))
+            self._rules_by_relation.clear()
             self._generate_all()
 
     def _edit_substitutions(self) -> None:
@@ -845,5 +854,6 @@ class VarCondGenerationPanel(QWidget):
             self._substitutions.setText(",".join(
                 f"{old}={new}" for old, new in sorted(updated.items(), key=lambda pair: pair[0].casefold())
             ))
+            self._rules_by_relation.clear()
             self._generate_all()
 

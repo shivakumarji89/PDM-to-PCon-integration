@@ -382,9 +382,16 @@ def _panel_page(module, monkeypatch):
     monkeypatch.setattr(VarCondService, "generate_live", fake_live)
     loads = []
 
-    def fake_load(self, codes):
+    def fake_load(self, codes, progress_callback=None, source_callback=None):
+        # Same signature and publishing contract as MaintenanceVarCondService._load_live.
         loads.append(list(codes))
-        return {c: SOURCES[c] for c in codes if c in SOURCES}
+        found = {c: SOURCES[c] for c in codes if c in SOURCES}
+        for source in found.values():
+            if source_callback:
+                source_callback(source)
+        if progress_callback:
+            progress_callback(len(codes), len(codes), "")
+        return found
 
     monkeypatch.setattr(MaintenanceVarCondService, "_load_live", fake_load)
     page = PricingRelationPage(_context_with_bom())
@@ -398,16 +405,32 @@ def _panel_page(module, monkeypatch):
 def _select_relation(page):
     """Select the first relation the way a user does and wait for any PDM load.
 
-    Opening the workflow only builds the local relation list; generation (and the
-    Maintenance background PDM read) starts on selection.
+    Maintenance reads the PDM sources for every parent once when the workflow is
+    opened; Development generates the selected relation live on a worker.
     """
     panel = page._varcond_panel
+    _wait_for_load(panel)
     if panel._relations.currentRow() == 0:
-        # Already selected (list rebuilt with the selection kept): no change signal.
-        panel._generate_selected()
+        panel._generate_all()
     else:
         panel._relations.setCurrentRow(0)
     _wait_for_load(panel)
+
+
+def _output_text(panel) -> str:
+    table = panel._output
+    return "\n".join(table.item(row, 0).text() for row in range(table.rowCount()))
+
+
+def _wait_until(predicate, what: str) -> None:
+    import time
+    from PySide6.QtWidgets import QApplication
+
+    deadline = time.monotonic() + 10
+    while not predicate():
+        assert time.monotonic() < deadline, f"timed out waiting for {what}"
+        QApplication.processEvents()
+        time.sleep(0.01)
 
 
 def _wait_for_load(panel):
@@ -429,8 +452,9 @@ def test_development_keeps_generate_live_and_never_uses_maintenance_service(monk
     panel = page._varcond_panel
     assert live_calls == [], "Opening the workflow must not generate until a relation is selected"
     _select_relation(page)
-    assert live_calls, "Development must still call VarCondService.generate_live"
-    panel._on_generate_clicked()
+    # Development generation runs on a worker started from the event loop.
+    _wait_until(lambda: live_calls, "Development live generation")
+    assert live_calls[0][0] == ["GESCRNNU.105508F"]
     assert panel._maintenance_service is None and loads == []
 
 
@@ -439,29 +463,29 @@ def test_maintenance_uses_cached_service_not_generate_live(monkeypatch):
 
     page, live_calls, loads = _panel_page(WorkbenchModule.MAINTENANCE, monkeypatch)
     panel = page._varcond_panel
-    assert live_calls == [] and loads == [], "Opening the workflow must not read PDM"
+    # Opening the workflow reads the PDM sources for all parents exactly once.
+    _wait_for_load(panel)
+    assert live_calls == [] and loads == [["GESCRNNU.105508F"]]
     _select_relation(page)
     assert live_calls == [] and loads == [["GESCRNNU.105508F"]]
-    assert "8=' + Fabric_Type" in panel._output.toPlainText()
-    # prefix / exclusion / substitution edits are local transformations
-    panel._prefix.setText("Cls")
+    assert "8=' + Fabric_Type" in _output_text(panel)
+    # exclusion / substitution / prefix-length edits are local transformations
     panel._exclusions.setText("Height")
     panel._substitutions.setText("Fabric_Type=FT")
-    panel._generate_selected()
+    panel._generate_all()
     panel._relation_length.setValue(max(1, panel._relation_length.value() - 1))
     panel._relation_length.setValue(panel._relation_length.maximum())
+    _wait_for_load(panel)
     assert loads == [["GESCRNNU.105508F"]] and live_calls == []
-    assert "+ FT IF Cls.Application = 'U'" in panel._output.toPlainText()
+    _select_relation(page)
+    text = _output_text(panel)
+    assert "+ FT IF" in text and "Height" not in text
     # re-entering the workspace with the same snapshot keeps the cache
     page.on_enter()
-    assert len(loads) == 1
-    # length changes drop the selection; reselecting is served from the cache
-    _select_relation(page)
-    assert len(loads) == 1
-    # explicit Generate / Refresh re-reads PDM
-    panel._on_generate_clicked()
     _wait_for_load(panel)
-    assert len(loads) == 2
+    assert len(loads) == 1
+    _select_relation(page)
+    assert len(loads) == 1 and live_calls == []
 
 
 def test_maintenance_cache_replaced_when_snapshot_changes(monkeypatch):
