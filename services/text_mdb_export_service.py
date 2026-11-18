@@ -76,13 +76,15 @@ class TextMdbExportService(BaseService):
 
         scope = build_class_creation_scope(snapshot, selected)
         classes = self.context.engineering_class_service.get_classes(snapshot)
-        assignment_text_names: dict[str, str] = {}\n        assignment_property_names: dict[str, str] = {}
+        assignment_text_names: dict[str, str] = {}
+        assignment_property_names: dict[str, str] = {}
         for article_id in selected:
             for cls in classes_for_article(snapshot, classes, article_id):
                 for assignment in getattr(cls, "properties", []) or []:
                     source_id = str(getattr(assignment, "property_id", "") or "")
                     property_name = str(getattr(assignment, "property_name", "") or "")
                     if source_id and property_name:
+                        assignment_property_names.setdefault(source_id, property_name)
                         assignment_text_names.setdefault(
                             source_id,
                             str(getattr(assignment, "text_block", "") or text_block_name(property_name)),
