@@ -126,7 +126,7 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 
 ## Validation status
 
-- Focused incremental MDB and pricing workflow: **152 passed, 6 subtests passed** (includes Article incremental/full-export parity and bounded parallel-pricing regressions).
+- Focused incremental MDB and pricing workflow: **156 passed, 6 subtests passed** (includes Article parity, Class Creation and Properties/Values export, repeat-export idempotency, and bounded parallel-pricing regressions).
 - Maintenance pricing/parity regression workflow: **247 passed, 6 subtests passed**.
 - Full repository suite on Ubuntu: **5,396 passed, 27 failed, 84 skipped, 22 subtests passed** before a Qt teardown abort. Reported failures are outside the focused incremental workflow (including SyteLine, workspace/path, home-page and existing Maintenance UI tests); the pCon SDK page integration is excluded from the Ubuntu run because its Qt event loop segfaults on that runner.
 - Real Windows 32-bit ACE MDB validation is still required before production use: repeat exports, existing IDs, duplicate natural keys, rollback, foreign-key references and large-product timing have not been tested against a live MDB.
