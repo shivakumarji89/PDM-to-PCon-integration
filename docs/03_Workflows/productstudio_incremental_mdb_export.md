@@ -18,6 +18,10 @@ copied once; later workflows never re-copy it, never wipe it and never renumber 
 | `services/mdb_service.py` | Unchanged: the only MDB I/O gateway (transactional `execute_batch`). |
 | `ui/main_window.py::_on_export_articles_to_mdb` | Dialogs only; called from the Articles page "Export to MDB". |
 
+## Recommended workflow order
+
+Articles → Class Creation → Properties & Values → Text → Relations / Relation Objects → Pricing / Price Export. Pricing Relation / VARCOND can then be exported for complete selected prefix groups. Each step reuses the same product MDB session.
+
 ## Session persistence
 
 One JSON file per product in `%LOCALAPPDATA%\MK Product Workbench\export_sessions\`
