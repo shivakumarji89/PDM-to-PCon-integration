@@ -207,7 +207,16 @@ class TextMdbExportService(BaseService):
             for cls in classes_for_article(snapshot, classes, article_id):
                 bucket = assignments_by_class.setdefault(str(cls.name), {})
                 for assignment in getattr(cls, "properties", []) or []:
-                    bucket[str(getattr(assignment, "property_id", "") or "")] = assignment
+                    source_id = str(getattr(assignment, "property_id", "") or "")
+                    if not source_id:
+                        continue
+                    previous = bucket.get(source_id)
+                    if previous is None:
+                        bucket[source_id] = assignment
+                    else:
+                        # Keep the first assignment's metadata; value text scope
+                        # comes from the unioned Article selection below.
+                        pass
         class_id_by_name = {
             self._key(row.get("com_ClassName")): row.get("com_ClassID")
             for row in data["classes"]
@@ -242,9 +251,18 @@ class TextMdbExportService(BaseService):
                     property_updates.append({"op": "update", "table": "tCOMd_Property",
                                              "set": {"com_TextID": property_text_id},
                                              "where": {"com_PropertyID": mdb_prop.get("com_PropertyID")}})
-                source_values = list(getattr(assignment, "values", []) or [])
-                if not source_values and source_prop is not None:
-                    source_values = list(getattr(source_prop, "values", []) or [])
+                if source_id in prop_by_id:
+                    source_values = list(getattr(source_prop, "values", []) or []) or [
+                        value for value in (getattr(snapshot, "property_values", []) or [])
+                        if str(getattr(value, "property_id", "") or "") == source_id
+                    ]
+                elif source_id in option_by_id:
+                    source_values = list(getattr(source_prop, "values", []) or []) or [
+                        value for value in (getattr(snapshot, "option_values", []) or [])
+                        if str(getattr(value, "option_id", "") or "") == source_id
+                    ]
+                else:
+                    source_values = list(getattr(assignment, "values", []) or [])
                 for source_value in source_values:
                     value_id = str(getattr(source_value, "value_id", "") or getattr(source_value, "id", "") or "")
                     allowed = (
