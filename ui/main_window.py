@@ -647,6 +647,18 @@ class MainWindow(QMainWindow):
                 if step == WorkflowStep.PRICING and hasattr(page, "_restore_export_buttons"):
                     page._restore_export_buttons()
 
+            if step == WorkflowStep.CLASS_CREATION and not hasattr(page, "_maintenance_export_properties_values_button"):
+                properties_values_button = QPushButton("⇩  Export Properties & Values", page)
+                properties_values_button.setToolTip(
+                    "Export Properties and Values related to the selected Articles-page rows"
+                )
+                handler = getattr(page, "_on_export_properties_values_mdb", None)
+                if callable(handler):
+                    properties_values_button.clicked.connect(handler)
+                else:
+                    properties_values_button.setEnabled(False)
+                page._maintenance_export_properties_values_button = properties_values_button
+
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
             if getattr(page, "_maintenance_actions_header", None) is not header:
@@ -655,6 +667,8 @@ class MainWindow(QMainWindow):
                 if step == WorkflowStep.PRODUCT:
                     header.add_action(page._maintenance_refresh_pdm_button, "secondary")
                 header.add_action(page._maintenance_export_mdb_button, "secondary")
+                if getattr(page, "_maintenance_export_properties_values_button", None) is not None:
+                    header.add_action(page._maintenance_export_properties_values_button, "secondary")
                 page._maintenance_actions_header = header
 
     def _refresh_app_header(self) -> None:

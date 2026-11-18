@@ -10,7 +10,7 @@ copied once; later workflows never re-copy it, never wipe it and never renumber 
 | `models/mdb_export_session.py` | `MdbExportSession`: MDB path, package / ComGroup / manufacturer ids, template boilerplate rows, `article_map`, `scheme_map`, `workflow_status`. |
 | `services/mdb_export_session_service.py` | Product key, persistence, recovery, one-time `initialize()`, `record_workflow()`. |
 | `services/article_mdb_export_service.py` | `export_to_session()` — Articles workflow. |
-| `services/class_creation_mdb_export_service.py` | `export_to_session()` — article-scoped Class Creation, CodeScheme body extension, and ArticleClass links. |
+| `services/class_creation_mdb_export_service.py` | `export_to_session()` — article-scoped Class Creation, CodeScheme body extension, and ArticleClass links. |\n| `services/properties_values_mdb_export_service.py` | `export_to_session()` — selected-article Properties and Values, adding only missing `tCOMd_Property` / `tCOMd_PropValue` rows. |
 | `services/mdb_service.py` | Unchanged: the only MDB I/O gateway (transactional `execute_batch`). |
 | `ui/main_window.py::_on_export_articles_to_mdb` | Dialogs only; called from the Articles page "Export to MDB". |
 
@@ -68,7 +68,7 @@ The incremental workflow inserts only **`tCOMd_Class`** and
 **`tCOMd_ArticleClass`** rows, and extends the selected **`tCOMd_CodeScheme`**
 bodies in place. It reuses existing Class IDs, Article IDs and CodeScheme IDs,
 adds only missing class rows and article/class links, and never deletes
-unrelated rows. Properties and values belong to their own later workflows.
+unrelated rows. Properties and values belong to the following Properties & Values workflow.
 
 The Class Creation page uses the same selected article IDs to filter the
 Attribute and Options workspaces. Visual definitions remain product-wide.
@@ -77,8 +77,22 @@ The export preview and actual write use the same selection and mapping.
 Value Combination tables are explicitly outside the current implementation
 scope.
 
+## Implemented: Properties & Values
+
+The Class Creation page exposes a separate **Export Properties & Values** action. It uses the
+same Articles-page Export checkboxes and the same selected-article class mapping as Class Creation.
+One selected article exports only its related class properties; multiple selected articles union
+their related properties and values.
+
+The workflow requires Articles and Class Creation to have run first. It inserts only missing
+`tCOMd_Property` and `tCOMd_PropValue` rows, reuses existing class/property/value identities,
+and writes both tables in one transaction with read-back verification. Existing Text and Relation
+Object references are reused only when an unambiguous matching row already exists; otherwise
+those fields remain NULL for their owning workflows. It does not write Text, Relation, Article,
+Class, CodeScheme, Price, or Value Combination tables.
+
 ## Remaining workflows
 
-Properties, Values, Relations, Text and Prices still need incremental session
-exporters. Each must reuse the same product MDB and must not call the legacy
-full exporter. Value Combination tables are excluded from the current scope.
+Relations, Text and Prices still need incremental session exporters. Each must reuse the same
+product MDB and must not call the legacy full exporter. Value Combination tables are excluded
+from the current scope.
