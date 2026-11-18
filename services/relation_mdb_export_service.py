@@ -238,7 +238,7 @@ class RelationMdbExportService(BaseService):
             # A RelObjRel link is unique by object/relation/type/domain/order.
             link_key = (
                 str(obj_id), str(relation_id), str(getattr(rel, "type_code", "1")),
-                str(getattr(rel, "domain", "C")), str(getattr(rel, "order", 100)),
+                str(getattr(rel, "domain", "C")), str(self._int(getattr(rel, "order", 100))),
             )
             if link_key not in existing_link_keys:
                 inserts.append({"op": "insert", "table": "tCOMd_RelObjRel",
