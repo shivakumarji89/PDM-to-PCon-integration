@@ -305,6 +305,16 @@ class TextMdbExportService(BaseService):
             self._key(row.get("com_ClassName")): row.get("com_ClassID")
             for row in data["classes"]
         }
+        properties_by_class_name: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in data["properties"]:
+            properties_by_class_name.setdefault(
+                (str(row.get("com_ClassID")), self._key(row.get("com_PropName"))), []
+            ).append(row)
+        values_by_property_code: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in data["values"]:
+            values_by_property_code.setdefault(
+                (str(row.get("com_PropertyID")), self._key(row.get("com_PropValueFrom"))), []
+            ).append(row)
         property_updates = []
         value_updates = []
         for class_name, assignments in assignments_by_class.items():
@@ -327,11 +337,7 @@ class TextMdbExportService(BaseService):
                     return {"ok": False, "error": (
                         f"Class Creation must be exported before Text for class '{class_name}'."
                     )}
-                prop_rows = [
-                    row for row in data["properties"]
-                    if str(row.get("com_ClassID")) == str(class_id)
-                    and self._key(row.get("com_PropName")) == prop_name
-                ]
+                prop_rows = properties_by_class_name.get((str(class_id), prop_name), [])
                 if len(prop_rows) != 1:
                     return {"ok": False, "error": (
                         f"Properties & Values must be exported before Text for '{class_name}:{prop_name}'."
@@ -376,11 +382,9 @@ class TextMdbExportService(BaseService):
                     )
                     if value_text_id is None:
                         continue
-                    value_rows = [
-                        row for row in data["values"]
-                        if str(row.get("com_PropertyID")) == str(mdb_prop.get("com_PropertyID"))
-                        and self._key(row.get("com_PropValueFrom")) == self._key(code)
-                    ]
+                    value_rows = values_by_property_code.get(
+                        (str(mdb_prop.get("com_PropertyID")), self._key(code)), []
+                    )
                     if len(value_rows) != 1:
                         return {"ok": False, "error": (
                             f"Properties & Values must be exported before Text for '{prop_name}={code}'."
