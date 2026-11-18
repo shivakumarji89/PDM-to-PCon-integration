@@ -297,13 +297,13 @@ class MaintenanceSourceMixin:
                 return
             counts = preview.get("counts", {})
             summary = (
-                f"Destination: {session.mdb_path}\\n\\n"
-                + "\\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                f"Destination: {session.mdb_path}\n\n"
+                + "\n".join(f"{name.replace('_', ' ').title()}: {count}"
                               for name, count in counts.items())
-                + "\\n\\nExisting IDs and unrelated MDB rows will be preserved."
+                + "\n\nExisting IDs and unrelated MDB rows will be preserved."
             )
             if preview.get("warnings"):
-                summary += "\\n\\nWarnings:\\n" + "\\n".join(preview["warnings"][:8])
+                summary += "\n\nWarnings:\n" + "\n".join(preview["warnings"][:8])
             if QMessageBox.question(
                 self, "Confirm Class Creation Export", summary,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -316,10 +316,10 @@ class MaintenanceSourceMixin:
                 return
             QMessageBox.information(
                 self, "Export Class Creation",
-                "Class Creation export completed.\\n\\n"
-                + "\\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                "Class Creation export completed.\n\n"
+                + "\n".join(f"{name.replace('_', ' ').title()}: {count}"
                               for name, count in result.get("counts", {}).items())
-                + f"\\n\\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+                + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
             )
             return
         if component != "Articles":

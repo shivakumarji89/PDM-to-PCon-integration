@@ -90,11 +90,6 @@ class ClassCreationMdbExportService(BaseService):
         if not data["package"]:
             return {"ok": False, "error": f"Session MDB no longer contains package {package_id}."}
 
-        for table in ("tCOMd_Class", "tCOMd_Property", "tCOMd_PropValue",
-                      "tCOMd_CodeScheme", "tCOMd_ArticleClass", "tCOMd_ArtBase"):
-            if table not in session.prototypes:
-                return {"ok": False, "error": f"Session has no template prototype for {table}; no data was written."}
-
         # Restrict every lookup to this product package.
         package_rows = {
             "classes": [r for r in data["classes"] if str(r.get("com_PackageID")) == str(package_id)],
@@ -134,7 +129,7 @@ class ClassCreationMdbExportService(BaseService):
                 next_class += 1
                 class_ids[str(cls.id)] = row_id
                 class_inserts.append({"op": "insert", "table": "tCOMd_Class", "rows": [{
-                    "com_ClassID": row_id, **session.prototypes["tCOMd_Class"],
+                    "com_ClassID": row_id, **session.prototypes.get("tCOMd_Class", {}),
                     "com_ClassName": cls.name, "com_PackageID": package_id,
                 }]})
 
@@ -220,7 +215,7 @@ class ClassCreationMdbExportService(BaseService):
                     next_property += 1
                     property_ids[(str(cls.id), str(assignment.property_id))] = row_id
                     property_inserts.append({"op": "insert", "table": "tCOMd_Property", "rows": [{
-                        "com_PropertyID": row_id, **session.prototypes["tCOMd_Property"], **computed,
+                        "com_PropertyID": row_id, **session.prototypes.get("tCOMd_Property", {}), **computed,
                     }]})
                 prop_meta[str(assignment.property_id)] = (cls.name, prop_name)
 
@@ -274,7 +269,7 @@ class ClassCreationMdbExportService(BaseService):
                                 "set": computed, "where": {"com_ValueID": row_id}})
                     else:
                         value_inserts.append({"op": "insert", "table": "tCOMd_PropValue", "rows": [{
-                            "com_ValueID": next_value, **session.prototypes["tCOMd_PropValue"], **computed,
+                            "com_ValueID": next_value, **session.prototypes.get("tCOMd_PropValue", {}), **computed,
                         }]})
                         next_value += 1
                     position += 1
@@ -282,7 +277,7 @@ class ClassCreationMdbExportService(BaseService):
         # Development _code_schemes() is authoritative for the exact scheme grammar.
         scheme_rows, _, _ = ocd._code_schemes(
             snapshot, package_id, base_codes, classes, codes,
-            session.prototypes["tCOMd_CodeScheme"],
+            session.prototypes.get("tCOMd_CodeScheme", {}),
         )
         scheme_by_name: dict[str, list[dict[str, Any]]] = {}
         for row in existing_schemes:
@@ -305,7 +300,7 @@ class ClassCreationMdbExportService(BaseService):
                         "set": computed, "where": {"com_CodeSchemeID": row_id}})
             else:
                 scheme_inserts.append({"op": "insert", "table": "tCOMd_CodeScheme", "rows": [{
-                    "com_CodeSchemeID": next_scheme, **session.prototypes["tCOMd_CodeScheme"],
+                    "com_CodeSchemeID": next_scheme, **session.prototypes.get("tCOMd_CodeScheme", {}),
                     "com_CodeSchemeName": wanted.get("com_CodeSchemeName"), **computed,
                 }]})
                 next_scheme += 1
@@ -327,7 +322,7 @@ class ClassCreationMdbExportService(BaseService):
                 key = (str(article_id), str(class_id))
                 if key not in existing_ac:
                     ac_inserts.append({"op": "insert", "table": "tCOMd_ArticleClass", "rows": [{
-                        "com_ArticleClassID": next_ac, **session.prototypes["tCOMd_ArticleClass"],
+                        "com_ArticleClassID": next_ac, **session.prototypes.get("tCOMd_ArticleClass", {}),
                         "com_ArticleID": article_id, "com_ClassID": class_id,
                         "com_ArticleClassOrder": order, "com_RelObjID": None, "com_TextID": None,
                     }]})
@@ -359,7 +354,7 @@ class ClassCreationMdbExportService(BaseService):
                     if not value_code or key in existing_ab:
                         continue
                     ab_inserts.append({"op": "insert", "table": "tCOMd_ArtBase", "rows": [{
-                        "com_ArtBaseID": next_ab, **session.prototypes["tCOMd_ArtBase"],
+                        "com_ArtBaseID": next_ab, **session.prototypes.get("tCOMd_ArtBase", {}),
                         "com_ArticleID": article_id, "com_ClassName": class_name,
                         "com_PropName": prop_name, "com_PropValue": value_code,
                     }]})
