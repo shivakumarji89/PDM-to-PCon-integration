@@ -76,7 +76,9 @@ The incremental workflow inserts only **`tCOMd_Class`** and
 **`tCOMd_ArticleClass`** rows, and extends the selected **`tCOMd_CodeScheme`**
 bodies in place. It reuses existing Class IDs, Article IDs and CodeScheme IDs,
 adds only missing class rows and article/class links, and never deletes
-unrelated rows. Properties and values belong to the following Properties & Values workflow.
+unrelated rows. When selected variants share a class name, their property
+assignments are unioned on detached class copies so the source engineering
+snapshot is not mutated. Properties and values belong to the following Properties & Values workflow.
 
 The Class Creation page uses the same selected article IDs to filter the
 Attribute and Options workspaces. Visual definitions remain product-wide.
