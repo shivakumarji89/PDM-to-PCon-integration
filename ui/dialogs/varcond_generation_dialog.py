@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from dataclasses import dataclass, field
+
+from PySide6.QtCore import QThreadPool, QTimer, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
@@ -21,6 +23,21 @@ from core.progress import ProgressReporter
 from services.varcond_service import VarCondService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
+
+
+@dataclass
+class _RelationExportPlan:
+    """Everything ``build_relation_objects`` needs, captured on the GUI thread."""
+
+    groups: list = field(default_factory=list)          # [(relation name, [(code, article id)])]
+    maintenance: bool = False
+    maintenance_service: object = None
+    context: object = None
+    snapshot: object = None
+    exclusions: str = ""
+    substitutions: str = ""
+    xocd: object = None
+    base_entries: list | None = None
 
 
 class _CopyableVarCondTable(QTableWidget):
@@ -48,12 +65,19 @@ class _CopyableVarCondTable(QTableWidget):
 class VarCondGenerationPanel(QWidget):
     """PDM relation list on the left and merged relation names on the right."""
 
+    #: Pause (ms) after the last keystroke in the filter before the relations are rebuilt.
+    FILTER_DEBOUNCE_MS = 250
+
     def __init__(
         self, context, parent: QWidget | None = None,
         maintenance_check: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__(parent)
         self._context = context
+        # Development live generation runs on a worker; the latest request wins.
+        self._live_seq = 0
+        self._live_task: BackgroundTask | None = None
+        self._live_scheduled = False
         self._snapshot = context.active_snapshot
         # Maintenance only: generate from the cached legacy-source service.
         # Development (check absent/False) keeps VarCondService.generate_live.
@@ -77,7 +101,13 @@ class VarCondGenerationPanel(QWidget):
         controls.addWidget(QLabel("Filter:", self.controls_widget))
         self._filter = QLineEdit(self.controls_widget)
         self._filter.setPlaceholderText("Article code starts with...")
-        self._filter.textChanged.connect(self._refresh_relations)
+        # Typing rebuilds the relation list (and, in Development, regenerates from PDM): wait for a
+        # pause instead of doing it per keystroke.
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(self.FILTER_DEBOUNCE_MS)
+        self._filter_timer.timeout.connect(self._refresh_relations)
+        self._filter.textChanged.connect(lambda *_: self._filter_timer.start())
         controls.addWidget(self._filter, 1)
         self._exclusion_button = QPushButton("Exclusion…", self.controls_widget)
         self._exclusion_button.clicked.connect(self._edit_exclusions)
@@ -206,6 +236,7 @@ class VarCondGenerationPanel(QWidget):
 
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
+        self._filter_timer.stop()          # this rebuild supersedes a pending debounced one
         current = self._relations.currentItem().text() if self._relations.currentItem() else ""
         current_prefix = current[3:] if current.startswith("PA_") else current
         anchor_code = next(
@@ -462,6 +493,7 @@ class VarCondGenerationPanel(QWidget):
 
     def _generate_all(self) -> None:
         """Generate and display only the currently selected relation."""
+        self._live_seq += 1                 # supersedes any Development generation still in flight
         self._current_parent_codes = [row[0] for row in self._article_rows]
         selected = self._relations.currentItem()
         if selected is None:
@@ -491,15 +523,80 @@ class VarCondGenerationPanel(QWidget):
                 property_substitutions=self._substitutions.text(),
             )
         else:
-            result = VarCondService(self._context).generate_live(
-                article_codes=parent_codes, prefix="",
-                property_exclusions=self._exclusions.text(),
-                property_substitutions=self._substitutions.text(),
-            )
+            self._request_live_generation()
+            return
         self._rules_by_relation[relation_name] = [rule.rule for rule in result.rules]
         self._summary.setToolTip("\\n".join(result.warnings))
         self._display_relation_rules(relation_name)
 
+    # -- Development: live PDM generation on a worker ----------------------
+    def _request_live_generation(self) -> None:
+        """Generate the selected relation from PDM on a worker thread.
+
+        Several requests in the same event-loop turn (the panel asks twice when it is built or
+        re-entered) are served by one generation, and a result that is no longer current is dropped.
+        """
+        if not self._live_scheduled:
+            self._live_scheduled = True
+            QTimer.singleShot(0, self._start_live_generation)
+
+    def _start_live_generation(self) -> None:
+        self._live_scheduled = False
+        selected = self._relations.currentItem()
+        if selected is None or self._maintenance_check():
+            return
+        relation_name = selected.text()
+        relation_prefix = relation_name[3:] if relation_name.startswith("PA_") else relation_name
+        needle = self._filter.text().strip().casefold()
+        parent_codes = [
+            code for code, _label, _article_id in self._article_rows
+            if code.startswith(relation_prefix)
+            and (not needle or code.casefold().startswith(needle))
+        ]
+        if not parent_codes:
+            return
+        if self._live_task is not None:
+            self._live_task.cancel()        # stops at its next PDM query boundary
+        seq = self._live_seq
+        exclusions, substitutions = self._exclusions.text(), self._substitutions.text()
+        context = self._context
+        self._summary.setText(f"{relation_name} · Generating from PDM...")
+
+        def work(_progress):
+            return VarCondService(context).generate_live(
+                article_codes=parent_codes, prefix="",
+                property_exclusions=exclusions,
+                property_substitutions=substitutions,
+            )
+
+        task = BackgroundTask(work)
+        self._live_task = task
+        task.signals.finished.connect(
+            lambda result, seq=seq, name=relation_name: self._on_live_generated(seq, name, result))
+        task.signals.failed.connect(
+            lambda message, seq=seq, name=relation_name: self._on_live_failed(seq, name, message))
+        QThreadPool.globalInstance().start(task)
+
+    def _on_live_generated(self, seq: int, relation_name: str, result) -> None:
+        if seq != self._live_seq:
+            return                          # superseded by a newer generation
+        self._live_task = None
+        self._rules_by_relation[relation_name] = [rule.rule for rule in result.rules]
+        self._summary.setToolTip("\\n".join(result.warnings))
+        selected = self._relations.currentItem()
+        if selected is not None and selected.text() == relation_name:
+            self._display_relation_rules(relation_name)     # only the selected relation is shown
+
+    def _on_live_failed(self, seq: int, relation_name: str, message: str) -> None:
+        if seq != self._live_seq:
+            return
+        self._live_task = None
+        selected = self._relations.currentItem()
+        if selected is not None and selected.text() == relation_name:
+            self._output.setRowCount(0)
+            self._summary.setText(f"{relation_name} · Could not generate from PDM: {message}")
+
+    # -- export --------------------------------------------------------------
     def relation_objects_for_export(self):
         """Build complete PA_<prefix> price relations from the current VARCOND settings.
 
@@ -507,8 +604,13 @@ class VarCondGenerationPanel(QWidget):
         must never produce a partial MDB. The selected prefix length and the
         current exclusions/substitutions are retained.
         """
-        from models.relation_object import RelationObject
+        return self.build_relation_objects(self.prepare_relation_export())
 
+    def prepare_relation_export(self) -> "_RelationExportPlan":
+        """GUI thread: validate and collect everything the relation build needs.
+
+        Raises ``RuntimeError`` with the user-facing message when nothing can be exported yet.
+        """
         if self._maintenance_load_task is not None:
             raise RuntimeError("Wait for PDM source loading to finish before exporting VARCOND relations.")
 
@@ -527,31 +629,59 @@ class VarCondGenerationPanel(QWidget):
             prefix = code[:length] if len(code) > length else code
             groups.setdefault("PA_" + prefix, []).append((code, article_id))
 
-        relations = []
         xocd = getattr(self._context, "xocd_export_service", None)
-        for order, relation_name in enumerate(sorted(groups, key=str.casefold), start=100):
-            parent_rows = groups[relation_name]
+        entries = None
+        if xocd is not None and hasattr(xocd, "base_code_entries"):
+            # Selection-independent part of the base codes, computed once for every relation.
+            entries = xocd.base_code_entries(self._snapshot)
+        return _RelationExportPlan(
+            groups=[(name, groups[name]) for name in sorted(groups, key=str.casefold)],
+            maintenance=self._maintenance_check(),
+            maintenance_service=self._maintenance_service,
+            context=self._context,
+            snapshot=self._snapshot,
+            exclusions=self._exclusions.text(),
+            substitutions=self._substitutions.text(),
+            xocd=xocd,
+            base_entries=entries,
+        )
+
+    @staticmethod
+    def build_relation_objects(plan: "_RelationExportPlan", emit: Callable[[str], None] | None = None):
+        """Generate every relation of ``plan`` (safe on a worker thread: no widget access)."""
+        from models.relation_object import RelationObject
+
+        relations = []
+        # Option-increment rows are looked up once per component prefix for the whole export.
+        increment_cache: dict = {}
+        total = len(plan.groups)
+        for order, (relation_name, parent_rows) in enumerate(plan.groups, start=100):
+            if emit is not None:
+                emit(f"Generating {relation_name} ({order - 99} of {total})...")
             codes = [code for code, _article_id in parent_rows]
-            if self._maintenance_check():
-                result = self._maintenance_service.generate(
+            if plan.maintenance:
+                result = plan.maintenance_service.generate(
                     codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
+                    property_exclusions=plan.exclusions,
+                    property_substitutions=plan.substitutions,
                 )
             else:
-                result = VarCondService(self._context).generate_live(
+                result = VarCondService(plan.context).generate_live(
                     article_codes=codes, prefix="",
-                    property_exclusions=self._exclusions.text(),
-                    property_substitutions=self._substitutions.text(),
+                    property_exclusions=plan.exclusions,
+                    property_substitutions=plan.substitutions,
+                    increment_cache=increment_cache,
                 )
             body = "\r\n".join(rule.rule for rule in result.rules if rule.rule)
             if not body.strip():
                 continue
             selected_ids = {article_id for _code, article_id in parent_rows}
-            base_codes = (
-                xocd._base_codes(self._snapshot, selected_article_ids=selected_ids)
-                if xocd is not None else list(codes)
-            )
+            if plan.xocd is None:
+                base_codes = list(codes)
+            elif plan.base_entries is not None:
+                base_codes = plan.xocd.base_codes_from_entries(plan.base_entries, selected_ids)
+            else:
+                base_codes = plan.xocd._base_codes(plan.snapshot, selected_article_ids=selected_ids)
             relations.append(RelationObject(
                 name=relation_name,
                 type_code="3",

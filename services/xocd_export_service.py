@@ -370,6 +370,40 @@ class XocdExportService(BaseService):
                     ordered.append(base)
         return ordered
 
+    def base_code_entries(self, snapshot: Snapshot) -> list[tuple[str, str]]:
+        """``(article_id, base)`` for every engineering member in member order.
+
+        The selection-independent part of :meth:`_base_codes`: computing it once and filtering with
+        :meth:`base_codes_from_entries` gives the same lists as calling ``_base_codes`` per selection,
+        without rebuilding the price-base map for each one.
+        """
+        base_of = self._price_base_of(snapshot)
+        code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
+        entries: list[tuple[str, str]] = []
+        for family in snapshot.engineering.families:
+            for member in family.members:
+                article_id = str(getattr(member, "article_id", ""))
+                code = code_by_id.get(article_id, "")
+                base = base_of.get(code) or (member.reduced_article or "").strip()
+                entries.append((article_id, base))
+        return entries
+
+    @staticmethod
+    def base_codes_from_entries(
+        entries: list[tuple[str, str]], selected_article_ids: set[str] | None = None
+    ) -> list[str]:
+        """Distinct base codes of ``entries`` (optionally only the selected articles), first-seen order."""
+        selected = {str(value) for value in selected_article_ids} if selected_article_ids is not None else None
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for article_id, base in entries:
+            if selected is not None and article_id not in selected:
+                continue
+            if base and base not in seen:
+                seen.add(base)
+                ordered.append(base)
+        return ordered
+
     def _price_base_of(self, snapshot: Snapshot) -> dict[str, str]:
         """Map each article code to its price base (article-set ``base_length``
         slice) - identical to ``PricingService._prefix_by_item`` so xocd_article

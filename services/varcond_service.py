@@ -239,8 +239,13 @@ class VarCondService(BaseService):
         prefix: str = "",
         property_exclusions: str = "",
         property_substitutions: str = "",
+        increment_cache: dict | None = None,
     ) -> VarCondResult:
         """Generate VARCOND using fresh, read-only PDM queries, not snapshots.
+
+        ``increment_cache`` (``{item prefix: rows}``) memoises the option-increment query per
+        component prefix. One call always shares a cache across its parents; pass the same dict to
+        several calls (an export generating every relation) to share it across them too.
 
         The selected parent article codes define the scope. BOM, attributes,
         prefix-length metadata and option increments are re-read from PDM for
@@ -255,6 +260,7 @@ class VarCondService(BaseService):
             result.warnings.append("No parent article codes selected.")
             return result
 
+        increments = increment_cache if increment_cache is not None else {}
         repo = PDMRepository(self.context)
         conn = repo.get_connection()
         try:
@@ -350,9 +356,12 @@ class VarCondService(BaseService):
                         ))
 
                     # Live PDM option increment rows for this component prefix.
-                    inc_rows = repo.fetch_item_option_increments(
-                        [self._item_prefix(sub)], connection=conn
-                    )
+                    inc_prefix = self._item_prefix(sub)
+                    inc_rows = increments.get(inc_prefix)
+                    if inc_rows is None:
+                        inc_rows = increments[inc_prefix] = repo.fetch_item_option_increments(
+                            [inc_prefix], connection=conn
+                        )
                     seen: set[int] = set()
                     for inc in inc_rows:
                         option_id = getattr(inc, "OptionId", None)

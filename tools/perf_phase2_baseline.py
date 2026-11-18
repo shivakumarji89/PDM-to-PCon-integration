@@ -146,6 +146,104 @@ def bench_exports(xocd_articles: int, excel_articles: int):
     return rows
 
 
+def bench_varcond(latency_ms: float):
+    """Development VARCOND against a fake PDM with a *simulated* per-query latency (no real PDM is used).
+
+    A: relation export, option-increment queries and wall time with the original per-occurrence lookup
+       (emulated with a cache that never stores) vs the memoised lookup.
+    B: typing 7 characters into the filter: generations started and time the GUI thread is blocked,
+       synchronous per keystroke (the original) vs debounced on a worker."""
+    from PySide6.QtCore import QCoreApplication, QSettings, QTimer
+    from PySide6.QtWidgets import QApplication
+    import repositories.pdm_repository as repo_module
+    from services.varcond_service import VarCondService
+    from tests import varcond_fakes as fakes
+    from tests.test_varcond_background import _reference_relation_objects_for_export
+    from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
+
+    QApplication.instance() or QApplication([])
+    delay = latency_ms / 1000.0
+
+    class SlowRepo(fakes.FakeLiveRepo):
+        def _execute(self, *a, **k):
+            time.sleep(delay)
+            return super()._execute(*a, **k)
+
+        def fetch_item_components(self, *a, **k):
+            time.sleep(delay)
+            return super().fetch_item_components(*a, **k)
+
+        def fetch_category_master_notes(self, *a, **k):
+            time.sleep(delay)
+            return super().fetch_category_master_notes(*a, **k)
+
+        def fetch_item_option_increments(self, *a, **k):
+            time.sleep(delay)
+            return super().fetch_item_option_increments(*a, **k)
+
+    repo_module.PDMRepository = SlowRepo
+
+    class NeverStores(dict):
+        def __setitem__(self, key, value):
+            pass
+
+    rows = []
+    panel = VarCondGenerationPanel(fakes.build_context())
+    real_live = VarCondService.generate_live
+    entry = {"section": "export", "simulated_latency_ms": latency_ms}
+    for label in ("original_lookup", "memoised_lookup"):
+        VarCondService.generate_live = (
+            (lambda self, *a, **k: real_live(self, *a, increment_cache=NeverStores(), **k))
+            if label == "original_lookup" else real_live)
+        fakes.FakeLiveRepo.calls = []
+        t0 = time.perf_counter()
+        if label == "original_lookup":
+            _reference_relation_objects_for_export(panel)
+        else:
+            panel.relation_objects_for_export()
+        entry[label] = {"increment_queries": fakes.increment_queries(),
+                        "total_queries": len(fakes.FakeLiveRepo.calls),
+                        "seconds": round(time.perf_counter() - t0, 3)}
+    VarCondService.generate_live = real_live
+    rows.append(entry)
+    print("varcond", entry, flush=True)
+
+    # B: typing in the filter
+    panel = VarCondGenerationPanel(fakes.build_context())
+    panel._relations.setCurrentRow(0)
+    keys = [text for text in ("G", "GE", "GES", "GESC", "GESCR", "GESCRN", "GESCRNN")]
+    started = []
+    VarCondService.generate_live = lambda self, *a, **k: (started.append(1), real_live(self, *a, **k))[1]
+    t0 = time.perf_counter()
+    # original behaviour: every keystroke regenerated the selected relation synchronously on the GUI thread
+    for _text in keys:
+        panel._relations.setCurrentRow(0)
+        real_live(VarCondService(panel._context), ["GESCRNNU.105508F"])
+    sync_blocked = time.perf_counter() - t0
+    started.clear()
+    gaps, last = [], [time.perf_counter()]
+    timer = QTimer()
+    timer.timeout.connect(lambda: (gaps.append(time.perf_counter() - last[0]), last.__setitem__(0, time.perf_counter())))
+    timer.start(10)
+    t0 = time.perf_counter()
+    for text in keys:
+        panel._filter.setText(text)
+    typing_s = time.perf_counter() - t0
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not (started and panel._live_task is None):
+        QCoreApplication.processEvents()
+        time.sleep(0.002)
+    timer.stop()
+    VarCondService.generate_live = real_live
+    entry = {"section": "typing", "simulated_latency_ms": latency_ms, "keystrokes": len(keys),
+             "original_generations": len(keys), "original_gui_blocked_s": round(sync_blocked, 3),
+             "new_generations": len(started), "new_gui_blocked_s": round(typing_s, 3),
+             "new_worst_event_gap_s": round(max(gaps) if gaps else 0.0, 3)}
+    rows.append(entry)
+    print("varcond", entry, flush=True)
+    return rows
+
+
 SECTIONS = ("navigation", "exports", "varcond")
 
 
@@ -156,11 +254,13 @@ def main(argv=None) -> int:
     parser.add_argument("--prices", type=int, default=20000)
     parser.add_argument("--xocd-articles", type=int, default=3000)
     parser.add_argument("--excel-articles", type=int, default=300)
+    parser.add_argument("--latency-ms", type=float, default=20.0, help="simulated PDM latency per query (varcond)")
     parser.add_argument("--first", default="legacy", choices=("legacy", "new"), help="which variant runs first")
     parser.add_argument("--out", default="")
     args = parser.parse_args(argv)
     result = {"sections": {}}
-    runners = {"exports": lambda: bench_exports(args.xocd_articles, args.excel_articles),
+    runners = {"varcond": lambda: bench_varcond(args.latency_ms),
+               "exports": lambda: bench_exports(args.xocd_articles, args.excel_articles),
                "navigation": lambda: bench_navigation(args.articles, args.prices, ("legacy", "new") if args.first == "legacy" else ("new", "legacy"))}
     for name in [s for s in args.only.split(",") if s]:
         if name in runners:

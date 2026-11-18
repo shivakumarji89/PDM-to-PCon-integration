@@ -1744,22 +1744,47 @@ class MainWindow(QMainWindow):
         if snapshot is None or snapshot.product is None:
             QMessageBox.information(self, "Export VARCOND Relations", "Load a product first.")
             return
+        title = "Export VARCOND Relations"
+        panel = page._varcond_panel
         try:
-            generated = page._varcond_panel.relation_objects_for_export()
+            plan = panel.prepare_relation_export()
         except RuntimeError as exc:
-            QMessageBox.information(self, "Export VARCOND Relations", str(exc))
+            QMessageBox.information(self, title, str(exc))
+            return
+        runner = self._exports()
+        if not runner.begin(title):
+            self._export_already_running(title)
             return
 
-        # Replace only generated PA_* price relations. Keep unrelated relation
-        # objects and let the standard MDB exporter build the normal package.
-        snapshot.relation_objects = [
-            relation for relation in snapshot.relation_objects
-            if not (
-                (relation.name or "").startswith("PA_")
-                and str(getattr(relation, "domain", "") or "").upper() == "P"
-            )
-        ] + generated
-        self._on_export_mdb()
+        def work(emit):
+            # Development generates every relation from PDM: keep that off the GUI thread.
+            try:
+                return "relations", panel.build_relation_objects(plan, emit)
+            except RuntimeError as exc:
+                return "message", str(exc)
+
+        def finished(payload) -> None:
+            runner.end()
+            kind, value = payload
+            if kind == "message":
+                QMessageBox.information(self, title, value)
+                return
+            # Replace only generated PA_* price relations. Keep unrelated relation
+            # objects and let the standard MDB exporter build the normal package.
+            snapshot.relation_objects = [
+                relation for relation in snapshot.relation_objects
+                if not (
+                    (relation.name or "").startswith("PA_")
+                    and str(getattr(relation, "domain", "") or "").upper() == "P"
+                )
+            ] + value
+            self._on_export_mdb()
+
+        def failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, title, f"Could not generate the VARCOND relations:\n{message}")
+
+        runner.run(work, finished=finished, failed=failed)
 
     def _exports(self):
         """The single-slot background export runner (created on first use)."""
