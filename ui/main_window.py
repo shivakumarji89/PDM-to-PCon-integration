@@ -1804,12 +1804,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, title, value)
                 return
             export_snapshot = copy(snapshot)
-            try:
-                prepare_price_relation_export(self._context, export_snapshot, value)
-            except Exception as exc:
-                QMessageBox.warning(self, title, f"VARCOND relation validation failed:\\n{exc}")
-                return
-
             service = RelationMdbExportService(self._context)
             if not runner.begin(title + " Preview"):
                 self._export_already_running(title)
@@ -1868,14 +1862,14 @@ class MainWindow(QMainWindow):
                     failed=failed,
                 )
 
-            runner.run(
-                lambda _emit: service.export_to_session(
+            def preview_work(_emit):
+                prepare_price_relation_export(self._context, export_snapshot, value)
+                return service.export_to_session(
                     export_snapshot, session, selected_article_ids=selected_ids,
                     dry_run=True, workflow="pricing_relations",
-                ),
-                finished=preview_finished,
-                failed=failed,
-            )
+                )
+
+            runner.run(preview_work, finished=preview_finished, failed=failed)
 
         def work(emit):
             try:
