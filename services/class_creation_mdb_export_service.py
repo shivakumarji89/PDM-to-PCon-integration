@@ -373,7 +373,15 @@ class ClassCreationMdbExportService(BaseService):
         }
         result = {"ok": True, "dry_run": dry_run, "mdb_path": session.mdb_path,
                   "counts": counts, "warnings": warnings, "operations": len(plan)}
-        if dry_run or not plan:
+        if dry_run:
+            return result
+        if not plan:
+            sessions.record_workflow(session, self.WORKFLOW, counts)
+            try:
+                sessions.save(session)
+            except OSError as exc:
+                return {**result, "ok": False, "error": f"Could not save Class Creation workflow status: {exc}"}
+            result["verified"] = True
             return result
         batch = db.execute_batch(session.mdb_path, plan, transaction=True)
         if not batch.ok:

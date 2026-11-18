@@ -56,7 +56,21 @@ Result: inserted / updated / skipped (unchanged + ambiguous) / schemes created, 
 `OcdExportService.export()` is unchanged in purpose (it copies a template and rebuilds everything),
 but `_build()` now accepts `selected_article_ids`, and the export refuses to target an active session MDB.
 
-## Not yet done
+## Implemented: Class Creation
 
-Class Creation, Properties, Values, Relations, Text, prices — each must read `session.article_ids()`
-and write through the same session; none of them may call the legacy exporter.
+Class Creation reads `session.article_ids()` and incrementally upserts Classes,
+Properties, PropValues, CodeSchemes, ArticleClass and ArtBase. It uses
+`engineering_class_service.get_classes(snapshot)` and the Development
+`OcdExportService._code_schemes()` mapping. Existing primary keys and
+unrelated rows are preserved. Text and Relation records are not created by
+this workflow; their IDs are linked only when already present.
+
+The UI export action requires an existing Articles-created session MDB. It
+previews the operation counts and warnings before asking for confirmation.
+All writes run in one MDBService transaction followed by table read-back.
+
+## Remaining workflows
+
+Value-combination tables, Relations, Text and prices still need incremental
+session exporters. Each must reuse the same product MDB and must not call the
+legacy full exporter.
