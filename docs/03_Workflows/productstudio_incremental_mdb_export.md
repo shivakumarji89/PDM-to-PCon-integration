@@ -99,6 +99,10 @@ Class, CodeScheme, Price, or Value Combination tables.
 
 The Relation page's Export to MDB action now uses the active product session and the Articles-page Export selection. It selects relation objects by article, article/class, property or value bindings; unbound authored relations are treated as product-level. It inserts only missing tCOMd_RelObj, tCOMd_Relation and tCOMd_RelObjRel rows, retains existing IDs, updates changed relation bodies in place, and resolves source property/value identities through class/property/value natural keys before updating com_RelObjID references. The write is transactional and followed by table-count checks.
 
+## Implemented: Pricing Relation / VARCOND
+
+The Maintenance Pricing Relation action now generates VARCOND relations for the selected Articles-page scope and writes them into the same product MDB session through the Relation exporter. Because each VARCOND relation is shared by every article in its prefix group, a partial group selection is rejected; users must select all articles in each affected group. Existing Relation Object and Relation IDs are reused, changed relation bodies are updated in place, and article relation links are updated transactionally. Development retains its existing full-export flow.
+
 ## Implemented: Text
 
 The Text page's Export to MDB action now uses the active product session and the same Articles-page selection. It exports selected base-article descriptions and selected class property / option text blocks. Existing Text IDs are retained; changed translations are updated in place; missing rows are inserted. It then links selected Article, Property and PropValue rows to their Text IDs. Price text remains owned by the pricing exporter. Text reads are package-scoped, with a separate global TextID maximum query.
@@ -109,9 +113,9 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 
 ## Remaining validation and performance work
 
-The new Relations and Text session exporters and Maintenance Pricing session routing are committed to the feature branch, but their tests have not yet been executed. Remaining work before production use:
+The Relations, Text, Pricing, and Pricing Relation session paths are committed to the feature branch, but their tests have not yet been executed. Remaining work before production use:
 
-- Run targeted tests for Articles, Class Creation, Properties & Values, Relations, Text and Pricing.
+- Run targeted tests for Articles, Class Creation, Properties & Values, Relations, Text, Pricing and Pricing Relation / VARCOND.
 - Run the full pytest suite and resolve regressions.
 - Validate writes against real Windows 32-bit ACE MDB files, including repeat exports, pre-existing IDs, duplicate natural keys, transaction rollback and foreign-key references.
 - Benchmark large product MDBs; optimize relation/property/value reads and batch sizes based on measurements.
