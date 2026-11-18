@@ -177,7 +177,7 @@ def test_multiple_selected_variants_sharing_a_base_union_their_classes_once(tmp_
         "Desk_Attribute", "Desk_Options",
     }
     assert len({row["com_ArticleID"] for row in db.data["article_classes"]}) == 1
-    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X,o1:X"
+    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X, ,o1:X"
     assert [len(cls.properties) for cls in source_classes] == [1, 1]
 
 
