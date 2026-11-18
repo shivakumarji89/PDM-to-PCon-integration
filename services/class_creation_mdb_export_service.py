@@ -1,7 +1,7 @@
 """Incremental, article-scoped Class Creation export into a ProductStudio MDB.
 
-Class Creation writes only tCOMd_Class and tCOMd_ArticleClass. Article and
-CodeScheme rows/IDs are owned by the Articles workflow; Properties and values
+Class Creation inserts tCOMd_Class and tCOMd_ArticleClass rows and extends
+existing CodeScheme bodies without changing their IDs. Properties and values
 are separate workflows. Selection comes from the Articles page Export column.
 """
 from __future__ import annotations
@@ -110,18 +110,28 @@ class ClassCreationMdbExportService(BaseService):
             source_ids = [
                 article_id for article_id, base in selected_entries if base == base_code
             ]
-            names: list[str] = []
-            selected_classes: list[Any] = []
-            seen_names: set[str] = set()
+            selected_classes_by_name: dict[str, Any] = {}
             for article_id in source_ids:
                 for cls in classes_for_article(snapshot, all_classes, article_id):
                     name = str(getattr(cls, "name", "") or "")
-                    if name and name not in seen_names:
-                        seen_names.add(name)
-                        names.append(name)
-                        selected_classes.append(cls)
-            class_names_by_base[base_code] = names
-            class_objects_by_base[base_code] = selected_classes
+                    if not name:
+                        continue
+                    existing_class = selected_classes_by_name.get(name)
+                    if existing_class is None:
+                        selected_classes_by_name[name] = cls
+                        continue
+                    existing_property_ids = {
+                        str(getattr(assignment, "property_id", "") or "")
+                        for assignment in getattr(existing_class, "properties", []) or []
+                    }
+                    existing_class.properties.extend(
+                        assignment
+                        for assignment in (getattr(cls, "properties", []) or [])
+                        if str(getattr(assignment, "property_id", "") or "")
+                        not in existing_property_ids
+                    )
+            class_names_by_base[base_code] = list(selected_classes_by_name)
+            class_objects_by_base[base_code] = list(selected_classes_by_name.values())
 
         all_selected_class_names = list(dict.fromkeys(
             name for names in class_names_by_base.values() for name in names

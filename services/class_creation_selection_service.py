@@ -112,6 +112,36 @@ def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationA
         if raw_range:
             selected_ranges.add(str(raw_range))
 
+    # ArticleSet is the richer Class Creation mapping. It includes derived
+    # ModelSuffix values and exact per-value article coverage that may not be
+    # represented in the direct PDM BaseAttributeValues links.
+    for article_set in getattr(snapshot, "article_sets", []) or []:
+        selected_in_set = selected.intersection(
+            str(value) for value in (getattr(article_set, "article_ids", []) or [])
+        )
+        if not selected_in_set:
+            continue
+        for attribute in getattr(article_set, "properties", []) or []:
+            property_id = str(getattr(attribute, "id", "") or "")
+            if not property_id:
+                continue
+            property_ids.add(property_id)
+            for value in getattr(attribute, "values", []) or []:
+                value_id = str(getattr(value, "id", "") or "")
+                carriers = {str(a) for a in (getattr(value, "article_ids", []) or [])}
+                if value_id and selected_in_set.intersection(carriers):
+                    property_value_ids.setdefault(property_id, set()).add(value_id)
+        for option in getattr(article_set, "options", []) or []:
+            option_id = str(getattr(option, "id", "") or "")
+            if not option_id:
+                continue
+            option_ids.add(option_id)
+            for value in getattr(option, "values", []) or []:
+                value_id = str(getattr(value, "id", "") or "")
+                carriers = {str(a) for a in (getattr(value, "article_ids", []) or [])}
+                if value_id and selected_in_set.intersection(carriers):
+                    option_value_ids.setdefault(option_id, set()).add(value_id)
+
     group_names: set[str] = set()
     if getattr(snapshot, "split_classes_by_group", False):
         service = getattr(getattr(snapshot, "_context", None), "engineering_class_service", None)

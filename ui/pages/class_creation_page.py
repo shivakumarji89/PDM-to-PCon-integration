@@ -1241,7 +1241,11 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             service.ensure_standard_classes(snap, category)
             self._sync_development_article_sets()
 
+        self._active_article_scope = self._selected_article_scope()
         groups = service.resolve_class_groups(snap, category) if snap else []
+        scope = self._active_article_scope
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
         self._split_cb.blockSignals(True)
         self._split_cb.setChecked(bool(getattr(snap, "split_classes_by_group", False)))
@@ -1271,7 +1275,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo.blockSignals(False)
         self._basis_combo.setVisible(split_checked)
 
-        self._active_article_scope = self._selected_article_scope()
         token = self._active_token()
         # Keep the functional workspace names visible as the card titles.
         # The active class token is shown alongside the card name so users can

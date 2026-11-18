@@ -71,3 +71,24 @@ def test_classes_for_article_keeps_only_related_class_assignments():
     selected = classes_for_article(snapshot, [attribute, options, unrelated], "a1")
     assert [c.id for c in selected] == ["c1", "c2"]
     assert [a.property_id for a in selected[0].properties] == ["p1"]
+
+def test_scope_uses_selected_article_set_coverage_for_derived_properties():
+    snapshot = _snapshot()
+    snapshot.article_sets = [
+        SimpleNamespace(
+            article_ids=["a1", "a2"],
+            properties=[
+                SimpleNamespace(
+                    id="p_model_suffix",
+                    values=[
+                        SimpleNamespace(id="suffix-a1", article_ids=["a1"]),
+                        SimpleNamespace(id="suffix-a2", article_ids=["a2"]),
+                    ],
+                )
+            ],
+            options=[],
+        )
+    ]
+    scope = build_class_creation_scope(snapshot, {"a2"})
+    assert "p_model_suffix" in scope.property_ids
+    assert scope.property_value_ids["p_model_suffix"] == frozenset({"suffix-a2"})
