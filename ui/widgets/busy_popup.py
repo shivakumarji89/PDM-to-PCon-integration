@@ -46,6 +46,18 @@ class BusyPopup(QDialog):
         layout.addWidget(bar)
         self._noop = False
 
+    def set_status(self, text: str) -> None:
+        """Set the status line without pumping the event loop (for work running on a thread)."""
+        self._status.setText(text)
+
+    def show_centered(self) -> None:
+        """Show the popup over its parent window without pumping the event loop."""
+        parent = self.parentWidget()
+        if parent is not None:
+            center = parent.window().geometry().center()
+            self.move(center.x() - self.width() // 2, center.y() - 40)
+        self.show()
+
     def update_status(self, text: str) -> None:
         """Set the status line and repaint (pumps the event loop)."""
         if self._noop:

@@ -1411,33 +1411,16 @@ class MainWindow(QMainWindow):
             self._set_xocd_publish_stage(
                 2, "3. XOCD Export", "Generating the XOCD CSV files...", busy=True
             )
-            result = self._context.xocd_export_service.export_series(
-                snapshot, xocd, force=True
+            self._run_xocd_export(
+                snapshot, xocd, self._on_xocd_export_done,
+                lambda message: self._xocd_publish_failed(f"XOCD export failed:\n\n{message}"),
             )
-            if result.error:
-                self._xocd_publish_failed(f"XOCD export failed:\n\n{result.error}")
-                return
-
-            self._xocd_publish_program = result.program
-            self._xocd_publish_files = sorted(result.files.keys())
-            total = len(self._xocd_publish_files)
-            rows = sum(result.files.values())
-            if dialog is not None:
-                dialog.set_files(self._xocd_publish_files)
-                dialog.append_output(
-                    f"Generated {total} XOCD file(s), {rows} row(s)."
-                )
-
-            self._xocd_publish_stage = "status"
-            self._set_xocd_publish_stage(
-                3, "4. Prepare Commit", f"Checking {total} generated file(s)..."
-            )
-            self._start_xocd_svn_process(service.status_args(xocd))
             return
 
         if stage == "status":
             try:
                 status_xml = output
+
                 unversioned = service.parse_unversioned_paths(status_xml, xocd)
                 generated = {
                     (xocd / name).resolve()
@@ -1583,6 +1566,65 @@ class MainWindow(QMainWindow):
             )
             return
 
+    def _run_xocd_export(self, snapshot, xocd, on_result, on_error) -> None:
+        """Run ``export_series`` on a worker thread from an isolated copy of the snapshot.
+
+        ``on_result(result)`` / ``on_error(message)`` run on the GUI thread. The publish dialog
+        stays open (and busy) meanwhile; the export slot keeps a second export from starting.
+        """
+        import copy
+
+        runner = self._exports()
+        if not runner.begin("Export XOCD", popup=False):
+            on_error("Another export is still running. Wait for it to finish first.")
+            return
+        try:
+            export_snapshot = copy.deepcopy(snapshot)
+            service = self._context.xocd_export_service
+        except Exception:
+            runner.end()
+            raise
+
+        def work(emit):
+            return service.export_series(export_snapshot, xocd, force=True)
+
+        def finished(result) -> None:
+            runner.end()
+            on_result(result)
+
+        def failed(message: str) -> None:
+            runner.end()
+            on_error(message)
+
+        runner.run(work, finished=finished, failed=failed)
+
+    def _on_xocd_export_done(self, result) -> None:
+        """Continue the automated XOCD workflow once the CSV files were generated."""
+        service = self._xocd_publish_service
+        xocd = self._xocd_publish_path
+        dialog = getattr(self, "_xocd_publish_progress", None)
+        if result.error:
+            self._xocd_publish_failed(f"XOCD export failed:\n\n{result.error}")
+            return
+
+        self._xocd_publish_program = result.program
+        self._xocd_publish_files = sorted(result.files.keys())
+        total = len(self._xocd_publish_files)
+        rows = sum(result.files.values())
+        if dialog is not None:
+            dialog.set_files(self._xocd_publish_files)
+            dialog.append_output(
+                f"Generated {total} XOCD file(s), {rows} row(s)."
+            )
+
+        self._xocd_publish_stage = "status"
+        self._set_xocd_publish_stage(
+            3, "4. Prepare Commit", f"Checking {total} generated file(s)..."
+        )
+        self._start_xocd_svn_process(service.status_args(xocd))
+        return
+
+
     def _on_xocd_tortoise_finished(self, stage: str, exit_code: int) -> None:
         """TortoiseSVN fallback: the commit dialog requires user confirmation."""
         service = self._xocd_publish_service
@@ -1607,35 +1649,14 @@ class MainWindow(QMainWindow):
                 snapshot = self._context.active_snapshot
                 psvc = self._context.price_update_service
                 standardised = psvc.apply_registry(snapshot, psvc.registry_path())
-                result = self._context.xocd_export_service.export_series(
-                    snapshot, xocd, force=True
-                )
-                if result.error:
-                    self._xocd_publish_failed(f"XOCD export failed: {result.error}")
-                    return
-                self._xocd_publish_standardised = standardised
-                self._xocd_publish_files = sorted(result.files.keys())
-                self._xocd_publish_program = result.program
-                if not self._xocd_publish_files:
-                    self._xocd_publish_failed("No XOCD files were generated.")
-                    return
-                dialog.set_files(self._xocd_publish_files)
-                dialog.append_output(
-                    f"Generated {len(self._xocd_publish_files)} file(s). "
-                    "Select only these generated files in the TortoiseSVN commit dialog."
-                )
-                comment = f"{result.program} - Updating OAS"
-                self._xocd_publish_stage = "commit"
-                self._set_xocd_publish_stage(
-                    5, "6. Commit to SVN",
-                    "Select the generated files in TortoiseSVN and click OK. "
-                    f"Comment: {comment}"
-                )
-                self._start_xocd_svn_process(
-                    service.tortoise_commit_args(xocd, comment)
-                )
             except Exception as exc:
                 self._xocd_publish_failed(f"XOCD export failed: {exc}")
+                return
+            self._run_xocd_export(
+                snapshot, xocd,
+                lambda result: self._on_xocd_tortoise_export_done(result, standardised),
+                lambda message: self._xocd_publish_failed(f"XOCD export failed: {message}"),
+            )
             return
 
         if stage == "commit":
@@ -1661,6 +1682,39 @@ class MainWindow(QMainWindow):
                 "XOCD TortoiseSVN fallback finished; working copy clean"
             )
 
+    def _on_xocd_tortoise_export_done(self, result, standardised: int) -> None:
+        """TortoiseSVN fallback: continue with its commit dialog once the CSV files exist."""
+        service = self._xocd_publish_service
+        xocd = self._xocd_publish_path
+        dialog = getattr(self, "_xocd_publish_progress", None)
+        try:
+            if result.error:
+                self._xocd_publish_failed(f"XOCD export failed: {result.error}")
+                return
+            self._xocd_publish_standardised = standardised
+            self._xocd_publish_files = sorted(result.files.keys())
+            self._xocd_publish_program = result.program
+            if not self._xocd_publish_files:
+                self._xocd_publish_failed("No XOCD files were generated.")
+                return
+            dialog.set_files(self._xocd_publish_files)
+            dialog.append_output(
+                f"Generated {len(self._xocd_publish_files)} file(s). "
+                "Select only these generated files in the TortoiseSVN commit dialog."
+            )
+            comment = f"{result.program} - Updating OAS"
+            self._xocd_publish_stage = "commit"
+            self._set_xocd_publish_stage(
+                5, "6. Commit to SVN",
+                "Select the generated files in TortoiseSVN and click OK. "
+                f"Comment: {comment}"
+            )
+            self._start_xocd_svn_process(
+                service.tortoise_commit_args(xocd, comment)
+            )
+        except Exception as exc:
+            self._xocd_publish_failed(f"XOCD export failed: {exc}")
+
     def _xocd_publish_failed(self, message: str) -> None:
         dialog = getattr(self, "_xocd_publish_progress", None)
         if dialog is not None:
@@ -1674,6 +1728,8 @@ class MainWindow(QMainWindow):
         """Include the complete generated VARCOND relation set in the MDB export."""
         from PySide6.QtWidgets import QMessageBox
 
+        if self._export_already_running("Export VARCOND Relations"):
+            return
         if page.is_mdb_view():
             QMessageBox.information(
                 self, "Export VARCOND Relations",
@@ -1705,12 +1761,36 @@ class MainWindow(QMainWindow):
         ] + generated
         self._on_export_mdb()
 
+    def _exports(self):
+        """The single-slot background export runner (created on first use)."""
+        runner = getattr(self, "_export_runner", None)
+        if runner is None:
+            from ui.workers.export_runner import ExportRunner
+
+            runner = self._export_runner = ExportRunner(self)
+        return runner
+
+    def _export_already_running(self, title: str) -> bool:
+        """Tell the user and return True when another export still holds the export slot."""
+        if not self._exports().busy:
+            return False
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.information(
+            self, title, "Another export is still running. Wait for it to finish first."
+        )
+        return True
+
     def _on_export_mdb(self, selected_article_ids: set[str] | None = None) -> None:
         """Export Development output as a ``pcr_data_com_ocd.mdb``.
 
         Copies the category template, wipes its example product, and writes the
         snapshot's ``tCOMd_*`` rows. This is the alternative to the XOCD CSV
         publish - a finished COM database rather than an import package.
+
+        The MDB write runs on a worker thread (``ExportRunner``); the snapshot is
+        standardised and copied on the GUI thread first, so the worker only ever sees
+        its own isolated copy.
         """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
@@ -1719,6 +1799,8 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self, "Export MDB", "MDB Export is available from Development and Maintenance."
             )
+            return
+        if self._export_already_running("Export MDB"):
             return
         snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
         if snapshot is None:
@@ -1729,6 +1811,10 @@ class MainWindow(QMainWindow):
         )
         if not directory:
             return
+        runner = self._exports()
+        if not runner.begin("Export MDB"):
+            self._export_already_running("Export MDB")
+            return
 
         # Use the export service's automatic category detection. Templates are
         # bundled with the application; normal export must not ask users to
@@ -1738,29 +1824,45 @@ class MainWindow(QMainWindow):
         # Development uses the registry standardisation step; Maintenance exports
         # its PDM snapshot as-is so no Development workflow data is mutated.
         standardised = 0
-        if not is_maintenance:
-            psvc = self._context.price_update_service
-            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
-        export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
-        result = self._context.ocd_export_service.export(
-            export_snapshot, directory, kind,
-            selected_article_ids=selected_article_ids,
-        )
+        try:
+            if not is_maintenance:
+                psvc = self._context.price_update_service
+                standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+            export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
+            service = self._context.ocd_export_service
+        except Exception:
+            runner.end()
+            raise
 
-        if not result.ok or result.error:
-            QMessageBox.warning(
-                self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
+        def work(emit):
+            emit("Writing the MDB export...")
+            return service.export(
+                export_snapshot, directory, kind,
+                selected_article_ids=selected_article_ids,
             )
-            return
 
-        total = sum(result.table_counts.values())
-        QMessageBox.information(
-            self, "Export MDB",
-            f"Exported '{result.template}' MDB ({total} rows across "
-            f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
-            + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
-               if standardised else ""),
-        )
+        def finished(result) -> None:
+            runner.end()
+            if not result.ok or result.error:
+                QMessageBox.warning(
+                    self, "Export MDB", f"Export failed:\n{result.error or 'unknown error'}"
+                )
+                return
+
+            total = sum(result.table_counts.values())
+            QMessageBox.information(
+                self, "Export MDB",
+                f"Exported '{result.template}' MDB ({total} rows across "
+                f"{len(result.table_counts)} table(s)) into:\n{result.mdb_path}"
+                + (f"\n\nStandardised {standardised} base article(s) to CAD Maintenance."
+                   if standardised else ""),
+            )
+
+        def failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, "Export MDB", f"Export failed:\n{message}")
+
+        runner.run(work, finished=finished, failed=failed)
 
     def _on_export_articles_to_mdb(self, selected_article_ids: set[str] | None = None) -> None:
         """ProductStudio Articles export into the product's single MDB.
@@ -1768,12 +1870,18 @@ class MainWindow(QMainWindow):
         First export creates the MDB from the category template (asking for a
         folder once); later exports reuse the same file. All logic lives in
         ``MdbExportSessionService`` / ``ArticleMdbExportService``.
+
+        Preparing the MDB (first export) and writing the articles run on worker threads
+        (``ExportRunner``); dialogs, snapshot standardisation and the isolating snapshot
+        copy stay on the GUI thread, in the original order.
         """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         from services.mdb_export_session_service import ExportSessionError
 
         title = "Export Articles to MDB"
         is_maintenance = self._active_module == WorkbenchModule.MAINTENANCE
+        if self._export_already_running(title):
+            return
         snapshot = self._context.pdm_snapshot if is_maintenance else self._context.active_snapshot
         if snapshot is None or snapshot.product is None:
             QMessageBox.information(self, title, "Load a product first.")
@@ -1796,6 +1904,7 @@ class MainWindow(QMainWindow):
             sessions.discard(snapshot)
             session = None
 
+        prepare = None          # worker callable that creates / attaches the session
         created = False
         if session is None:
             repository = self._context.maintenance_repository_info or {}
@@ -1812,71 +1921,113 @@ class MainWindow(QMainWindow):
                     f"The selected repository MDB was not found:\\n{source_mdb}"
                 )
                 return
-            try:
-                if repository.get("is_template"):
-                    # Template: copy to a product-specific destination. The
-                    # shared SVN template remains untouched.
-                    directory = QFileDialog.getExistingDirectory(
-                        self, "Choose a product-specific output folder for the copied MDB"
-                    )
-                    if not directory:
-                        return
-                    session = sessions.initialize(
-                        snapshot, directory, template_path=source_mdb
-                    )
-                    created = True
-                else:
-                    # Existing series repository: attach in place. No save
-                    # location dialog, copy, initialization wipe or ID reset.
-                    session = sessions.attach_existing(
+            if repository.get("is_template"):
+                # Template: copy to a product-specific destination. The
+                # shared SVN template remains untouched.
+                directory = QFileDialog.getExistingDirectory(
+                    self, "Choose a product-specific output folder for the copied MDB"
+                )
+                if not directory:
+                    return
+                created = True
+
+                def prepare():
+                    return sessions.initialize(snapshot, directory, template_path=source_mdb)
+            else:
+                # Existing series repository: attach in place. No save
+                # location dialog, copy, initialization wipe or ID reset.
+                def prepare():
+                    return sessions.attach_existing(
                         snapshot, source_mdb,
                         template_kind=str(repository.get("name") or ""),
                     )
-                    created = False
-            except ExportSessionError as exc:
-                QMessageBox.warning(self, title, f"Could not prepare the MDB:\\n{exc}")
-                return
 
-        # Same snapshot preparation as the full export so base codes match.
-        if not is_maintenance:
-            psvc = self._context.price_update_service
-            psvc.apply_registry(snapshot, psvc.registry_path())
-        export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
-        result = self._context.article_mdb_export_service.export_to_session(
-            export_snapshot, session, selected_article_ids
-        )
-        if not result.get("ok"):
-            QMessageBox.critical(
-                self, title,
-                "Export failed. The MDB was not changed by this export.\n\n"
-                f"{result.get('error', 'unknown error')}\n\nMDB: {session.mdb_path}",
-            )
+        runner = self._exports()
+        if not runner.begin(title):
+            self._export_already_running(title)
             return
-        text = (
-            f"{'Created new MDB' if created else 'Updated existing MDB'}:\n{session.mdb_path}\n\n"
-            f"Articles inserted: {result['inserted']}\n"
-            f"Articles updated: {result['updated']}\n"
-            f"Articles skipped (unchanged or ambiguous): {result['skipped']}\n"
-            f"Code schemes created: {result['schemes_created']}"
-        )
-        if result.get("warnings"):
-            text += "\n\nWarnings:\n" + "\n".join(f"• {m}" for m in result["warnings"][:8])
-        QMessageBox.information(self, title, text)
+
+        def export_step(session) -> None:
+            """GUI thread: standardise + isolate the snapshot, then write the articles."""
+            try:
+                # Same snapshot preparation as the full export so base codes match.
+                if not is_maintenance:
+                    psvc = self._context.price_update_service
+                    psvc.apply_registry(snapshot, psvc.registry_path())
+                export_snapshot = self._context.prepare_mdb_export_snapshot(snapshot)
+                service = self._context.article_mdb_export_service
+            except Exception:
+                runner.end()
+                raise
+
+            def work(emit):
+                emit("Writing the articles to the MDB...")
+                return service.export_to_session(export_snapshot, session, selected_article_ids)
+
+            def finished(result) -> None:
+                runner.end()
+                if not result.get("ok"):
+                    QMessageBox.critical(
+                        self, title,
+                        "Export failed. The MDB was not changed by this export.\n\n"
+                        f"{result.get('error', 'unknown error')}\n\nMDB: {session.mdb_path}",
+                    )
+                    return
+                text = (
+                    f"{'Created new MDB' if created else 'Updated existing MDB'}:\n{session.mdb_path}\n\n"
+                    f"Articles inserted: {result['inserted']}\n"
+                    f"Articles updated: {result['updated']}\n"
+                    f"Articles skipped (unchanged or ambiguous): {result['skipped']}\n"
+                    f"Code schemes created: {result['schemes_created']}"
+                )
+                if result.get("warnings"):
+                    text += "\n\nWarnings:\n" + "\n".join(f"• {m}" for m in result["warnings"][:8])
+                QMessageBox.information(self, title, text)
+
+            def failed(message: str) -> None:
+                runner.end()
+                QMessageBox.critical(
+                    self, title,
+                    "Export failed. The MDB was not changed by this export.\n\n"
+                    f"{message}\n\nMDB: {session.mdb_path}",
+                )
+
+            runner.run(work, finished=finished, failed=failed)
+
+        if prepare is None:
+            export_step(session)
+            return
+
+        def prepare_work(emit):
+            emit("Preparing the MDB...")
+            return prepare()
+
+        def prepare_failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, title, f"Could not prepare the MDB:\n{message}")
+
+        runner.run(prepare_work, finished=export_step, failed=prepare_failed)
 
     def _on_export_snapshot_excel(self) -> None:
-        """Export the loaded snapshot to a multi-sheet Excel review workbook."""
+        """Export the loaded snapshot to a multi-sheet Excel review workbook.
+
+        The workbook is written on a worker thread from an isolated copy of the snapshot.
+        """
+        import copy
+
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         from services.snapshot_excel_export_service import SnapshotExcelExportService
 
+        title = "Export Snapshot to Excel"
+        if self._export_already_running(title):
+            return
         if self._active_module == WorkbenchModule.MAINTENANCE:
             snapshot = self._context.pdm_snapshot
         else:
             snapshot = self._context.active_snapshot
 
         if snapshot is None:
-            QMessageBox.information(
-                self, "Export Snapshot to Excel", "Load a product first."
-            )
+            QMessageBox.information(self, title, "Load a product first.")
             return
 
         path, _ = QFileDialog.getSaveFileName(
@@ -1890,19 +2041,29 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".xlsx"):
             path += ".xlsx"
 
-        try:
-            saved = SnapshotExcelExportService().export(snapshot, path)
-        except Exception as error:  # noqa: BLE001 - report export failures to user
-            QMessageBox.warning(
-                self, "Export Snapshot to Excel",
-                f"Excel export failed:\n{error}",
-            )
+        runner = self._exports()
+        if not runner.begin(title):
+            self._export_already_running(title)
             return
+        try:
+            export_snapshot = copy.deepcopy(snapshot)
+        except Exception:
+            runner.end()
+            raise
 
-        QMessageBox.information(
-            self, "Export Snapshot to Excel",
-            f"Exported all snapshot data to:\n{saved}",
-        )
+        def work(emit):
+            emit("Writing the workbook...")
+            return SnapshotExcelExportService().export(export_snapshot, path)
+
+        def finished(saved) -> None:
+            runner.end()
+            QMessageBox.information(self, title, f"Exported all snapshot data to:\n{saved}")
+
+        def failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, title, f"Excel export failed:\n{message}")
+
+        runner.run(work, finished=finished, failed=failed)
 
     def _show_text_result(
         self, title: str, text: str, warnings: list, default_name: str
