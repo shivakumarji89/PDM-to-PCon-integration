@@ -199,11 +199,16 @@ class TextMdbExportService(BaseService):
                 ),
                 "properties": (
                     "SELECT com_PropertyID, com_ClassID, com_PropName, com_TextID "
-                    "FROM tCOMd_Property"
+                    "FROM tCOMd_Property WHERE com_ClassID IN "
+                    "(SELECT com_ClassID FROM tCOMd_Class "
+                    f"WHERE com_PackageID = {int(package_id)})"
                 ),
                 "values": (
                     "SELECT com_ValueID, com_PropertyID, com_PropValueFrom, com_TextID "
-                    "FROM tCOMd_PropValue"
+                    "FROM tCOMd_PropValue WHERE com_PropertyID IN "
+                    "(SELECT com_PropertyID FROM tCOMd_Property WHERE com_ClassID IN "
+                    "(SELECT com_ClassID FROM tCOMd_Class "
+                    f"WHERE com_PackageID = {int(package_id)}))"
                 ),
             })
         except Exception as exc:
@@ -391,8 +396,17 @@ class TextMdbExportService(BaseService):
             verified = db.read_tables(session.mdb_path, {
                 "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM tCOMd_Text",
                 "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
-                "properties": "SELECT com_PropertyID, com_TextID FROM tCOMd_Property",
-                "values": "SELECT com_ValueID, com_TextID FROM tCOMd_PropValue",
+                "properties": (
+                    "SELECT com_PropertyID, com_TextID FROM tCOMd_Property "
+                    "WHERE com_ClassID IN (SELECT com_ClassID FROM tCOMd_Class "
+                    f"WHERE com_PackageID = {int(package_id)})"
+                ),
+                "values": (
+                    "SELECT com_ValueID, com_TextID FROM tCOMd_PropValue "
+                    "WHERE com_PropertyID IN (SELECT com_PropertyID FROM tCOMd_Property "
+                    "WHERE com_ClassID IN (SELECT com_ClassID FROM tCOMd_Class "
+                    f"WHERE com_PackageID = {int(package_id)}))"
+                ),
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Text was written but read-back failed: {exc}"}
