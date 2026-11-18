@@ -314,6 +314,12 @@ class RelationMdbExportService(BaseService):
                 value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "property_id", "") or "")
             for value in getattr(snapshot, "option_values", []) or []:
                 value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "option_id", "") or "")
+            for source_prop in getattr(snapshot, "properties", []) or []:
+                for value in getattr(source_prop, "values", []) or []:
+                    value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_prop, "id", "") or ""))
+            for source_option in getattr(snapshot, "options", []) or []:
+                for value in getattr(source_option, "values", []) or []:
+                    value_parent.setdefault(str(getattr(value, "id", "") or ""), str(getattr(source_option, "id", "") or ""))
             source_value_ids = (
                 set(getattr(rel, "value_ids", []) or [])
                 | ({str(getattr(rel, "value_id", ""))} if getattr(rel, "value_id", "") else set())
