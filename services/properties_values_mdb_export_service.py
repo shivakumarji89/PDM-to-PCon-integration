@@ -332,7 +332,7 @@ class PropertiesValuesMdbExportService(BaseService):
                     seen_codes.add(self._key(code))
                     key = (str(property_id), self._key(code))
                     if key not in value_keys:
-                        value_text_name = f"{text_name}_{code}"
+                        value_text_name = f"{text_block_name(source_name)}_{code}"
                         value_text_matches = (
                             text_by_key.get(("propvalue", self._key(value_text_name)), [])
                             or text_by_key.get(("optionvalue", self._key(value_text_name)), [])
