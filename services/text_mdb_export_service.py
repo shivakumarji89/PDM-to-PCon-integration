@@ -241,7 +241,11 @@ class TextMdbExportService(BaseService):
             values = {"com_TextName": block.name, "com_TextTypeCode": type_code,
                       "com_PackageID": package_id}
             for language, column in language_columns.items():
-                values[column] = block.get_language(language) or None
+                language_value = block.get_language(language) or ""
+                # Blank source translations are not an instruction to erase
+                # a previously populated MDB translation.
+                if language_value:
+                    values[column] = language_value
             if matches:
                 row = matches[0]
                 text_id = row.get("com_TextID")
