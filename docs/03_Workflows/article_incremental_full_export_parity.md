@@ -31,6 +31,6 @@ Reference: `XocdExportService._base_codes()`, `OcdExportService._articles()`,
 
 Focused regression tests cover missing reduced bases, source-article lookup,
 price-base precedence, CodeScheme naming, selection and first-seen de-duplication.
-These tests have been authored but have not been executed in this GitHub editing
-session. The Windows ACE/MDB integration tests and full-export row comparison
-still require execution in the local application environment.
+They are included in the Incremental MDB Workflow CI job and passed: **5 passed**.
+The Windows ACE/MDB integration tests and full-export row comparison still require
+execution in the local application environment.
