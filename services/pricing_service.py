@@ -270,9 +270,13 @@ class PricingService(BaseService):
                 )
                 all_records.extend(records)
                 unresolved.extend(unres)
-            self._attach_product_codes(all_records, repo, conn, params.site_id)
-        finally:
-            conn.close()
+        if all_records:
+            checkpoint()
+            conn = repo.get_connection()
+            try:
+                self._attach_product_codes(all_records, repo, conn, params.site_id)
+            finally:
+                conn.close()
 
         commit()
         snapshot.price_records = self._accumulate_currencies(
@@ -346,13 +350,12 @@ class PricingService(BaseService):
 
         repo = PDMRepository(self.context)
         checkpoint()
-        # Keep one coordinator connection for the final product-code lookup.
-        # Each pricing worker opens and owns its own connection; connections are
-        # never shared across threads.
-        conn = repo.get_connection()
+        # Each pricing worker opens and owns its own connection. The coordinator
+        # opens a separate connection only after pricing finishes, for the final
+        # product-code lookup; it is never held idle while workers are running.
         token = current_token()
         if reporter is not None:
-            reporter.note("Connected to PDM.")
+            reporter.note("Preparing pricing workers...")
 
         def price_chunk(start: int, chunk: list[str], currency: str, cparams):
             """Run one existing pricing batch on a worker-owned PDM connection."""
@@ -402,8 +405,7 @@ class PricingService(BaseService):
                 finally:
                     worker_conn.close()
 
-        try:
-            for cur_index, cur in enumerate(currencies):
+        for cur_index, cur in enumerate(currencies):
                 checkpoint()
                 cparams = replace(params, currency=cur, program_code=program_code)
                 chunks = [
