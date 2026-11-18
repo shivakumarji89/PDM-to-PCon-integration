@@ -324,12 +324,18 @@ class RelationMdbExportService(BaseService):
                 class_rows = [r for r in data["classes"]
                               if self._key(r.get("com_ClassName")) == self._key(class_name)
                               and str(r.get("com_PackageID")) == str(package_id)]
-                if len(class_rows) == 1 and article_id is not None:
-                    candidates = [r for r in data["article_classes"]
-                                  if str(r.get("com_ArticleID")) == str(article_id)
-                                  and str(r.get("com_ClassID")) == str(class_rows[0].get("com_ClassID"))]
-                    if len(candidates) == 1:
-                        ref_updates[("article_class", str(candidates[0]["com_ArticleClassID"]))] = {"com_RelObjID": obj_id}
+                if len(class_rows) != 1 or article_id is None:
+                    return {"ok": False, "error": (
+                        f"Relation Object '{rel.name}' requires Class Creation for article '{code}' / class '{class_name}'."
+                    )}
+                candidates = [r for r in data["article_classes"]
+                              if str(r.get("com_ArticleID")) == str(article_id)
+                              and str(r.get("com_ClassID")) == str(class_rows[0].get("com_ClassID"))]
+                if len(candidates) != 1:
+                    return {"ok": False, "error": (
+                        f"Relation Object '{rel.name}' requires the ArticleClass link for '{code}' / '{class_name}'."
+                    )}
+                ref_updates[("article_class", str(candidates[0]["com_ArticleClassID"]))] = {"com_RelObjID": obj_id}
             source_property_ids = (
                 set(getattr(rel, "property_ids", []) or [])
                 | ({str(getattr(rel, "property_id", ""))} if getattr(rel, "property_id", "") else set())
@@ -351,19 +357,30 @@ class RelationMdbExportService(BaseService):
                 source = source_props.get(str(source_id)) or source_options.get(str(source_id))
                 source_name = str(getattr(source, "name", "") or "")
                 prop_name = self._key(xocd._prop_ident(source_name)) if source_name else ""
-                for class_name in property_class_names.get(str(source_id), set()):
+                class_names = property_class_names.get(str(source_id), set())
+                if source is None or not prop_name or not class_names:
+                    return {"ok": False, "error": (
+                        f"Relation Object '{rel.name}' requires Properties & Values for source property '{source_id}'."
+                    )}
+                for class_name in class_names:
                     class_row = class_rows_by_name.get(self._key(class_name))
                     if class_row is None:
-                        continue
+                        return {"ok": False, "error": (
+                            f"Relation Object '{rel.name}' requires Class Creation for '{class_name}'."
+                        )}
                     matches = [
                         row for row in data["properties"]
                         if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
                         and self._key(row.get("com_PropName")) == prop_name
                     ]
-                    if len(matches) == 1:
-                        mdb_property_id = str(matches[0].get("com_PropertyID"))
-                        ref_updates[("property", mdb_property_id)] = {"com_RelObjID": obj_id}
-                        property_rows_by_source.setdefault(str(source_id), []).extend(matches)
+                    if len(matches) != 1:
+                        return {"ok": False, "error": (
+                            f"Relation Object '{rel.name}' requires the MDB property '{class_name}:{prop_name}'. "
+                            "Export Properties & Values first."
+                        )}
+                    mdb_property_id = str(matches[0].get("com_PropertyID"))
+                    ref_updates[("property", mdb_property_id)] = {"com_RelObjID": obj_id}
+                    property_rows_by_source.setdefault(str(source_id), []).extend(matches)
 
             # Source value IDs are not MDB surrogate IDs. Resolve them by
             # (selected class, normalized property, exported value code).
@@ -389,23 +406,38 @@ class RelationMdbExportService(BaseService):
                 source_name = str(getattr(source, "name", "") or "")
                 prop_name = self._key(xocd._prop_ident(source_name)) if source_name else ""
                 code = self._key(value_codes.get(str(source_value_id), ""))
-                if not prop_name or not code:
-                    continue
-                for class_name in property_class_names.get(parent_id, set()):
+                class_names = property_class_names.get(parent_id, set())
+                if source is None or not prop_name or not code or not class_names:
+                    return {"ok": False, "error": (
+                        f"Relation Object '{rel.name}' has an unresolved source value '{source_value_id}'."
+                    )}
+                for class_name in class_names:
                     class_row = class_rows_by_name.get(self._key(class_name))
                     if class_row is None:
-                        continue
+                        return {"ok": False, "error": (
+                            f"Relation Object '{rel.name}' requires Class Creation for '{class_name}'."
+                        )}
                     mdb_props = [
                         row for row in data["properties"]
                         if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
                         and self._key(row.get("com_PropName")) == prop_name
                     ]
-                    for mdb_prop in mdb_props:
-                        for mdb_value in data["values"]:
-                            if (str(mdb_value.get("com_PropertyID")) == str(mdb_prop.get("com_PropertyID"))
-                                    and self._key(mdb_value.get("com_PropValueFrom")) == code):
-                                mdb_value_id = str(mdb_value.get("com_ValueID"))
-                                ref_updates[("value", mdb_value_id)] = {"com_RelObjID": obj_id}
+                    if len(mdb_props) != 1:
+                        return {"ok": False, "error": (
+                            f"Relation Object '{rel.name}' requires Properties & Values for '{class_name}:{prop_name}'."
+                        )}
+                    mdb_values = [
+                        row for row in data["values"]
+                        if str(row.get("com_PropertyID")) == str(mdb_props[0].get("com_PropertyID"))
+                        and self._key(row.get("com_PropValueFrom")) == code
+                    ]
+                    if len(mdb_values) != 1:
+                        return {"ok": False, "error": (
+                            f"Relation Object '{rel.name}' requires the MDB value '{prop_name}={code}'. "
+                            "Export Properties & Values first."
+                        )}
+                    mdb_value_id = str(mdb_values[0].get("com_ValueID"))
+                    ref_updates[("value", mdb_value_id)] = {"com_RelObjID": obj_id}
 
         table_for_kind = {"article": "tCOMd_Article", "article_class": "tCOMd_ArticleClass",
                           "property": "tCOMd_Property", "value": "tCOMd_PropValue"}
