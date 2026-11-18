@@ -337,6 +337,21 @@ class RelationMdbExportService(BaseService):
             self._key(r.get("com_ClassName")): r for r in data["classes"]
             if str(r.get("com_PackageID")) == str(package_id)
         }
+        article_classes_by_article_class: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in data["article_classes"]:
+            article_classes_by_article_class.setdefault(
+                (str(row.get("com_ArticleID")), str(row.get("com_ClassID"))), []
+            ).append(row)
+        properties_by_class_name: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in data["properties"]:
+            properties_by_class_name.setdefault(
+                (str(row.get("com_ClassID")), self._key(row.get("com_PropName"))), []
+            ).append(row)
+        values_by_property_code: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in data["values"]:
+            values_by_property_code.setdefault(
+                (str(row.get("com_PropertyID")), self._key(row.get("com_PropValueFrom"))), []
+            ).append(row)
         value_parent: dict[str, str] = {}
         for value in getattr(snapshot, "property_values", []) or []:
             value_parent[str(getattr(value, "id", "") or "")] = str(getattr(value, "property_id", "") or "")
@@ -370,9 +385,9 @@ class RelationMdbExportService(BaseService):
                     return {"ok": False, "error": (
                         f"Relation Object '{rel.name}' requires Class Creation for article '{code}' / class '{class_name}'."
                     )}
-                candidates = [r for r in data["article_classes"]
-                              if str(r.get("com_ArticleID")) == str(article_id)
-                              and str(r.get("com_ClassID")) == str(class_rows[0].get("com_ClassID"))]
+                candidates = article_classes_by_article_class.get(
+                    (str(article_id), str(class_rows[0].get("com_ClassID"))), []
+                )
                 if len(candidates) != 1:
                     return {"ok": False, "error": (
                         f"Relation Object '{rel.name}' requires the ArticleClass link for '{code}' / '{class_name}'."
@@ -397,11 +412,9 @@ class RelationMdbExportService(BaseService):
                         return {"ok": False, "error": (
                             f"Relation Object '{rel.name}' requires Class Creation for '{class_name}'."
                         )}
-                    matches = [
-                        row for row in data["properties"]
-                        if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
-                        and self._key(row.get("com_PropName")) == prop_name
-                    ]
+                    matches = properties_by_class_name.get(
+                        (str(class_row.get("com_ClassID")), prop_name), []
+                    )
                     if len(matches) != 1:
                         return {"ok": False, "error": (
                             f"Relation Object '{rel.name}' requires the MDB property '{class_name}:{prop_name}'. "
@@ -433,20 +446,16 @@ class RelationMdbExportService(BaseService):
                         return {"ok": False, "error": (
                             f"Relation Object '{rel.name}' requires Class Creation for '{class_name}'."
                         )}
-                    mdb_props = [
-                        row for row in data["properties"]
-                        if str(row.get("com_ClassID")) == str(class_row.get("com_ClassID"))
-                        and self._key(row.get("com_PropName")) == prop_name
-                    ]
+                    mdb_props = properties_by_class_name.get(
+                        (str(class_row.get("com_ClassID")), prop_name), []
+                    )
                     if len(mdb_props) != 1:
                         return {"ok": False, "error": (
                             f"Relation Object '{rel.name}' requires Properties & Values for '{class_name}:{prop_name}'."
                         )}
-                    mdb_values = [
-                        row for row in data["values"]
-                        if str(row.get("com_PropertyID")) == str(mdb_props[0].get("com_PropertyID"))
-                        and self._key(row.get("com_PropValueFrom")) == code
-                    ]
+                    mdb_values = values_by_property_code.get(
+                        (str(mdb_props[0].get("com_PropertyID")), code), []
+                    )
                     if len(mdb_values) != 1:
                         return {"ok": False, "error": (
                             f"Relation Object '{rel.name}' requires the MDB value '{prop_name}={code}'. "
@@ -526,11 +535,14 @@ class RelationMdbExportService(BaseService):
             "tCOMd_Property": ("properties", "com_PropertyID"),
             "tCOMd_PropValue": ("values", "com_ValueID"),
         }
+        verified_indexes = {
+            table_name: {str(item.get(pk_name)): item for item in verified[table_name]}
+            for table_name, pk_name in pk_by_table.values()
+        }
         for operation in updates:
             table_name, pk_name = pk_by_table[operation["table"]]
             identity = str(operation["where"][pk_name])
-            row = next((item for item in verified[table_name]
-                        if str(item.get(pk_name)) == identity), None)
+            row = verified_indexes[table_name].get(identity)
             if row is None or any(
                 str(row.get(column) or "") != str(value or "")
                 for column, value in operation["set"].items()
