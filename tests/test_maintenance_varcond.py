@@ -415,8 +415,12 @@ def _wait_for_load(panel):
     from PySide6.QtWidgets import QApplication
 
     deadline = time.monotonic() + 10
-    while panel._maintenance_load_task is not None:
-        assert time.monotonic() < deadline, "Maintenance PDM load did not finish"
+    while (
+        panel._maintenance_load_task is not None
+        or panel._live_task is not None
+        or panel._live_scheduled
+    ):
+        assert time.monotonic() < deadline, "VARCOND background generation did not finish"
         QApplication.processEvents()
         time.sleep(0.01)
     QApplication.processEvents()
