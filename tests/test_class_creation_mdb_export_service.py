@@ -196,3 +196,33 @@ def test_repeated_class_creation_export_does_not_duplicate_rows(tmp_path):
     assert second["operations"] == 0
     assert db.data == before
     assert len(db.batches) == 1
+
+
+def test_shared_class_union_does_not_mutate_engineering_source(monkeypatch, tmp_path):
+    import services.class_creation_mdb_export_service as export_module
+
+    snapshot, session, context, db, _source_classes = _fixture(tmp_path)
+    first_assignment = SimpleNamespace(property_id="p1")
+    second_assignment = SimpleNamespace(property_id="p2")
+    first_class = SimpleNamespace(
+        id="shared-1", name="Desk_Attribute", properties=[first_assignment],
+    )
+    second_class = SimpleNamespace(
+        id="shared-2", name="Desk_Attribute", properties=[second_assignment],
+    )
+    by_article = {"a1": [first_class], "a2": [second_class]}
+    monkeypatch.setattr(
+        export_module,
+        "classes_for_article",
+        lambda _snapshot, _classes, article_id: by_article[article_id],
+    )
+
+    result = ClassCreationMdbExportService(context).export_to_session(
+        snapshot, session, {"a1", "a2"},
+    )
+
+    assert result["ok"], result
+    assert result["verified"] is True
+    assert db.data["schemes"][0]["com_CodeSchemeBody"] == "@,@,@,@,p1:X,p2:X"
+    assert [item.property_id for item in first_class.properties] == ["p1"]
+    assert [item.property_id for item in second_class.properties] == ["p2"]
