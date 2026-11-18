@@ -433,8 +433,8 @@ class TextMdbExportService(BaseService):
             return {**result, "ok": False, "error": batch.first_error() or "Text MDB transaction failed."}
         try:
             verified = db.read_tables(session.mdb_path, {
-                "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM tCOMd_Text",
-                "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
+                "texts": (\n                    "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM tCOMd_Text " \n                    f"WHERE com_PackageID = {int(package_id)}"\n                ),
+                "articles": (\n                    "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article " \n                    f"WHERE com_PackageID = {int(package_id)}"\n                ),
                 "properties": (
                     "SELECT com_PropertyID, com_TextID FROM tCOMd_Property "
                     "WHERE com_ClassID IN (SELECT com_ClassID FROM tCOMd_Class "
