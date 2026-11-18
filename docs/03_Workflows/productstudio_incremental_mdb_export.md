@@ -122,14 +122,14 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 - Relation and Text exporters build in-memory indexes for class/property/value natural-key lookups instead of repeatedly scanning the same MDB row lists.
 - Price export keeps the existing optimized MDB reads and filters article price records to selected base article codes before preview/write. Product-level global prices remain included, including global-only exports.
 - Price computation processes up to two batches concurrently, with one PDM connection owned by each worker. Results are emitted in original item order; the final product-code lookup opens its own connection only after the workers finish.
-- The concurrency regression test verifies two overlapping worker connections, stable result order and connection cleanup. A live SQL Server timing benchmark on representative large products remains pending.
+- The concurrency regression test verifies two overlapping worker connections, stable result order and connection cleanup. Worker cancellation is checked immediately after the PDM base-price query returns, before result processing or another query. A live SQL Server timing benchmark on representative large products remains pending.
 - Relation links are deduplicated in memory before transactional inserts.
 
 ## Validation status
 
-- Focused incremental MDB and pricing workflow: **156 passed, 6 subtests passed** (includes Article parity, Class Creation and Properties/Values export, repeat-export idempotency, and bounded parallel-pricing regressions).
+- Latest completed focused incremental MDB and pricing workflow (commit `f3743c0`): **158 passed, 6 subtests passed** (includes Article parity, Class Creation and Properties/Values export, repeat-export idempotency, bounded parallel-pricing regressions, and the pricing cancellation regression). The subsequent worker post-query cancellation checkpoint and strengthened cancellation fixture are committed after that run and require a fresh CI run.
 - Maintenance pricing/parity regression workflow: **247 passed, 6 subtests passed**.
-- Full repository suite on Ubuntu remains unresolved: the latest run aborts early with a Qt segmentation fault before pytest can print a summary. A previous run reported **5,396 passed, 27 failed, 84 skipped, 22 subtests passed** before the Qt teardown abort. The failure set includes SyteLine, workspace/path, home-page and legacy Maintenance UI tests; the pCon SDK page integration is excluded from Ubuntu because its Qt event loop segfaults on that runner.
+- Full repository suite on Ubuntu remains unresolved: the latest completed run (commit `f3743c0`) reported **5,403 passed, 26 failed, 84 skipped, 22 subtests passed**, then hit a Qt teardown segmentation fault. Failures are concentrated in SyteLine output/path tests, Windows-specific path expectations, legacy Maintenance UI assertions, and older async VARCOND tests. These failures have not all been independently baseline-run against `main`, so they remain an open regression gate. The pCon SDK page integration is excluded from Ubuntu because its Qt event loop segfaults on that runner.
 - Real Windows 32-bit ACE MDB validation is still required before production use: repeat exports, existing IDs, duplicate natural keys, rollback, foreign-key references and large-product timing have not been tested against a live MDB.
 
 Value Combination tables remain explicitly out of scope. Do not use the legacy full exporter for these incremental workflows.
