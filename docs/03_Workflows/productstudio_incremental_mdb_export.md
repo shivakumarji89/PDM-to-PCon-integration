@@ -115,14 +115,19 @@ The Text page's Export to MDB action now uses the active product session and the
 
 In Maintenance, the Pricing export / preview workflow now uses the active product MDB session rather than asking the user to choose a second MDB. It requires the Articles-page selection and filters article price records to selected base article codes; global price records remain product-level. Existing price-list target review, preview digest, non-destructive price upsert and read-back verification remain in use. Successful exports are recorded in session workflow status. Development's existing destination-file flow is unchanged.
 
-## Remaining validation and performance work
+## Performance work
 
-The Relations, Text, Pricing, and Pricing Relation session paths are committed to the feature branch, but their tests have not yet been executed. Remaining work before production use:
+- Text reads are scoped to the active package; TextID allocation uses a separate global MAX query so IDs remain unique without reading every Text row.
+- Relation Object, Relation, Article, Class, Property and Value reads are scoped to the active package and related rows.
+- Relation and Text exporters build in-memory indexes for class/property/value natural-key lookups instead of repeatedly scanning the same MDB row lists.
+- Price export keeps the existing optimized MDB reads and filters article price records to selected base article codes before preview/write. Product-level global prices remain included, including global-only exports.
+- Relation links are deduplicated in memory before transactional inserts.
 
-- Run targeted tests for Articles, Class Creation, Properties & Values, Relations, Text, Pricing and Pricing Relation / VARCOND.
-- Run the full pytest suite and resolve regressions.
-- Validate writes against real Windows 32-bit ACE MDB files, including repeat exports, pre-existing IDs, duplicate natural keys, transaction rollback and foreign-key references.
-- Benchmark large product MDBs; optimize relation/property/value reads and batch sizes based on measurements.
-- Verify price-list routing and global-price behaviour against a real Maintenance session MDB.
+## Validation status
+
+- Focused incremental MDB and pricing workflow: **146 passed, 6 subtests passed**.
+- Maintenance pricing/parity regression workflow: **247 passed, 6 subtests passed**.
+- Full repository suite on Ubuntu: **5,396 passed, 27 failed, 84 skipped, 22 subtests passed** before a Qt teardown abort. Reported failures are outside the focused incremental workflow (including SyteLine, workspace/path, home-page and existing Maintenance UI tests); the pCon SDK page integration is excluded from the Ubuntu run because its Qt event loop segfaults on that runner.
+- Real Windows 32-bit ACE MDB validation is still required before production use: repeat exports, existing IDs, duplicate natural keys, rollback, foreign-key references and large-product timing have not been tested against a live MDB.
 
 Value Combination tables remain explicitly out of scope. Do not use the legacy full exporter for these incremental workflows.
