@@ -140,6 +140,18 @@ class RelationMdbExportService(BaseService):
                 chosen.append(rel)
         if not chosen:
             return {"ok": False, "error": "No Relation Objects are related to the selected articles."}
+        from services.pricing_relation_service import PricingRelationService
+        over_limit = [
+            (str(getattr(rel, "name", "") or ""), len(str(getattr(rel, "body", "") or "")))
+            for rel in chosen
+            if len(str(getattr(rel, "body", "") or "")) > PricingRelationService.PCON_RELATION_CHAR_LIMIT
+        ]
+        if over_limit:
+            name, size = over_limit[0]
+            return {"ok": False, "error": (
+                f"Relation Object '{name}' is {size:,} characters; the pCon relation limit is "
+                f"{PricingRelationService.PCON_RELATION_CHAR_LIMIT:,}. Split the relation before exporting."
+            )}
 
         package_filter = str(int(package_id))
         tables = {
