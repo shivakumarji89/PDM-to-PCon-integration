@@ -617,14 +617,75 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 "The computed prices carry no computation date. Recompute prices first; "
                 "today's date is never substituted.")
             return
-        mdb_path, _ = QFileDialog.getOpenFileName(
-            self, "Select existing OCD MDB" + (" to export prices into" if write else " to preview against"),
-            self._last_mdb_path, "Access database (*.mdb)",
-        )
-        if not mdb_path:
-            return
+        export_snapshot = snapshot
+        if self.is_maintenance_module():
+            # Maintenance pricing belongs to the same one-product MDB session
+            # as Articles/Class Creation. Never ask for or create a second MDB.
+            try:
+                session = self._context.mdb_export_session_service.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Prices", str(exc))
+                self._restore_export_buttons()
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                self._restore_export_buttons()
+                return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_ids:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                self._restore_export_buttons()
+                return
+            base_codes = {
+                str(code) for article_id, code in self._context.xocd_export_service.base_code_entries(snapshot)
+                if str(article_id) in {str(value) for value in selected_ids} and str(code or "").strip()
+            }
+            if not base_codes:
+                QMessageBox.warning(
+                    self, "Export Prices",
+                    "The selected articles do not resolve to base article codes.",
+                )
+                self._restore_export_buttons()
+                return
+            import copy
+            export_snapshot = copy.copy(snapshot)
+            export_snapshot.price_records = [
+                record for record in snapshot.price_records
+                if bool(getattr(record, "is_global", False))
+                or str(getattr(record, "article_code", "") or "").strip() in base_codes
+            ]
+            if not export_snapshot.price_records:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "No computed price records match the selected articles.",
+                )
+                self._restore_export_buttons()
+                return
+            mdb_path = session.mdb_path
+        else:
+            mdb_path, _ = QFileDialog.getOpenFileName(
+                self, "Select existing OCD MDB" + (" to export prices into" if write else " to preview against"),
+                self._last_mdb_path, "Access database (*.mdb)",
+            )
+            if not mdb_path:
+                return
         self._last_mdb_path = mdb_path
-        self._wf = {"write": write, "path": mdb_path, "snapshot": snapshot, "targets": {}}
+        self._wf = {"write": write, "path": mdb_path, "snapshot": export_snapshot, "targets": {}}
         self._set_header_export_enabled(False)
         self._summary.setText("Reading price lists from the MDB...")
         self._lists_task = BackgroundTask(
