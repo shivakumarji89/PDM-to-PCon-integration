@@ -136,7 +136,7 @@ def test_export_to_session_inserts_selected_property_and_value_once(tmp_path):
         mdb_path=str(mdb_path),
         package_id=10,
         article_map={"BASE": {"mdb_id": 5}},
-        prototypes={"tCOMd_Property": {}, "tCOMd_PropValue": {}},
+        prototypes={"tCOMd_Property": {"com_StatusInfoID": 3}, "tCOMd_PropValue": {"com_StatusInfoID": 3}},
     )
     sessions = SimpleNamespace(
         product_key=lambda _snapshot: "id:p1",
