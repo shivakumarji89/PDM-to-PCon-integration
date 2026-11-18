@@ -13,7 +13,7 @@ from typing import Any
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
 from services.base_service import BaseService
-from services.class_creation_selection_service import build_class_creation_scope
+from services.class_creation_selection_service import build_class_creation_scope, classes_for_article
 from services.engineering.engineering_text_service import text_block_name
 from services.ocd_export_service import _TEXT_TYPE_OCD
 
@@ -168,7 +168,8 @@ class TextMdbExportService(BaseService):
                 continue
             key = (self._key(row.get("com_TextTypeCode")), self._key(row.get("com_TextName")))
             existing.setdefault(key, []).append(row)
-        next_id = max(self._next_id(data["texts"], "com_TextID"),\n                       self._int((data.get("text_max") or [{}])[0].get("max_id")) + 1)
+        next_id = max(self._next_id(data["texts"], "com_TextID"),
+                       self._int((data.get("text_max") or [{}])[0].get("max_id")) + 1)
         inserts: list[dict[str, Any]] = []
         updates: list[dict[str, Any]] = []
         text_id_by_key: dict[tuple[str, str], Any] = {}
@@ -203,10 +204,7 @@ class TextMdbExportService(BaseService):
         classes = self.context.engineering_class_service.get_classes(snapshot)
         assignments_by_class: dict[str, dict[str, Any]] = {}
         for article_id in selected:
-            for cls in __import__(
-                "services.class_creation_selection_service",
-                fromlist=["classes_for_article"],
-            ).classes_for_article(snapshot, classes, article_id):
+            for cls in classes_for_article(snapshot, classes, article_id):
                 bucket = assignments_by_class.setdefault(str(cls.name), {})
                 for assignment in getattr(cls, "properties", []) or []:
                     bucket[str(getattr(assignment, "property_id", "") or "")] = assignment
@@ -303,7 +301,8 @@ class TextMdbExportService(BaseService):
         plan = inserts + updates + property_updates + value_updates + article_updates
         counts = {"selected_articles": len(selected), "base_articles": len(base_codes),
                   "text_blocks_selected": len(chosen), "texts_inserted": len(inserts),
-                  "texts_updated": len(updates), "properties_linked": len(property_updates),\n                  "values_linked": len(value_updates), "articles_linked": len(article_updates)}
+                  "texts_updated": len(updates), "properties_linked": len(property_updates),
+                  "values_linked": len(value_updates), "articles_linked": len(article_updates)}
         result = {"ok": True, "dry_run": dry_run, "mdb_path": session.mdb_path,
                   "counts": counts, "operations": len(plan)}
         if dry_run:
@@ -319,7 +318,9 @@ class TextMdbExportService(BaseService):
         try:
             verified = db.read_tables(session.mdb_path, {
                 "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM tCOMd_Text",
-                "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",\n                "properties": "SELECT com_PropertyID, com_TextID FROM tCOMd_Property",\n                "values": "SELECT com_ValueID, com_TextID FROM tCOMd_PropValue",
+                "articles": "SELECT com_ArticleID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
+                "properties": "SELECT com_PropertyID, com_TextID FROM tCOMd_Property",
+                "values": "SELECT com_ValueID, com_TextID FROM tCOMd_PropValue",
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Text was written but read-back failed: {exc}"}
