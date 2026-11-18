@@ -107,7 +107,8 @@ def test_review_shows_exact_destination_and_token(world):
     _, plan = make_plan(world["prod"])
     auth = auth_for(world)
     text = staged_writer.review_text(plan, auth)
-    assert str(article_file(world["stage"])) in text and plan_fingerprint(plan, auth) in text and "NOTHING has been written" in text
+    # The review shows the resolved real destination (on Windows realpath normalises drive/directory case).
+    assert os.path.realpath(article_file(world["stage"])) in text and plan_fingerprint(plan, auth) in text and "NOTHING has been written" in text
 
 
 # -- refusals before any write ----------------------------------------------------------------------------------------
