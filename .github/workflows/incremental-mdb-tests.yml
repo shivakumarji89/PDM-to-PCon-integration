@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "services/*mdb_export_service.py"
+      - "services/pricing_service.py"
       - "services/class_creation_selection_service.py"
       - "services/engineering/engineering_relation_service.py"
       - "services/engineering/engineering_text_service.py"
