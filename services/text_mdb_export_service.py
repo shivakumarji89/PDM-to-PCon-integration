@@ -353,8 +353,12 @@ class TextMdbExportService(BaseService):
                     ]
                 else:
                     source_values = list(getattr(assignment, "values", []) or [])
+                seen_source_values: set[str] = set()
                 for source_value in source_values:
                     value_id = str(getattr(source_value, "value_id", "") or getattr(source_value, "id", "") or "")
+                    if not value_id or value_id in seen_source_values:
+                        continue
+                    seen_source_values.add(value_id)
                     allowed = (
                         scope.property_value_ids.get(source_id)
                         if source_id in scope.property_ids
