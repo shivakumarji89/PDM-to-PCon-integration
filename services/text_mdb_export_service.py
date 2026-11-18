@@ -101,8 +101,9 @@ class TextMdbExportService(BaseService):
             prop = prop_by_id.get(str(prop_id))
             if prop is None:
                 continue
-            key = assignment_text_names.get(str(prop_id), text_block_name(prop.name))
-            selected_names.add(("property", self._key(key)))
+            key = text_block_name(prop.name)
+            property_text_key = assignment_text_names.get(str(prop_id), key)
+            selected_names.add(("property", self._key(property_text_key)))
             for value in getattr(prop, "values", []) or []:
                 value_id = str(getattr(value, "id", "") or "")
                 allowed = scope.property_value_ids.get(str(prop_id))
@@ -116,8 +117,9 @@ class TextMdbExportService(BaseService):
             option = option_by_id.get(str(option_id))
             if option is None:
                 continue
-            key = assignment_text_names.get(str(option_id), text_block_name(option.name))
-            selected_names.add(("option", self._key(key)))
+            key = text_block_name(option.name)
+            option_text_key = assignment_text_names.get(str(option_id), key)
+            selected_names.add(("option", self._key(option_text_key)))
             for value in getattr(option, "values", []) or []:
                 value_id = str(getattr(value, "id", "") or "")
                 allowed = scope.option_value_ids.get(str(option_id))
