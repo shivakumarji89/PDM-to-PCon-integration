@@ -129,9 +129,21 @@ In Maintenance, the Pricing export / preview workflow now uses the active produc
 
 ## Validation status
 
-- Latest completed focused incremental MDB and pricing workflow (commit `f3743c0`): **158 passed, 6 subtests passed** (includes Article parity, Class Creation and Properties/Values export, repeat-export idempotency, bounded parallel-pricing regressions, and the pricing cancellation regression). The subsequent worker post-query cancellation checkpoint and strengthened cancellation fixture are committed after that run and require a fresh CI run.
-- Maintenance pricing/parity regression workflow: **247 passed, 6 subtests passed**.
-- Full repository suite on Ubuntu remains unresolved: the latest completed run (commit `f3743c0`) reported **5,403 passed, 26 failed, 84 skipped, 22 subtests passed**, then hit a Qt teardown segmentation fault. Failures are concentrated in SyteLine output/path tests, Windows-specific path expectations, legacy Maintenance UI assertions, and older async VARCOND tests. These failures have not all been independently baseline-run against `main`, so they remain an open regression gate. The pCon SDK page integration is excluded from Ubuntu because its Qt event loop segfaults on that runner.
-- Real Windows 32-bit ACE MDB validation is still required before production use: repeat exports, existing IDs, duplicate natural keys, rollback, foreign-key references and large-product timing have not been tested against a live MDB.
+Evidence below was produced locally on Windows 11, 64-bit Python 3.12.0, `QT_QPA_PLATFORM=offscreen`, at commit `ca9d56b` (branch `feature/incremental-class-creation`). No GitHub Actions run has been verified for this commit from this environment (`gh` is not installed); CI status is **pending**.
+
+| Gate | Result | Level |
+|---|---|---|
+| Focused incremental MDB + pricing set (the workflow's command) | 158 passed, 6 subtests, 2.4 s | unit/simulated |
+| `tests/test_mdb_export_session.py` against real 32-bit ACE (PowerShell 32) on **generated stand-in templates** | 14 passed, 718 s (each test 60-95 s) | integration, real ACE; NOT the real ProductStudio template |
+| Whole suite, one process per test file (all files except the session file above) | 5,510 passed, 12 failed, 15 skipped | mixed |
+| Whole suite in a single process | aborts with a Windows access violation inside `tests/test_pricing_worker_lifecycle.py::test_destroying_page_before_failure_reports_without_second_exception` (`QCoreApplication.processEvents`) in one run; the same file passes 3/3 in isolation; a second single-process run of `main` did not crash, so it is non-deterministic | Qt lifecycle, open |
+
+### The 12 per-file failures are not caused by this branch
+Seven files fail identically on `main` (805030a): `test_maintenance_snapshot_consistency` (3), `test_maintenance_source_tabs` (1), `test_maintenance_varcond` (3), `test_metatype_staged_writer` (1), `test_phase3_database_and_workspaces` (1), `test_workflow_shell` (2) all fail with the same counts on `main`; `test_module_home_page` fails 1 on the branch and 3 on `main` (flaky). Causes seen: tests referencing removed widgets (`ArticlesPage._actions_btn`, `PricingPage._pricelists_btn`), Windows path expectations in the Metatype/workspace tests, and the Maintenance VARCOND cache expectations. They are pre-existing and remain an **open gate**: they were not fixed here, and no test was removed or skipped.
+
+### Not validated (external requirements)
+- **Real ProductStudio MDB template**: none is in the repository or workspace. Stages other than Articles/session have not been run against the real schema; do not claim ACE parity for Class Creation, Properties, Text, Relations, Pricing or VARCOND until run with the real template under 32-bit Python + ACE.
+- **Live PDM pricing benchmark**: not run. Required: reachable SQL Server PDM; run the pricing compute for one large product with the 1-worker and 2-worker code paths and record wall time.
+- **Windows click-through of the packaged app** and **pCon.basket** opening of the final MDB: pending, require a human on a machine with the packaged build and pCon.basket.
 
 Value Combination tables remain explicitly out of scope. Do not use the legacy full exporter for these incremental workflows.
