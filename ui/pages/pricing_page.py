@@ -9,6 +9,8 @@ the stored baseline so only changed cells stand out.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import shiboken6
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QBrush, QColor
@@ -775,6 +777,24 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 self, "Export Prices", result.get("error") or "Price export failed."
             )
             return
+        if self.is_maintenance_module():
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(self._wf["snapshot"])
+                if session is not None and Path(session.mdb_path).resolve() == Path(mdb_path).resolve():
+                    sessions.record_workflow(session, "pricing", {
+                        "inserted_prices": result.get("inserted_prices", 0),
+                        "inserted_global_prices": result.get("inserted_global_prices", 0),
+                        "updated_prices": result.get("updated_prices", 0),
+                        "updated_global_prices": result.get("updated_global_prices", 0),
+                        "inserted_price_lists": result.get("inserted_price_lists", 0),
+                    })
+                    sessions.save(session)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self, "Price Export Session",
+                    f"Price rows were exported, but workflow status could not be saved: {exc}",
+                )
         self._summary.setText(
             f"Export complete: {result.get('inserted_prices', 0) + result.get('inserted_global_prices', 0):,} "
             f"rows added, {result.get('updated_prices', 0) + result.get('updated_global_prices', 0):,} corrected."
