@@ -1738,6 +1738,153 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(self, "Export XOCD", message)
 
+    def _on_export_varcond_relations_session(self, page, snapshot) -> None:
+        """Incrementally export selected complete VARCOND groups into the product MDB."""
+        from copy import copy
+        from PySide6.QtWidgets import QMessageBox
+        from services.pricing_relation_service import prepare_price_relation_export
+        from services.relation_mdb_export_service import RelationMdbExportService
+
+        title = "Export VARCOND Relations"
+        articles_page = next(
+            (item for item in (getattr(self, "_pages", {}) or {}).values()
+             if callable(getattr(item, "selected_export_article_ids", None))),
+            None,
+        )
+        selected_ids = (
+            articles_page.selected_export_article_ids() if articles_page is not None else set()
+        )
+        if not selected_ids:
+            QMessageBox.information(
+                self, title,
+                "Select one or more articles in the Articles page Export column first.",
+            )
+            return
+        try:
+            sessions = self._context.mdb_export_session_service
+            session = sessions.get_active(snapshot)
+        except Exception as exc:
+            QMessageBox.warning(self, title, str(exc))
+            return
+        if session is None:
+            QMessageBox.information(
+                self, title, "Export Articles first to initialize this product's MDB session."
+            )
+            return
+        panel = page._varcond_panel
+        try:
+            plan = panel.prepare_relation_export(selected_article_ids=selected_ids)
+        except RuntimeError as exc:
+            QMessageBox.information(self, title, str(exc))
+            return
+
+        if QMessageBox.question(
+            self, title,
+            "This updates the existing product MDB session with the generated VARCOND "
+            "relations for the selected complete relation groups. It does not create a "
+            "second MDB or rebuild unrelated product data.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        runner = self._exports()
+        if not runner.begin(title):
+            self._export_already_running(title)
+            return
+
+        def failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, title, message)
+
+        def generation_finished(payload) -> None:
+            runner.end()
+            kind, value = payload
+            if kind == "message":
+                QMessageBox.information(self, title, value)
+                return
+            export_snapshot = copy(snapshot)
+            try:
+                prepare_price_relation_export(self._context, export_snapshot, value)
+            except Exception as exc:
+                QMessageBox.warning(self, title, f"VARCOND relation validation failed:\\n{exc}")
+                return
+
+            service = RelationMdbExportService(self._context)
+            if not runner.begin(title + " Preview"):
+                self._export_already_running(title)
+                return
+
+            def preview_finished(preview: dict) -> None:
+                runner.end()
+                if not preview.get("ok"):
+                    QMessageBox.warning(
+                        self, title, preview.get("error", "VARCOND export preview failed.")
+                    )
+                    return
+                counts = preview.get("counts", {})
+                summary = (
+                    f"Destination: {session.mdb_path}\n\n"
+                    + "\n".join(
+                        f"{name.replace('_', ' ').title()}: {count}"
+                        for name, count in counts.items()
+                    )
+                    + "\n\nExisting relation and relation-object IDs will be preserved. "
+                      "Only missing rows and changed relation bodies / entity links will be written."
+                )
+                if QMessageBox.question(
+                    self, "Confirm " + title, summary,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
+                if not runner.begin(title):
+                    self._export_already_running(title)
+                    return
+
+                def write_finished(result: dict) -> None:
+                    runner.end()
+                    if not result.get("ok"):
+                        QMessageBox.critical(
+                            self, title, result.get("error", "VARCOND relation export failed.")
+                        )
+                        return
+                    QMessageBox.information(
+                        self, title,
+                        "VARCOND relations were exported to the existing product MDB.\n\n"
+                        + "\n".join(
+                            f"{name.replace('_', ' ').title()}: {count}"
+                            for name, count in result.get("counts", {}).items()
+                        )
+                        + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+                    )
+
+                runner.run(
+                    lambda _emit: service.export_to_session(
+                        export_snapshot, session, selected_article_ids=selected_ids,
+                        workflow="pricing_relations",
+                    ),
+                    finished=write_finished,
+                    failed=failed,
+                )
+
+            runner.run(
+                lambda _emit: service.export_to_session(
+                    export_snapshot, session, selected_article_ids=selected_ids,
+                    dry_run=True, workflow="pricing_relations",
+                ),
+                finished=preview_finished,
+                failed=failed,
+            )
+
+        def work(emit):
+            try:
+                return "relations", panel.build_relation_objects(plan, emit)
+            except RuntimeError as exc:
+                return "message", str(exc)
+
+        runner.run(work, finished=generation_finished, failed=failed)
+
     def _on_export_varcond_relations_mdb(self, page) -> None:
         """Include the complete generated VARCOND relation set in the MDB export."""
         from PySide6.QtWidgets import QMessageBox
@@ -1757,6 +1904,9 @@ class MainWindow(QMainWindow):
         )
         if snapshot is None or snapshot.product is None:
             QMessageBox.information(self, "Export VARCOND Relations", "Load a product first.")
+            return
+        if self._active_module == WorkbenchModule.MAINTENANCE:
+            self._on_export_varcond_relations_session(page, snapshot)
             return
         title = "Export VARCOND Relations"
         panel = page._varcond_panel
