@@ -21,6 +21,7 @@ on:
       - "tests/test_engineering_relation_service.py"
       - "tests/test_price_mdb_export_service.py"
       - "tests/test_pricing_export_workflow.py"
+      - "tests/test_pricing_parallel_batches.py"
       - "tests/test_pricing_page_text_blocks.py"
       - ".github/workflows/incremental-mdb-tests.yml"
 
@@ -58,4 +59,5 @@ jobs:
             tests/test_engineering_relation_service.py \
             tests/test_price_mdb_export_service.py \
             tests/test_pricing_export_workflow.py \
+            tests/test_pricing_parallel_batches.py \
             tests/test_pricing_page_text_blocks.py
