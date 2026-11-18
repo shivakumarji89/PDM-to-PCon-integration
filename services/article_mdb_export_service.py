@@ -93,14 +93,13 @@ class ArticleMdbExportService(BaseService):
                 if selected is not None and article_id not in selected:
                     continue
                 article = articles.get(article_id)
-                if article is None or not str(article.code or "").strip():
-                    continue
-                source_code = str(article.code).strip()
+                source_code = str(getattr(article, "code", "") or "").strip()
+                # Keep the Development/full-export rule exactly: price base first,
+                # then member.reduced_article. Do not invent a base by splitting
+                # the source code; _base_codes() does not do that.
                 code = (base_of.get(source_code) or "").strip() or str(
                     getattr(member, "reduced_article", "") or ""
                 ).strip()
-                if not code:
-                    code = source_code[:source_code.find(".")] if "." in source_code else source_code
                 if not code:
                     continue
                 # One MDB base-article row per base code. The first member is
@@ -109,7 +108,9 @@ class ArticleMdbExportService(BaseService):
                     "code": code,
                     "relation_name": str(getattr(member, "relation_object", "") or "").strip()
                                      or f"P_{code}",
-                    "scheme_name": str(getattr(member, "code_scheme", "") or "").strip() or code,
+                    # Development _code_schemes() names each scheme after its
+                    # base article code; member.code_scheme is not its authority.
+                    "scheme_name": code,
                     "short_text": str(getattr(member, "short_description", "") or "").strip(),
                     "long_text": str(getattr(member, "long_description", "") or "").strip(),
                     "member_ids": [],
@@ -119,8 +120,9 @@ class ArticleMdbExportService(BaseService):
                 entry["member_ids"].append(str(getattr(member, "id", "") or ""))
                 if article_id not in entry["source_ids"]:
                     entry["source_ids"].append(article_id)
-                    entry["source_codes"].append(source_code)
-                for field, attr in (("relation_name", "relation_object"), ("scheme_name", "code_scheme"),
+                    if source_code:
+                        entry["source_codes"].append(source_code)
+                for field, attr in (("relation_name", "relation_object"),
                                     ("short_text", "short_description"), ("long_text", "long_description")):
                     value = str(getattr(member, attr, "") or "").strip()
                     if value and not entry[field]:
