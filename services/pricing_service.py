@@ -350,9 +350,8 @@ class PricingService(BaseService):
 
         repo = PDMRepository(self.context)
         checkpoint()
-        # Each pricing worker opens and owns its own connection. The coordinator
-        # opens a separate connection only after pricing finishes, for the final
-        # product-code lookup; it is never held idle while workers are running.
+        # Workers own their connections. The coordinator opens one only after
+        # pricing completes, avoiding an idle third connection during the batch.
         token = current_token()
         if reporter is not None:
             reporter.note("Preparing pricing workers...")
@@ -406,63 +405,68 @@ class PricingService(BaseService):
                     worker_conn.close()
 
         for cur_index, cur in enumerate(currencies):
-                checkpoint()
-                cparams = replace(params, currency=cur, program_code=program_code)
-                chunks = [
-                    (start, items[start:start + step])
-                    for start in range(0, n, step)
-                ]
-                worker_count = min(2, len(chunks))
-                if reporter is not None:
-                    reporter.note(
-                        f"Pricing {cur}: processing {len(chunks)} batches "
-                        f"with {worker_count} worker(s)..."
-                    )
+            checkpoint()
+            cparams = replace(params, currency=cur, program_code=program_code)
+            chunks = [
+                (start, items[start:start + step])
+                for start in range(0, n, step)
+            ]
+            worker_count = min(2, len(chunks))
+            if reporter is not None:
+                reporter.note(
+                    f"Pricing {cur}: processing {len(chunks)} batches "
+                    f"with {worker_count} worker(s)..."
+                )
 
-                # executor.map yields in submission order. Workers may finish in
-                # a different order, but records and UI batches remain in the
-                # original PDM item order.
-                with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                    futures = executor.map(
-                        lambda batch: price_chunk(
-                            batch[0], batch[1], cur, cparams
-                        ),
-                        chunks,
-                    )
-                    for start, completed in futures:
-                        checkpoint()
-                        for offset, (item, records, unres) in enumerate(completed):
-                            item_no = start + offset + 1
-                            all_records.extend(records)
-                            unresolved.extend(unres)
+            # executor.map yields in submission order. Workers may finish in
+            # a different order, but records and UI batches remain in the
+            # original PDM item order.
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = executor.map(
+                    lambda batch: price_chunk(
+                        batch[0], batch[1], cur, cparams
+                    ),
+                    chunks,
+                )
+                for start, completed in futures:
+                    checkpoint()
+                    for offset, (item, records, unres) in enumerate(completed):
+                        item_no = start + offset + 1
+                        all_records.extend(records)
+                        unresolved.extend(unres)
 
-                            # Preserve item-granular UI streaming and progress.
-                            if on_batch is not None and records:
-                                on_batch(records)
+                        # Preserve item-granular UI streaming and progress.
+                        if on_batch is not None and records:
+                            on_batch(records)
 
-                            pid = product_by_item.get(item)
-                            if pid:
-                                products_seen.add(pid)
+                        pid = product_by_item.get(item)
+                        if pid:
+                            products_seen.add(pid)
 
-                            if reporter is not None:
-                                overall_processed = cur_index * n + item_no
-                                reporter.advance(
-                                    f"Pricing {cur} {item_no}/{n} items..."
-                                )
-                                reporter.set_metrics([
-                                    ("items", "Items Priced",
-                                     overall_processed, f" / {n * ncur}"),
-                                    ("records", "Price Records",
-                                     len(all_records), ""),
-                                    ("products", "Products",
-                                     len(products_seen), f" / {total_products}"),
-                                    ("unresolved", "Unresolved",
-                                     len(unresolved), ""),
-                                ])
+                        if reporter is not None:
+                            overall_processed = cur_index * n + item_no
+                            reporter.advance(
+                                f"Pricing {cur} {item_no}/{n} items..."
+                            )
+                            reporter.set_metrics([
+                                ("items", "Items Priced",
+                                 overall_processed, f" / {n * ncur}"),
+                                ("records", "Price Records",
+                                 len(all_records), ""),
+                                ("products", "Products",
+                                 len(products_seen), f" / {total_products}"),
+                                ("unresolved", "Unresolved",
+                                 len(unresolved), ""),
+                            ])
 
-            self._attach_product_codes(all_records, repo, conn, params.site_id)
-        finally:
-            conn.close()
+        if all_records:
+            checkpoint()
+            conn = repo.get_connection()
+            try:
+                self._attach_product_codes(all_records, repo, conn, params.site_id)
+            finally:
+                conn.close()
+
 
         commit()
         snapshot.price_records = self._accumulate_currencies(
