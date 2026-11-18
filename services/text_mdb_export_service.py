@@ -132,7 +132,7 @@ class TextMdbExportService(BaseService):
             data = db.read_tables(session.mdb_path, {
                 "package": f"SELECT com_PackageID FROM tCOMd_Package WHERE com_PackageID = {int(package_id)}",
                 "texts": "SELECT * FROM tCOMd_Text",
-                "articles": "SELECT com_ArticleID, com_ArticleCode, com_PackageID FROM tCOMd_Article",
+                "articles": "SELECT com_ArticleID, com_ArticleCode, com_PackageID, com_ShortTextID, com_LongTextID FROM tCOMd_Article",
             })
         except Exception as exc:
             return {"ok": False, "error": f"Could not read the session MDB: {exc}"}
