@@ -156,6 +156,12 @@ class RelationMdbExportService(BaseService):
         next_obj = self._next_id(data["objects"], "com_RelObjID")
         next_relation = self._next_id(data["relations"], "com_RelationID")
         next_link = self._next_id(data["links"], "com_RelObjRelID")
+        existing_link_keys = {
+            (str(row.get("com_RelObjID")), str(row.get("com_RelationID")),
+             str(row.get("com_RelObjTypeCode")), str(row.get("com_RelObjDomainCode")),
+             str(row.get("com_RelationOrder")))
+            for row in data["links"]
+        }
         inserts: list[dict[str, Any]] = []
         updates: list[dict[str, Any]] = []
         object_id_by_name: dict[str, int] = {}
@@ -230,21 +236,18 @@ class RelationMdbExportService(BaseService):
             relation_id_by_name[name_key] = relation_id
 
             # A RelObjRel link is unique by object/relation/type/domain/order.
-            exists = any(
-                str(row.get("com_RelObjID")) == str(obj_id)
-                and str(row.get("com_RelationID")) == str(relation_id)
-                and str(row.get("com_RelObjTypeCode")) == str(getattr(rel, "type_code", "1"))
-                and str(row.get("com_RelObjDomainCode")) == str(getattr(rel, "domain", "C"))
-                and str(row.get("com_RelationOrder")) == str(getattr(rel, "order", 100))
-                for row in data["links"]
+            link_key = (
+                str(obj_id), str(relation_id), str(getattr(rel, "type_code", "1")),
+                str(getattr(rel, "domain", "C")), str(getattr(rel, "order", 100)),
             )
-            if not exists:
+            if link_key not in existing_link_keys:
                 inserts.append({"op": "insert", "table": "tCOMd_RelObjRel",
                                 "rows": [{"com_RelObjRelID": next_link, **link_proto,
                                           "com_RelObjID": obj_id, "com_RelationID": relation_id,
                                           "com_RelObjTypeCode": str(getattr(rel, "type_code", "1")),
                                           "com_RelObjDomainCode": str(getattr(rel, "domain", "C")),
                                           "com_RelationOrder": self._int(getattr(rel, "order", 100))}]})
+                existing_link_keys.add(link_key)
                 next_link += 1
 
         # Apply relation-object references only to entities in the selected scope.
