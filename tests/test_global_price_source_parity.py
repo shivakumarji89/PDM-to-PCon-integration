@@ -303,8 +303,14 @@ def test_compute_paths_preserve_lookup_and_target(monkeypatch, streaming, progra
     snapshot.generation_program = program
     snapshot.article_components = {"1": [{"sub_item": "RYMPSH.12SW"}]}
     calls = []
-    connection = SimpleNamespace(close=lambda: calls.append("closed"))
-    monkeypatch.setattr(PDMRepository, "get_connection", lambda self: connection)
+    connections = []
+
+    def get_connection(self):
+        connection = SimpleNamespace(close=lambda: calls.append("closed"))
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(PDMRepository, "get_connection", get_connection)
     monkeypatch.setattr(PDMRepository, "fetch_item_base_prices", lambda *a, **kw: [])
     monkeypatch.setattr(PricingService, "_attach_product_codes", lambda *a: None)
 
@@ -325,10 +331,15 @@ def test_compute_paths_preserve_lookup_and_target(monkeypatch, streaming, progra
         result = service.compute_streaming(params, snapshot, on_batch=batches.extend)
     else:
         result = service.compute(params, snapshot)
-    assert calls == [
+    assert [call for call in calls if call != "closed"] == [
         (["RYMPSH.12SW"], cur, {"catalogue_id": "658", "program_code": program})
         for cur in ["EUR", "GBP"]
-    ] + ["closed"]
+    ]
+    # The non-streaming path owns one connection; streaming uses one worker
+    # connection per currency plus a final coordinator lookup connection.
+    expected_connections = 3 if streaming else 1
+    assert len(connections) == expected_connections
+    assert calls.count("closed") == expected_connections
     target = "RYMPSH.12SWOKG" if program == "memo" else "RYMPSH.12SW 3848=OKG"
     lookup = target if program == "memo" else "3848=RYMPSH.12SW_OKG"
     assert [(r.currency, r.variant_condition, r.pdm_lookup_code, r.value)
