@@ -179,8 +179,8 @@ class RelationMdbExportService(BaseService):
         package_relations = [r for r in data["relations"] if str(r.get("com_PackageID")) == str(package_id)]
         object_by_name: dict[str, list[dict[str, Any]]] = {}
         relation_by_name: dict[str, list[dict[str, Any]]] = {}
-        object_by_id = {str(row.get("com_RelObjID")): row for row in package_objects}
-        relation_by_id = {str(row.get("com_RelationID")): row for row in package_relations}
+        object_by_id = {self._int(row.get("com_RelObjID")): row for row in package_objects}
+        relation_by_id = {self._int(row.get("com_RelationID")): row for row in package_relations}
         for row in package_objects:
             object_by_name.setdefault(self._key(row.get("com_RelObjName")), []).append(row)
         for row in package_relations:
