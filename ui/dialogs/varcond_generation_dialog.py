@@ -607,17 +607,53 @@ class VarCondGenerationPanel(QWidget):
         """
         return self.build_relation_objects(self.prepare_relation_export())
 
-    def prepare_relation_export(self) -> "_RelationExportPlan":
+    def prepare_relation_export(
+        self, selected_article_ids: set[str] | None = None,
+    ) -> "_RelationExportPlan":
         """GUI thread: validate and collect everything the relation build needs.
 
-        Raises ``RuntimeError`` with the user-facing message when nothing can be exported yet.
+        Maintenance incremental exports may pass the Articles-page selection.
+        A VARCOND relation is shared by every article in its prefix group, so a
+        partial group is rejected rather than replacing a shared relation body
+        with rules for only part of its existing article coverage.
         """
         if self._maintenance_load_task is not None:
             raise RuntimeError("Wait for PDM source loading to finish before exporting VARCOND relations.")
 
-        parent_codes = [row[0] for row in self._article_rows]
-        if not parent_codes:
+        all_rows = list(self._article_rows)
+        if not all_rows:
             raise RuntimeError("No parent articles with BOM data are available to export.")
+        selected = (
+            {str(value) for value in selected_article_ids if str(value)}
+            if selected_article_ids is not None else None
+        )
+        if selected is not None:
+            if not selected:
+                raise RuntimeError("Select one or more articles in the Articles page Export column first.")
+            rows_by_prefix: dict[str, list] = {}
+            length = self._relation_length.value()
+            for row in all_rows:
+                code, _label, article_id = row
+                prefix = code[:length] if len(code) > length else code
+                rows_by_prefix.setdefault("PA_" + prefix, []).append(row)
+            selected_rows = []
+            for relation_name, rows in rows_by_prefix.items():
+                group_ids = {str(row[2]) for row in rows}
+                selected_in_group = group_ids & selected
+                if selected_in_group and selected_in_group != group_ids:
+                    raise RuntimeError(
+                        f"VARCOND relation {relation_name} is shared by {len(group_ids)} articles. "
+                        "Select every article in that relation group before exporting it."
+                    )
+                if selected_in_group:
+                    selected_rows.extend(rows)
+            article_rows = selected_rows
+        else:
+            article_rows = all_rows
+
+        parent_codes = [row[0] for row in article_rows]
+        if not parent_codes:
+            raise RuntimeError("The selected articles do not contain a complete VARCOND relation group.")
 
         if self._maintenance_check():
             service = self._ensure_maintenance_service()
@@ -626,7 +662,7 @@ class VarCondGenerationPanel(QWidget):
 
         length = self._relation_length.value()
         groups: dict[str, list[tuple[str, str]]] = {}
-        for code, _label, article_id in self._article_rows:
+        for code, _label, article_id in article_rows:
             prefix = code[:length] if len(code) > length else code
             groups.setdefault("PA_" + prefix, []).append((code, article_id))
 
