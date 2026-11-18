@@ -16,6 +16,8 @@ and the ``Export MDB (Direct)`` menu action. Nothing else depends on it.
 """
 from __future__ import annotations
 
+import os
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -154,6 +156,8 @@ class OcdExportResult:
     registry_overrides: dict[str, int] = field(default_factory=dict)
     registry_path: str = ""
     permutation_count: int | None = None
+    #: The destination MDB already exists and ``overwrite`` was not granted; nothing was touched.
+    destination_exists: bool = False
 
 
 class OcdExportService(BaseService):
@@ -163,9 +167,13 @@ class OcdExportService(BaseService):
 
     def export(
         self, snapshot: Snapshot, dest: str | Path, template_kind: str | None = None,
-        selected_article_ids: set[str] | None = None,
+        selected_article_ids: set[str] | None = None, overwrite: bool = False,
     ) -> OcdExportResult:
         """Export ``snapshot`` into a copied template MDB at ``dest``.
+
+        The MDB is built in a temporary file next to ``dest`` and moved into place only after
+        the transactional write and a row-count check succeeded, so a failed export never
+        damages a previous file. An existing destination is replaced only with ``overwrite=True``.
 
         ``dest`` may be the target ``.mdb`` file or a folder (the standard
         ``pcr_data_com_ocd.mdb`` is then written inside it). ``template_kind`` is
@@ -216,17 +224,68 @@ class OcdExportService(BaseService):
             )
             return result
 
-        try:
-            mdb_svc.copy_template(template, mdb)
-        except OSError as exc:
-            result.error = f"Copy template failed: {exc}"
+        if mdb.exists() and not overwrite:
+            result.destination_exists = True
+            result.error = (
+                f"{mdb} already exists. The export creates a new full MDB and will not "
+                "overwrite it without explicit confirmation."
+            )
             return result
 
+        work = mdb.with_name(f"{mdb.name}.{uuid.uuid4().hex[:8]}.tmp")
+        try:
+            try:
+                mdb_svc.copy_template(template, work)
+            except OSError as exc:
+                result.error = f"Copy template failed: {exc}"
+                return result
+            self._populate(snapshot, work, result, selected_article_ids)
+            if result.error or not result.ok:
+                result.ok = False
+                return result
+            problem = self._verify_counts(mdb_svc, work, result)
+            if problem:
+                result.ok, result.error = False, problem
+                return result
+            try:
+                os.replace(work, mdb)
+            except OSError as exc:
+                result.ok = False
+                result.error = f"Could not replace {mdb}: {exc}. The existing file was left unchanged."
+                return result
+            return result
+        finally:
+            try:
+                work.unlink()
+            except OSError:
+                pass
+
+    @staticmethod
+    def _verify_counts(mdb_svc, mdb: Path, result: OcdExportResult) -> str | None:
+        """Read the written file back: every planned table must hold exactly its planned rows."""
+        for table, expected in result.table_counts.items():
+            rows = mdb_svc.read_table(mdb, f"SELECT COUNT(*) AS n FROM [{table}]")
+            actual = next(iter(rows[0].values()), None) if rows else None
+            try:
+                actual = int(actual)
+            except (TypeError, ValueError):
+                return f"Could not verify {table} after writing; the export was discarded."
+            if actual != expected:
+                return (f"Verification failed: {table} holds {actual} row(s), expected {expected}; "
+                        "the export was discarded.")
+        return None
+
+    def _populate(
+        self, snapshot: Snapshot, mdb: Path, result: OcdExportResult,
+        selected_article_ids: set[str] | None,
+    ) -> None:
+        """Fill the freshly copied template ``mdb`` (the temporary file) with the snapshot."""
+        mdb_svc = self.context.mdb_service
         # Package/ComGroup ids to rename; prototype rows for NOT-NULL boilerplate.
         pkg = mdb_svc.read_table(mdb, "SELECT com_PackageID, com_ComGroupID, com_ManufacturerID FROM tCOMd_Package")
         if not pkg:
             result.error = "Template tCOMd_Package is empty."
-            return result
+            return
         package_id = pkg[0]["com_PackageID"]
         comgroup_id = pkg[0]["com_ComGroupID"]
         manufacturer_rows = mdb_svc.read_table(
@@ -264,7 +323,7 @@ class OcdExportService(BaseService):
             material_map_id, result, selected_article_ids
         )
         if result.error:
-            return result
+            return
 
         ops: list[dict[str, Any]] = [{"op": "delete", "table": t} for t in _PRODUCT_TABLES]
         ops.append({"op": "update", "table": "tCOMd_Package",
@@ -284,14 +343,13 @@ class OcdExportService(BaseService):
             if rows:
                 ops.append({"op": "insert", "table": table, "rows": rows})
 
-        batch = mdb_svc.execute_batch(mdb, ops)
+        batch = mdb_svc.execute_batch(mdb, ops, transaction=True)
         result.ok = batch.ok
         result.error = batch.first_error()
         result.logs.append(
             f"Wrote {sum(result.table_counts.values())} rows across "
-            f"{len(result.table_counts)} table(s) into {mdb}"
+            f"{len(result.table_counts)} table(s) into {result.mdb_path}"
         )
-        return result
 
     # -- Read-only generation preview -----------------------------------
 
