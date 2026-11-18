@@ -32,6 +32,7 @@ class RelationMdbExportService(BaseService):
     def export_to_session(
         self, snapshot: Snapshot, session: MdbExportSession,
         selected_article_ids: set[str] | None = None, dry_run: bool = False,
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Relations."}
