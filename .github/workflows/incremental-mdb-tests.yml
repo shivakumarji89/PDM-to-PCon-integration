@@ -27,6 +27,9 @@ on:
       - "tests/test_application_cancellation.py"
       - "docs/03_Workflows/productstudio_incremental_mdb_export.md"
       - "tests/test_pricing_page_text_blocks.py"
+      - "tests/test_class_creation_scheme_clone.py"
+      - "tests/test_relation_link_preservation.py"
+      - "services/relation_link_policy.py"
       - ".github/workflows/incremental-mdb-tests.yml"
 
 jobs:
@@ -66,4 +69,6 @@ jobs:
             tests/test_pricing_export_workflow.py \
             tests/test_pricing_parallel_batches.py \
             tests/test_application_cancellation.py::test_pricing_cancel_after_base_query_preserves_complete_snapshot \
+            tests/test_class_creation_scheme_clone.py \
+            tests/test_relation_link_preservation.py \
             tests/test_pricing_page_text_blocks.py \

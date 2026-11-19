@@ -157,6 +157,43 @@ def integrity(state: dict, schema: Schema) -> dict:
     return {"fk_orphans": orphans, "unique_violations": dups}
 
 
+def invariants(base: dict, final: dict, selected_ids: set) -> dict:
+    """Whole-run safety checks against the baseline MDB (all must be empty / True for a pass)."""
+    def keyed(state, table, pk):
+        return {r.get(pk): r for r in state[table]["rows"]}
+
+    a0, a1 = keyed(base, "tCOMd_Article", "com_ArticleID"), keyed(final, "tCOMd_Article", "com_ArticleID")
+    changed = {k: sorted(c for c in a1[k] if a1[k].get(c) != a0[k].get(c)) for k in a0 if k in a1 and a1[k] != a0[k]}
+    s0, s1 = keyed(base, "tCOMd_CodeScheme", "com_CodeSchemeID"), keyed(final, "tCOMd_CodeScheme", "com_CodeSchemeID")
+    users: dict = {}
+    for row in a1.values():
+        users.setdefault(row.get("com_CodeSchemeID"), set()).add(row.get("com_ArticleID"))
+    changed_schemes = [k for k in s0 if k in s1 and s0[k] != s1[k]]
+    columns: dict = {}
+    for cols in changed.values():
+        for c in cols:
+            columns[c] = columns.get(c, 0) + 1
+    names = {k: r.get("com_CodeSchemeName") for k, r in s1.items()}
+    return {
+        "selected_articles": len(selected_ids),
+        "unselected_articles_changed": sorted(k for k in changed if k not in selected_ids),
+        "articles_removed": sorted(k for k in a0 if k not in a1),
+        "article_columns_changed": columns,
+        "articles_with_relobj_link_changed": sorted(k for k, cols in changed.items() if "com_RelObjID" in cols),
+        "articles_reassigned_to_scheme": {k: names.get(a1[k].get("com_CodeSchemeID"))
+                                          for k, cols in changed.items() if "com_CodeSchemeID" in cols},
+        "schemes_removed": sorted(k for k in s0 if k not in s1),
+        "schemes_added": sorted(names[k] for k in s1 if k not in s0),
+        "existing_schemes_modified": [names[k] for k in changed_schemes],
+        "modified_schemes_have_unselected_users": [
+            names[k] for k in changed_schemes if users.get(k, set()) - selected_ids],
+        "modified_schemes_only_extended": all(
+            str(s1[k].get("com_CodeSchemeBody") or "").startswith(str(s0[k].get("com_CodeSchemeBody") or ""))
+            for k in changed_schemes),
+        "unmodified_existing_schemes": len([k for k in s0 if k in s1 and k not in changed_schemes]),
+    }
+
+
 def compact(result: dict) -> dict:
     """Scalars and small count dicts of a stage result; lists are reduced to their length."""
     keep = {}
@@ -253,6 +290,10 @@ def main() -> int:
     ap.add_argument("--name", required=True)
     ap.add_argument("--stages", default=",".join(STAGES))
     ap.add_argument("--limit", type=int, default=0, help="use only the first N articles")
+    ap.add_argument("--select-codes", default="",
+                    help="comma-separated BASE article codes for the full selection (overrides --limit)")
+    ap.add_argument("--first-codes", default="",
+                    help="comma-separated BASE codes for the first batch (default: same as --select-codes)")
     ap.add_argument("--template-kind", default="hm_seating")
     ap.add_argument("--price-date", default=time.strftime("%d-%b-%Y"), help="PDM computation date, dd-MMM-yyyy")
     ap.add_argument("--price-valid-from", default="2026-04-06")
@@ -296,6 +337,22 @@ def main() -> int:
         articles = articles[: args.limit]
     all_ids = {str(a.id) for a in articles}
     half = {str(a.id) for a in articles[: max(1, len(articles) // 2)]}
+    if args.select_codes:
+        # Scenario selection by BASE article code (e.g. one article of a shared scheme).
+        entries = ctx.xocd_export_service.base_code_entries(snapshot)
+        by_code: dict[str, set[str]] = {}
+        for article_id, base_code in entries:
+            by_code.setdefault(str(base_code), set()).add(str(article_id))
+        wanted = [c.strip() for c in args.select_codes.split(",") if c.strip()]
+        first = [c.strip() for c in (args.first_codes or args.select_codes).split(",") if c.strip()]
+        missing = [c for c in wanted + first if c not in by_code]
+        if missing:
+            raise SystemExit(f"base article code(s) not in the snapshot: {missing}")
+        all_ids = set().union(*(by_code[c] for c in wanted))
+        half = set().union(*(by_code[c] for c in first))
+    selected_base_codes = None
+    if args.select_codes:
+        selected_base_codes = set(wanted)
     print(f"snapshot: {len(snapshot.articles)} articles, using {len(all_ids)} (first batch {len(half)})", flush=True)
 
     evidence = {"name": args.name, "source": str(source), "copy": str(dest), "source_sha256": src_hash,
@@ -450,6 +507,12 @@ def main() -> int:
 
     evidence["final_delta_vs_baseline"] = delta(base_state, state)
     evidence["final_integrity"] = integrity(state, schema)
+    final_session = sessions.get_active(snapshot)
+    selected_codes = selected_base_codes or set(final_session.article_map)
+    selected_mdb_ids = {entry["mdb_id"] for code, entry in final_session.article_map.items()
+                        if code in selected_codes and entry.get("mdb_id") is not None}
+    evidence["invariants"] = invariants(base_state, state, selected_mdb_ids)
+    print("invariants:", json.dumps(evidence["invariants"], indent=1, default=str), flush=True)
     after_hash = sha256(source)
     evidence["source_sha256_after"] = after_hash
     evidence["source_unchanged"] = after_hash == src_hash
