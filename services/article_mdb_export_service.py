@@ -218,11 +218,6 @@ class ArticleMdbExportService(BaseService):
             "group": "SELECT TOP 1 com_ComGroupID FROM [tCOMd_ComGroup]",
             "schemes": "SELECT com_CodeSchemeID, com_CodeSchemeName, com_PackageID FROM [tCOMd_CodeScheme]",
             "relobjs": "SELECT com_RelObjID, com_RelObjName, com_PackageID FROM [tCOMd_RelObj]",
-            "relobj_links": (
-                "SELECT com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, "
-                "com_RelationOrder FROM [tCOMd_RelObjRel]"
-            ),
-            "relations": "SELECT com_RelationID, com_RelationName FROM [tCOMd_Relation]",
             "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM [tCOMd_Text]",
             "max_article": "SELECT MAX(com_ArticleID) AS max_id FROM [tCOMd_Article]",
             "max_scheme": "SELECT MAX(com_CodeSchemeID) AS max_id FROM [tCOMd_CodeScheme]",
@@ -296,7 +291,7 @@ class ArticleMdbExportService(BaseService):
         conflicts: list[dict[str, Any]] = []
         # Link policy: in an attached production workspace an existing valid link is preserved.
         attached = in_session and is_attached(session)
-        describer = LinkDescriber(data.get("relobjs", []), data.get("relobj_links", []), data.get("relations", []))
+        describer = LinkDescriber(data.get("relobjs", []))  # existence + names; relation info is read lazily
         scheme_rows = {str(r.get("com_CodeSchemeID")): r for r in data.get("schemes", [])}
         scheme_describer = LinkDescriber(
             [{"com_RelObjID": r.get("com_CodeSchemeID"), "com_RelObjName": r.get("com_CodeSchemeName")}
@@ -361,8 +356,8 @@ class ArticleMdbExportService(BaseService):
                                        valid=lambda v: str(v) in scheme_rows)
                 row_values["com_CodeSchemeID"] = value
                 if action in ("preserved", "replaced"):
-                    conflicts.append(conflict_entry("code_scheme", f"Article '{code}'", old.get("com_CodeSchemeID"),
-                                                    scheme_id, action, scheme_describer, "com_CodeSchemeID"))
+                    conflicts.append(("code_scheme", f"Article '{code}'", old.get("com_CodeSchemeID"),
+                                      scheme_id, action))
             elif scheme_id is not None:
                 row_values["com_CodeSchemeID"] = scheme_id
             elif old is not None:
@@ -375,8 +370,8 @@ class ArticleMdbExportService(BaseService):
                                        replace_existing=replace_existing_links, valid=describer.exists)
                 row_values["com_RelObjID"] = value
                 if action in ("preserved", "replaced"):
-                    conflicts.append(conflict_entry("relation_object", f"Article '{code}'",
-                                                    old.get("com_RelObjID"), relobj_id, action, describer))
+                    conflicts.append(("relation_object", f"Article '{code}'",
+                                      old.get("com_RelObjID"), relobj_id, action))
             elif relobj_id is not None:
                 row_values["com_RelObjID"] = relobj_id
             elif old is not None:
@@ -424,6 +419,26 @@ class ArticleMdbExportService(BaseService):
                 inserts.append({"op": "insert", "table": self.TABLE, "rows": [{self.PK: row_id, **proto, **values}]})
                 expected[code] = {"id": row_id, **values}
 
+        if conflicts:
+            # Relation information (relation name / type / domain) is only needed to describe a conflict, so it
+            # is read here, once, and its absence (a minimal schema) only reduces the description.
+            try:
+                extra = db.read_tables(mdb, {
+                    "relobj_links": (
+                        "SELECT com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, "
+                        "com_RelationOrder FROM [tCOMd_RelObjRel]"
+                    ),
+                    "relations": "SELECT com_RelationID, com_RelationName FROM [tCOMd_Relation]",
+                }) if callable(getattr(db, "read_tables", None)) else {}
+            except Exception:
+                extra = {}
+            describer = LinkDescriber(data.get("relobjs", []), extra.get("relobj_links", []), extra.get("relations", []))
+            conflicts = [
+                conflict_entry(kind, entity, existing, incoming, action,
+                               scheme_describer if kind == "code_scheme" else describer,
+                               "com_CodeSchemeID" if kind == "code_scheme" else "com_RelObjID")
+                for kind, entity, existing, incoming, action in conflicts
+            ]
         warnings.extend(conflict_message(entry) for entry in conflicts)
         plan = scheme_inserts + updates + inserts
         result = {

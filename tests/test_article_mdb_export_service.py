@@ -234,6 +234,26 @@ class ArticleMdbExportServiceTests(unittest.TestCase):
         self.assertEqual(result["conflicts"][0]["action"], "replaced")
         self.assertTrue(any("REPLACED" in w for w in result["warnings"]))
 
+    def test_a_minimal_schema_without_relation_columns_still_exports_and_preserves(self):
+        """The relation info only describes a conflict; a schema lacking it (real-ACE stand-in templates did)
+        must neither fail the export nor change the preservation decision."""
+        class NoRelationInfo(FakeMDB):
+            def read_tables(self, mdb, queries):
+                if "relobj_links" in queries:
+                    raise RuntimeError("No value given for one or more required parameters.")
+                return super().read_tables(mdb, queries)
+
+        self.db = NoRelationInfo()
+        self.service = ArticleMdbExportService(SimpleNamespace(mdb_service=self.db))
+        self._seed("MI1E3", 11588, [(11588, "P_PRICING_CHAIR"), (11222, "P_MI1E3")], "PA_PRICING_CHAIR")
+        result = self.service.export(make_snapshot("MI1E3", "P_MI1E3"), self.path, session=self._attached())
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self._article_row()["com_RelObjID"], 11588)
+        entry = result["conflicts"][0]
+        self.assertEqual((entry["action"], entry["existing"]["name"], entry["incoming"]["name"]),
+                         ("preserved", "P_PRICING_CHAIR", "P_MI1E3"))
+        self.assertEqual(entry["existing"]["relations"], [])  # description is reduced, decision is not
+
     def test_existing_code_scheme_link_is_preserved_in_attached_mode(self):
         """A clone-on-write assignment must not be reverted by re-exporting Articles."""
         self._seed("NODLE100", 40, [(40, "P_NODLE100")])
