@@ -370,6 +370,14 @@ class ArticleMdbExportService(BaseService):
                     warnings.append(f"Article '{code}': existing row has no com_ArticleID; skipped.")
                     continue
                 values = {k: v for k, v in row_values.items() if allowed(k)}
+                # An existing, already-linked article that would be re-pointed (e.g. a production
+                # workspace article bound to its series price relation) is surfaced, never silent.
+                for column, label in (("com_RelObjID", "relation object"), ("com_CodeSchemeID", "code scheme")):
+                    previous, new_value = old.get(column), values.get(column)
+                    if (previous not in (None, "") and new_value not in (None, "")
+                            and str(previous) != str(new_value)):
+                        warnings.append(
+                            f"Article '{code}': existing {label} link (id {previous}) will be changed to id {new_value}.")
                 if any(old.get(k) != v for k, v in values.items()):
                     updates.append({"op": "update", "table": self.TABLE, "set": values, "where": {self.PK: row_id}})
                 expected[code] = {"id": row_id, **values}

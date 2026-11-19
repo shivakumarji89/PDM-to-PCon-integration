@@ -114,6 +114,32 @@ class ArticleMdbExportServiceTests(unittest.TestCase):
         self.assertEqual(result["unchanged"], 1)
         self.assertEqual(self.db.ops, [])
 
+    def test_rebinding_an_existing_articles_relation_object_is_warned_about(self):
+        """Found by the real-MDB validation: a production article bound to another relation object
+        (Lino: P_PRICING_CHAIR) is re-pointed to the derived P_<code>. That must be visible."""
+        self.db.rows["relobjs"].append({"com_RelObjID": 41, "com_RelObjName": "P_PRICING_SERIES", "com_PackageID": 10})
+        self.db.rows["articles"] = [{
+            "com_ArticleID": 91, "com_ArticleCode": "BASE",
+            "com_ArticleTypeCode": "C", "com_PackageID": 10, "com_ComGroupID": 20,
+            "com_CodeSchemeID": 30, "com_RelObjID": 41, "com_ShortTextID": None,
+            "com_LongTextID": None, "com_Discountable": True, "com_OrderUnitCode": "C62",
+        }]
+        result = self.service.export(self.snapshot, self.path, dry_run=True)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["updated"], 1)
+        self.assertTrue(any("relation object link (id 41) will be changed to id 40" in w
+                            for w in result["warnings"]), result["warnings"])
+
+    def test_unchanged_links_produce_no_rebinding_warning(self):
+        self.db.rows["articles"] = [{
+            "com_ArticleID": 91, "com_ArticleCode": "BASE",
+            "com_ArticleTypeCode": "C", "com_PackageID": 10, "com_ComGroupID": 20,
+            "com_CodeSchemeID": 30, "com_RelObjID": 40, "com_ShortTextID": None,
+            "com_LongTextID": None, "com_Discountable": True, "com_OrderUnitCode": "C62",
+        }]
+        result = self.service.export(self.snapshot, self.path, dry_run=True)
+        self.assertFalse([w for w in result["warnings"] if "will be changed" in w])
+
 
 if __name__ == "__main__":
     unittest.main()
