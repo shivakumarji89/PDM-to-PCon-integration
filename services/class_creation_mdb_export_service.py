@@ -16,6 +16,7 @@ from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.class_creation_selection_service import classes_for_article
+from services.relation_link_policy import is_attached
 
 
 class ClassCreationMdbExportService(BaseService):
@@ -399,6 +400,44 @@ class ClassCreationMdbExportService(BaseService):
                     }],
                 })
                 next_class_id += 1
+
+        # Attached production workspace: never add a second class set next to production classes whose
+        # identity cannot be established. A class that is NEW by name while a selected base article is
+        # already linked to production classes this export does not resolve (e.g. engineering
+        # ``Dalby_Attribute`` vs production ``DALBY_ATTR``) is reported as an identity conflict and the
+        # whole class operation stops with zero writes. Names are never fuzzy-matched; no mapping exists
+        # yet (see docs/03_Workflows/productstudio_incremental_mdb_export.md, "Production class identity").
+        identity_conflicts: list[dict[str, Any]] = []
+        if is_attached(session):
+            production_name_by_id = {
+                str(row.get("com_ClassID")): str(row.get("com_ClassName") or "") for row in package_classes
+            }
+            new_names = {self._key(row["rows"][0]["com_ClassName"]) for row in class_inserts}
+            for base_code in selected_base_codes:
+                article_key = str(selected_article_map[base_code])
+                linked = {str(row.get("com_ClassID")) for row in data["article_classes"]
+                          if str(row.get("com_ArticleID")) == article_key
+                          and str(row.get("com_ClassID")) in production_name_by_id}
+                resolved = {str(class_ids[name]) for name in class_names_by_base.get(base_code, [])
+                            if name in class_ids and self._key(name) not in new_names}
+                unresolved_production = sorted(production_name_by_id[c] for c in linked - resolved)
+                incoming_new = [name for name in class_names_by_base.get(base_code, [])
+                                if self._key(name) in new_names]
+                if unresolved_production and incoming_new:
+                    identity_conflicts.append({
+                        "kind": "class_identity", "article": base_code, "action": "stopped",
+                        "incoming_classes": incoming_new,
+                        "existing_production_classes": unresolved_production,
+                        "reason": "no stable mapping between the engineering and production classes",
+                    })
+        if identity_conflicts:
+            return {
+                "ok": False, "dry_run": dry_run, "conflicts": identity_conflicts,
+                "error": "Class identity cannot be established, nothing was written. " + " ".join(
+                    f"{c['article']}: incoming {', '.join(c['incoming_classes'])} would sit next to existing "
+                    f"production class(es) {', '.join(c['existing_production_classes'])}; no reliable mapping "
+                    "exists between them." for c in identity_conflicts[:5]),
+            }
 
         # Do not let ambiguous duplicate class names leak into ArticleClass or
         # CodeScheme references.

@@ -299,6 +299,12 @@ def main() -> int:
     ap.add_argument("--price-valid-from", default="2026-04-06")
     ap.add_argument("--price-targets", default="EUR=EURO_2026,GBP=GBP_2026",
                     help="currency=price list name,... (must exist in the MDB)")
+    ap.add_argument("--force-unattached", action="store_true",
+                    help="attach, then run as a template-initialized session (attached_existing=False): "
+                         "reproduces the pre-preservation overwrite behaviour for an A/B comparison")
+    ap.add_argument("--unattached-stages", default="",
+                    help="comma-separated stages run as a template-initialized session (e.g. class_creation, "
+                         "to build the classes that production-class identity would otherwise stop)")
     ap.add_argument("--init-template", default="",
                     help="path of a real template MDB: validate initialize() on a copy instead of attach")
     args = ap.parse_args()
@@ -406,6 +412,9 @@ def main() -> int:
         print("initialize:", json.dumps(evidence["initialize"], indent=1, default=str), flush=True)
     else:
         session = sessions.attach_existing(snapshot, dest, args.template_kind)
+        if args.force_unattached:
+            session.attached_existing = False
+            sessions.save(session)
         after = capture(db, dest, schema)
         evidence["attach"] = {"package_id": session.package_id, "comgroup_id": session.comgroup_id,
                               "program_code": session.program_code, "mdb_writes": delta(state, after),
@@ -418,6 +427,7 @@ def main() -> int:
     evidence["attach"]["recovered_after_restart"] = recovered is not None and recovered.mdb_path == session.mdb_path
     print("attach:", evidence["attach"], flush=True)
 
+    unattached_stages = {x.strip() for x in args.unattached_stages.split(",") if x.strip()}
     for name in [s for s in args.stages.split(",") if s]:
         rec = {}
         t = time.time()
@@ -470,6 +480,10 @@ def main() -> int:
 
         def run(ids, dry=False):
             s = sessions.get_active(snapshot)
+            if name in unattached_stages:
+                s.attached_existing = False
+            elif not args.force_unattached and not init_mode:
+                s.attached_existing = True
             kw = {"dry_run": dry}
             return service.export_to_session(snapshot, s, selected_article_ids=ids, **kw)
 
