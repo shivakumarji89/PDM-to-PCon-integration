@@ -302,7 +302,9 @@ class TextMdbExportService(BaseService):
                 text_id_by_key[(self._key(block.type_code), self._key(block.name))] = text_id
                 changed = {col: val for col, val in values.items()
                            if col in row and col not in incoming_langs
-                           and str(row.get(col) or "") != str(val or "")}
+                           and str(row.get(col) or "") != str(val or "")
+                           # an attached workspace's existing key spelling (e.g. 'Cable_leg') is never renamed
+                           and not (attached and col in ("com_TextName", "com_TextTypeCode"))}
                 for column, incoming in incoming_langs.items():
                     if column not in row:
                         continue

@@ -199,3 +199,16 @@ def test_unknown_flag_session_warns_in_text_preview(tmp_path):
     ctx = _incremental_context(_FakeMdb(rows), session, snapshot)
     result = TextMdbExportService(ctx).export_to_session(snapshot, session, {"a1"}, dry_run=True)
     assert result["ok"] and "saved before attached-workspace tracking" in result["warnings"][0]
+
+
+def test_attached_never_renames_the_existing_text_key_spelling(tmp_path):
+    """Real Dalby: 'Cable_leg' was rewritten to 'Cable_Leg' because keys match case-insensitively."""
+    rows = _rows()
+    rows["texts"][0]["com_TextName"] = "base"          # production spelling differs only by case
+    result = _run(tmp_path, rows, attached=True)
+    assert result["ok"], result
+    assert _text(rows, 7)["com_TextName"] == "base"
+    rows2 = _rows()
+    rows2["texts"][0]["com_TextName"] = "base"
+    assert _run(tmp_path, rows2, attached=False)["ok"]
+    assert _text(rows2, 7)["com_TextName"] == "BASE"   # template: previous behaviour

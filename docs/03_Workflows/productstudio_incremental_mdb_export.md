@@ -113,6 +113,8 @@ The Maintenance Pricing Relation action now generates VARCOND relations for the 
 
 The Text page's Export to MDB action now uses the active product session and the same Articles-page selection. It exports selected base-article descriptions and selected class property / option text blocks. Existing Text IDs are retained; changed translations are updated in place; missing rows are inserted. It then links selected Article, Property and PropValue rows to their Text IDs. Price text remains owned by the pricing exporter. Text reads are package-scoped, with a separate global TextID maximum query.
 
+In an **attached production workspace** the Text stage follows the text-preservation policy (below): existing populated text is kept, never overwritten by a normal export.
+
 ## Implemented: Pricing / Price Export
 
 In Maintenance, the Pricing export / preview workflow now uses the active product MDB session rather than asking the user to choose a second MDB. It requires the Articles-page selection and filters article price records to selected base article codes; global price records remain product-level. Existing price-list target review, preview digest, non-destructive price upsert and read-back verification remain in use. Successful exports are recorded in session workflow status. Development's existing destination-file flow is unchanged.
@@ -220,6 +222,41 @@ Findings that need a decision (not changed):
 - **Class naming.** Production classes are `DALBY_ATTR`/`DALBY_OPT`; engineering creates `Dalby_Attribute`/`Dalby_Option`, so Class Creation on an attached workspace adds classes beside the existing ones.
 - **Pricing on Lino** updated 3,472 existing prices: the live PDM has newer values than that obsolete workspace (Dalby: 0 updated, all identical). This is what a price update does, but note it for attached production files.
 - Lino "all users selected" cannot be reproduced on real data (the live Lino family has no `MI7E3`); it is covered by unit tests and by Dalby.
+
+### Decision 3 - existing production text is preserved (`services/text_preservation_policy.py`)
+
+Status: **implemented, unit-tested** (`tests/test_text_preservation.py`, 12 tests); real-ACE evidence below.
+
+Natural key of a text row: `(com_TextTypeCode, com_TextName)` within the package (e.g. `artlong/NODLE100`); it is read per language column (`com_Text_1_<lang>`). Text IDs, the other language columns and unrelated rows are never touched.
+
+| Situation (attached session) | Behaviour |
+|---|---|
+| Existing populated value, incoming differs | **Preserved**; conflict reported (text id, key, language, existing and incoming value) in the preview and the result (`conflicts`, `warnings`, counts `texts_preserved`) |
+| Text row missing | Created |
+| Existing value empty / NULL | Populated |
+| Incoming value blank | Never erases an existing value |
+| Existing valid article / property / value text link differing from the incoming link | Preserved and reported (`text_link` conflict), via `relation_link_policy.decide`; NULL or dangling links are set |
+| Explicit authorization `replace_existing_text=True` | Replaces; reported as `replaced`. Only a service keyword - **no export button passes it** |
+| Repeated export | Same result, no writes; the preserved conflicts are still listed |
+| Template-initialized session | Unchanged behaviour (incoming wins, no conflicts reported) |
+
+The Text preview dialog lists the preserved values under "Existing production text (kept, NOT overwritten)". A failed transaction writes nothing (existing transactional batch).
+
+**Legacy sessions.** A session file saved before the `attached_existing` flag existed lacks it. It is not guessed: `MdbExportSession.from_dict` sets `attached_flag_known=False` (persisted, so a re-save does not turn the unknown into a "known template"), the session is treated as template-initialized (previous behaviour) and the Text preview warns first. `MdbExportSessionService.declare_attachment(session, attached)` records the explicit answer once; it refuses to rewrite a known flag. No UI action calls it yet - **owner decision / follow-up** (a one-line confirmation dialog on the warning is the proposed UI).
+
+### Production class identity (`services/class_creation_mdb_export_service.py`)
+
+Status: **implemented as a safe conflict, unit-tested** (`tests/test_class_production_identity.py`, 7 tests). **Reuse by mapping is NOT implemented, because no reliable mapping exists.**
+
+Findings (real Dalby and Lino copies, live PDM):
+- `tCOMd_Class` carries only `com_ClassID`, `com_ClassName`, `com_PackageID` (+ status/tmp columns): no code, reference or alias.
+- Dalby: `DALBY_ATTR` (6 properties `Series, TTSH, TTSZ, Table_type, Access_Cutout, Cable_leg`) and `DALBY_OPT` (6: `Frame_Finish, Top_Finish, Bottom_Material_G, Bottom_Stright_Edge, Bottom_WFT, PLC`), each linked to all 26 articles. Lino: `LINO_ATTR` (6), `LINO_OPT` (9), linked to its 3 articles.
+- Engineering generates `Dalby_Attribute` (`Series, Type`), `Dalby_Options` (`Frame finish, Top material, Access cutout, Cable Leg`) and `Dalby_Visual` (empty). Engineering class ids are random GUIDs. Property membership differs from production (e.g. `Cable Leg` is an option in engineering but an attribute in production), so structural equivalence cannot be proven either.
+- Nothing in PDM or in this application records which production class an engineering class corresponds to.
+
+Behaviour in an attached session: classes are matched by exact (case-insensitive) name only; a match is reused with its ID and name preserved and no duplicate. If an incoming class is new by name while a selected base article is already linked to production classes this export does not resolve, the export stops with an `class_identity` conflict (article, incoming classes, existing production classes) and **writes nothing** (also in the preview). Articles with no production classes, and unselected articles, are unaffected. Template-initialized sessions keep the previous behaviour. Later stages (Properties & Values, Text) then stop on "Class Creation must be exported first" instead of building on duplicate classes.
+
+**Proposed mapping mechanism (not implemented, needs owner approval).** An explicit, deterministic map `{engineering class name -> production com_ClassName}` stored in the export session (`MdbExportSession.class_map`, default `{}`; persisted in the session JSON, so no schema migration of the MDB and old sessions load with an empty map), created by a Class Creation review dialog that lists the unresolved pairs with both property lists and requires the user to confirm each, and shown in the session summary. Writers would resolve a class through the map first, then by exact name, and fail with the conflict otherwise; `discard()` forgets it with the session. The map would have to be honoured by Class Creation, Properties & Values, Text and Relations (they all look classes up by name today). Properties of a mapped class that exist only on one side would still need a decision (add to production class vs ignore).
 
 ### Not validated (external requirements)
 - **Real ProductStudio MDBs**: now exercised - see "Real ProductStudio MDB validation" below. Not yet validated: Class Creation / Properties / Text / Relations on an *attached production workspace* (blocked by the shared-CodeScheme gap), BOM-based VARCOND *generation* (Dalby and Lino have no super-product BOM), the Tables template (empty Package table).
