@@ -171,6 +171,17 @@ class MdbExportSessionService(BaseService):
             raise ExportSessionError(f"Could not save the export session: {exc}") from exc
         return session
 
+    def declare_attachment(self, session: MdbExportSession, attached: bool) -> None:
+        """Record, explicitly, whether a legacy session (saved before ``attached_existing``) is attached.
+
+        Only a session whose flag is unknown can be declared; a known flag is never rewritten here.
+        """
+        if session.attached_flag_known:
+            raise ExportSessionError("This session already records whether it is attached.")
+        session.attached_existing = bool(attached)
+        session.attached_flag_known = True
+        self.save(session)
+
     def get_active(self, snapshot: Snapshot) -> MdbExportSession | None:
         """The loaded product's session, or ``None`` when no MDB exists yet.
 

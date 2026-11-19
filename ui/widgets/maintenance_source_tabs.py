@@ -487,7 +487,8 @@ class MaintenanceSourceMixin:
             )
             if preview.get("warnings"):
                 summary += (
-                    "\n\nExisting relation-object links (kept, NOT overwritten):\n"
+                    ("\n\nExisting production text (kept, NOT overwritten):\n" if component == "Text"
+                     else "\n\nExisting relation-object links (kept, NOT overwritten):\n")
                     + "\n".join(f"• {m}" for m in preview["warnings"][:8])
                 )
             if QMessageBox.question(

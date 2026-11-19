@@ -1,9 +1,14 @@
 """Incremental, selected-article Text export into a ProductStudio MDB session.
 
-Text rows are keyed by (type, name). Existing TextIDs are retained; changed
-translations are updated in place and missing blocks are inserted. Article,
-Property and PropValue text references are linked only where their target rows
-already exist. Price text remains owned by PriceMdbExportService.
+Text rows are keyed by (type, name). Existing TextIDs are retained and missing
+blocks are inserted. Article, Property and PropValue text references are linked
+only where their target rows already exist. Price text remains owned by
+PriceMdbExportService.
+
+Attached production workspaces: existing populated translations and existing valid text links are
+PRESERVED (differences are reported as conflicts); empty translations are populated; replacement needs
+the explicit ``replace_existing_text=True`` authorization (see ``text_preservation_policy``). Sessions
+initialized from a template keep the earlier behaviour (incoming value wins).
 """
 from __future__ import annotations
 
@@ -17,6 +22,10 @@ from services.base_service import BaseService
 from services.class_creation_selection_service import build_class_creation_scope, classes_for_article
 from services.engineering.engineering_text_service import text_block_name
 from services.ocd_export_service import _TEXT_TYPE_OCD
+from services.relation_link_policy import decide as decide_link
+from services.text_preservation_policy import (
+    decide_text, is_attached, text_conflict, text_conflict_message,
+)
 
 
 class TextMdbExportService(BaseService):
@@ -51,9 +60,14 @@ class TextMdbExportService(BaseService):
     def export_to_session(
         self, snapshot: Snapshot, session: MdbExportSession,
         selected_article_ids: set[str] | None = None, dry_run: bool = False,
+        replace_existing_text: bool = False,
     ) -> dict[str, Any]:
+        """``replace_existing_text=True`` is the separate, explicit authorization to overwrite existing
+        populated text in an attached workspace; the normal export buttons never pass it."""
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Text."}
+        attached = is_attached(session)
+        conflicts: list[dict[str, Any]] = []
         selected = {str(v) for v in (selected_article_ids or set()) if str(v)}
         if not selected:
             return {"ok": False, "error": "Select one or more articles in the Articles page Export column first."}
@@ -221,6 +235,7 @@ class TextMdbExportService(BaseService):
                     + f" FROM tCOMd_Text WHERE com_PackageID = {int(package_id)}"
                 ),
                 "text_max": "SELECT MAX(com_TextID) AS max_id FROM tCOMd_Text",
+                "all_text_ids": "SELECT com_TextID FROM tCOMd_Text",
                 "articles": (
                     "SELECT com_ArticleID, com_ArticleCode, com_PackageID, "
                     "com_ShortTextID, com_LongTextID FROM tCOMd_Article "
@@ -273,18 +288,31 @@ class TextMdbExportService(BaseService):
                 return {"ok": False, "error": f"Duplicate MDB Text key: {type_code}/{block.name}."}
             values = {"com_TextName": block.name, "com_TextTypeCode": type_code,
                       "com_PackageID": package_id}
+            incoming_langs: dict[str, str] = {}
             for language, column in language_columns.items():
                 language_value = block.get_language(language) or ""
                 # Blank source translations are not an instruction to erase
                 # a previously populated MDB translation.
                 if language_value:
                     values[column] = language_value
+                    incoming_langs[column] = language_value
             if matches:
                 row = matches[0]
                 text_id = row.get("com_TextID")
                 text_id_by_key[(self._key(block.type_code), self._key(block.name))] = text_id
                 changed = {col: val for col, val in values.items()
-                           if col in row and str(row.get(col) or "") != str(val or "")}
+                           if col in row and col not in incoming_langs
+                           and str(row.get(col) or "") != str(val or "")}
+                for column, incoming in incoming_langs.items():
+                    if column not in row:
+                        continue
+                    chosen_value, action = decide_text(
+                        row.get(column), incoming, attached=attached, replace_existing=replace_existing_text)
+                    if action in ("filled", "replaced"):
+                        changed[column] = chosen_value
+                    if action == "preserved" or (action == "replaced" and attached):
+                        conflicts.append(text_conflict(type_code, block.name, text_id, column,
+                                                       row.get(column), incoming, action))
                 if changed:
                     updates.append({"op": "update", "table": "tCOMd_Text",
                                     "set": changed, "where": {"com_TextID": text_id}})
@@ -326,6 +354,20 @@ class TextMdbExportService(BaseService):
             values_by_property_code.setdefault(
                 (str(row.get("com_PropertyID")), self._key(row.get("com_PropValueFrom"))), []
             ).append(row)
+        known_text_ids = {str(self._int(r.get("com_TextID"))) for r in data["texts"]} | {
+            str(self._int(r.get("com_TextID"))) for r in data.get("all_text_ids", [])}
+        known_text_ids |= {str(self._int(op["rows"][0]["com_TextID"])) for op in inserts}
+
+        def link_text(entity: str, existing: Any, incoming: Any):
+            """Existing valid link is kept in an attached workspace; returns (id to write, changed)."""
+            chosen_id, action = decide_link(
+                existing, incoming, attached=attached, replace_existing=replace_existing_text,
+                valid=lambda tid: str(self._int(tid)) in known_text_ids)
+            if action == "preserved" or (action == "replaced" and attached):
+                conflicts.append({"kind": "text_link", "entity": entity, "action": action,
+                                  "existing": str(existing), "incoming": str(incoming)})
+            return chosen_id, action in ("set", "repaired", "replaced")
+
         property_updates = []
         value_updates = []
         for class_name, assignments in assignments_by_class.items():
@@ -354,9 +396,11 @@ class TextMdbExportService(BaseService):
                         f"Properties & Values must be exported before Text for '{class_name}:{prop_name}'."
                     )}
                 mdb_prop = prop_rows[0]
-                if str(mdb_prop.get("com_TextID") or "") != str(property_text_id):
+                new_id, write = link_text(f"property {class_name}:{prop_name}",
+                                          mdb_prop.get("com_TextID"), property_text_id)
+                if write:
                     property_updates.append({"op": "update", "table": "tCOMd_Property",
-                                             "set": {"com_TextID": property_text_id},
+                                             "set": {"com_TextID": new_id},
                                              "where": {"com_PropertyID": mdb_prop.get("com_PropertyID")}})
                 if source_id in prop_by_id:
                     source_values = list(getattr(source_prop, "values", []) or []) or [
@@ -400,9 +444,11 @@ class TextMdbExportService(BaseService):
                         return {"ok": False, "error": (
                             f"Properties & Values must be exported before Text for '{prop_name}={code}'."
                         )}
-                    if str(value_rows[0].get("com_TextID") or "") != str(value_text_id):
+                    new_id, write = link_text(f"value {class_name}:{prop_name}={code}",
+                                              value_rows[0].get("com_TextID"), value_text_id)
+                    if write:
                         value_updates.append({"op": "update", "table": "tCOMd_PropValue",
-                                              "set": {"com_TextID": value_text_id},
+                                              "set": {"com_TextID": new_id},
                                               "where": {"com_ValueID": value_rows[0].get("com_ValueID")}})
 
         # Link article short/long text references without changing article IDs.
@@ -421,10 +467,12 @@ class TextMdbExportService(BaseService):
             short_id = text_id_by_key.get(("artshort", self._key(code)))
             long_id = text_id_by_key.get(("artlong", self._key(code)))
             set_values = {}
-            if short_id is not None and str(row.get("com_ShortTextID") or "") != str(short_id):
-                set_values["com_ShortTextID"] = short_id
-            if long_id is not None and str(row.get("com_LongTextID") or "") != str(long_id):
-                set_values["com_LongTextID"] = long_id
+            for column, incoming in (("com_ShortTextID", short_id), ("com_LongTextID", long_id)):
+                if incoming is None:
+                    continue
+                new_id, write = link_text(f"article {code} {column}", row.get(column), incoming)
+                if write:
+                    set_values[column] = new_id
             if set_values:
                 article_updates.append({"op": "update", "table": "tCOMd_Article",
                                         "set": set_values, "where": {"com_ArticleID": aid}})
@@ -433,9 +481,22 @@ class TextMdbExportService(BaseService):
         counts = {"selected_articles": len(selected), "base_articles": len(base_codes),
                   "text_blocks_selected": len(chosen), "texts_inserted": len(inserts),
                   "texts_updated": len(updates), "properties_linked": len(property_updates),
-                  "values_linked": len(value_updates), "articles_linked": len(article_updates)}
+                  "values_linked": len(value_updates), "articles_linked": len(article_updates),
+                  "texts_preserved": sum(1 for c in conflicts if c["action"] == "preserved"),
+                  "texts_replaced": sum(1 for c in conflicts if c["action"] == "replaced")}
+        warnings = [text_conflict_message(c) if c["kind"] == "text" else
+                    f"{c['entity']}: existing text link id {c['existing']} is "
+                    f"{'PRESERVED; incoming id ' + c['incoming'] + ' is NOT applied' if c['action'] == 'preserved' else 'REPLACED by id ' + c['incoming']}."
+                    for c in conflicts]
         result = {"ok": True, "dry_run": dry_run, "mdb_path": session.mdb_path,
-                  "counts": counts, "operations": len(plan)}
+                  "counts": counts, "operations": len(plan),
+                  "conflicts": conflicts, "warnings": warnings,
+                  "attached": attached, "replace_existing_text": bool(replace_existing_text)}
+        if not getattr(session, "attached_flag_known", True):
+            result["warnings"].insert(0, (
+                "This session was saved before attached-workspace tracking existed; it is treated as "
+                "template-initialized (incoming text may overwrite). Declare it attached to preserve "
+                "existing production text."))
         if dry_run:
             return result
         if not plan:

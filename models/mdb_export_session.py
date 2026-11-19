@@ -42,6 +42,10 @@ class MdbExportSession:
     #: articles are then preserved, never silently re-pointed. Sessions created from a template keep
     #: False: every row in them was written by this application.
     attached_existing: bool = False
+    #: False for a session file written before ``attached_existing`` existed: whether it was attached is
+    #: UNKNOWN, so it is treated as template-initialized (previous behaviour) and writers warn. It is never
+    #: guessed; ``MdbExportSessionService.declare_attachment`` records the user's explicit answer.
+    attached_flag_known: bool = True
     version: int = SESSION_VERSION
 
     def article_ids(self) -> dict[str, int]:
@@ -58,4 +62,7 @@ class MdbExportSession:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MdbExportSession":
         known = {name for name in cls.__dataclass_fields__}  # type: ignore[attr-defined]
-        return cls(**{k: v for k, v in data.items() if k in known})
+        session = cls(**{k: v for k, v in data.items() if k in known})
+        if "attached_flag_known" not in data:
+            session.attached_flag_known = "attached_existing" in data
+        return session
