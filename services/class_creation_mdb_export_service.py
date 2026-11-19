@@ -7,6 +7,7 @@ are separate workflows. Selection comes from the Articles page Export column.
 from __future__ import annotations
 
 from copy import copy
+from hashlib import sha1
 from pathlib import Path
 import re
 from typing import Any
@@ -34,6 +35,181 @@ class ClassCreationMdbExportService(BaseService):
     @classmethod
     def _next_id(cls, rows: list[dict[str, Any]], column: str) -> int:
         return max((cls._int(row.get(column)) for row in rows), default=0) + 1
+
+    # -- CodeScheme planning: in place, or clone-on-write when a scheme is shared ---------------------
+
+    _TOKEN = re.compile(r"[A-Za-z0-9_]+:[A-Za-z0-9_]+")
+    _CLONE_SUFFIX = re.compile(r"_CS[0-9a-f]{8}$")
+    SCHEME_NAME_LIMIT = 30  # tCOMd_CodeScheme.com_CodeSchemeName length
+
+    @staticmethod
+    def _leading_at(body: Any) -> int:
+        count = 0
+        for part in str(body or "").split(","):
+            if part != "@":
+                break
+            count += 1
+        return count
+
+    @classmethod
+    def _extend_body(cls, existing_body: Any, desired_tokens: list[str], prefix_len: int) -> str:
+        """``existing_body`` verbatim plus the missing ``class:property`` tokens, appended in the usual
+        ``TOKEN, ,TOKEN`` form. Nothing already present is rewritten or reordered."""
+        existing = str(existing_body or "")
+        present = cls._TOKEN.findall(existing)
+        missing = [t for t in dict.fromkeys(desired_tokens) if t not in present]
+        parts = existing.split(",") if existing.strip() else ["@"] * prefix_len
+        if not missing:
+            return existing if existing.strip() else ",".join(parts)
+        have_tokens = bool(present)
+        for token in missing:
+            if have_tokens:
+                parts.append(" ")
+            parts.append(token)
+            have_tokens = True
+        return ",".join(parts)
+
+    @classmethod
+    def clone_name(cls, source_name: Any, body: str) -> str:
+        """Deterministic clone name: the root scheme name plus ``_CS`` and 8 hex digits of the clone body."""
+        suffix = "_CS" + sha1(str(body).encode("utf-8")).hexdigest()[:8]
+        root = cls._CLONE_SUFFIX.sub("", str(source_name or ""))
+        return root[: cls.SCHEME_NAME_LIMIT - len(suffix)] + suffix
+
+    def _plan_code_schemes(
+        self, *, snapshot: Snapshot, package_id: Any, session: MdbExportSession,
+        selected_base_codes: list[str], selected_article_map: dict[str, Any],
+        class_objects_by_base: dict[str, list[Any]], data: dict[str, list[dict[str, Any]]],
+        package_schemes: list[dict[str, Any]], xocd: Any,
+    ) -> dict[str, Any]:
+        """Plan the CodeScheme writes for the selected articles.
+
+        * Every article is resolved through its own ``com_CodeSchemeID`` (production workspaces share
+          schemes across many articles); only an article with no scheme link falls back to the scheme
+          named after its code.
+        * A scheme used only by selected articles is extended **in place**.
+        * A scheme also used by unselected articles is **cloned**: the original is untouched, the clone
+          carries the original body plus the new class tokens, and only the selected articles are
+          reassigned. The clone name is deterministic, so a later export reuses it.
+        * Anything that cannot be identified safely is an error; nothing is written.
+        """
+        scheme_by_id = {str(r.get("com_CodeSchemeID")): r for r in package_schemes}
+        scheme_by_name: dict[str, list[dict[str, Any]]] = {}
+        for row in package_schemes:
+            scheme_by_name.setdefault(self._key(row.get("com_CodeSchemeName")), []).append(row)
+        articles_by_id = {str(r.get("com_ArticleID")): r for r in data["articles"]}
+        selected_ids = {str(v) for v in selected_article_map.values()}
+        users: dict[str, set[str]] = {}
+        for row in data["articles"]:
+            sid = row.get("com_CodeSchemeID")
+            if sid not in (None, ""):
+                users.setdefault(str(sid), set()).add(str(row.get("com_ArticleID")))
+
+        groups: dict[str, list[str]] = {}
+        for base_code in selected_base_codes:
+            article_row = articles_by_id.get(str(selected_article_map[base_code]), {})
+            sid = article_row.get("com_CodeSchemeID")
+            if sid not in (None, ""):
+                if str(sid) not in scheme_by_id:
+                    return {"error": (
+                        f"Article '{base_code}' references CodeScheme id {sid}, which is not in the export "
+                        "package; its scheme cannot be identified safely. Repair the MDB before Class Creation."
+                    )}
+                groups.setdefault(str(sid), []).append(base_code)
+                continue
+            matches = scheme_by_name.get(self._key(base_code), [])
+            if len(matches) != 1:
+                return {"error": (
+                    f"Expected one existing CodeScheme named '{base_code}' in the session MDB; "
+                    "re-export Articles or repair the MDB before Class Creation."
+                )}
+            groups.setdefault(str(matches[0].get("com_CodeSchemeID")), []).append(base_code)
+
+        code_map = xocd._value_code_map(snapshot)
+        proto = session.prototypes.get("tCOMd_CodeScheme", {})
+        next_scheme_id = self._next_id(data["schemes"], "com_CodeSchemeID")
+        updates: list[dict[str, Any]] = []
+        clone_inserts: list[dict[str, Any]] = []
+        reassignments: list[dict[str, Any]] = []
+        clones_reused = 0
+        notes: list[str] = []
+        created: dict[str, dict[str, Any]] = {}  # clone name key -> inserted row (shared inside one export)
+
+        for sid, bases in groups.items():
+            source = scheme_by_id[sid]
+            tokens: list[str] = []
+            for base_code in bases:
+                desired_rows, _index, _names = self.context.ocd_export_service._code_schemes(
+                    snapshot, package_id, [base_code], class_objects_by_base.get(base_code, []),
+                    code_map, proto,
+                )
+                if not desired_rows:
+                    return {"error": f"Could not build the Development CodeScheme mapping for '{base_code}'."}
+                tokens.extend(self._TOKEN.findall(str(desired_rows[0].get("com_CodeSchemeBody") or "")))
+            existing_body = str(source.get("com_CodeSchemeBody") or "")
+            prefix_len = self._leading_at(existing_body) or len(bases[0])
+            too_long = [b for b in bases if existing_body.strip() and len(b) != prefix_len]
+            unselected = users.get(sid, set()) - selected_ids
+
+            body = self._extend_body(existing_body, tokens, prefix_len)
+            if not unselected:
+                if existing_body != body:
+                    updates.append({
+                        "op": "update", "table": "tCOMd_CodeScheme", "set": {"com_CodeSchemeBody": body},
+                        "where": {"com_CodeSchemeID": source.get("com_CodeSchemeID")},
+                    })
+                continue
+
+            if body == existing_body:
+                continue  # the shared scheme already carries every needed class; nothing to write
+            if too_long:
+                return {"error": (
+                    f"CodeScheme '{source.get('com_CodeSchemeName')}' is shared with "
+                    f"{len(unselected)} unselected article(s) and its pattern is {prefix_len} characters wide, "
+                    f"but selected article(s) {', '.join(too_long[:5])} have a different length; "
+                    "the correct scheme cannot be identified safely."
+                )}
+            name = self.clone_name(source.get("com_CodeSchemeName"), body)
+            name_key = self._key(name)
+            existing_clone = scheme_by_name.get(name_key, [])
+            if len(existing_clone) > 1:
+                return {"error": f"CodeScheme clone name '{name}' is duplicated in the MDB; repair it first."}
+            if existing_clone:
+                clone = existing_clone[0]
+                if str(clone.get("com_CodeSchemeBody") or "") != body:
+                    return {"error": (
+                        f"CodeScheme '{name}' already exists but is not the expected clone of "
+                        f"'{source.get('com_CodeSchemeName')}'; refusing to reuse or overwrite it."
+                    )}
+                clone_id = clone.get("com_CodeSchemeID")
+                clones_reused += 1
+            elif name_key in created:
+                clone_id = created[name_key]["com_CodeSchemeID"]
+            else:
+                clone_id = next_scheme_id
+                next_scheme_id += 1
+                carry = {k: v for k, v in source.items()
+                         if k not in ("com_CodeSchemeID", "com_CodeSchemeName", "com_CodeSchemeBody",
+                                      "com_PackageID") and not str(k).startswith("sys_tmp")}
+                row = {"com_CodeSchemeID": clone_id, **(carry or proto),
+                       "com_CodeSchemeName": name, "com_CodeSchemeBody": body, "com_PackageID": package_id}
+                created[name_key] = row
+                clone_inserts.append({"op": "insert", "table": "tCOMd_CodeScheme", "rows": [row]})
+            notes.append(
+                f"CodeScheme '{source.get('com_CodeSchemeName')}' is shared with {len(unselected)} unselected "
+                f"article(s): {'reusing' if existing_clone else 'cloning it as'} '{name}' for "
+                f"{', '.join(bases[:6])}{' ...' if len(bases) > 6 else ''}. The original scheme and the "
+                "unselected articles are unchanged."
+            )
+            for base_code in bases:
+                article_id = selected_article_map[base_code]
+                if str(articles_by_id.get(str(article_id), {}).get("com_CodeSchemeID")) != str(clone_id):
+                    reassignments.append({
+                        "op": "update", "table": "tCOMd_Article", "set": {"com_CodeSchemeID": clone_id},
+                        "where": {"com_ArticleID": article_id},
+                    })
+        return {"updates": updates, "clone_inserts": clone_inserts, "reassignments": reassignments,
+                "clones_reused": clones_reused, "notes": notes}
 
     def export_to_session(
         self,
@@ -154,17 +330,14 @@ class ClassCreationMdbExportService(BaseService):
                 ),
                 "classes": "SELECT com_ClassID, com_ClassName, com_PackageID FROM tCOMd_Class",
                 "articles": (
-                    "SELECT com_ArticleID, com_ArticleCode, com_PackageID "
+                    "SELECT com_ArticleID, com_ArticleCode, com_PackageID, com_CodeSchemeID "
                     "FROM tCOMd_Article"
                 ),
                 "article_classes": (
                     "SELECT com_ArticleClassID, com_ArticleID, com_ClassID, "
                     "com_ArticleClassOrder FROM tCOMd_ArticleClass"
                 ),
-                "schemes": (
-                    "SELECT com_CodeSchemeID, com_CodeSchemeName, com_CodeSchemeBody, "
-                    "com_PackageID FROM tCOMd_CodeScheme"
-                ),
+                "schemes": "SELECT * FROM tCOMd_CodeScheme",
             })
         except Exception as exc:
             return {"ok": False, "error": f"Could not read the session MDB: {exc}"}
@@ -243,45 +416,19 @@ class ClassCreationMdbExportService(BaseService):
         if not all_selected_class_names:
             return {"ok": False, "error": "No unambiguous Class Creation classes remain for the selected article(s)."}
 
-        # Extend each selected Article's existing CodeScheme body in place.
-        # The scheme's primary key and name are owned by the Articles workflow.
-        scheme_by_name: dict[str, list[dict[str, Any]]] = {}
-        for row in package_schemes:
-            scheme_by_name.setdefault(self._key(row.get("com_CodeSchemeName")), []).append(row)
-        code_scheme_updates: list[dict[str, Any]] = []
-        code_map = xocd._value_code_map(snapshot)
-        for base_code in selected_base_codes:
-            matches = scheme_by_name.get(self._key(base_code), [])
-            if len(matches) != 1:
-                return {"ok": False, "error": (
-                    f"Expected one existing CodeScheme named '{base_code}' in the session MDB; "
-                    "re-export Articles or repair the MDB before Class Creation."
-                )}
-            desired_rows, _scheme_index, _scheme_names = self.context.ocd_export_service._code_schemes(
-                snapshot, package_id, [base_code], class_objects_by_base.get(base_code, []),
-                code_map, session.prototypes.get("tCOMd_CodeScheme", {}),
-            )
-            if not desired_rows:
-                return {"ok": False, "error": f"Could not build the Development CodeScheme mapping for '{base_code}'."}
-            desired_body = desired_rows[0].get("com_CodeSchemeBody") or ""
-            existing_scheme = matches[0]
-            token_pattern = re.compile(r"[A-Za-z0-9_]+:[A-Za-z0-9_]+")
-            merged_tokens = list(dict.fromkeys(
-                token_pattern.findall(str(existing_scheme.get("com_CodeSchemeBody") or ""))
-                + token_pattern.findall(str(desired_body))
-            ))
-            scheme_body = ",".join(
-                ["@"] * len(base_code)
-                + [part for index, token in enumerate(merged_tokens)
-                   for part in (([" "] if index else []) + [token])]
-            )
-            if existing_scheme.get("com_CodeSchemeBody") != scheme_body:
-                code_scheme_updates.append({
-                    "op": "update",
-                    "table": "tCOMd_CodeScheme",
-                    "set": {"com_CodeSchemeBody": scheme_body},
-                    "where": {"com_CodeSchemeID": existing_scheme.get("com_CodeSchemeID")},
-                })
+        # CodeSchemes: update in place when every article using a scheme is selected, otherwise
+        # clone-on-write so unselected articles keep exactly what they had.
+        scheme_plan = self._plan_code_schemes(
+            snapshot=snapshot, package_id=package_id, session=session,
+            selected_base_codes=selected_base_codes, selected_article_map=selected_article_map,
+            class_objects_by_base=class_objects_by_base, data=data, package_schemes=package_schemes, xocd=xocd,
+        )
+        if "error" in scheme_plan:
+            return {"ok": False, "error": scheme_plan["error"]}
+        code_scheme_updates = scheme_plan["updates"]
+        scheme_clone_inserts = scheme_plan["clone_inserts"]
+        article_reassignments = scheme_plan["reassignments"]
+        warnings.extend(scheme_plan["notes"])
 
         existing_links = {
             (str(row.get("com_ArticleID")), str(row.get("com_ClassID")))
@@ -315,13 +462,16 @@ class ClassCreationMdbExportService(BaseService):
                     next_link_id += 1
                 order += 10
 
-        plan = class_inserts + code_scheme_updates + link_inserts
+        plan = class_inserts + scheme_clone_inserts + code_scheme_updates + article_reassignments + link_inserts
         counts = {
             "selected_articles": len(selected),
             "base_articles": len(selected_article_map),
             "classes_inserted": len(class_inserts),
             "classes_reused": len(class_ids) - len(class_inserts),
             "code_schemes_updated": len(code_scheme_updates),
+            "code_schemes_cloned": len(scheme_clone_inserts),
+            "code_schemes_clone_reused": scheme_plan["clones_reused"],
+            "articles_reassigned": len(article_reassignments),
             "article_classes_inserted": len(link_inserts),
         }
         result = {
@@ -356,6 +506,7 @@ class ClassCreationMdbExportService(BaseService):
                     "SELECT com_CodeSchemeID, com_CodeSchemeName, com_CodeSchemeBody "
                     "FROM tCOMd_CodeScheme"
                 ),
+                "articles": "SELECT com_ArticleID, com_CodeSchemeID FROM tCOMd_Article",
             })
         except Exception as exc:
             return {**result, "ok": False, "error": f"Class Creation wrote data but read-back failed: {exc}"}
@@ -379,6 +530,17 @@ class ClassCreationMdbExportService(BaseService):
             scheme_name = self._key(original.get("com_CodeSchemeName"))
             if verified_scheme_bodies.get(scheme_name) != expected_body:
                 mismatches.append(f"CodeScheme '{original.get('com_CodeSchemeName')}' body did not verify")
+        for insert in scheme_clone_inserts:
+            row = insert["rows"][0]
+            if verified_scheme_bodies.get(self._key(row["com_CodeSchemeName"])) != row["com_CodeSchemeBody"]:
+                mismatches.append(f"Cloned CodeScheme '{row['com_CodeSchemeName']}' did not verify")
+        verified_article_scheme = {
+            str(row.get("com_ArticleID")): row.get("com_CodeSchemeID") for row in verified.get("articles", [])
+        }
+        for update in article_reassignments:
+            article_id = str(update["where"]["com_ArticleID"])
+            if str(verified_article_scheme.get(article_id)) != str(update["set"]["com_CodeSchemeID"]):
+                mismatches.append(f"Article {article_id} was not reassigned to its cloned CodeScheme")
         mismatches.extend(
             f"{name}: found {len(verified[name])}, expected at least {count}"
             for name, count in expected.items()
@@ -386,6 +548,9 @@ class ClassCreationMdbExportService(BaseService):
         )
         if mismatches:
             return {**result, "ok": False, "error": "Class Creation read-back validation failed: " + "; ".join(mismatches)}
+        for insert in scheme_clone_inserts:
+            row = insert["rows"][0]
+            session.scheme_map[row["com_CodeSchemeName"]] = row["com_CodeSchemeID"]
         sessions.record_workflow(session, self.WORKFLOW, counts)
         try:
             sessions.save(session)
