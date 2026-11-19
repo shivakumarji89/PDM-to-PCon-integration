@@ -361,7 +361,10 @@ class SifValidationService(BaseService):
                 if (
                     ancestor is None or ancestor_value is None or ancestor_group in visited
                     or str(getattr(ancestor, "OptionValueId", "")) != str(ancestor_value)
-                    or ancestor_code not in selected_codes
+                    or not any(
+                        cls._increment_key_match(selected, {ancestor_code: None}) is not None
+                        for selected in selected_codes
+                    )
                 ):
                     break
                 visited.add(ancestor_group)
