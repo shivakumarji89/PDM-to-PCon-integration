@@ -1826,6 +1826,11 @@ class MainWindow(QMainWindow):
                     + "\n\nExisting relation and relation-object IDs will be preserved. "
                       "Only missing rows and changed relation bodies / entity links will be written."
                 )
+                if preview.get("warnings"):
+                    summary += (
+                        "\n\nExisting relation-object links (kept, NOT overwritten):\n"
+                        + "\n".join(f"• {m}" for m in preview["warnings"][:8])
+                    )
                 if QMessageBox.question(
                     self, "Confirm " + title, summary,
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2185,6 +2190,8 @@ class MainWindow(QMainWindow):
                     f"Articles updated: {result['updated']}\n"
                     f"Articles skipped (unchanged or ambiguous): {result['skipped']}\n"
                     f"Code schemes created: {result['schemes_created']}"
+                    + (f"\nExisting links preserved (not re-pointed): {result['links_preserved']}"
+                       if result.get("links_preserved") else "")
                 )
                 if result.get("warnings"):
                     text += "\n\nWarnings:\n" + "\n".join(f"• {m}" for m in result["warnings"][:8])

@@ -485,6 +485,11 @@ class MaintenanceSourceMixin:
                 + f"\n\nOnly selected-article {title} data will be inserted or updated. "
                   "Existing IDs and unrelated MDB rows will be preserved."
             )
+            if preview.get("warnings"):
+                summary += (
+                    "\n\nExisting relation-object links (kept, NOT overwritten):\n"
+                    + "\n".join(f"• {m}" for m in preview["warnings"][:8])
+                )
             if QMessageBox.question(
                 self, f"Confirm {title} Export", summary,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

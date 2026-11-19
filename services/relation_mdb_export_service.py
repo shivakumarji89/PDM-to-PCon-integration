@@ -9,6 +9,9 @@ from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.class_creation_selection_service import build_class_creation_scope, classes_for_article
 from services.ocd_export_service import OcdExportService
+from services.relation_link_policy import (
+    LinkDescriber, conflict_entry, conflict_message, decide, is_attached,
+)
 
 
 class RelationMdbExportService(BaseService):
@@ -32,8 +35,14 @@ class RelationMdbExportService(BaseService):
     def export_to_session(
         self, snapshot: Snapshot, session: MdbExportSession,
         selected_article_ids: set[str] | None = None, dry_run: bool = False,
-        workflow: str | None = None,
+        workflow: str | None = None, replace_existing_links: bool = False,
     ) -> dict[str, Any]:
+        """Export selected-article relation objects.
+
+        In an attached production workspace the existing valid relation-object link of an article /
+        class link / property / value is preserved and reported in ``conflicts``; only a missing link is
+        created. ``replace_existing_links=True`` is the separate, explicit authorization to replace.
+        """
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Relations."}
         selected = {str(v) for v in (selected_article_ids or set()) if str(v)}
@@ -197,6 +206,12 @@ class RelationMdbExportService(BaseService):
                 "(SELECT com_ClassID FROM tCOMd_Class "
                 f"WHERE com_PackageID = {package_filter}))"
             ),
+            "all_objects": "SELECT com_RelObjID, com_RelObjName FROM tCOMd_RelObj",
+            "all_links": (
+                "SELECT com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, "
+                "com_RelationOrder FROM tCOMd_RelObjRel"
+            ),
+            "all_relations": "SELECT com_RelationID, com_RelationName FROM tCOMd_Relation",
             "object_max": "SELECT MAX(com_RelObjID) AS max_id FROM tCOMd_RelObj",
             "relation_max": "SELECT MAX(com_RelationID) AS max_id FROM tCOMd_Relation",
             "link_max": "SELECT MAX(com_RelObjRelID) AS max_id FROM tCOMd_RelObjRel",
@@ -475,21 +490,50 @@ class RelationMdbExportService(BaseService):
         existing_refs.update({("article_class", str(r.get("com_ArticleClassID"))): r.get("com_RelObjID") for r in data["article_classes"]})
         existing_refs.update({("property", str(r.get("com_PropertyID"))): r.get("com_RelObjID") for r in data["properties"]})
         existing_refs.update({("value", str(r.get("com_ValueID"))): r.get("com_RelObjID") for r in data["values"]})
+        attached = is_attached(session)
+        # Objects created by this very plan are valid targets; existing ones are looked up in the MDB.
+        planned_objects = [{"com_RelObjID": op["rows"][0]["com_RelObjID"],
+                            "com_RelObjName": op["rows"][0]["com_RelObjName"]}
+                           for op in inserts if op["table"] == "tCOMd_RelObj"]
+        describer = LinkDescriber(
+            list(data.get("all_objects") or data["objects"]) + planned_objects,
+            data.get("all_links") or data["links"], data.get("all_relations") or data["relations"])
+        article_code_by_id = {str(r.get("com_ArticleID")): str(r.get("com_ArticleCode"))
+                              for r in data["articles"]}
+        property_label = {str(r.get("com_PropertyID")): str(r.get("com_PropName")) for r in data["properties"]}
+
+        def entity_label(kind: str, identity: str) -> str:
+            if kind == "article":
+                return f"Article '{article_code_by_id.get(identity, identity)}'"
+            if kind == "property":
+                return f"Property '{property_label.get(identity, identity)}' (id {identity})"
+            return f"{kind.replace('_', ' ').title()} id {identity}"
+
+        conflicts: list[dict[str, Any]] = []
         for (kind, identity), fields in ref_updates.items():
-            if str(existing_refs.get((kind, identity)) or "") == str(fields["com_RelObjID"]):
+            existing = existing_refs.get((kind, identity))
+            incoming = fields["com_RelObjID"]
+            value, action = decide(existing, incoming, attached=attached,
+                                   replace_existing=replace_existing_links, valid=describer.exists)
+            if action in ("preserved", "replaced"):
+                conflicts.append(conflict_entry("relation_object", entity_label(kind, identity),
+                                                existing, incoming, action, describer))
+            if action in ("same", "preserved"):
                 continue
             updates.append({"op": "update", "table": table_for_kind[kind],
-                            "set": fields, "where": {pk_for_kind[kind]: int(identity)}})
+                            "set": {"com_RelObjID": value}, "where": {pk_for_kind[kind]: int(identity)}})
 
         counts = {"selected_articles": len(selected), "base_articles": len(base_codes),
                   "relation_objects_selected": len(chosen),
                   "relation_objects_inserted": sum(1 for op in inserts if op["table"] == "tCOMd_RelObj"),
                   "relations_inserted": sum(1 for op in inserts if op["table"] == "tCOMd_Relation"),
                   "relation_links_inserted": sum(1 for op in inserts if op["table"] == "tCOMd_RelObjRel"),
-                  "entity_links_updated": sum(1 for op in updates if op["table"] in table_for_kind.values())}
+                  "entity_links_updated": sum(1 for op in updates if op["table"] in table_for_kind.values()),
+                  "entity_links_preserved": sum(1 for c in conflicts if c["action"] == "preserved")}
         plan = inserts + updates
         result = {"ok": True, "dry_run": dry_run, "mdb_path": session.mdb_path,
-                  "counts": counts, "operations": len(plan)}
+                  "counts": counts, "operations": len(plan), "conflicts": conflicts,
+                  "warnings": [conflict_message(c) for c in conflicts]}
         if dry_run:
             return result
         if not plan:

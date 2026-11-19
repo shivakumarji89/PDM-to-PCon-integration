@@ -163,6 +163,7 @@ class MdbExportSessionService(BaseService):
             series_id=series_id,
             created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             prototypes=prototypes,
+            attached_existing=True,
         )
         try:
             self.save(session)

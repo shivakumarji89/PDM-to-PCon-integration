@@ -37,6 +37,11 @@ class MdbExportSession:
     scheme_map: dict[str, int] = field(default_factory=dict)
     #: ``{workflow: {"status": str, "exported_at": str, "counts": {..}}}``
     workflow_status: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: True when the session was attached to an *existing* series repository MDB (production data that
+    #: this application did not create). Existing valid relation-object / code-scheme links of its
+    #: articles are then preserved, never silently re-pointed. Sessions created from a template keep
+    #: False: every row in them was written by this application.
+    attached_existing: bool = False
     version: int = SESSION_VERSION
 
     def article_ids(self) -> dict[str, int]:

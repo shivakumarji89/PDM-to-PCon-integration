@@ -31,6 +31,9 @@ from typing import Any
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
 from services.base_service import BaseService
+from services.relation_link_policy import (
+    LinkDescriber, conflict_entry, conflict_message, decide, is_attached,
+)
 
 
 class ArticleMdbExportService(BaseService):
@@ -133,9 +136,13 @@ class ArticleMdbExportService(BaseService):
 
     def export_to_session(
         self, snapshot: Snapshot, session: MdbExportSession, selected_article_ids: set[str],
-        dry_run: bool = False,
+        dry_run: bool = False, replace_existing_links: bool = False,
     ) -> dict[str, Any]:
         """Export the selected articles into the product's session MDB.
+
+        In an attached production workspace an existing valid relation-object / code-scheme link of an
+        article is preserved and reported in ``conflicts``; ``replace_existing_links=True`` is the
+        separate, explicit authorization to replace them (not used by the normal export buttons).
 
         On success the session (``article_map``, ``scheme_map``,
         ``workflow_status``) is updated and persisted. Nothing is recorded for
@@ -158,6 +165,7 @@ class ArticleMdbExportService(BaseService):
         result = self.export(
             snapshot, session.mdb_path, dry_run=dry_run,
             selected_article_ids=selected_article_ids, session=session,
+            replace_existing_links=replace_existing_links,
         )
         if not result.get("ok") or dry_run:
             return result
@@ -182,6 +190,7 @@ class ArticleMdbExportService(BaseService):
         self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False,
         selected_article_ids: set[str] | None = None,
         session: MdbExportSession | None = None,
+        replace_existing_links: bool = False,
     ) -> dict[str, Any]:
         mdb = Path(mdb_path)
         if not mdb.is_file():
@@ -209,6 +218,11 @@ class ArticleMdbExportService(BaseService):
             "group": "SELECT TOP 1 com_ComGroupID FROM [tCOMd_ComGroup]",
             "schemes": "SELECT com_CodeSchemeID, com_CodeSchemeName, com_PackageID FROM [tCOMd_CodeScheme]",
             "relobjs": "SELECT com_RelObjID, com_RelObjName, com_PackageID FROM [tCOMd_RelObj]",
+            "relobj_links": (
+                "SELECT com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, "
+                "com_RelationOrder FROM [tCOMd_RelObjRel]"
+            ),
+            "relations": "SELECT com_RelationID, com_RelationName FROM [tCOMd_Relation]",
             "texts": "SELECT com_TextID, com_TextName, com_TextTypeCode, com_PackageID FROM [tCOMd_Text]",
             "max_article": "SELECT MAX(com_ArticleID) AS max_id FROM [tCOMd_Article]",
             "max_scheme": "SELECT MAX(com_CodeSchemeID) AS max_id FROM [tCOMd_CodeScheme]",
@@ -279,6 +293,14 @@ class ArticleMdbExportService(BaseService):
         expected: dict[str, dict[str, Any]] = {}
         warnings: list[str] = []
         skipped_ambiguous = 0
+        conflicts: list[dict[str, Any]] = []
+        # Link policy: in an attached production workspace an existing valid link is preserved.
+        attached = in_session and is_attached(session)
+        describer = LinkDescriber(data.get("relobjs", []), data.get("relobj_links", []), data.get("relations", []))
+        scheme_rows = {str(r.get("com_CodeSchemeID")): r for r in data.get("schemes", [])}
+        scheme_describer = LinkDescriber(
+            [{"com_RelObjID": r.get("com_CodeSchemeID"), "com_RelObjName": r.get("com_CodeSchemeName")}
+             for r in data.get("schemes", [])])
 
         def resolve(index: dict, key: str, label: str):
             matches = index.get(self._key(key), [])
@@ -333,14 +355,29 @@ class ArticleMdbExportService(BaseService):
                 "com_Discountable": True,
                 "com_OrderUnitCode": "C62",
             }
-            if scheme_id is not None:
+            if scheme_id is not None and old is not None:
+                value, action = decide(old.get("com_CodeSchemeID"), scheme_id, attached=attached,
+                                       replace_existing=replace_existing_links,
+                                       valid=lambda v: str(v) in scheme_rows)
+                row_values["com_CodeSchemeID"] = value
+                if action in ("preserved", "replaced"):
+                    conflicts.append(conflict_entry("code_scheme", f"Article '{code}'", old.get("com_CodeSchemeID"),
+                                                    scheme_id, action, scheme_describer, "com_CodeSchemeID"))
+            elif scheme_id is not None:
                 row_values["com_CodeSchemeID"] = scheme_id
             elif old is not None:
                 row_values["com_CodeSchemeID"] = old.get("com_CodeSchemeID")
             else:
                 row_values["com_CodeSchemeID"] = None
                 warnings.append(f"Article '{code}': code scheme '{item['scheme_name']}' was not found; Text/Code Scheme workflow must resolve it.")
-            if relobj_id is not None:
+            if relobj_id is not None and old is not None:
+                value, action = decide(old.get("com_RelObjID"), relobj_id, attached=attached,
+                                       replace_existing=replace_existing_links, valid=describer.exists)
+                row_values["com_RelObjID"] = value
+                if action in ("preserved", "replaced"):
+                    conflicts.append(conflict_entry("relation_object", f"Article '{code}'",
+                                                    old.get("com_RelObjID"), relobj_id, action, describer))
+            elif relobj_id is not None:
                 row_values["com_RelObjID"] = relobj_id
             elif old is not None:
                 row_values["com_RelObjID"] = old.get("com_RelObjID")
@@ -370,14 +407,6 @@ class ArticleMdbExportService(BaseService):
                     warnings.append(f"Article '{code}': existing row has no com_ArticleID; skipped.")
                     continue
                 values = {k: v for k, v in row_values.items() if allowed(k)}
-                # An existing, already-linked article that would be re-pointed (e.g. a production
-                # workspace article bound to its series price relation) is surfaced, never silent.
-                for column, label in (("com_RelObjID", "relation object"), ("com_CodeSchemeID", "code scheme")):
-                    previous, new_value = old.get(column), values.get(column)
-                    if (previous not in (None, "") and new_value not in (None, "")
-                            and str(previous) != str(new_value)):
-                        warnings.append(
-                            f"Article '{code}': existing {label} link (id {previous}) will be changed to id {new_value}.")
                 if any(old.get(k) != v for k, v in values.items()):
                     updates.append({"op": "update", "table": self.TABLE, "set": values, "where": {self.PK: row_id}})
                 expected[code] = {"id": row_id, **values}
@@ -395,8 +424,11 @@ class ArticleMdbExportService(BaseService):
                 inserts.append({"op": "insert", "table": self.TABLE, "rows": [{self.PK: row_id, **proto, **values}]})
                 expected[code] = {"id": row_id, **values}
 
+        warnings.extend(conflict_message(entry) for entry in conflicts)
         plan = scheme_inserts + updates + inserts
         result = {
+            "conflicts": conflicts,
+            "links_preserved": sum(1 for entry in conflicts if entry["action"] == "preserved"),
             "ok": True, "dry_run": dry_run, "inserted": len(inserts),
             "updated": len(updates), "unchanged": len(articles) - len(inserts) - len(updates) - skipped_ambiguous,
             "skipped_ambiguous": skipped_ambiguous, "warnings": warnings,
