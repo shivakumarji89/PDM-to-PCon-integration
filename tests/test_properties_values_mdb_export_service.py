@@ -2,6 +2,8 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from models.mdb_export_session import MdbExportSession
 
 from services.properties_values_mdb_export_service import PropertiesValuesMdbExportService
@@ -113,7 +115,8 @@ class _ExportFakeMdb:
         return SimpleNamespace(ok=True, first_error=lambda: None)
 
 
-def test_export_to_session_inserts_selected_property_and_value_once(tmp_path):
+@pytest.mark.parametrize("with_source_property", [True, False], ids=["property-sourced", "no-source-property"])
+def test_export_to_session_inserts_selected_property_and_value_once(tmp_path, with_source_property):
     mdb_path = tmp_path / "properties.mdb"
     mdb_path.touch()
     data = {
@@ -162,7 +165,7 @@ def test_export_to_session_inserts_selected_property_and_value_once(tmp_path):
     snapshot = SimpleNamespace(
         product=SimpleNamespace(id="p1", category="Desk", range_name="Desk"),
         articles=[SimpleNamespace(id="a1", product_id="prod1")],
-        properties=[source_property],
+        properties=[source_property] if with_source_property else [],
         property_values=[value],
         options=[], option_values=[],
         article_property_value_ids={"a1": ["pv1"]},
@@ -194,6 +197,8 @@ def test_export_to_session_inserts_selected_property_and_value_once(tmp_path):
     assert first["counts"]["values_inserted"] == 1
     assert data["properties"][0]["com_ClassID"] == 20
     assert data["properties"][0]["com_PropName"] == "Colour"
+    # Required text column in the real OCD schema: a string, never NULL (even if the lookup fails).
+    assert data["properties"][0]["com_PropInfoPicPrefix"] == ""
     assert data["values"][0]["com_PropertyID"] == data["properties"][0]["com_PropertyID"]
     assert data["values"][0]["com_PropValueFrom"] == "R"
 

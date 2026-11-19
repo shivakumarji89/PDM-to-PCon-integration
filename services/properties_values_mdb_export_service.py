@@ -262,12 +262,16 @@ class PropertiesValuesMdbExportService(BaseService):
                     relobj_id = relation_matches[0] if len(relation_matches) == 1 else None
                     if relation_name and len(relation_matches) > 1:
                         warnings.append(f"Relation Object '{relation_name}' is ambiguous; property link left empty.")
+                    # com_PropInfoPicPrefix is a REQUIRED text column in the real OCD schema: it must be a
+                    # string (empty when no @PropInfoPicPrefix applies), never NULL - exactly what the full
+                    # export writes, including for properties that originate from an option.
                     try:
                         prop_info_prefix = self.context.material_picking_service.prop_info_pic_prefix(
                             snapshot, source_name, str(getattr(source_prop, "code", "") or "")
-                        ) if source_prop is not None else None
+                        )
                     except Exception:
-                        prop_info_prefix = None
+                        prop_info_prefix = ""
+                    prop_info_prefix = "" if prop_info_prefix is None else str(prop_info_prefix)
                     property_inserts.append({
                         "op": "insert", "table": "tCOMd_Property", "rows": [{
                             "com_PropertyID": property_id, **property_proto,
