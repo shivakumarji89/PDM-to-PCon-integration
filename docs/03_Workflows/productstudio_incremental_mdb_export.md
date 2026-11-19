@@ -157,8 +157,37 @@ Module order on the home page is unchanged and still asserted.
 ### Qt access violation (open, not reproduced)
 One earlier single-process run on this branch, and one on `main`, aborted with a Windows access violation inside `QCoreApplication.processEvents` in `test_pricing_worker_lifecycle.py::test_destroying_page_before_failure_reports_without_second_exception` (the test deliberately deletes the page mid-run). It could **not** be reproduced afterwards: the file passed 80/80 times under 4x concurrency; the Pricing/VARCOND group passed 4/4 in one process; the preceding-files prefix run passed on the branch (1,715) and on `main` (no crash, 16 failures); the complete single-process run on `9e79d52` passed. The crash is therefore non-deterministic and **not proven fixed**. A possible contributor is state leaked by the failing tests that are now fixed, but this is a hypothesis. Keep running the full suite in one process in CI and treat any recurrence as a release blocker.
 
+### Real ProductStudio MDB validation (2026-11-19)
+
+Harness: `scripts/validate_real_mdb_incremental.py` (32-bit ACE bridge). Every write goes to a **copy** under a temp folder outside the repository and outside the SVN workspace; source != destination is asserted before any write, the source SHA-256 is recorded before/after (unchanged in every run), the session store is a temp folder, and nothing copied is committed. After each stage the harness re-reads **every table** and records: rows added/changed/removed, FK orphans over all 52 foreign keys and duplicates against every unique index. Per stage it checks: dry run writes nothing; an injected failure in the transaction rolls back with zero writes; a first batch, then the full selection (adds only the missing rows, earlier rows untouched); a repeat is a no-op.
+
+Sources (read-only, copied): `...\WS\Seating\Seating\Dalby` (primary), `...\Lino` (secondary), `...\WS\1_WS_Templates\{Seating_Template,Tables_Template,Seating_N1_Template}`. All five OCD MDBs share an identical 50-table / 52-FK schema (Seating_Template lacks the unrelated `Plakfouten` table). Live PDM supplied the Dalby family (26 articles) and Lino family (104 articles) read-only, with the cache save stubbed.
+
+| Scenario | Result |
+|---|---|
+| `initialize()` on real **Seating_Template** | OK. Cleared exactly the 12 example-product tables (4 articles, 20 relations, 7,784 prices, 112 texts ...), kept all reference tables, only Package and ComGroup changed (renamed), 0 FK/unique violations, session recovered after restart, template copy untouched. |
+| `initialize()` on real **Tables_Template** | Refused cleanly: `Template tCOMd_Package is empty.` No file, no session. The legacy full export refuses the same template with the same message, so this is a template-content gap, not a regression. |
+| Seating_Template -> 10 Dalby articles: Articles | 10 inserted + 10 code schemes; repeat no-op; rollback 0 writes. |
+| Class Creation | 2 classes, 20 ArticleClass links, 10 code schemes updated in place; repeat no-op. |
+| Properties & Values | **Failed on the real schema** (defect, below), then 6 properties + 31 values after the fix; repeat no-op. |
+| Text | 57 texts + property/value/article links; repeat no-op. |
+| Relations | 1 relation object, relation and link; repeat no-op. |
+| Pricing (live PDM, 1,588 records) | 572 prices inserted for the selected articles; repeat reports all as existing. |
+| **Dalby (attach), Articles** | 25 of 26 articles matched by natural key and left untouched (IDs preserved), 1 inserted. |
+| Dalby, Pricing | Live-PDM prices equal production: 1,532 of 1,588 identical to the MDB, 0 updated, 56 inserted for the new article; idempotent. |
+| Dalby, VARCOND relation writer | Identical relation skipped; changed body updated in place (ID kept); see rebinding finding. |
+| **Lino (attach)** | Articles / Pricing (276 prices) / VARCOND writer behave as above; Class Creation blocked (below). |
+
+Findings:
+1. **Defect, fixed** - Properties & Values wrote `NULL` into `tCOMd_Property.com_PropInfoPicPrefix` for properties with no source property object. The real column is a required text field (real rows hold `''`); the full export always writes a string. Stand-in test schemas had no such constraint. Now a string is always written (`tests/test_properties_values_mdb_export_service.py`, both variants fail without the fix). The dry run cannot detect NOT-NULL violations; the real write fails atomically with a clear message.
+2. **Design gap, not fixed (owner decision)** - Class Creation requires one CodeScheme *named after each article code*. Real workspaces share schemes (Dalby: 26 articles on 2 schemes `NODLE100`/`NODLE300`; Lino: 3 articles on `LINO`), so on an attached production MDB Class Creation stops with `Expected one existing CodeScheme named '...'` and Properties/Text/Relations stop behind it (nothing is written). Real class names also differ (`DALBY_ATTR`/`DALBY_OPT` vs engineering `Dalby_Attribute`). Supporting shared schemes needs a decision on how a scheme shared by unselected articles may be extended; it works on MDBs initialized from a template.
+3. **Rebinding of existing articles, surfaced not changed** - an existing article is re-pointed to the resolved relation object: Lino `MI1E3` from `P_PRICING_CHAIR` (a real price relation) to `P_MI1E3` (an object with no relation), and Dalby articles from the shared `P_PRICING_DALBY` to per-code objects (VARCOND stage). The Articles stage now warns `existing relation object link (id A) will be changed to id B` (also for code schemes), confirmed on the real Lino MDB. Whether attach mode should preserve an existing link is a product decision.
+Regression after these changes: targeted export-service tests 200 passed (153 s); whole suite in one process `python -m pytest tests -q` -> **5539 passed, 15 skipped, 0 failed, exit 0, 1207 s** (previous 5536 + 3 new tests; run under concurrent ACE load, hence slower than the earlier 783 s).
+
+4. VARCOND *generation* was not exercised: Dalby and Lino snapshots have no super-product BOM (`article_components` empty). Only the writer path was tested, with relation objects in the real Dalby body format.
+
 ### Not validated (external requirements)
-- **Real ProductStudio MDB template**: none is in the repository or workspace. Stages other than Articles/session have not been run against the real schema; do not claim ACE parity for Class Creation, Properties, Text, Relations, Pricing or VARCOND until run with the real template under 32-bit Python + ACE.
+- **Real ProductStudio MDBs**: now exercised - see "Real ProductStudio MDB validation" below. Not yet validated: Class Creation / Properties / Text / Relations on an *attached production workspace* (blocked by the shared-CodeScheme gap), BOM-based VARCOND *generation* (Dalby and Lino have no super-product BOM), the Tables template (empty Package table).
 - **Live PDM pricing benchmark**: not run. Required: reachable SQL Server PDM; run the pricing compute for one large product with the 1-worker and 2-worker code paths and record wall time.
 - **Windows click-through of the packaged app** and **pCon.basket** opening of the final MDB: pending, require a human on a machine with the packaged build and pCon.basket.
 
