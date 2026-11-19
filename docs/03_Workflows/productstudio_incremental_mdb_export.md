@@ -244,6 +244,23 @@ The Text preview dialog lists the preserved values under "Existing production te
 
 **Legacy sessions.** A session file saved before the `attached_existing` flag existed lacks it. It is not guessed: `MdbExportSession.from_dict` sets `attached_flag_known=False` (persisted, so a re-save does not turn the unknown into a "known template"), the session is treated as template-initialized (previous behaviour) and the Text preview warns first. `MdbExportSessionService.declare_attachment(session, attached)` records the explicit answer once; it refuses to rewrite a known flag. No UI action calls it yet - **owner decision / follow-up** (a one-line confirmation dialog on the warning is the proposed UI).
 
+**Real-ACE evidence (isolated copies, 2026-11-19; harness `scripts/validate_real_mdb_incremental.py`, new `--force-unattached` / `--unattached-stages`).** Live PDM snapshots rebuilt for the run (Dalby 27 NODLE products = 26 workspace articles + 1 new; Lino `MI1E3/MI2E3/MI7E3`). Class Creation and Properties & Values were run as unattached only to build the classes the identity stop would otherwise refuse; Text ran attached.
+
+| Workspace / mode | Existing text cells changed | Populated values overwritten | New text rows | Other |
+|---|---|---|---|---|
+| Dalby, **attached policy** | 0 | **0** | 47 | 32 conflicts preserved (e.g. `Access_Cutout_NC`: existing "No cutout - NC" kept, incoming "No cutout" not applied) |
+| Dalby, legacy behaviour (`--force-unattached`) | 36 | **32** | 47 | e.g. `Dalby Circular Coffee Table / 650mm` -> `NODLE100` |
+| Lino, **attached policy** | 0 | **0** | 792 | |
+| Lino, legacy behaviour | 5 | **5** | 792 | |
+
+The counts differ from the earlier 11 (Dalby) / 4 (Lino) because the snapshots were rebuilt and select a different text-block set; the overwrite itself is reproduced. First attached run exposed a further defect: the writer **renamed existing text keys by case** (`Cable_leg` -> `Cable_Leg`, 4 rows on Dalby); fixed (existing key spelling is never changed in attached sessions) and re-run: 0 changed cells. Per stage: dry run 0 writes, injected failure 0 writes, repeat no-op, 0 FK orphans / unique violations.
+
+Class identity on real data (attached, Class Creation alone): Dalby and Lino both stop with `Class identity cannot be established, nothing was written ... no reliable mapping exists` for `Dalby_Attribute/Dalby_Options` vs `DALBY_ATTR/DALBY_OPT` and `Lino_Attribute/...` vs `LINO_ATTR/LINO_OPT`; first-batch and full-selection deltas empty. Source SHA-256 before and after: Dalby `18bcb07e2014...`, Lino `87926b2a69f6...` (unchanged; the `.ldb` beside Lino pre-existed).
+
+**Validation levels.** Implemented + unit-tested + real-ACE validated (isolated copies): text preservation, key-spelling preservation, class identity stop. Unit-tested only: legacy-session flag handling, `replace_existing_text`. NOT validated: packaged application, pCon.basket, CI on the final commit.
+
+**Not changed / open.** Lino pricing (3,472 updates) is unchanged and undocumented as defect: live PDM is newer than that workspace; no price-conflict preview exists yet and no evidence was gathered to change it. BOM-based VARCOND generation still needs a product with a super-product BOM (`article_components` populated). Tables template still has an empty Package table; no seed invented. Pricing-page crash, Qt access violation and live 1-vs-2-worker pricing benchmark were not investigated/run in this pass.
+
 ### Production class identity (`services/class_creation_mdb_export_service.py`)
 
 Status: **implemented as a safe conflict, unit-tested** (`tests/test_class_production_identity.py`, 7 tests). **Reuse by mapping is NOT implemented, because no reliable mapping exists.**
