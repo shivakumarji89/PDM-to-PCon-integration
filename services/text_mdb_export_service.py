@@ -34,6 +34,17 @@ class TextMdbExportService(BaseService):
             return 0
 
     @classmethod
+    def _value_rows(cls, index: dict, property_id: Any, raw_code: str, stripped_code: str) -> list:
+        """The MDB value row(s) of a property for a source value code.
+
+        Properties & Values stores the code as the OCD data carries it (e.g. ``1FD#``), while text names use
+        the code without ``#``. Look the row up by the stored code first, then by the stripped one, so the
+        Text stage finds what Properties & Values wrote (found on the real Lino workspace).
+        """
+        pid = str(property_id)
+        return (index.get((pid, cls._key(raw_code))) or index.get((pid, cls._key(stripped_code))) or [])
+
+    @classmethod
     def _next_id(cls, rows: list[dict[str, Any]], column: str) -> int:
         return max((cls._int(row.get(column)) for row in rows), default=0) + 1
 
@@ -382,9 +393,9 @@ class TextMdbExportService(BaseService):
                     )
                     if value_text_id is None:
                         continue
-                    value_rows = values_by_property_code.get(
-                        (str(mdb_prop.get("com_PropertyID")), self._key(code)), []
-                    )
+                    raw_code = str(getattr(source_value, "code", "") or value_code_map.get(value_id, "")).strip()
+                    value_rows = self._value_rows(
+                        values_by_property_code, mdb_prop.get("com_PropertyID"), raw_code, code)
                     if len(value_rows) != 1:
                         return {"ok": False, "error": (
                             f"Properties & Values must be exported before Text for '{prop_name}={code}'."

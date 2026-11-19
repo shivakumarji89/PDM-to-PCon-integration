@@ -283,3 +283,14 @@ def test_text_export_inserts_text_and_links_selected_base_article(tmp_path):
     assert repeated["verified"] is True
     assert repeated["counts"]["texts_inserted"] == 0
     assert rows == before
+
+
+def test_text_value_lookup_finds_the_code_with_the_ocd_hash_that_properties_values_stored():
+    """Real Lino: Properties & Values stored 'Fabric_Type=1FD#'; Text looked for '1FD' and refused."""
+    rows = {("7", "1fd#"): [{"com_ValueID": 1}], ("7", "1fd01"): [{"com_ValueID": 2}]}
+    find = TextMdbExportService._value_rows
+    assert find(rows, 7, "1FD#", "1FD") == [{"com_ValueID": 1}]      # stored with '#'
+    assert find(rows, 7, "1FD01", "1FD01") == [{"com_ValueID": 2}]   # plain code unchanged
+    assert find(rows, 7, "1FD", "1FD") == []                         # nothing stored: still reported
+    plain = {("7", "1fd"): [{"com_ValueID": 3}]}
+    assert find(plain, 7, "1FD#", "1FD") == [{"com_ValueID": 3}]     # stored without '#': stripped fallback
