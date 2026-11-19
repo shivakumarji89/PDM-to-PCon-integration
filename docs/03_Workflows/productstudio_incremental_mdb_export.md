@@ -242,7 +242,7 @@ Natural key of a text row: `(com_TextTypeCode, com_TextName)` within the package
 
 The Text preview dialog lists the preserved values under "Existing production text (kept, NOT overwritten)". A failed transaction writes nothing (existing transactional batch).
 
-**Legacy sessions.** A session file saved before the `attached_existing` flag existed lacks it. It is not guessed: `MdbExportSession.from_dict` sets `attached_flag_known=False` (persisted, so a re-save does not turn the unknown into a "known template"), the session is treated as template-initialized (previous behaviour) and the Text preview warns first. `MdbExportSessionService.declare_attachment(session, attached)` records the explicit answer once; it refuses to rewrite a known flag. No UI action calls it yet - **owner decision / follow-up** (a one-line confirmation dialog on the warning is the proposed UI).
+**Legacy sessions.** Superseded by the confirmation workflow in [Legacy session confirmation](#legacy-session-confirmation) below: a legacy session is no longer exported as "template-initialized" with a warning; it is refused until the user declares its workspace type.
 
 **Real-ACE evidence (isolated copies, 2026-11-19; harness `scripts/validate_real_mdb_incremental.py`, new `--force-unattached` / `--unattached-stages`).** Live PDM snapshots rebuilt for the run (Dalby 27 NODLE products = 26 workspace articles + 1 new; Lino `MI1E3/MI2E3/MI7E3`). Class Creation and Properties & Values were run as unattached only to build the classes the identity stop would otherwise refuse; Text ran attached.
 
@@ -257,9 +257,35 @@ The counts differ from the earlier 11 (Dalby) / 4 (Lino) because the snapshots w
 
 Class identity on real data (attached, Class Creation alone): Dalby and Lino both stop with `Class identity cannot be established, nothing was written ... no reliable mapping exists` for `Dalby_Attribute/Dalby_Options` vs `DALBY_ATTR/DALBY_OPT` and `Lino_Attribute/...` vs `LINO_ATTR/LINO_OPT`; first-batch and full-selection deltas empty. Source SHA-256 before and after: Dalby `18bcb07e2014...`, Lino `87926b2a69f6...` (unchanged; the `.ldb` beside Lino pre-existed).
 
-**Validation levels.** Implemented + unit-tested + real-ACE validated (isolated copies): text preservation, key-spelling preservation, class identity stop. Unit-tested only: legacy-session flag handling, `replace_existing_text`. NOT validated: packaged application, pCon.basket, CI on the final commit.
+**Validation levels.** Implemented + unit-tested + real-ACE validated (isolated copies): text preservation, key-spelling preservation, class identity stop. Unit-tested only: legacy-session confirmation (dialog is exercised with a stubbed answer, not by a person at the real window), `replace_existing_text`. NOT validated: packaged application, pCon.basket, CI on the final commit.
 
 **Not changed / open.** Lino pricing (3,472 updates) is unchanged and undocumented as defect: live PDM is newer than that workspace; no price-conflict preview exists yet and no evidence was gathered to change it. BOM-based VARCOND generation still needs a product with a super-product BOM (`article_components` populated). Tables template still has an empty Package table; no seed invented. Pricing-page crash, Qt access violation and live 1-vs-2-worker pricing benchmark were not investigated/run in this pass.
+
+### Legacy session confirmation
+
+**Implemented** (`ui/dialogs/workspace_type_dialog.py`, `services/relation_link_policy.legacy_session_error`, `MdbExportSessionService.declare_attachment`).
+
+*What is a legacy session.* A session file written before the `attached_existing` flag existed. `MdbExportSession.from_dict` marks it `attached_flag_known=False`; the marker is persisted, so re-saving it never turns "unknown" into a known template session. Sessions created by `initialize()` (template) or `attach_existing()` always carry a known flag and are never prompted.
+
+*Why confirmation is required.* The two workspace types behave differently and the wrong guess is not harmless: an attached production workspace preserves existing text and relation-object links, a template workspace lets incoming data overwrite. The type is never inferred from file name, path, MDB contents or article count.
+
+*The dialog* (title "Confirm MDB Workspace Type"). Buttons: **Existing Production Workspace** (records `attached_existing=True`), **Newly Initialized Template Workspace** (records `False`), **Cancel**. Neither answer is the default; Enter and Escape both mean Cancel.
+
+*Where it runs.* One shared helper, `ensure_workspace_type_known(parent, sessions, session, title)`, is called immediately after the session is fetched and before any preview, worker or write, in every incremental entry point: Articles (`MainWindow._on_export_articles_to_mdb`), Class Creation, Properties & Values, Text, Relations / Relation Objects (`MaintenanceSourceMixin`), Pricing (`PricingPage._start_export_workflow`) and Pricing Relation / VARCOND (`MainWindow._on_export_varcond_relations_session`).
+
+*Persistence.* The answer is stored through `declare_attachment` in the existing session JSON, so later stages (which re-read the session) and a restarted application see a known flag and do not prompt again. `declare_attachment` is atomic: if saving fails the session stays unknown, the user sees "The workspace type could not be saved, so the export was stopped", and nothing is exported. A known session cannot be reclassified (`ExportSessionError`).
+
+*Cancel.* Nothing is recorded and the handler returns before any preview or write: session file unchanged, zero MDB access.
+
+*Service backstop.* Independently of the UI, the Articles, Class Creation, Properties & Values, Text and Relation services (the last also runs the Pricing Relation workflow) return `{"ok": false, "legacy_session": true}` for a legacy session, for both preview and write, before touching the MDB. The old implicit template behaviour can therefore not run even if a caller skips the dialog.
+
+*Tests.* `tests/test_legacy_session_confirmation.py` (model/service, helper, dialog wording and no-default, service backstop for every writer, and UI handlers for Class Creation, Text, Relations and Properties & Values: cancel, both choices, no re-prompt, known/new sessions not prompted). `tests/test_text_preservation.py::test_unknown_flag_session_is_refused_by_text_export_until_declared` replaces the earlier "warns in preview" test.
+
+*Limitations.*
+- Articles, Pricing and VARCOND handlers need a full main window or price worker; their ordering (confirmation after the session fetch, before any preview/write/worker) is asserted structurally, not by driving them end to end.
+- The Pricing writer only receives the MDB path, not the session, so it relies on the UI gate; it has no service-level legacy refusal.
+- The dialog was not driven by a person in the packaged application.
+- Mapping to a production class is a separate, not yet implemented task.
 
 ### Production class identity (`services/class_creation_mdb_export_service.py`)
 

@@ -18,6 +18,7 @@ from typing import Any
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
 from models.text_block import TextBlock
+from services.relation_link_policy import legacy_session_error
 from services.base_service import BaseService
 from services.class_creation_selection_service import build_class_creation_scope, classes_for_article
 from services.engineering.engineering_text_service import text_block_name
@@ -66,6 +67,9 @@ class TextMdbExportService(BaseService):
         populated text in an attached workspace; the normal export buttons never pass it."""
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Text."}
+        legacy = legacy_session_error(session)
+        if legacy:
+            return {"ok": False, "error": legacy, "legacy_session": True}
         attached = is_attached(session)
         conflicts: list[dict[str, Any]] = []
         selected = {str(v) for v in (selected_article_ids or set()) if str(v)}

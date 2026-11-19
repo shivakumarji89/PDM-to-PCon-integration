@@ -14,6 +14,7 @@ from typing import Any
 
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
+from services.relation_link_policy import legacy_session_error
 from services.base_service import BaseService
 from services.class_creation_selection_service import classes_for_article
 from services.relation_link_policy import is_attached
@@ -222,6 +223,9 @@ class ClassCreationMdbExportService(BaseService):
         """Export only the classes related to the selected Articles-page rows."""
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Class Creation."}
+        legacy = legacy_session_error(session)
+        if legacy:
+            return {"ok": False, "error": legacy, "legacy_session": True}
         selected = {str(value) for value in (selected_article_ids or set()) if str(value)}
         if not selected:
             return {"ok": False, "error": "Select one or more articles in the Articles page Export column first."}

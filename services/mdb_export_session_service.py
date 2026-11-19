@@ -180,7 +180,13 @@ class MdbExportSessionService(BaseService):
             raise ExportSessionError("This session already records whether it is attached.")
         session.attached_existing = bool(attached)
         session.attached_flag_known = True
-        self.save(session)
+        try:
+            self.save(session)
+        except OSError as exc:
+            # Nothing was persisted: leave the in-memory session as unknown too.
+            session.attached_existing = False
+            session.attached_flag_known = False
+            raise ExportSessionError(f"Could not save the workspace type decision: {exc}") from exc
 
     def get_active(self, snapshot: Snapshot) -> MdbExportSession | None:
         """The loaded product's session, or ``None`` when no MDB exists yet.

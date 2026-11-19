@@ -309,6 +309,9 @@ class MaintenanceSourceMixin:
                 "Export Articles first to initialize this product's MDB session.",
             )
             return
+        from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+        if not ensure_workspace_type_known(self, sessions, session, "Export Properties and Values"):
+            return
         from services.properties_values_mdb_export_service import PropertiesValuesMdbExportService
         service = PropertiesValuesMdbExportService(self._context)
         preview = service.export_to_session(
@@ -397,6 +400,9 @@ class MaintenanceSourceMixin:
                     "Export Articles first to initialize this product's MDB session.",
                 )
                 return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, "Export Class Creation"):
+                return
             from services.class_creation_mdb_export_service import ClassCreationMdbExportService
             service = ClassCreationMdbExportService(self._context)
             preview = service.export_to_session(snapshot, session, selected_article_ids=selected_article_ids, dry_run=True)
@@ -467,6 +473,9 @@ class MaintenanceSourceMixin:
                     self, f"Export {title}",
                     "Export Articles first to initialize this product's MDB session.",
                 )
+                return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, f"Export {title}"):
                 return
             service = ExportService(self._context)
             preview = service.export_to_session(

@@ -636,6 +636,11 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 )
                 self._restore_export_buttons()
                 return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(
+                    self, self._context.mdb_export_session_service, session, "Export Prices"):
+                self._restore_export_buttons()
+                return
             window = self.window()
             articles_page = next(
                 (page for page in (getattr(window, "_pages", {}) or {}).values()

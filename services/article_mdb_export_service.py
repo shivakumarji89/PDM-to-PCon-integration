@@ -30,6 +30,7 @@ from typing import Any
 
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
+from services.relation_link_policy import legacy_session_error
 from services.base_service import BaseService
 from services.relation_link_policy import (
     LinkDescriber, conflict_entry, conflict_message, decide, is_attached,
@@ -152,6 +153,9 @@ class ArticleMdbExportService(BaseService):
             return {"ok": False, "error": "Select at least one article to export."}
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Articles."}
+        legacy = legacy_session_error(session)
+        if legacy:
+            return {"ok": False, "error": legacy, "legacy_session": True}
         sessions = getattr(self.context, "mdb_export_session_service", None)
         try:
             from services.mdb_export_session_service import MdbExportSessionService

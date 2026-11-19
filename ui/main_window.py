@@ -1771,6 +1771,9 @@ class MainWindow(QMainWindow):
                 self, title, "Export Articles first to initialize this product's MDB session."
             )
             return
+        from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+        if not ensure_workspace_type_known(self, sessions, session, title):
+            return
         panel = page._varcond_panel
         try:
             plan = panel.prepare_relation_export(selected_article_ids=selected_ids)
@@ -2114,6 +2117,11 @@ class MainWindow(QMainWindow):
                 return
             sessions.discard(snapshot)
             session = None
+
+        if session is not None:
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, title):
+                return
 
         prepare = None          # worker callable that creates / attaches the session
         created = False

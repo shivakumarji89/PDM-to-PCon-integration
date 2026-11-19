@@ -189,7 +189,9 @@ def test_legacy_session_without_flag_is_flagged_unknown_and_declaration_is_expli
         svc.declare_attachment(s, False)
 
 
-def test_unknown_flag_session_warns_in_text_preview(tmp_path):
+def test_unknown_flag_session_is_refused_by_text_export_until_declared(tmp_path):
+    """Superseded: a legacy session used to export as 'template' with a warning. It is now refused
+    (preview and write) until the user declares the workspace type; see test_legacy_session_confirmation."""
     rows = _rows()
     path = tmp_path / "t.mdb"
     path.touch()
@@ -197,8 +199,11 @@ def test_unknown_flag_session_warns_in_text_preview(tmp_path):
     session = _session(path, PROTO)
     session.attached_flag_known = False
     ctx = _incremental_context(_FakeMdb(rows), session, snapshot)
-    result = TextMdbExportService(ctx).export_to_session(snapshot, session, {"a1"}, dry_run=True)
-    assert result["ok"] and "saved before attached-workspace tracking" in result["warnings"][0]
+    for dry_run in (True, False):
+        result = TextMdbExportService(ctx).export_to_session(snapshot, session, {"a1"}, dry_run=dry_run)
+        assert result["ok"] is False and result["legacy_session"] is True
+    session.attached_flag_known = True
+    assert TextMdbExportService(ctx).export_to_session(snapshot, session, {"a1"}, dry_run=True)["ok"]
 
 
 def test_attached_never_renames_the_existing_text_key_spelling(tmp_path):

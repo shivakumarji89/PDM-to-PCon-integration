@@ -23,6 +23,24 @@ def is_attached(session: Any) -> bool:
     return bool(getattr(session, "attached_existing", False))
 
 
+LEGACY_SESSION_ERROR = (
+    "This export session was saved by an earlier version and does not record whether its MDB is an "
+    "existing production workspace or a newly initialized template workspace. Confirm the workspace "
+    "type (Confirm MDB Workspace Type) before exporting; nothing was written."
+)
+
+
+def legacy_session_error(session: Any) -> str | None:
+    """Service-level backstop: a session whose attachment is UNKNOWN must not be previewed or written.
+
+    The UI resolves it first through the shared confirmation; this guarantees that no entry point can
+    fall back to the old implicit template behaviour even if it skips that step.
+    """
+    if session is not None and not bool(getattr(session, "attached_flag_known", True)):
+        return LEGACY_SESSION_ERROR
+    return None
+
+
 def _key(value: Any) -> str:
     try:
         return str(int(float(value)))
