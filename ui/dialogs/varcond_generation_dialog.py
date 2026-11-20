@@ -177,7 +177,6 @@ class VarCondGenerationPanel(QWidget):
         self._substitutions.setReadOnly(True)
         self._substitutions.hide()
         self._summary = QLabel("Merged Article VARCOND Relations", self)
-        right.addWidget(self._summary)
         self._output = _CopyableVarCondTable(self)
         self._output.setColumnCount(1)
         self._output.setHorizontalHeaderLabels(["VARCOND Rule"])
@@ -188,6 +187,9 @@ class VarCondGenerationPanel(QWidget):
         self._output.verticalHeader().setVisible(False)
         self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self._output, 1)
+        # Keep the relation list and VARCOND table aligned at the top;
+        # place the status/details line beneath the table.
+        right.addWidget(self._summary)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
 
