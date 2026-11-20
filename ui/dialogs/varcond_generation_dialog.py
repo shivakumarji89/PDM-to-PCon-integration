@@ -151,13 +151,6 @@ class VarCondGenerationPanel(QWidget):
         )
         self._relation_length.valueChanged.connect(self._refresh_relations)
         controls.addWidget(self._relation_length)
-        self._reload_button = QPushButton("Reload Relations", self.controls_widget)
-        self._reload_button.setToolTip(
-            "Read this product's relation source data from PDM again and replace the "
-            "saved copy. Relations are otherwise loaded from the saved copy."
-        )
-        self._reload_button.clicked.connect(self._on_reload_relations)
-        self._reload_button.setVisible(self._maintenance_check())
 
         split = QHBoxLayout()
         left = QVBoxLayout()
@@ -242,7 +235,6 @@ class VarCondGenerationPanel(QWidget):
             self._maintenance_service.clear_cache()
             self._maintenance_snapshot = self._snapshot
             self._bind_relation_store(self._maintenance_service)
-        self._reload_button.setVisible(self._maintenance_check())
         self._article_rows = []
         snapshot = self._snapshot
         if snapshot is not None:
@@ -416,7 +408,6 @@ class VarCondGenerationPanel(QWidget):
         self._filter.setEnabled(False)
         self._relation_length.setEnabled(False)
         self._exclusion_button.setEnabled(False)
-        self._reload_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
         stream_prefix_length = self._relation_length.value()
         stream_filter_text = self._filter.text().strip().casefold()
@@ -517,7 +508,6 @@ class VarCondGenerationPanel(QWidget):
         self._filter.setEnabled(True)
         self._relation_length.setEnabled(True)
         self._exclusion_button.setEnabled(True)
-        self._reload_button.setEnabled(True)
         self._substitution_button.setEnabled(True)
 
     def _on_maintenance_source_progress(self, payload) -> None:
