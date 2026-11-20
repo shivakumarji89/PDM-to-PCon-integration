@@ -636,7 +636,7 @@ class VarCondGenerationPanel(QWidget):
         parent_codes = [
             code for code, _label, _article_id in self._article_rows
             if code.startswith(relation_prefix)
-            and (not needle or code.casefold().startswith(needle))
+            and _article_code_matches_filter(code, needle)
         ]
         if not parent_codes:
             return
