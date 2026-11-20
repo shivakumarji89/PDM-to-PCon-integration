@@ -90,6 +90,8 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_snapshot = None
         self._maintenance_reporter = None
         self._maintenance_monitor = None
+        self._relation_store = None
+        self._reload_requested = False
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -125,6 +127,14 @@ class VarCondGenerationPanel(QWidget):
         )
         self._relation_length.valueChanged.connect(self._refresh_relations)
         controls.addWidget(self._relation_length)
+        self._reload_button = QPushButton("Reload Relations", self.controls_widget)
+        self._reload_button.setToolTip(
+            "Read this product's relation source data from PDM again and replace the "
+            "saved copy. Relations are otherwise loaded from the saved copy."
+        )
+        self._reload_button.clicked.connect(self._on_reload_relations)
+        self._reload_button.setVisible(self._maintenance_check())
+        controls.addWidget(self._reload_button)
 
         split = QHBoxLayout()
         left = QVBoxLayout()
@@ -206,6 +216,8 @@ class VarCondGenerationPanel(QWidget):
             # the result rather than let old-product data repopulate this cache.
             self._maintenance_service.clear_cache()
             self._maintenance_snapshot = self._snapshot
+            self._bind_relation_store(self._maintenance_service)
+        self._reload_button.setVisible(self._maintenance_check())
         self._article_rows = []
         snapshot = self._snapshot
         if snapshot is not None:
@@ -309,7 +321,26 @@ class VarCondGenerationPanel(QWidget):
         if self._maintenance_service is None:
             self._maintenance_service = MaintenanceVarCondService(self._context)
             self._maintenance_snapshot = self._snapshot
+            self._bind_relation_store(self._maintenance_service)
         return self._maintenance_service
+
+    def _bind_relation_store(self, service) -> None:
+        """Back the service with this product's saved relation sources."""
+        from services.relation_source_store import RelationSourceStore, relation_scope
+
+        scope = relation_scope(self._snapshot, self._context)
+        if self._relation_store is None:
+            self._relation_store = RelationSourceStore()
+        service.bind_store(self._relation_store, scope)
+
+    def _on_reload_relations(self) -> None:
+        """Explicit user action: read the relation sources from PDM again."""
+        if not self._maintenance_check() or not self._article_rows:
+            return
+        self._reload_requested = True
+        self._load_maintenance_sources_async(
+            [row[0] for row in self._article_rows], refresh=True
+        )
 
     def _load_maintenance_sources_async(self, parent_codes: list[str], refresh: bool) -> None:
         """Load missing/refresh PDM source rows off the UI thread.
@@ -340,6 +371,7 @@ class VarCondGenerationPanel(QWidget):
         self._filter.setEnabled(False)
         self._relation_length.setEnabled(False)
         self._exclusion_button.setEnabled(False)
+        self._reload_button.setEnabled(False)
         self._substitution_button.setEnabled(False)
         stream_prefix_length = self._relation_length.value()
         stream_filter_text = self._filter.text().strip().casefold()
@@ -440,6 +472,7 @@ class VarCondGenerationPanel(QWidget):
         self._filter.setEnabled(True)
         self._relation_length.setEnabled(True)
         self._exclusion_button.setEnabled(True)
+        self._reload_button.setEnabled(True)
         self._substitution_button.setEnabled(True)
 
     def _on_maintenance_source_progress(self, payload) -> None:
@@ -464,12 +497,15 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_snapshot = None
         refresh = self._maintenance_pending_refresh
         self._maintenance_pending_refresh = False
+        if not refresh:
+            self._reload_requested = False
         if loaded_snapshot is not self._snapshot:
             # Snapshot changed while PDM was loading. Never render/cache results
             # from the previous product in the newly selected product's panel.
             if self._maintenance_service is not None:
                 self._maintenance_service.clear_cache()
-            self._maintenance_snapshot = self._snapshot
+                self._maintenance_snapshot = self._snapshot
+                self._bind_relation_store(self._maintenance_service)
             self._finish_maintenance_progress(False, "Product changed while loading; stale relation data discarded.")
             self._generate_all()
             return
@@ -488,9 +524,20 @@ class VarCondGenerationPanel(QWidget):
         self._finish_maintenance_progress(True, "VARCOND source data ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
+        was_reload = self._reload_requested
+        self._reload_requested = False
         self._finish_maintenance_load()
         self._maintenance_load_snapshot = None
         self._finish_maintenance_progress(False, "Price relation load failed")
+        service = self._maintenance_service
+        codes = [row[0] for row in self._article_rows]
+        if was_reload and service is not None and codes and service.has_sources(codes):
+            # The failed reload left the previous saved relations untouched.
+            self._generate_all()
+            self._summary.setText(
+                f"Reload failed - previous saved relations kept: {message}"
+            )
+            return
         self._summary.setText(f"Could not load relation data from PDM: {message}")
         self._output.setRowCount(0)
 
