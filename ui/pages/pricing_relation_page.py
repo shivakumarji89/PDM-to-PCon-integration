@@ -120,6 +120,9 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_workflow.setVisible(not mdb)
         self._varcond_panel.setEnabled(not mdb)
         self._varcond_panel.controls_widget.setVisible(not mdb)
+        self._dot_base_button.setVisible(
+            not mdb and self.is_maintenance_module()
+        )
 
     #: on_enter() does not call refresh() for the PDM view (it regenerates the relations).
     ENTER_IS_PLAIN_REFRESH = False
