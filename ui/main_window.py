@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QProcess
+from PySide6.QtCore import Qt, QSettings, QProcess, QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenuBar,
+    QProgressDialog,
     QSplitter,
     QSizePolicy,
     QStatusBar,
@@ -69,6 +70,31 @@ from ui.components.workflow_shell import AppHeaderBar, WorkflowSidebar
 from ui.components.workflow_styles import set_button_role
 from ui.widgets.data_table import standardize_table
 from ui.widgets.explorer_tree import standardize_tree
+
+
+class _ProjectOpenSignals(QObject):
+    """Signals emitted by the background saved-project reader."""
+
+    loaded = Signal(object)
+    failed = Signal(str)
+
+
+class _ProjectOpenWorker(QRunnable):
+    """Read and deserialize a saved project without blocking the GUI thread."""
+
+    def __init__(self, project_service, path: str, signals: _ProjectOpenSignals) -> None:
+        super().__init__()
+        self._project_service = project_service
+        self._path = path
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            project = self._project_service.read_project(self._path)
+        except Exception as error:  # defensive: report failures on the GUI thread
+            self._signals.failed.emit(str(error))
+        else:
+            self._signals.loaded.emit(project)
 
 
 class MainWindow(QMainWindow):
@@ -125,6 +151,16 @@ class MainWindow(QMainWindow):
         # collapse state) before activating the first workspace.
         self._restore_layout()
         self._geometry_fitted = False
+
+        # Keep the asynchronous project reader and staged UI refresh alive.
+        self._project_opening = False
+        self._project_open_worker = None
+        self._project_open_signals = None
+        self._project_open_progress = None
+        self._project_open_path = ""
+        self._project_open_pages: list[BasePage] = []
+        self._project_open_page_index = 0
+        self._project_open_project = None
 
         # Start at Level 1. No workflow is shown until a module is selected.
         self._show_module_home()
@@ -1050,10 +1086,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("New project")
 
     def _on_file_open(self) -> None:
-        """Open a saved ``.mkproj`` project and restore its session."""
-        if not self._confirm_discard_if_modified():
+        """Open a saved project with visible progress and background deserialization."""
+        if self._project_opening or not self._confirm_discard_if_modified():
             return
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1061,28 +1097,126 @@ class MainWindow(QMainWindow):
             self._last_project_dir(),
             "MK Project (*.mkproj);;All Files (*)",
         )
-        if not path:
-            return
+        if path:
+            self._start_project_open(path)
+
+    def _start_project_open(self, path: str) -> None:
+        """Show progress immediately, then deserialize the project off the UI thread."""
+        self._project_opening = True
+        self._project_open_path = path
+
+        progress = QProgressDialog("Reading saved project...", "", 0, 0, self)
+        progress.setWindowTitle("Opening Project")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setMinimumWidth(390)
+        self._project_open_progress = progress
+        progress.show()
+        progress.raise_()
+
+        signals = _ProjectOpenSignals(self)
+        signals.loaded.connect(self._on_project_open_loaded)
+        signals.failed.connect(self._on_project_open_failed)
+        self._project_open_signals = signals
+        worker = _ProjectOpenWorker(self._context.project_service, path, signals)
+        self._project_open_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_project_open_loaded(self, project) -> None:
+        """Activate the deserialized snapshot, then refresh pages in short UI steps."""
         try:
-            project = self._context.project_service.load_project(path)
-        except Exception as error:  # noqa: BLE001 (surface any load failure)
-            QMessageBox.critical(
-                self, "Open Project", f"Could not open project:\n{error}"
+            self._context.project_service.activate_project(project, self._project_open_path)
+            self._remember_project_dir(self._project_open_path)
+            self._remember_project_path(self._project_open_path)
+            if project.selected_product is not None:
+                label = (
+                    project.selected_product.code
+                    or project.selected_product.name
+                    or "Product"
+                )
+                self._product_status.setText(label)
+        except Exception as error:  # noqa: BLE001
+            self._on_project_open_failed(str(error))
+            return
+
+        self._project_open_project = project
+        self._project_open_pages = list(self._refreshable_pages)
+        self._project_open_page_index = 0
+        progress = self._project_open_progress
+        if progress is not None:
+            progress.setRange(0, max(1, len(self._project_open_pages) + 1))
+            progress.setValue(0)
+            progress.setLabelText("Restoring project workspaces...")
+        QTimer.singleShot(0, self._refresh_next_project_page)
+
+    def _refresh_next_project_page(self) -> None:
+        """Refresh one workspace per event-loop turn so progress stays visible."""
+        if not self._project_opening:
+            return
+
+        total = len(self._project_open_pages)
+        index = self._project_open_page_index
+        if index < total:
+            page = self._project_open_pages[index]
+            progress = self._project_open_progress
+            if progress is not None:
+                progress.setValue(index)
+                progress.setLabelText(f"Refreshing workspace {index + 1} of {total}...")
+            try:
+                page.refresh()
+            except Exception as error:  # noqa: BLE001
+                self._on_project_open_failed(
+                    f"Project data was loaded, but a workspace could not refresh:\n{error}"
+                )
+                return
+            self._project_open_page_index += 1
+            QTimer.singleShot(0, self._refresh_next_project_page)
+            return
+
+        try:
+            self._manager.refresh()
+            project = self._project_open_project
+            if project is not None and project.current_step is not None:
+                self._manager.jump_to(project.current_step)
+        except Exception as error:  # noqa: BLE001
+            self._on_project_open_failed(
+                f"Project data was loaded, but workspace finalization failed:\n{error}"
             )
             return
-        self._remember_project_dir(path)
-        self._remember_project_path(path)
-        if project.selected_product is not None:
-            label = (
-                project.selected_product.code
-                or project.selected_product.name
-                or "Product"
-            )
-            self._product_status.setText(label)
-        self.refresh_workspaces()
-        if project.current_step is not None:
-            self._manager.jump_to(project.current_step)
-        self.statusBar().showMessage(f"Opened {project.name or path}")
+
+        path = self._project_open_path
+        project = self._project_open_project
+        self.statusBar().showMessage(
+            f"Opened {project.name or path}" if project is not None else f"Opened {path}"
+        )
+        self._finish_project_open()
+
+    def _on_project_open_failed(self, message: str) -> None:
+        """Close the progress surface and report a project-open failure."""
+        self._finish_project_open()
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.critical(
+            self, "Open Project", f"Could not complete opening the project:\n{message}"
+        )
+
+    def _finish_project_open(self) -> None:
+        """Release worker/progress state after success or failure."""
+        self._project_opening = False
+        progress = self._project_open_progress
+        self._project_open_progress = None
+        if progress is not None:
+            progress.close()
+            progress.deleteLater()
+        self._project_open_worker = None
+        self._project_open_signals = None
+        self._project_open_path = ""
+        self._project_open_pages = []
+        self._project_open_page_index = 0
+        self._project_open_project = None
 
     def _on_file_save(self) -> bool:
         """Save the active project; prompt for a path on first save.
