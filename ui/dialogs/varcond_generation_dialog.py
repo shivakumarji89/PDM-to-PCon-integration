@@ -111,6 +111,7 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_monitor = None
         self._relation_store = None
         self._reload_requested = False
+        self._base_to_dot = False
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
@@ -271,6 +272,24 @@ class VarCondGenerationPanel(QWidget):
         else:
             self._generate_all()
 
+    def reduce_relations_to_dot(self) -> None:
+        """Group the left relation list by each article code's pre-dot base.
+
+        Original full article codes remain intact for source loading and
+        VARCOND generation; only relation grouping/display keys are reduced.
+        """
+        if self._base_to_dot:
+            return
+        self._base_to_dot = True
+        self._filter_timer.stop()
+        self._refresh_relations()
+
+    def _relation_prefix(self, code: str, length: int | None = None) -> str:
+        if self._base_to_dot:
+            return str(code or "").split(".", 1)[0]
+        size = self._relation_length.value() if length is None else length
+        return code[:size] if len(code) > size else code
+
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
         self._filter_timer.stop()          # this rebuild supersedes a pending debounced one
@@ -288,13 +307,13 @@ class VarCondGenerationPanel(QWidget):
         for code, _label, _article_id in self._article_rows:
             if not _article_code_matches_filter(code, needle):
                 continue
-            relation_prefix = code[:length] if len(code) > length else code
+            relation_prefix = self._relation_prefix(code, length)
             relation_names.add("PA_" + relation_prefix)
         self._relations.blockSignals(True)
         self._relations.clear()
         for name in sorted(relation_names, key=str.casefold):
             self._relations.addItem(QListWidgetItem(name))
-        target_prefix = anchor_code[:length] if anchor_code and len(anchor_code) > length else anchor_code
+        target_prefix = self._relation_prefix(anchor_code, length) if anchor_code else ""
         target_name = "PA_" + target_prefix if target_prefix else current
         match = self._relations.findItems(target_name, Qt.MatchFlag.MatchExactly) if target_name else []
         if match:
@@ -410,7 +429,7 @@ class VarCondGenerationPanel(QWidget):
         for code, _label, _article_id in self._article_rows:
             if not _article_code_matches_filter(code, stream_filter_text):
                 continue
-            prefix = code[:stream_prefix_length] if len(code) > stream_prefix_length else code
+            prefix = self._relation_prefix(code, stream_prefix_length)
             relation_groups.setdefault("PA_" + prefix, []).append(code)
 
         def load_sources(_progress):
@@ -720,7 +739,7 @@ class VarCondGenerationPanel(QWidget):
             length = self._relation_length.value()
             for row in all_rows:
                 code, _label, article_id = row
-                prefix = code[:length] if len(code) > length else code
+                prefix = self._relation_prefix(code, length)
                 rows_by_prefix.setdefault("PA_" + prefix, []).append(row)
             selected_rows = []
             for relation_name, rows in rows_by_prefix.items():
@@ -749,7 +768,7 @@ class VarCondGenerationPanel(QWidget):
         length = self._relation_length.value()
         groups: dict[str, list[tuple[str, str]]] = {}
         for code, _label, article_id in article_rows:
-            prefix = code[:length] if len(code) > length else code
+            prefix = self._relation_prefix(code, length)
             groups.setdefault("PA_" + prefix, []).append((code, article_id))
 
         xocd = getattr(self._context, "xocd_export_service", None)
