@@ -310,8 +310,10 @@ class VarCondGenerationPanel(QWidget):
                 self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
+        char_count = len("\\r\\n".join(rules))
         self._summary.setText(
-            f"{relation_name} · {len(rules):,} VARCOND definition(s)"
+            f"{relation_name} · {len(rules):,} VARCOND definition(s) · "
+            f"{char_count:,} characters"
             if rules else f"{relation_name} · Waiting for this relation to finish loading"
         )
 
@@ -516,9 +518,14 @@ class VarCondGenerationPanel(QWidget):
                 [row[0] for row in self._article_rows], refresh=True
             )
             return
+        selected = self._relations.currentItem()
+        selected_name = selected.text() if selected is not None else ""
+        selected_rules = self._rules_by_relation.get(selected_name, [])
+        char_count = len("\\r\\n".join(selected_rules))
         self._summary.setText(
             f"{self._relations.count():,} relation(s) | "
             f"{self._output.rowCount():,} definitions displayed | "
+            f"{char_count:,} characters displayed | "
             "All completed relations are ready"
         )
         self._finish_maintenance_progress(True, "VARCOND source data ready")
