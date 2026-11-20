@@ -92,10 +92,6 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_panel = VarCondGenerationPanel(
             context, box, maintenance_check=self.is_maintenance_module
         )
-        # Keep the source reload action with the page-level Reload / Export
-        # actions, rather than duplicating it in the lower filter toolbar.
-        if self.header is not None and hasattr(self.header, "add_action"):
-            self.header.add_action(self._varcond_panel._reload_button, "secondary")
         layout.addWidget(self._varcond_panel)
         return box
 
@@ -137,11 +133,18 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_panel.refresh_from_snapshot()
 
     def refresh(self) -> None:
-        """Maintenance MDB view only; PDM keeps its enter-time generation."""
+        """Reload the current source; PDM refresh also reloads relation data."""
         if self._begin_refresh():
             return
         if self.is_mdb_view():
             self._render_mdb()
+            return
+        if self.is_maintenance_module():
+            # The single page-level Reload action performs the explicit PDM
+            # source refresh as well as rebuilding the relation display.
+            self._varcond_panel._on_reload_relations()
+        else:
+            self._varcond_panel.refresh_from_snapshot()
 
     def _on_source_changed(self, _source: str) -> None:
         if self._begin_refresh():
