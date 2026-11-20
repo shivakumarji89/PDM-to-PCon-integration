@@ -30,7 +30,11 @@ from typing import Any
 
 from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
+from services.relation_link_policy import legacy_session_error
 from services.base_service import BaseService
+from services.relation_link_policy import (
+    LinkDescriber, conflict_entry, conflict_message, decide, is_attached,
+)
 
 
 class ArticleMdbExportService(BaseService):
@@ -93,14 +97,13 @@ class ArticleMdbExportService(BaseService):
                 if selected is not None and article_id not in selected:
                     continue
                 article = articles.get(article_id)
-                if article is None or not str(article.code or "").strip():
-                    continue
-                source_code = str(article.code).strip()
+                source_code = str(getattr(article, "code", "") or "").strip()
+                # Keep the Development/full-export rule exactly: price base first,
+                # then member.reduced_article. Do not invent a base by splitting
+                # the source code; _base_codes() does not do that.
                 code = (base_of.get(source_code) or "").strip() or str(
                     getattr(member, "reduced_article", "") or ""
                 ).strip()
-                if not code:
-                    code = source_code[:source_code.find(".")] if "." in source_code else source_code
                 if not code:
                     continue
                 # One MDB base-article row per base code. The first member is
@@ -109,7 +112,9 @@ class ArticleMdbExportService(BaseService):
                     "code": code,
                     "relation_name": str(getattr(member, "relation_object", "") or "").strip()
                                      or f"P_{code}",
-                    "scheme_name": str(getattr(member, "code_scheme", "") or "").strip() or code,
+                    # Development _code_schemes() names each scheme after its
+                    # base article code; member.code_scheme is not its authority.
+                    "scheme_name": code,
                     "short_text": str(getattr(member, "short_description", "") or "").strip(),
                     "long_text": str(getattr(member, "long_description", "") or "").strip(),
                     "member_ids": [],
@@ -119,8 +124,9 @@ class ArticleMdbExportService(BaseService):
                 entry["member_ids"].append(str(getattr(member, "id", "") or ""))
                 if article_id not in entry["source_ids"]:
                     entry["source_ids"].append(article_id)
-                    entry["source_codes"].append(source_code)
-                for field, attr in (("relation_name", "relation_object"), ("scheme_name", "code_scheme"),
+                    if source_code:
+                        entry["source_codes"].append(source_code)
+                for field, attr in (("relation_name", "relation_object"),
                                     ("short_text", "short_description"), ("long_text", "long_description")):
                     value = str(getattr(member, attr, "") or "").strip()
                     if value and not entry[field]:
@@ -131,9 +137,13 @@ class ArticleMdbExportService(BaseService):
 
     def export_to_session(
         self, snapshot: Snapshot, session: MdbExportSession, selected_article_ids: set[str],
-        dry_run: bool = False,
+        dry_run: bool = False, replace_existing_links: bool = False,
     ) -> dict[str, Any]:
         """Export the selected articles into the product's session MDB.
+
+        In an attached production workspace an existing valid relation-object / code-scheme link of an
+        article is preserved and reported in ``conflicts``; ``replace_existing_links=True`` is the
+        separate, explicit authorization to replace them (not used by the normal export buttons).
 
         On success the session (``article_map``, ``scheme_map``,
         ``workflow_status``) is updated and persisted. Nothing is recorded for
@@ -143,6 +153,9 @@ class ArticleMdbExportService(BaseService):
             return {"ok": False, "error": "Select at least one article to export."}
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Articles."}
+        legacy = legacy_session_error(session)
+        if legacy:
+            return {"ok": False, "error": legacy, "legacy_session": True}
         sessions = getattr(self.context, "mdb_export_session_service", None)
         try:
             from services.mdb_export_session_service import MdbExportSessionService
@@ -156,6 +169,7 @@ class ArticleMdbExportService(BaseService):
         result = self.export(
             snapshot, session.mdb_path, dry_run=dry_run,
             selected_article_ids=selected_article_ids, session=session,
+            replace_existing_links=replace_existing_links,
         )
         if not result.get("ok") or dry_run:
             return result
@@ -180,6 +194,7 @@ class ArticleMdbExportService(BaseService):
         self, snapshot: Snapshot, mdb_path: str | Path, dry_run: bool = False,
         selected_article_ids: set[str] | None = None,
         session: MdbExportSession | None = None,
+        replace_existing_links: bool = False,
     ) -> dict[str, Any]:
         mdb = Path(mdb_path)
         if not mdb.is_file():
@@ -277,6 +292,14 @@ class ArticleMdbExportService(BaseService):
         expected: dict[str, dict[str, Any]] = {}
         warnings: list[str] = []
         skipped_ambiguous = 0
+        conflicts: list[dict[str, Any]] = []
+        # Link policy: in an attached production workspace an existing valid link is preserved.
+        attached = in_session and is_attached(session)
+        describer = LinkDescriber(data.get("relobjs", []))  # existence + names; relation info is read lazily
+        scheme_rows = {str(r.get("com_CodeSchemeID")): r for r in data.get("schemes", [])}
+        scheme_describer = LinkDescriber(
+            [{"com_RelObjID": r.get("com_CodeSchemeID"), "com_RelObjName": r.get("com_CodeSchemeName")}
+             for r in data.get("schemes", [])])
 
         def resolve(index: dict, key: str, label: str):
             matches = index.get(self._key(key), [])
@@ -331,14 +354,29 @@ class ArticleMdbExportService(BaseService):
                 "com_Discountable": True,
                 "com_OrderUnitCode": "C62",
             }
-            if scheme_id is not None:
+            if scheme_id is not None and old is not None:
+                value, action = decide(old.get("com_CodeSchemeID"), scheme_id, attached=attached,
+                                       replace_existing=replace_existing_links,
+                                       valid=lambda v: str(v) in scheme_rows)
+                row_values["com_CodeSchemeID"] = value
+                if action in ("preserved", "replaced"):
+                    conflicts.append(("code_scheme", f"Article '{code}'", old.get("com_CodeSchemeID"),
+                                      scheme_id, action))
+            elif scheme_id is not None:
                 row_values["com_CodeSchemeID"] = scheme_id
             elif old is not None:
                 row_values["com_CodeSchemeID"] = old.get("com_CodeSchemeID")
             else:
                 row_values["com_CodeSchemeID"] = None
                 warnings.append(f"Article '{code}': code scheme '{item['scheme_name']}' was not found; Text/Code Scheme workflow must resolve it.")
-            if relobj_id is not None:
+            if relobj_id is not None and old is not None:
+                value, action = decide(old.get("com_RelObjID"), relobj_id, attached=attached,
+                                       replace_existing=replace_existing_links, valid=describer.exists)
+                row_values["com_RelObjID"] = value
+                if action in ("preserved", "replaced"):
+                    conflicts.append(("relation_object", f"Article '{code}'",
+                                      old.get("com_RelObjID"), relobj_id, action))
+            elif relobj_id is not None:
                 row_values["com_RelObjID"] = relobj_id
             elif old is not None:
                 row_values["com_RelObjID"] = old.get("com_RelObjID")
@@ -385,8 +423,31 @@ class ArticleMdbExportService(BaseService):
                 inserts.append({"op": "insert", "table": self.TABLE, "rows": [{self.PK: row_id, **proto, **values}]})
                 expected[code] = {"id": row_id, **values}
 
+        if conflicts:
+            # Relation information (relation name / type / domain) is only needed to describe a conflict, so it
+            # is read here, once, and its absence (a minimal schema) only reduces the description.
+            try:
+                extra = db.read_tables(mdb, {
+                    "relobj_links": (
+                        "SELECT com_RelObjID, com_RelationID, com_RelObjTypeCode, com_RelObjDomainCode, "
+                        "com_RelationOrder FROM [tCOMd_RelObjRel]"
+                    ),
+                    "relations": "SELECT com_RelationID, com_RelationName FROM [tCOMd_Relation]",
+                }) if callable(getattr(db, "read_tables", None)) else {}
+            except Exception:
+                extra = {}
+            describer = LinkDescriber(data.get("relobjs", []), extra.get("relobj_links", []), extra.get("relations", []))
+            conflicts = [
+                conflict_entry(kind, entity, existing, incoming, action,
+                               scheme_describer if kind == "code_scheme" else describer,
+                               "com_CodeSchemeID" if kind == "code_scheme" else "com_RelObjID")
+                for kind, entity, existing, incoming, action in conflicts
+            ]
+        warnings.extend(conflict_message(entry) for entry in conflicts)
         plan = scheme_inserts + updates + inserts
         result = {
+            "conflicts": conflicts,
+            "links_preserved": sum(1 for entry in conflicts if entry["action"] == "preserved"),
             "ok": True, "dry_run": dry_run, "inserted": len(inserts),
             "updated": len(updates), "unchanged": len(articles) - len(inserts) - len(updates) - skipped_ambiguous,
             "skipped_ambiguous": skipped_ambiguous, "warnings": warnings,

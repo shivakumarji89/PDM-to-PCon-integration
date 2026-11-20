@@ -228,7 +228,11 @@ def test_pricing_cancel_after_base_query_preserves_complete_snapshot(monkeypatch
     snapshot = Snapshot(product=Product(id="P"), articles=[Article(code="A")])
     snapshot.price_records = previous
     repo = Mock()
-    repo.fetch_item_base_prices.side_effect = lambda *a, **k: token.request_cancel() or []
+    def cancel_after_base_query(*_args, **_kwargs):
+        token.request_cancel()
+        return []
+
+    repo.fetch_item_base_prices.side_effect = cancel_after_base_query
     monkeypatch.setattr("services.pricing_service.PDMRepository", lambda context: repo)
     service = PricingService(SimpleNamespace(active_snapshot=snapshot))
     monkeypatch.setattr(service, "_price_plan", lambda s: (["A", "B"], set()))

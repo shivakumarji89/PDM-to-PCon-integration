@@ -255,14 +255,109 @@ class MaintenanceSourceMixin:
         self.refresh()
 
     def _sync_export_mdb_button(self) -> None:
-        button = getattr(self, "_export_mdb_btn", None)
-        if button is None:
-            return
         maintenance = self.is_maintenance_module()
-        button.setVisible(maintenance)
-        button.setEnabled(
+        enabled = (
             maintenance and not self.is_mdb_view()
             and self._context.active_snapshot is not None
+        )
+        for name in (
+            "_export_mdb_btn",
+            "_maintenance_export_mdb_button",
+            "_maintenance_export_properties_values_button",
+        ):
+            button = getattr(self, name, None)
+            if button is None:
+                continue
+            button.setVisible(maintenance)
+            button.setEnabled(enabled)
+
+
+    def _on_export_properties_values_mdb(self) -> None:
+        """Export selected-article Properties and Values into the active product MDB."""
+        if not self.is_maintenance_module() or self.is_mdb_view():
+            return
+        from PySide6.QtWidgets import QMessageBox
+
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            QMessageBox.warning(self, "Export Properties and Values", "Load the PDM product first.")
+            return
+        window = self.window()
+        articles_page = next(
+            (page for page in (getattr(window, "_pages", {}) or {}).values()
+             if callable(getattr(page, "selected_export_article_ids", None))),
+            None,
+        )
+        selected_article_ids = (
+            articles_page.selected_export_article_ids() if articles_page is not None else set()
+        )
+        if not selected_article_ids:
+            QMessageBox.information(
+                self, "Export Properties and Values",
+                "Select one or more articles in the Articles page Export column first.",
+            )
+            return
+        try:
+            sessions = self._context.mdb_export_session_service
+            session = sessions.get_active(snapshot)
+        except Exception as exc:
+            QMessageBox.warning(self, "Export Properties and Values", str(exc))
+            return
+        if session is None:
+            QMessageBox.information(
+                self, "Export Properties and Values",
+                "Export Articles first to initialize this product's MDB session.",
+            )
+            return
+        from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+        if not ensure_workspace_type_known(self, sessions, session, "Export Properties and Values"):
+            return
+        from services.properties_values_mdb_export_service import PropertiesValuesMdbExportService
+        service = PropertiesValuesMdbExportService(self._context)
+        preview = service.export_to_session(
+            snapshot, session, selected_article_ids=selected_article_ids, dry_run=True
+        )
+        if not preview.get("ok"):
+            QMessageBox.warning(
+                self, "Export Properties and Values",
+                preview.get("error", "Preview failed."),
+            )
+            return
+        counts = preview.get("counts", {})
+        summary = (
+            f"Destination: {session.mdb_path}\n\n"
+            + "\n".join(
+                f"{name.replace('_', ' ').title()}: {count}"
+                for name, count in counts.items()
+            )
+            + "\n\nOnly missing Properties and Values will be inserted. "
+              "Existing IDs and unrelated MDB rows will be preserved."
+        )
+        if preview.get("warnings"):
+            summary += "\n\nWarnings:\n" + "\n".join(preview["warnings"][:8])
+        if QMessageBox.question(
+            self, "Confirm Properties and Values Export", summary,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        result = service.export_to_session(
+            snapshot, session, selected_article_ids=selected_article_ids
+        )
+        if not result.get("ok"):
+            QMessageBox.critical(
+                self, "Export Properties and Values",
+                result.get("error", "Export failed."),
+            )
+            return
+        QMessageBox.information(
+            self, "Export Properties and Values",
+            "Properties and Values export completed.\n\n"
+            + "\n".join(
+                f"{name.replace('_', ' ').title()}: {count}"
+                for name, count in result.get("counts", {}).items()
+            )
+            + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
         )
 
     def _on_export_component_mdb(self) -> None:
@@ -272,6 +367,161 @@ class MaintenanceSourceMixin:
         from PySide6.QtWidgets import QFileDialog, QMessageBox
 
         component = getattr(self, "_maintenance_export_component", "workflow data")
+        if component == "Class Creation":
+            snapshot = self._context.active_snapshot
+            if snapshot is None:
+                QMessageBox.warning(self, "Export Class Creation", "Load the PDM product first.")
+                return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_article_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_article_ids:
+                QMessageBox.information(
+                    self, "Export Class Creation",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                return
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Class Creation", str(exc))
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, "Export Class Creation",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, "Export Class Creation"):
+                return
+            from services.class_creation_mdb_export_service import ClassCreationMdbExportService
+            service = ClassCreationMdbExportService(self._context)
+            preview = service.export_to_session(snapshot, session, selected_article_ids=selected_article_ids, dry_run=True)
+            if not preview.get("ok"):
+                QMessageBox.warning(self, "Export Class Creation", preview.get("error", "Preview failed."))
+                return
+            counts = preview.get("counts", {})
+            summary = (
+                f"Destination: {session.mdb_path}\n\n"
+                + "\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                              for name, count in counts.items())
+                + "\n\nExisting IDs and unrelated MDB rows will be preserved."
+            )
+            if preview.get("warnings"):
+                summary += "\n\nWarnings:\n" + "\n".join(preview["warnings"][:8])
+            if QMessageBox.question(
+                self, "Confirm Class Creation Export", summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            result = service.export_to_session(snapshot, session, selected_article_ids=selected_article_ids)
+            if not result.get("ok"):
+                QMessageBox.critical(self, "Export Class Creation", result.get("error", "Export failed."))
+                return
+            QMessageBox.information(
+                self, "Export Class Creation",
+                "Class Creation export completed.\n\n"
+                + "\n".join(f"{name.replace('_', ' ').title()}: {count}"
+                              for name, count in result.get("counts", {}).items())
+                + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+            )
+            return
+        if component in ("Text", "Relation Object"):
+            title = "Text" if component == "Text" else "Relations"
+            if component == "Text":
+                from services.text_mdb_export_service import TextMdbExportService as ExportService
+            else:
+                from services.relation_mdb_export_service import RelationMdbExportService as ExportService
+            snapshot = self._context.active_snapshot
+            if snapshot is None:
+                QMessageBox.warning(self, f"Export {title}", "Load the PDM product first.")
+                return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_article_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_article_ids:
+                QMessageBox.information(
+                    self, f"Export {title}",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                return
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, f"Export {title}", str(exc))
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, f"Export {title}",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, f"Export {title}"):
+                return
+            service = ExportService(self._context)
+            preview = service.export_to_session(
+                snapshot, session, selected_article_ids=selected_article_ids, dry_run=True
+            )
+            if not preview.get("ok"):
+                QMessageBox.warning(self, f"Export {title}", preview.get("error", "Preview failed."))
+                return
+            counts = preview.get("counts", {})
+            summary = (
+                f"Destination: {session.mdb_path}\n\n"
+                + "\n".join(
+                    f"{name.replace('_', ' ').title()}: {count}"
+                    for name, count in counts.items()
+                )
+                + f"\n\nOnly selected-article {title} data will be inserted or updated. "
+                  "Existing IDs and unrelated MDB rows will be preserved."
+            )
+            if preview.get("warnings"):
+                summary += (
+                    ("\n\nExisting production text (kept, NOT overwritten):\n" if component == "Text"
+                     else "\n\nExisting relation-object links (kept, NOT overwritten):\n")
+                    + "\n".join(f"• {m}" for m in preview["warnings"][:8])
+                )
+            if QMessageBox.question(
+                self, f"Confirm {title} Export", summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return
+            result = service.export_to_session(
+                snapshot, session, selected_article_ids=selected_article_ids
+            )
+            if not result.get("ok"):
+                QMessageBox.critical(self, f"Export {title}", result.get("error", "Export failed."))
+                return
+            QMessageBox.information(
+                self, f"Export {title}",
+                f"{title} export completed.\n\n"
+                + "\n".join(
+                    f"{name.replace('_', ' ').title()}: {count}"
+                    for name, count in result.get("counts", {}).items()
+                )
+                + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+            )
+            return
         if component != "Articles":
             QMessageBox.information(
                 self,

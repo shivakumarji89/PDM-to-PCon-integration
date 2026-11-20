@@ -998,6 +998,18 @@ class PDMRepository(BaseRepository):
                 "THEN opt.TertiaryOption ELSE 0 END AS TertiaryOption, "
                 "ov.OptionValueId, itco.FeaturePositionString, "
                 "ov.DisplayOrdinal, ov.OrderCodeValue AS OrderCodeValue2, ov.OptionId, "
+                "opt.IsFabric AS OptionIsFabric, "
+                # An option the feature string does not list is still that
+                # slot's option group when a listed option of the same name and
+                # the same kind (fabric / non-fabric) exists, e.g. component
+                # 'Inner fabric type' 9487 for the parent's 9632 slot, or
+                # component 'Worksurface finish' 9484 for the parent's 9597.
+                "CASE WHEN EXISTS ("
+                "SELECT 1 FROM [Option] fo WHERE fo.IsFabric = opt.IsFabric "
+                "AND fo.Name = opt.Name AND CHARINDEX("
+                "'|' + CONVERT(VARCHAR(20), fo.OptionId) + '|', "
+                "'|' + ISNULL(itco.FeaturePositionString, '')) > 0"
+                ") THEN 1 ELSE 0 END AS FeatureEquivalent, "
                 "dbo.fnGetListPrice(c.Currency, "
                 "CASE WHEN pc.BasePriceRef = 2 THEN itov.IncrementalPrice2 "
                 "WHEN pc.BasePriceRef = 3 THEN itov.IncrementalPrice3 "

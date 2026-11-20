@@ -181,9 +181,11 @@ def test_mdb_pricing_cannot_compute_or_edit(monkeypatch):
     monkeypatch.setattr(ctx.snapshot_manager, "mark_modified", lambda: calls.append(1))
     before = copy.deepcopy(ctx.mdb_import_snapshot)
     assert not page._compute_btn.isEnabled()
-    assert not page._pricelists_btn.isEnabled()
+    # Price-list selection lives in the Pricing export workflow (0b48c7e), which is
+    # never available for the read-only imported MDB view.
+    assert not hasattr(page, "_pricelists_btn") and not hasattr(page, "_on_manage_price_lists")
+    page._restore_export_buttons()
     page._on_compute()
-    page._on_manage_price_lists()
     page._on_pricing_finished(type("R", (), {"records": []})())
     assert calls == [] and ctx.mdb_import_snapshot == before
     assert len(page._records) == 1

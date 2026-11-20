@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
@@ -41,7 +42,7 @@ def wf(monkeypatch, tmp_path):
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda p, t, m: state["infos"].append(m)))
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda p, t, m: state["errors"].append(m)))
 
-    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None, module=WorkbenchModule.MAINTENANCE):
+    def make(records, fake, target_names=None, target_accept=True, export_accept=True, before_export=None, module=WorkbenchModule.DEVELOPMENT):
         names = target_names or {"EUR": "EURO_2026_2", "GBP": "GBP_2026_2"}
 
         def target_exec(self):
@@ -69,6 +70,35 @@ def wf(monkeypatch, tmp_path):
         monkeypatch.setattr(ApplicationContext, "mdb_service", property(lambda self: fake))
         page = PricingPage(ctx)
         page._active_module = module
+        if module == WorkbenchModule.MAINTENANCE:
+            # Maintenance now exports into the existing one-product session.
+            # Keep the price-list workflow under test while supplying that session.
+            snap.product = SimpleNamespace(id="test-product", code="TEST")
+            session = SimpleNamespace(mdb_path=str(mdb_file))
+            session_service = SimpleNamespace(
+                get_active=lambda _snapshot: session,
+                record_workflow=lambda *_args, **_kwargs: None,
+                save=lambda *_args, **_kwargs: None,
+            )
+            entries = [
+                (f"article-{index}", str(record.article_code))
+                for index, record in enumerate(records)
+                if not record.is_global and str(record.article_code or "").strip()
+            ]
+            xocd_service = SimpleNamespace(base_code_entries=lambda _snapshot: entries)
+            monkeypatch.setattr(
+                ApplicationContext, "mdb_export_session_service",
+                property(lambda self: session_service),
+            )
+            monkeypatch.setattr(
+                ApplicationContext, "xocd_export_service",
+                property(lambda self: xocd_service),
+            )
+            page._pages = {
+                "articles": SimpleNamespace(
+                    selected_export_article_ids=lambda: {"article-0"}
+                )
+            }
         page.refresh()
         return page
 

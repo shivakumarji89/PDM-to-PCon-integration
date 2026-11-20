@@ -163,12 +163,30 @@ class MdbExportSessionService(BaseService):
             series_id=series_id,
             created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             prototypes=prototypes,
+            attached_existing=True,
         )
         try:
             self.save(session)
         except OSError as exc:
             raise ExportSessionError(f"Could not save the export session: {exc}") from exc
         return session
+
+    def declare_attachment(self, session: MdbExportSession, attached: bool) -> None:
+        """Record, explicitly, whether a legacy session (saved before ``attached_existing``) is attached.
+
+        Only a session whose flag is unknown can be declared; a known flag is never rewritten here.
+        """
+        if session.attached_flag_known:
+            raise ExportSessionError("This session already records whether it is attached.")
+        session.attached_existing = bool(attached)
+        session.attached_flag_known = True
+        try:
+            self.save(session)
+        except OSError as exc:
+            # Nothing was persisted: leave the in-memory session as unknown too.
+            session.attached_existing = False
+            session.attached_flag_known = False
+            raise ExportSessionError(f"Could not save the workspace type decision: {exc}") from exc
 
     def get_active(self, snapshot: Snapshot) -> MdbExportSession | None:
         """The loaded product's session, or ``None`` when no MDB exists yet.

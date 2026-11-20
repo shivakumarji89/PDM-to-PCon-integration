@@ -63,6 +63,7 @@ from services.engineering.engineering_reduction_service import (
     collapse_duplicate_values,
 )
 from services.mdb_classification_service import MdbClassificationService
+from services.class_creation_selection_service import build_class_creation_scope
 from ui import theme
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
@@ -1240,7 +1241,11 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             service.ensure_standard_classes(snap, category)
             self._sync_development_article_sets()
 
+        self._active_article_scope = self._selected_article_scope()
         groups = service.resolve_class_groups(snap, category) if snap else []
+        scope = self._active_article_scope
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
         self._split_cb.blockSignals(True)
         self._split_cb.setChecked(bool(getattr(snap, "split_classes_by_group", False)))
@@ -1706,6 +1711,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         mdb_attribute_ids = self._mdb_classified_property_ids("Attribute")
         if mdb_attribute_ids:
             props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            props = [p for p in props if str(getattr(p, "id", "")) in scope.property_ids]
         development = (
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
@@ -1734,6 +1742,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         def _prop_kept(pid, source_props):
             rs = ranges.get(str(pid))
+            if scope is not None and scope.product_ranges and rs:
+                return any(r in scope.product_ranges and r not in ignored for r in rs)
             return (not rs) or any(r not in ignored for r in rs)
 
         def _class_ordered_props(source_props, class_obj):
@@ -1780,6 +1790,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         props = [p for p in props if _prop_kept(p.id, props)]
         split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
         groups = service.resolve_class_groups(snapshot, self._category_label()) if split_checked else []
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
         if split_checked and len(groups) > 1:
             # One Attribute table, with each split class represented by a group header.
             collapsed_groups = set()
@@ -1791,6 +1803,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             for group in groups:
                 group_cls = self._attribute_class_for_group(group.name)
                 if group_cls is None:
+                    continue
+                if not any(str(p.id) in set(str(x) for x in group.prop_ids) for p in props):
                     continue
                 header = self._make_group_node(
                     self._attr_tree, group.name, group.name, collapsed_groups
@@ -1862,6 +1876,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 v for v in prop.values
                 if value_ids is None or str(v.id) in value_ids
             ]
+            scope = getattr(self, "_active_article_scope", None)
+            if scope is not None:
+                selected_values = scope.property_value_ids.get(str(prop.id), frozenset())
+                prop_values = [
+                    value for value in prop_values
+                    if str(getattr(value, "id", "")) in selected_values
+                ]
             # Resolve the persisted class assignment and inferred codes before
             # calculating the effective value codes. These must be available
             # below because Class Creation values can come from either source.
@@ -2189,6 +2210,23 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
         self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
+
+    def _selected_article_scope(self):
+        """Selection shared with the Articles page's Export-column checkboxes."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return None
+        window = self.window()
+        selected: set[str] = set()
+        for page in (getattr(window, "_pages", {}) or {}).values():
+            getter = getattr(page, "selected_export_article_ids", None)
+            if callable(getter):
+                selected = {str(value) for value in getter() if str(value)}
+                break
+        if not selected:
+            return None
+        scope = build_class_creation_scope(snapshot, selected)
+        return scope if scope.article_ids else None
 
     def _on_code_selected(
         self, value, text: str, prop_node, prop, value_item=None
@@ -3232,6 +3270,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # options under a header per range and show only that range's values;
         # a single-range load stays flat.
         snapshot = self._context.active_snapshot
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            options = [option for option in options
+                       if str(getattr(option, "id", "")) in scope.option_ids]
         self._related_values = (
             self._context.engineering_relation_service.related_value_ids(snapshot)
         )
@@ -3250,6 +3292,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             rs: set = set()
             for v in getattr(option, "values", []):
                 rs |= optval_ranges.get(str(v.id), set())
+            if scope is not None and scope.product_ranges:
+                rs.intersection_update(scope.product_ranges)
             opt_ranges[str(option.id)] = rs
 
         split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
@@ -3259,6 +3303,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
             if split_checked else []
         )
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
 
         # When split classes are enabled, mirror the real generated class
         # structure in the backing tree: one group header per class, with only
@@ -3270,10 +3316,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 group_cls = self._options_class_for_group(group.name)
                 if group_cls is None:
                     continue
+                group_option_ids = set(str(x) for x in group.option_ids)
+                if scope is not None:
+                    group_option_ids.intersection_update(scope.option_ids)
+                if not group_option_ids:
+                    continue
                 gnode = self._make_group_node(
                     self._opt_tree, group.name, group.name, collapsed_groups
                 )
-                group_option_ids = set(str(x) for x in group.option_ids)
                 for option in options:
                     if str(option.id) in group_option_ids:
                         self._add_option_node(gnode, option, cls)
@@ -3318,6 +3368,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             v for v in getattr(option, "values", [])
             if value_ids is None or str(v.id) in value_ids
         ]
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            selected_values = scope.option_value_ids.get(str(option.id), frozenset())
+            values = [
+                value for value in values
+                if str(getattr(value, "id", "")) in selected_values
+            ]
         # Options carry standard codes -> fully-coded independent display:
         # Width = code length, Sliced = the value codes (no article slicing).
         value_codes: list[str] = []

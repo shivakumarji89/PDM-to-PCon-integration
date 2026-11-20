@@ -38,9 +38,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 from time import perf_counter
+import threading
 from typing import Callable, Sequence
 
 from services.base_service import BaseService
+from services.relation_source_store import RelationSourceStore, StaleRelationCacheError
 from services.varcond_service import VarCondResult, VarCondRule, VarCondService
 
 INCREMENT_PROCEDURE = "PDMOptionDataReportWithIncBase"
@@ -70,6 +72,14 @@ class ParentSource:
 SourceLoader = Callable[[Sequence[str]], "dict[str, ParentSource]"]
 
 
+class RelationReloadInProgressError(RuntimeError):
+    """A reload is already running; concurrent reloads are refused."""
+
+
+class StaleRelationLoadError(RuntimeError):
+    """The product/cache changed while PDM was being read; the result was discarded."""
+
+
 class MaintenanceVarCondService(BaseService):
     """Generate Maintenance VARCOND relations from cached legacy source rows."""
 
@@ -80,11 +90,44 @@ class MaintenanceVarCondService(BaseService):
         self._cache: dict[str, ParentSource] = {}
         self._increment_cache: dict[str, list[tuple[int, str]]] = {}
         self.load_count = 0          # number of loader invocations (PDM reads)
+        # Durable per-product persistence (optional; see bind_store).
+        self._store: RelationSourceStore | None = None
+        self._scope: str | None = None
+        self._state_lock = threading.RLock()
+        self._generation = 0         # bumped whenever the cache scope changes
+        self._reloading = False
 
     # -- cache -------------------------------------------------------------
     def clear_cache(self) -> None:
-        self._cache.clear()
-        self._increment_cache.clear()
+        """Drop the in-memory rows (the persisted copy is kept)."""
+        with self._state_lock:
+            self._generation += 1
+            self._cache.clear()
+            self._increment_cache.clear()
+
+    def bind_store(self, store: RelationSourceStore | None, scope: str | None) -> int:
+        """Attach durable storage for ``scope`` and load its saved sources.
+
+        Replaces the in-memory cache; any read still in flight for the previous
+        scope is discarded when it completes. Returns the number of parents
+        restored from disk (0 when nothing valid is stored).
+        """
+        with self._state_lock:
+            self._generation += 1
+            self._cache.clear()
+            self._increment_cache.clear()
+            self._store = store if scope else None
+            self._scope = scope if store else None
+            if self._store is None or self._scope is None:
+                return 0
+            stored = self._store.load(self._scope)
+            if stored is None:
+                return 0
+            for code, source in stored.sources.items():
+                self._cache[code] = source
+                for sub, rows in source.increments.items():
+                    self._increment_cache.setdefault(sub, rows)
+            return len(stored.sources)
 
     def has_sources(self, article_codes: Sequence[str]) -> bool:
         """Return whether every requested parent has cached source data."""
@@ -111,35 +154,123 @@ class MaintenanceVarCondService(BaseService):
             (c or "").strip() for c in article_codes if (c or "").strip()
         ))
         if refresh:
-            self.invalidate(codes)
+            return self._reload(codes, progress_callback, source_callback)
         missing = [c for c in codes if c not in self._cache]
         if progress_callback:
             progress_callback(0, len(missing), "")
         if missing:
-            self.load_count += 1
-            if self._uses_live_loader:
-                def cache_loaded(source: ParentSource) -> None:
-                    self._cache[source.parent] = source
-                    if source_callback:
-                        source_callback(source)
-                loaded = self._load_live(
-                    missing, progress_callback, source_callback=cache_loaded
-                )
-            else:
-                loaded = self._loader(missing)
-                for code in missing:
-                    source = loaded.get(code) or ParentSource(parent=code, found=False)
-                    self._cache[code] = source
-                    if source_callback:
-                        source_callback(source)
-                if progress_callback:
-                    progress_callback(len(missing), len(missing), "")
-            for code in missing:
-                if code not in self._cache:
-                    self._cache[code] = loaded.get(code) or ParentSource(
-                        parent=code, found=False
-                    )
+            token = self._generation
+            self._fetch_missing(missing, token, progress_callback, source_callback)
+            self._persist_new(missing, token)
         return [self._cache[c] for c in codes]
+
+    def _fetch_missing(
+        self, missing: list[str], token: int,
+        progress_callback: Callable[[int, int, str], None] | None,
+        source_callback: Callable[[ParentSource], None] | None,
+    ) -> None:
+        """Read ``missing`` parents from PDM into the cache (skipped if superseded)."""
+        self.load_count += 1
+
+        def remember(source: ParentSource, overwrite: bool = True) -> None:
+            with self._state_lock:
+                if token != self._generation:
+                    return          # product changed mid-read: never repopulate
+                if overwrite or source.parent not in self._cache:
+                    self._cache[source.parent] = source
+
+        if self._uses_live_loader:
+            def cache_loaded(source: ParentSource) -> None:
+                remember(source)
+                if source_callback and token == self._generation:
+                    source_callback(source)
+            loaded = self._load_live(
+                missing, progress_callback, source_callback=cache_loaded
+            )
+        else:
+            loaded = self._loader(missing)
+            for code in missing:
+                source = loaded.get(code) or ParentSource(parent=code, found=False)
+                remember(source)
+                if source_callback and token == self._generation:
+                    source_callback(source)
+            if progress_callback:
+                progress_callback(len(missing), len(missing), "")
+        for code in missing:
+            remember(
+                loaded.get(code) or ParentSource(parent=code, found=False),
+                overwrite=False,
+            )
+
+    def _persist_new(self, codes: list[str], token: int) -> None:
+        """Best-effort merge of newly read parents into the durable store."""
+        with self._state_lock:
+            store, scope = self._store, self._scope
+            if store is None or scope is None or token != self._generation:
+                return
+            fresh = {c: self._cache[c] for c in codes if c in self._cache}
+            try:
+                store.save(scope, fresh, store.revision(scope))
+            except (OSError, ValueError, StaleRelationCacheError) as exc:
+                logging.getLogger(__name__).warning(
+                    "Relation cache was not saved: %s", exc
+                )
+
+    @staticmethod
+    def _validate_sources(codes: Sequence[str], fresh: dict[str, ParentSource]) -> None:
+        for code in codes:
+            source = fresh.get(code)
+            if not isinstance(source, ParentSource) or source.parent != code:
+                raise ValueError(f"PDM returned no usable relation data for {code}")
+
+    def _reload(
+        self, codes: list[str],
+        progress_callback: Callable[[int, int, str], None] | None,
+        source_callback: Callable[[ParentSource], None] | None,
+    ) -> list[ParentSource]:
+        """Explicit reload: fetch, validate, then replace memory and disk together.
+
+        On any failure the previous cache (memory and disk) is left exactly as it
+        was. Concurrent reloads are refused, and a result is discarded if the
+        product changed or the stored revision advanced while PDM was read.
+        """
+        with self._state_lock:
+            if self._reloading:
+                raise RelationReloadInProgressError("a relation reload is already running")
+            self._reloading = True
+            token = self._generation
+            store, scope = self._store, self._scope
+            expected = store.revision(scope) if store and scope else 0
+            previous = {c: self._cache[c] for c in codes if c in self._cache}
+            previous_increments = dict(self._increment_cache)
+        try:
+            self.invalidate(codes)
+            if progress_callback:
+                progress_callback(0, len(codes), "")
+            try:
+                self._fetch_missing(codes, token, progress_callback, source_callback)
+                with self._state_lock:
+                    if token != self._generation:
+                        raise StaleRelationLoadError(
+                            "product changed while relations were reloading"
+                        )
+                    fresh = {c: self._cache[c] for c in codes if c in self._cache}
+                    self._validate_sources(codes, fresh)
+                    if store is not None and scope is not None:
+                        store.save(scope, fresh, expected)
+            except BaseException:
+                with self._state_lock:
+                    if token == self._generation:
+                        for code in codes:
+                            self._cache.pop(code, None)
+                        self._cache.update(previous)
+                        self._increment_cache.clear()
+                        self._increment_cache.update(previous_increments)
+                raise
+            return [fresh[c] for c in codes]
+        finally:
+            with self._state_lock:
+                self._reloading = False
 
     # -- generation (local; no PDM access) ---------------------------------
     def generate(
