@@ -85,6 +85,10 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_panel = VarCondGenerationPanel(
             context, box, maintenance_check=self.is_maintenance_module
         )
+        # Keep the source reload action with the page-level Reload / Export
+        # actions, rather than duplicating it in the lower filter toolbar.
+        if self.header is not None and hasattr(self.header, "add_action"):
+            self.header.add_action(self._varcond_panel._reload_button, "secondary")
         layout.addWidget(self._varcond_panel)
         return box
 
