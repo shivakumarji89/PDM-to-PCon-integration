@@ -61,14 +61,17 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
             "Set every article's reduced base to the characters before its first dot."
         )
         self._dot_base_button.clicked.connect(self._on_base_to_dot_all)
-        if self.header is not None and hasattr(self.header, "add_action"):
-            self.header.add_action(self._dot_base_button, "secondary")
         self._source_controls_row = QWidget(self)
         source_controls = QHBoxLayout(self._source_controls_row)
         source_controls.setContentsMargins(0, 0, 0, 0)
         source_controls.setSpacing(8)
         source_controls.addWidget(self._source_tabs, 0)
         source_controls.addWidget(self._varcond_panel.controls_widget, 1)
+        # Keep Base to Dot on the same horizontal line as Filter,
+        # Exclusion, Substitution and Relation Prefix Length.
+        self._varcond_panel.controls_widget.layout().addWidget(
+            self._dot_base_button
+        )
         self.add_content(self._source_controls_row)
         self.add_content(self._toolbar)
         self.add_content(self._view)
