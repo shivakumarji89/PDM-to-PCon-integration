@@ -282,7 +282,6 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         controls.setContentsMargins(6, 7, 6, 4)
         controls.setSpacing(6)
 
-        controls.addWidget(QLabel("Currency:", box))
         self._currency = QComboBox(box)
         self._currency.addItems(["All", "GBP", "EUR"])
         self._currency.setToolTip(
