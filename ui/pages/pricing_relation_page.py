@@ -265,10 +265,26 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
                 "The Articles workflow is not available in this session.",
             )
             return
-        # Rebuild its row/member references from the current active snapshot
-        # before applying the same reduction action used by the Articles page.
-        articles_page.refresh()
+        # Rebuild row/member references directly from the current active
+        # snapshot. Calling refresh() alone can return early while an existing
+        # page refresh is in progress, leaving stale rows for the bulk action.
+        if articles_page.is_mdb_view():
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Base to Dot (All)",
+                "Switch to the PDM source before applying article reduction.",
+            )
+            return
+        articles_page._rows = articles_page._collect_rows()
+        if not articles_page._rows:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Base to Dot (All)",
+                "No article rows are available to reduce.",
+            )
+            return
         articles_page._on_base_to_dot_all()
+        articles_page.refresh()
         self._varcond_panel.refresh_from_snapshot()
 
     def _on_copy(self) -> None:
