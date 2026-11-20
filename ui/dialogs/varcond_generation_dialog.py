@@ -273,14 +273,29 @@ class VarCondGenerationPanel(QWidget):
         if self._base_to_dot:
             return
         self._base_to_dot = True
+        # In Base to Dot mode the spinbox is an offset from each article's
+        # own dot position, not one absolute prefix length shared by all rows.
+        self._relation_length.blockSignals(True)
+        self._relation_length.setRange(-30, 30)
+        self._relation_length.setValue(0)
+        self._relation_length.setPrefix("Base Length Offset: ")
+        self._relation_length.setToolTip(
+            "Adjust each article's own pre-dot base length. 0 = stop before the "
+            "dot; +1/+2 extend by that many characters; -1/-2 shorten it."
+        )
+        self._relation_length.blockSignals(False)
         self._filter_timer.stop()
         self._refresh_relations()
 
     def _relation_prefix(self, code: str, length: int | None = None) -> str:
-        if self._base_to_dot:
-            return str(code or "").split(".", 1)[0]
+        value = str(code or "")
         size = self._relation_length.value() if length is None else length
-        return code[:size] if len(code) > size else code
+        if self._base_to_dot:
+            dot_position = value.find(".")
+            base_length = dot_position if dot_position >= 0 else len(value)
+            adjusted_length = max(1, min(len(value), base_length + size))
+            return value[:adjusted_length]
+        return value[:size] if len(value) > size else value
 
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
