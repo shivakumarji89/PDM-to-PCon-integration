@@ -56,6 +56,13 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._toolbar = self._build_toolbar()
         self._view = self._build_view()
         self._varcond_workflow = self._build_varcond_workflow(context)
+        self._dot_base_button = QPushButton("Base to Dot (All)", self)
+        self._dot_base_button.setToolTip(
+            "Set every article's reduced base to the characters before its first dot."
+        )
+        self._dot_base_button.clicked.connect(self._on_base_to_dot_all)
+        if self.header is not None and hasattr(self.header, "add_action"):
+            self.header.add_action(self._dot_base_button, "secondary")
         self._source_controls_row = QWidget(self)
         source_controls = QHBoxLayout(self._source_controls_row)
         source_controls.setContentsMargins(0, 0, 0, 0)
@@ -232,6 +239,31 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
                 "\r\n" + (r.body or "")
             )
         self._editor.setPlainText("\r\n\r\n".join(blocks) or "(nothing generated)")
+
+    def _on_base_to_dot_all(self) -> None:
+        """Run the existing Maintenance article reduction from Pricing Relation."""
+        window = self.window()
+        pages = getattr(window, "_pages", {}) or {}
+        articles_page = next(
+            (
+                page for page in pages.values()
+                if callable(getattr(page, "_on_base_to_dot_all", None))
+                and callable(getattr(page, "refresh", None))
+            ),
+            None,
+        )
+        if articles_page is None:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Base to Dot (All)",
+                "The Articles workflow is not available in this session.",
+            )
+            return
+        # Rebuild its row/member references from the current active snapshot
+        # before applying the same reduction action used by the Articles page.
+        articles_page.refresh()
+        articles_page._on_base_to_dot_all()
+        self._varcond_panel.refresh_from_snapshot()
 
     def _on_copy(self) -> None:
         QApplication.clipboard().setText(self._editor.toPlainText())
