@@ -208,6 +208,7 @@ class VarCondGenerationPanel(QWidget):
             self._article_rows.append((code, label, str(article_id)))
         self._article_rows.sort(key=lambda row: row[0].casefold())
 
+        self._reset_base_to_dot_mode()
         max_length = max((len(row[0]) for row in self._article_rows), default=1)
         self._relation_length.setRange(1, max_length)
         self._relation_length.setValue(max_length)
@@ -263,6 +264,18 @@ class VarCondGenerationPanel(QWidget):
             self._load_maintenance_sources_async(self._current_parent_codes, refresh=False)
         else:
             self._generate_all()
+
+    def _reset_base_to_dot_mode(self) -> None:
+        """Restore absolute prefix-length behaviour for a newly loaded snapshot."""
+        self._base_to_dot = False
+        self._relation_length.blockSignals(True)
+        self._relation_length.setRange(1, 30)
+        self._relation_length.setPrefix("Relation Prefix Length: ")
+        self._relation_length.setToolTip(
+            "Unique relation names are built from the first N characters of each "
+            "parent article. Articles sharing that prefix are generated together."
+        )
+        self._relation_length.blockSignals(False)
 
     def reduce_relations_to_dot(self) -> None:
         """Group the left relation list by each article code's pre-dot base.
