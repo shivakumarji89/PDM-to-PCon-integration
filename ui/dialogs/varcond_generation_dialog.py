@@ -134,7 +134,6 @@ class VarCondGenerationPanel(QWidget):
         )
         self._reload_button.clicked.connect(self._on_reload_relations)
         self._reload_button.setVisible(self._maintenance_check())
-        controls.addWidget(self._reload_button)
 
         split = QHBoxLayout()
         left = QVBoxLayout()
