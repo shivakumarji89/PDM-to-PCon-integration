@@ -886,8 +886,45 @@ class VarCondGenerationPanel(QWidget):
             self._rules_by_relation.clear()
             self._generate_all()
 
+    def _extract_relation_substitution_names(self, parent_codes: list[str]) -> list[str]:
+        """Return generated VARCOND property names plus option-increment names."""
+        names = set(self._extract_relation_properties(parent_codes))
+        snapshot = self._snapshot
+        if snapshot is None:
+            return sorted(names, key=str.casefold)
+
+        service = VarCondService(self._context)
+        id_by_code = {
+            str(article.id): (article.code or "")
+            for article in snapshot.articles if article.id is not None
+        }
+        id_for_code = {
+            code: article_id for article_id, code in id_by_code.items() if code
+        }
+        components_by_article = snapshot.article_components or {}
+        increments_by_prefix = snapshot.option_increments or {}
+
+        for parent_code in parent_codes:
+            article_id = id_for_code.get(parent_code)
+            if article_id is None:
+                continue
+            for component in components_by_article.get(article_id, []) or []:
+                sub_item = str(component.get("sub_item", "") or "").strip()
+                if not sub_item:
+                    continue
+                prefix = service._item_prefix(sub_item)
+                for increment in increments_by_prefix.get(prefix, []) or []:
+                    option_name = str(increment.get("option_name", "") or "").strip()
+                    if option_name:
+                        normalized = service._pcon_option_name(option_name)
+                        if normalized:
+                            names.add(normalized)
+        return sorted(names, key=str.casefold)
+
     def _edit_substitutions(self) -> None:
-        properties = self._extract_relation_properties([row[0] for row in self._article_rows])
+        properties = self._extract_relation_substitution_names(
+            [row[0] for row in self._article_rows]
+        )
         if not properties:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Substitutions", "No properties were found for this relation.")
