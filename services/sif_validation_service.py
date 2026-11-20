@@ -538,12 +538,14 @@ class SifValidationService(BaseService):
                     getattr(row, "FeaturePositionString", None), option_id
                 ),
                 # Present metadata that omits this option makes the option
-                # ineligible for the component; absent metadata does not.
+                # ineligible for the component; absent metadata does not. A
+                # fabric-band group is still eligible when PDM reports it as
+                # the equivalent of a listed option (``FeatureEquivalent``).
                 "feature_ineligible": bool(
                     str(getattr(row, "FeaturePositionString", None) or "").strip("| ")
                 ) and cls._feature_option_indexes(
                     getattr(row, "FeaturePositionString", None), option_id
-                ) is None,
+                ) is None and not int(getattr(row, "FeatureEquivalent", 0) or 0),
                 "base_display": base_display,
                 "option_id": option_id,
                 "component": str(getattr(row, "CompItem", "") or ""),
