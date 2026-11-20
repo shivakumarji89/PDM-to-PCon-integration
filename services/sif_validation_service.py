@@ -537,6 +537,13 @@ class SifValidationService(BaseService):
                 "feature_positions": cls._feature_option_indexes(
                     getattr(row, "FeaturePositionString", None), option_id
                 ),
+                # Present metadata that omits this option makes the option
+                # ineligible for the component; absent metadata does not.
+                "feature_ineligible": bool(
+                    str(getattr(row, "FeaturePositionString", None) or "").strip("| ")
+                ) and cls._feature_option_indexes(
+                    getattr(row, "FeaturePositionString", None), option_id
+                ) is None,
                 "base_display": base_display,
                 "option_id": option_id,
                 "component": str(getattr(row, "CompItem", "") or ""),
@@ -570,6 +577,7 @@ class SifValidationService(BaseService):
                         if index >= search_from
                         and entry["component_key"] == component_key
                         and (component_key, entry["option_id"]) not in applied_options
+                        and not entry["feature_ineligible"]
                         and cls._increment_key_match(selected, {entry["code"]: entry})
                     ),
                     None,
@@ -652,11 +660,12 @@ class SifValidationService(BaseService):
                         deferred = 0.0
                 total += amount * int(getattr(row, "Quantity", 1) or 1)
 
+            # Drop only the competing values of the option group just applied;
+            # the component's other option groups stay available.
             work = [
                 entry for entry in work
                 if entry is chosen_entry
-                or entry["component_key"] != component_key
-                and not (
+                or not (
                     entry["option_id"] == option_id
                     and entry["component_key"] == component_key
                     and entry["code"] != selected
