@@ -7,8 +7,8 @@ does not rewrite component target codes inside the VARCOND rules.
 from __future__ import annotations
 
 from typing import Callable
-
 from dataclasses import dataclass, field
+import re
 
 from PySide6.QtCore import QThreadPool, QTimer, Qt
 from PySide6.QtGui import QKeySequence
@@ -24,6 +24,25 @@ from services.pricing_relation_service import price_relation_names
 from services.varcond_service import VarCondService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
+
+
+def _article_code_matches_filter(code: str, query: str) -> bool:
+    """Match article-code filters; * is many chars, ? and _ are one char.
+
+    Plain text retains the existing starts-with behaviour. Wildcard patterns
+    are also anchored at the start so users can filter article-code prefixes.
+    """
+    pattern = (query or "").strip().casefold()
+    candidate = (code or "").casefold()
+    if not pattern:
+        return True
+    if not any(char in pattern for char in "*?_"):
+        return candidate.startswith(pattern)
+    regex = "".join(
+        ".*" if char == "*" else "." if char in "?_" else re.escape(char)
+        for char in pattern
+    )
+    return re.match(regex, candidate, flags=re.DOTALL) is not None
 
 
 @dataclass
@@ -103,7 +122,11 @@ class VarCondGenerationPanel(QWidget):
         controls.setSpacing(8)
         controls.addWidget(QLabel("Filter:", self.controls_widget))
         self._filter = QLineEdit(self.controls_widget)
-        self._filter.setPlaceholderText("Article code starts with...")
+        self._filter.setPlaceholderText("Article code... (* = any, ? or _ = one)")
+        self._filter.setToolTip(
+            "Filter article-code prefixes. Use * for any number of characters; "
+            "? or _ for exactly one character. Example: RY?XS or RY*XS."
+        )
         # Typing rebuilds the relation list (and, in Development, regenerates from PDM): wait for a
         # pause instead of doing it per keystroke.
         self._filter_timer = QTimer(self)
@@ -261,7 +284,7 @@ class VarCondGenerationPanel(QWidget):
         length = self._relation_length.value()
         relation_names: set[str] = set()
         for code, _label, _article_id in self._article_rows:
-            if needle and not code.casefold().startswith(needle):
+            if not _article_code_matches_filter(code, needle):
                 continue
             relation_prefix = code[:length] if len(code) > length else code
             relation_names.add("PA_" + relation_prefix)
@@ -383,7 +406,7 @@ class VarCondGenerationPanel(QWidget):
         # every parent belonging to that prefix has completed source loading.
         relation_groups: dict[str, list[str]] = {}
         for code, _label, _article_id in self._article_rows:
-            if stream_filter_text and not code.casefold().startswith(stream_filter_text):
+            if not _article_code_matches_filter(code, stream_filter_text):
                 continue
             prefix = code[:stream_prefix_length] if len(code) > stream_prefix_length else code
             relation_groups.setdefault("PA_" + prefix, []).append(code)
@@ -567,7 +590,7 @@ class VarCondGenerationPanel(QWidget):
         parent_codes = [
             code for code, _label, _article_id in self._article_rows
             if code.startswith(relation_prefix)
-            and (not needle or code.casefold().startswith(needle))
+            and _article_code_matches_filter(code, needle)
         ]
         if not parent_codes:
             self._rules_by_relation[relation_name] = []
