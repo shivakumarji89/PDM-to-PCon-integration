@@ -1046,20 +1046,23 @@ class OcdExportService(BaseService):
         self, snapshot: Snapshot, classes: list, class_index: dict[str, int],
         text_index: dict[tuple[str, str], int], digits: dict[str, int],
         property_relobj: dict[str, int], proto: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        """tCOMd_Property rows + ``{property_id: com_PropertyID}`` index.
+    ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], int]]:
+        """tCOMd_Property rows + ``{(class_id, property_id): com_PropertyID}`` index.
+
+        A source property may sit in several classes (one per base article), and each class owns
+        its own exported property row, so the index is keyed by the class as well.
 
         ``com_PropName`` is the normalized identifier so relations and the code
         scheme reference the same token; ``com_PropDigits`` is the max value-code
         length so the property accepts its values."""
         rows: list[dict[str, Any]] = []
-        index: dict[str, int] = {}
+        index: dict[tuple[str, str], int] = {}
         pid = 0
         for cls in classes:
             class_pk = class_index[str(cls.id)]
             for position, a in enumerate(cls.properties):
                 pid += 1
-                index[str(a.property_id)] = pid
+                index[(str(cls.id), str(a.property_id))] = pid
                 prop_key = XocdExportService._prop_ident(a.property_name)
                 source_prop = next(
                     (p for p in snapshot.properties if str(p.id) == str(a.property_id)),
@@ -1150,7 +1153,7 @@ class OcdExportService(BaseService):
         return package_rows, article_rows
 
     def _property_values(
-        self, snapshot: Snapshot, classes: list, prop_index: dict[str, int],
+        self, snapshot: Snapshot, classes: list, prop_index: dict[tuple[str, str], int],
         text_index: dict[tuple[str, str], int], value_relobj: dict[str, int],
         codes: dict[str, str], proto: dict[str, Any],
     ) -> list[dict[str, Any]]:
@@ -1169,7 +1172,7 @@ class OcdExportService(BaseService):
                 # Free-text (T) properties take no enumerated values.
                 if (a.type or "").strip().upper().startswith("T"):
                     continue
-                prop_pk = prop_index.get(str(a.property_id))
+                prop_pk = prop_index.get((str(cls.id), str(a.property_id)))
                 if prop_pk is None:
                     continue
                 values = values_by.get(str(a.property_id), [])
