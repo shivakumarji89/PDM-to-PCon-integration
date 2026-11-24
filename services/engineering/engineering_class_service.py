@@ -177,6 +177,14 @@ class EngineeringClassService(BaseService):
         )
         if prop is None:
             return []
+        # Property.values plus the flat snapshot.property_values rows of this property
+        # (the scope resolver reads both, so seeding must too or valid links vanish).
+        pool = list(prop.values)
+        known = {str(v.id) for v in pool}
+        pool += [
+            v for v in getattr(snapshot, "property_values", []) or []
+            if str(getattr(v, "property_id", "")) == str(property_id) and str(v.id) not in known
+        ]
         return [
             ClassValue(
                 value_id=str(v.id or ""),
@@ -184,7 +192,7 @@ class EngineeringClassService(BaseService):
                 value=v.value or "",
                 source="pdm",
             )
-            for v in prop.values
+            for v in pool
             if value_ids is None or str(v.id) in value_ids
         ]
 
@@ -498,7 +506,7 @@ class EngineeringClassService(BaseService):
                 tuple(sorted(scope.property_ids, key=lambda i: prop_order.get(i, 10_000))),
                 tuple(sorted(scope.option_ids, key=lambda i: opt_order.get(i, 10_000))),
                 visual_ids,
-                value_ids or None,
+                value_ids,   # empty = the base carries no value: never widen to all PDM values
                 (base,),
             ))
         return groups
