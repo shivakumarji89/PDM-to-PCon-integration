@@ -40,6 +40,19 @@ class PropertiesValuesMdbExportService(BaseService):
         return max((cls._int(row.get(column)) for row in rows), default=0) + 1
 
     @staticmethod
+    def _allowed_value_ids(scope, source_id: str):
+        """Value ids an in-scope property/option may export; ``None`` = not a scoped source.
+
+        A property/option that IS in scope but has no value mapping exports zero values - the
+        missing mapping must never widen to every PDM value.
+        """
+        if source_id in scope.property_ids:
+            return scope.property_value_ids.get(source_id, frozenset())
+        if source_id in scope.option_ids:
+            return scope.option_value_ids.get(source_id, frozenset())
+        return None
+
+    @staticmethod
     def _assignment_union(snapshot: Snapshot, classes: list, selected_ids: set[str]):
         """Union selected articles' class assignments without mutating source classes."""
         by_name: dict[str, dict[str, Any]] = {}
@@ -318,11 +331,7 @@ class PropertiesValuesMdbExportService(BaseService):
                         })()
                         for value in source_values
                     ]
-                allowed_ids = (
-                    scope.property_value_ids.get(source_id)
-                    if source_id in scope.property_ids else
-                    scope.option_value_ids.get(source_id)
-                )
+                allowed_ids = self._allowed_value_ids(scope, source_id)
                 if allowed_ids is not None:
                     class_values = [
                         value for value in class_values

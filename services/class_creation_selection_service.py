@@ -7,9 +7,12 @@ options they actually carry, so display and export use identical filtering.
 from __future__ import annotations
 
 import copy
+import logging
 from dataclasses import dataclass, field
 
 from services.engineering.class_naming import ATTRIBUTE, OPTION, VISUAL, class_kind
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -94,10 +97,28 @@ def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationA
     property_value_ids: dict[str, set[str]] = {}
     option_value_ids: dict[str, set[str]] = {}
     selected_ranges: set[str] = set()
+    # Product values are the menu a product OFFERS, not what one article carries. Article-level
+    # BaseAttributeValues therefore win for the whole product as soon as any of its articles has
+    # them; an article without rows then contributes nothing. The product menu is used only when
+    # no article of the product has article-level links (it is then the only data there is).
+    products_with_article_links = {
+        str(getattr(a, "product_id", "") or "")
+        for aid, a in articles.items() if article_values.get(aid)
+    }
+    fallback_logged: set[str] = set()
     for article_id in selected:
         article = articles[article_id]
         product_id = str(getattr(article, "product_id", "") or "")
-        raw_values = article_values.get(article_id) or product_values.get(product_id, [])
+        raw_values = article_values.get(article_id) or []
+        if not raw_values and product_id not in products_with_article_links:
+            raw_values = product_values.get(product_id, [])
+            if raw_values and product_id not in fallback_logged:
+                fallback_logged.add(product_id)
+                _log.info(
+                    "Class scope: product %s has no article-level BaseAttributeValues; "
+                    "using product-level values (%d) for its articles.",
+                    product_id, len(raw_values),
+                )
         for value_id in raw_values:
             value_id = str(value_id)
             property_id = property_by_value.get(value_id)
