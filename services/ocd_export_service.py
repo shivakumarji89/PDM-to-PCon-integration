@@ -662,7 +662,9 @@ class OcdExportService(BaseService):
 
         ``selected_article_ids`` limits the base articles (``None`` = all)."""
         xocd = self.context.xocd_export_service
-        classes = self.context.engineering_class_service.get_classes(snapshot)
+        # Export-only class copies: properties unticked in Class Creation ("Export MDB")
+        # are left out. With no overrides this is the live class list, as before.
+        classes = self._mdb_export_classes(snapshot)
         codes = xocd._value_code_map(snapshot)
         digits = xocd._value_lengths(snapshot)
         base_codes = xocd._base_codes(snapshot, selected_article_ids)
@@ -697,6 +699,7 @@ class OcdExportService(BaseService):
         article_rows, article_index = self._articles(
             base_codes, comgroup_id, package_id, text_index, scheme_index,
             scheme_by_code, protos["tCOMd_Article"], entity_bindings.get("article"),
+            self._article_text_keys(snapshot, base_codes, text_index),
         )
         articleclass_rows = self._article_classes(
             base_codes, token_by_base, classes, article_index, class_index,
@@ -1188,11 +1191,16 @@ class OcdExportService(BaseService):
         text_index: dict[tuple[str, str], int], scheme_index: dict[str, int],
         scheme_by_code: dict[str, str], proto: dict[str, Any],
         article_relobj: dict[str, int] | None = None,
+        text_keys: dict[str, str] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        """tCOMd_Article rows (one per base article) + ``{code: com_ArticleID}``."""
+        """tCOMd_Article rows (one per base article) + ``{code: com_ArticleID}``.
+
+        ``text_keys`` maps a base code to the key its article text block is stored under
+        when that differs from the base code (see :meth:`_article_text_keys`)."""
         rows: list[dict[str, Any]] = []
         index: dict[str, int] = {}
         article_relobj = article_relobj or {}
+        text_keys = text_keys or {}
         for aid, code in enumerate(base_codes, start=1):
             index[code] = aid
             scheme_pk = scheme_index.get(scheme_by_code.get(code, ""))
@@ -1200,11 +1208,39 @@ class OcdExportService(BaseService):
                 "com_ArticleID": aid, "com_ArticleCode": code, "com_ArticleTypeCode": "C",
                 "com_ComGroupID": comgroup_id, "com_PackageID": package_id,
                 "com_CodeSchemeID": scheme_pk, "com_RelObjID": article_relobj.get(code),
-                "com_ShortTextID": text_index.get(("artshort", code)),
-                "com_LongTextID": text_index.get(("artlong", code)),
+                "com_ShortTextID": text_index.get(("artshort", text_keys.get(code, code))),
+                "com_LongTextID": text_index.get(("artlong", text_keys.get(code, code))),
                 "com_Discountable": True, "com_OrderUnitCode": "C62",
             }))
         return rows, index
+
+    def _article_text_keys(
+        self, snapshot: Snapshot, base_codes: list[str],
+        text_index: dict[tuple[str, str], int],
+    ) -> dict[str, str]:
+        """``{base: text key}`` for bases whose article text is not stored under the base.
+
+        Text blocks are keyed by ``member.reduced_article or article.code``; the article
+        row's base is resolved price-base first (``base_code_entries``). When the two
+        differ the base has no block of its own, so its text is found through the
+        member's key. A block stored under the base code always wins."""
+        entries = self.context.xocd_export_service.base_code_entries(snapshot)
+        code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
+        members = [m for family in snapshot.engineering.families for m in family.members]
+        wanted = set(base_codes)
+
+        def has_text(key: str) -> bool:
+            return ("artshort", key) in text_index or ("artlong", key) in text_index
+
+        keys: dict[str, str] = {}
+        for (_article_id, base), member in zip(entries, members):
+            if base not in wanted or base in keys or has_text(base):
+                continue
+            legacy = (getattr(member, "reduced_article", "") or "").strip() or code_by_id.get(
+                str(getattr(member, "article_id", "")), "")
+            if legacy and has_text(legacy):
+                keys[base] = legacy
+        return keys
 
     def _article_classes(
         self, base_codes: list[str], token_by_base: dict[str, str], classes: list,

@@ -363,6 +363,7 @@ class EngineeringClassService(BaseService):
     def ensure_standard_classes(
         self, snapshot: Snapshot | None, category: str,
         groups: list[ClassGroup] | None = None, exact_tokens: bool = False,
+        protected_tokens: frozenset[str] | set[str] | None = None,
     ) -> list[EngineeringClass]:
         """Create/refresh the standard ``<Group>_ATTRIBUTE/_OPTION/_VISUAL`` classes.
 
@@ -374,6 +375,16 @@ class EngineeringClassService(BaseService):
         (``Token_Attribute`` / ``Token_Options``) is renamed in place, keeping its
         assignments. With ``exact_tokens`` the group name is the class token
         verbatim (a base article code) and all three kinds are always created.
+
+        ``exact_tokens`` (base-article standardisation) also changes two things:
+
+        * a newly created base assignment inherits Width / Type / Usage / Relation
+          Object / text-block / configurable from the category- or article-set-level
+          class it supersedes (see :meth:`_inherit_settings`);
+        * only *superseded* classes are pruned - standard-named classes whose token is
+          not a base article code (``protected_tokens`` carries every base of the
+          product, selected or not) and whose properties are all carried by a created
+          class. Classes of other bases, and anything that would lose a property, stay.
         """
         if snapshot is None or snapshot.engineering is None:
             return []
@@ -394,6 +405,11 @@ class EngineeringClassService(BaseService):
                 "be shared in the MDB: " + "; ".join(f"{a} / {b}" for a, b in clashes)
             )
         created: set[str] = set()
+        base_tokens = (
+            {t.casefold() for t in tokens} | {str(t).casefold() for t in (protected_tokens or ())}
+            if exact_tokens else set()
+        )
+        sources = self._superseded_sources(engineering.classes, base_tokens) if exact_tokens else []
         for group, token in zip(groups, tokens):
             members = {
                 class_naming.ATTRIBUTE: [(pid, prop_name.get(str(pid), "")) for pid in group.prop_ids],
@@ -416,21 +432,94 @@ class EngineeringClassService(BaseService):
                 used = {a.property_id for a in cls.properties}
                 for pid, pname in entries:
                     if pid and pid not in used:
-                        self.assign_property(
+                        assignment = self.assign_property(
                             snapshot, cls.id, pid, property_name=pname,
                             width=0, value_ids=group.value_ids,
                         )
                         used.add(pid)
-        # Prune standard classes left over from the OTHER grouping mode so a
-        # toggle never leaves both flat and split classes (which would export
-        # twice). Only auto-managed ``*_ATTRIBUTE/_OPTION/_VISUAL`` names.
-        stale = [
-            c for c in engineering.classes
-            if str(c.id) not in created and class_naming.is_standard_class(c.name)
-        ]
+                        if exact_tokens and assignment is not None:
+                            self._inherit_settings(
+                                assignment, sources, kind, pid, [p for p, _ in entries])
+        if exact_tokens:
+            stale = self._superseded_classes(engineering.classes, created, base_tokens)
+        else:
+            # Prune standard classes left over from the OTHER grouping mode so a
+            # toggle never leaves both flat and split classes (which would export
+            # twice). Only auto-managed ``*_ATTRIBUTE/_OPTION/_VISUAL`` names.
+            stale = [
+                c for c in engineering.classes
+                if str(c.id) not in created and class_naming.is_standard_class(c.name)
+            ]
         for c in stale:
             engineering.classes.remove(c)
         return engineering.classes
+
+    # -- base-article standardisation helpers ----------------------------
+    @staticmethod
+    def _superseded_sources(classes, base_tokens: set[str]) -> list[EngineeringClass]:
+        """Standard-named classes whose token is not a base article code."""
+        return [
+            c for c in classes
+            if class_naming.is_standard_class(c.name)
+            and class_naming.class_token(c.name).casefold() not in base_tokens
+        ]
+
+    @staticmethod
+    def _setting_tuple(a: ClassPropertyAssignment) -> tuple:
+        return (int(a.width or 0), a.type or "", a.usage or "", a.relation_object or "",
+                a.text_block or "", bool(a.configurable))
+
+    def _inherit_settings(
+        self, assignment: ClassPropertyAssignment, sources: list[EngineeringClass],
+        kind: str, property_id: str, group_entry_ids: list[str],
+    ) -> None:
+        """Copy the Class-workflow settings of the superseded class that carries this
+        property for this base. Several source classes may carry the same property
+        (split groups): the one overlapping the base's own properties most wins; if
+        that is still ambiguous the settings are copied only when the candidates agree,
+        never guessed."""
+        candidates = [
+            (c, a) for c in sources if class_naming.class_kind(c.name) == kind
+            for a in c.properties if str(a.property_id) == str(property_id)
+        ]
+        if not candidates:
+            return
+        wanted = {str(i) for i in group_entry_ids}
+        # Most overlap with the base's properties, then the smallest (most specific)
+        # class - the same rule ``XocdExportService._group_token_by_base`` uses.
+        scored = [
+            ((sum(1 for x in c.properties if str(x.property_id) in wanted), -len(c.properties)), a)
+            for c, a in candidates
+        ]
+        best = max(score for score, _ in scored)
+        settings = {self._setting_tuple(a) for score, a in scored if score == best}
+        if len(settings) != 1:
+            return
+        width, ptype, usage, relation, text_block, configurable = next(iter(settings))
+        assignment.width, assignment.type, assignment.usage = width, ptype, usage
+        assignment.relation_object, assignment.text_block = relation, text_block
+        assignment.configurable = configurable
+
+    @staticmethod
+    def _superseded_classes(classes, created: set[str], base_tokens: set[str]) -> list:
+        """Classes safe to drop after base standardisation: standard-named, not a base
+        article's class (selected or not), and every property already carried by a
+        created class of the same kind."""
+        carried: dict = {}
+        for c in classes:
+            if str(c.id) in created:
+                carried.setdefault(class_naming.class_kind(c.name), set()).update(
+                    str(a.property_id) for a in c.properties)
+        stale = []
+        for c in classes:
+            if str(c.id) in created or not class_naming.is_standard_class(c.name):
+                continue
+            if class_naming.class_token(c.name).casefold() in base_tokens:
+                continue
+            have = carried.get(class_naming.class_kind(c.name), set())
+            if all(str(a.property_id) in have for a in c.properties):
+                stale.append(c)
+        return stale
 
     @staticmethod
     def find_standard_class(classes, token: str, kind: str):
@@ -526,7 +615,13 @@ class EngineeringClassService(BaseService):
         groups = self.base_article_groups(snapshot, selected_article_ids)
         if not groups:
             return {}
-        self.ensure_standard_classes(snapshot, "", groups=groups, exact_tokens=True)
+        all_bases = {
+            (base or "").strip()
+            for _aid, base in self.context.xocd_export_service.base_code_entries(snapshot)
+            if (base or "").strip()
+        }
+        self.ensure_standard_classes(
+            snapshot, "", groups=groups, exact_tokens=True, protected_tokens=all_bases)
         names = {g.name: class_naming.standard_class_names(g.name) for g in groups}
         for relation in getattr(snapshot, "relation_objects", []) or []:
             pairs = list(getattr(relation, "article_classes", []) or [])
