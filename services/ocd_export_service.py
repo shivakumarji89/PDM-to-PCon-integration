@@ -193,6 +193,22 @@ class OcdExportService(BaseService):
             result.error = "Relation binding conflict: " + "; ".join(m for _, m in conflicts)
             return result
 
+        xocd = getattr(self.context, "xocd_export_service", None)
+        if xocd is not None and hasattr(xocd, "resolve_base_identities"):
+            from services.engineering.base_identity import (
+                BaseIdentityConflict, describe_price_base_conflicts, stale_price_bases)
+
+            try:
+                identities = xocd.resolve_base_identities(snapshot)
+            except BaseIdentityConflict as exc:
+                result.error = str(exc)
+                return result
+            stale = stale_price_bases(snapshot, identities)
+            if stale:
+                # Prices are keyed by base article; never attach them to another base (or drop them).
+                result.error = describe_price_base_conflicts(stale)
+                return result
+
         mdb_svc = self.context.mdb_service
         if not mdb_svc.is_available():
             result.error = "32-bit PowerShell / ACE OLEDB bridge unavailable."

@@ -344,31 +344,26 @@ class XocdExportService(BaseService):
 
     # -- Structural table builders --------------------------------------
 
-    def _base_codes(self, snapshot: Snapshot, selected_article_ids: set[str] | None = None) -> list[str]:
-        """Distinct base article codes, sliced the SAME way prices are.
+    def resolve_base_identities(self, snapshot: Snapshot):
+        """The canonical base-article identity map (see ``base_identity``): ``reduced_article``,
+        then ``base_length_overrides``, then the price base. The single base rule shared by the
+        Articles page, the Class workflow and the full-series and incremental exports."""
+        from services.engineering.base_identity import BaseIdentityConflict, resolve_base_identities
 
-        The base article MUST match the price ``ArticleID`` (``rec.article_code``,
-        the article-set ``base_length`` slice) so pCon can map prices to articles.
-        Using ``member.reduced_article`` here diverged from the priced base (e.g.
-        reduced 'AER1A11AF' vs priced 'AER'), leaving imported prices unlinked.
+        identities = resolve_base_identities(snapshot, self._price_base_of(snapshot))
+        if identities.id_conflicts:
+            raise BaseIdentityConflict(identities.id_conflicts)
+        return identities
+
+    def _base_codes(self, snapshot: Snapshot, selected_article_ids: set[str] | None = None) -> list[str]:
+        """Distinct base article codes in member order (optionally only the selected articles).
+
+        Resolved by :func:`services.engineering.base_identity.resolve_base_identities`, so the
+        article rows, class standardisation and the incremental export share one base rule.
+        Prices are keyed by the price base (``PricingService._prefix_by_item``); where an explicit
+        base differs from it the resolver records a divergence instead of silently re-keying.
         """
-        base_of = self._price_base_of(snapshot)
-        code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
-        seen: set[str] = set()
-        ordered: list[str] = []
-        # Follow member order so the article rows keep their engineering order.
-        selected = {str(value) for value in selected_article_ids} if selected_article_ids is not None else None
-        for family in snapshot.engineering.families:
-            for member in family.members:
-                article_id = str(getattr(member, "article_id", ""))
-                if selected is not None and article_id not in selected:
-                    continue
-                code = code_by_id.get(article_id, "")
-                base = base_of.get(code) or (member.reduced_article or "").strip()
-                if base and base not in seen:
-                    seen.add(base)
-                    ordered.append(base)
-        return ordered
+        return self.base_codes_from_entries(self.base_code_entries(snapshot), selected_article_ids)
 
     def base_code_entries(self, snapshot: Snapshot) -> list[tuple[str, str]]:
         """``(article_id, base)`` for every engineering member in member order.
@@ -377,16 +372,7 @@ class XocdExportService(BaseService):
         :meth:`base_codes_from_entries` gives the same lists as calling ``_base_codes`` per selection,
         without rebuilding the price-base map for each one.
         """
-        base_of = self._price_base_of(snapshot)
-        code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
-        entries: list[tuple[str, str]] = []
-        for family in snapshot.engineering.families:
-            for member in family.members:
-                article_id = str(getattr(member, "article_id", ""))
-                code = code_by_id.get(article_id, "")
-                base = base_of.get(code) or (member.reduced_article or "").strip()
-                entries.append((article_id, base))
-        return entries
+        return self.resolve_base_identities(snapshot).entries
 
     @staticmethod
     def base_codes_from_entries(
@@ -406,10 +392,11 @@ class XocdExportService(BaseService):
 
     def _price_base_of(self, snapshot: Snapshot) -> dict[str, str]:
         """Map each article code to its price base (article-set ``base_length``
-        slice) - identical to ``PricingService._prefix_by_item`` so xocd_article
-        and xocd_price share one base article key."""
+        slice, PDM prefix length, ``.`` rule) - tier 3 of the canonical base rule (see
+        ``base_identity``). ``PricingService._prefix_by_item`` overlays the canonical bases on
+        it, so xocd_article and xocd_price share one base article key."""
         from services.pricing_service import PricingService
-        return PricingService(self.context)._prefix_by_item(snapshot)
+        return PricingService(self.context)._set_prefix_by_item(snapshot)
 
 
     def _articles(
@@ -463,7 +450,7 @@ class XocdExportService(BaseService):
         for cls in classes:
             token = cls.name.rsplit("_", 1)[0]
             token_ents.setdefault(token, set()).update(a.property_id for a in cls.properties)
-        base_of = self._price_base_of(snapshot)
+        identities = self.resolve_base_identities(snapshot)
         code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
         out: dict[str, str] = {}
         # Base-article classes (``<BASE>_ATTRIBUTE/_OPTION/_VISUAL``) bind by exact base code: two
@@ -487,7 +474,7 @@ class XocdExportService(BaseService):
                 continue
             for aid in aset.article_ids:
                 code = code_by_id.get(str(aid), "")
-                base = base_of.get(code) or code
+                base = identities.base_of(aid) or code
                 if base and base not in out:
                     out[base] = best
         return out

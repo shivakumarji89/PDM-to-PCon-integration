@@ -154,9 +154,9 @@ def test_base_codes_from_entries_equal_base_codes_for_any_selection():
 # relation export
 # --------------------------------------------------------------------------------------
 GOLDEN_EXPORT = {
-    "default": (None, "", "", "a79f95f4a7c406ddfb05a76284079a9bf2d44c26c8365d3168bf064d8d04aa26", 5),
+    "default": (None, "", "", "ad24f9e982a86a7293546993510aad5ebd88e58b6365027e95e82a1d0d95f4b3", 5),
     "len6_excl_subst": (6, "Overall_width", "Fabric_Type=FT",
-                        "383eeeb08f2496c584508404f22d679f477f74a175a0764984833a7813c2b61c", 2),
+                        "2ee11954f6a704d4639c8e6c0d60946c660f2e19719ec16c966d5850eaa2ec61", 2),
 }
 
 

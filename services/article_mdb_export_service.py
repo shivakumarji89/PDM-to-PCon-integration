@@ -89,7 +89,11 @@ class ArticleMdbExportService(BaseService):
         selected = (
             {str(v) for v in selected_article_ids} if selected_article_ids is not None else None
         )
-        base_of = self._price_base_of(snapshot)
+        from services.engineering.base_identity import BaseIdentityConflict, resolve_base_identities
+
+        identities = resolve_base_identities(snapshot, self._price_base_of(snapshot))
+        if identities.id_conflicts:
+            raise BaseIdentityConflict(identities.id_conflicts)
         unique: dict[str, dict[str, Any]] = {}
         for family in getattr(snapshot.engineering, "families", []) or []:
             for member in getattr(family, "members", []) or []:
@@ -98,12 +102,9 @@ class ArticleMdbExportService(BaseService):
                     continue
                 article = articles.get(article_id)
                 source_code = str(getattr(article, "code", "") or "").strip()
-                # Keep the Development/full-export rule exactly: price base first,
-                # then member.reduced_article. Do not invent a base by splitting
-                # the source code; _base_codes() does not do that.
-                code = (base_of.get(source_code) or "").strip() or str(
-                    getattr(member, "reduced_article", "") or ""
-                ).strip()
+                # Same canonical base as the full-series export (reduced_article, then
+                # base_length_overrides, then the price base); never invented from the code.
+                code = identities.base_of(article_id)
                 if not code:
                     continue
                 # One MDB base-article row per base code. The first member is
@@ -201,7 +202,12 @@ class ArticleMdbExportService(BaseService):
             return {"ok": False, "error": "Select an existing OCD MDB file."}
         if snapshot is None or snapshot.product is None:
             return {"ok": False, "error": "Load a product before exporting Articles."}
-        articles = self._base_articles(snapshot, selected_article_ids)
+        from services.engineering.base_identity import BaseIdentityConflict
+
+        try:
+            articles = self._base_articles(snapshot, selected_article_ids)
+        except BaseIdentityConflict as exc:
+            return {"ok": False, "error": str(exc)}
         if not articles:
             return {"ok": False, "error": (
                 "None of the selected articles has a reduced Base Article."

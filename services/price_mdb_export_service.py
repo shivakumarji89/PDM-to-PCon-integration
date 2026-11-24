@@ -121,6 +121,17 @@ class PriceMdbExportService(BaseService):
             return {"ok": False, "error": "Select an existing OCD MDB file."}
         if not snapshot.price_records:
             return {"ok": False, "error": "Compute prices before exporting."}
+        xocd = getattr(self.context, "xocd_export_service", None)
+        if xocd is not None and hasattr(xocd, "resolve_base_identities"):
+            from services.engineering.base_identity import (
+                BaseIdentityConflict, describe_price_base_conflicts, stale_price_bases)
+
+            try:
+                stale = stale_price_bases(snapshot, xocd.resolve_base_identities(snapshot))
+            except BaseIdentityConflict as exc:
+                return {"ok": False, "error": str(exc)}
+            if stale:
+                return {"ok": False, "error": describe_price_base_conflicts(stale)}
         if require_program:
             try:
                 validate_pricing_program(snapshot.generation_program)

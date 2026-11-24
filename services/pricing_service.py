@@ -728,7 +728,29 @@ class PricingService(BaseService):
         return item
 
     def _prefix_by_item(self, snapshot: Snapshot) -> dict[str, str]:
-        """Map each article code to its base prefix (PDM ``text3``).
+        """Article code -> base article, following the canonical base identity.
+
+        Prices are keyed by the base article and carry ``item[len(base):]`` as their variant
+        condition, so computing them from the same base the Article workflow and the MDB export
+        use keeps both consistent by construction. Engineering members take their canonical base
+        (``reduced_article``, then ``base_length_overrides``, then :meth:`_set_prefix_by_item`);
+        any other article keeps the set/prefix/dot rule.
+        """
+        from services.engineering.base_identity import resolve_base_identities
+
+        legacy = self._set_prefix_by_item(snapshot)
+        identities = resolve_base_identities(snapshot, legacy)
+        if not identities.by_article:
+            return legacy
+        out = dict(legacy)
+        for article in snapshot.articles:
+            base = identities.base_of(article.id) if article.id is not None else ""
+            if base and article.code:
+                out[article.code] = base
+        return out
+
+    def _set_prefix_by_item(self, snapshot: Snapshot) -> dict[str, str]:
+        """Map each article code to its base prefix (PDM ``text3``) - tier 3 of the base rule.
 
         The prefix length is the article set's ``base_length`` (the tool's
         authoritative slice point, equivalent to PDM's ``Item.Notes`` prefix

@@ -61,13 +61,22 @@ def test_missing_source_article_still_uses_member_reduced_base_like_development(
     assert rows[0]["source_codes"] == []
 
 
-def test_price_base_takes_precedence_over_member_reduced_article():
+def test_member_reduced_base_takes_precedence_over_price_base():
+    """Canonical rule (approved): reduced_article, then base_length_overrides, then price base."""
     snapshot = _snapshot(
         [_article("a1", "AAA.01")],
         [_member("a1", "AAA_REDUCED")],
     )
 
     rows = _service({"AAA.01": "AAA"}) ._base_articles(snapshot)
+
+    assert [row["code"] for row in rows] == ["AAA_REDUCED"]
+
+
+def test_price_base_is_the_fallback_when_the_member_has_no_reduced_base():
+    snapshot = _snapshot([_article("a1", "AAA.01")], [_member("a1", "")])
+
+    rows = _service({"AAA.01": "AAA"})._base_articles(snapshot)
 
     assert [row["code"] for row in rows] == ["AAA"]
 
