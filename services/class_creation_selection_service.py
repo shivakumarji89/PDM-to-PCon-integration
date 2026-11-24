@@ -10,6 +10,7 @@ import copy
 import logging
 from dataclasses import dataclass, field
 
+from services.engineering.article_value_links import carried_value_ids, products_with_article_links
 from services.engineering.class_naming import ATTRIBUTE, OPTION, VISUAL, class_kind
 
 _log = logging.getLogger(__name__)
@@ -101,24 +102,20 @@ def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationA
     # BaseAttributeValues therefore win for the whole product as soon as any of its articles has
     # them; an article without rows then contributes nothing. The product menu is used only when
     # no article of the product has article-level links (it is then the only data there is).
-    products_with_article_links = {
-        str(getattr(a, "product_id", "") or "")
-        for aid, a in articles.items() if article_values.get(aid)
-    }
+    linked_products = products_with_article_links(articles.values(), article_values)
     fallback_logged: set[str] = set()
     for article_id in selected:
         article = articles[article_id]
         product_id = str(getattr(article, "product_id", "") or "")
-        raw_values = article_values.get(article_id) or []
-        if not raw_values and product_id not in products_with_article_links:
-            raw_values = product_values.get(product_id, [])
-            if raw_values and product_id not in fallback_logged:
-                fallback_logged.add(product_id)
-                _log.info(
-                    "Class scope: product %s has no article-level BaseAttributeValues; "
-                    "using product-level values (%d) for its articles.",
-                    product_id, len(raw_values),
-                )
+        raw_values, used_fallback = carried_value_ids(
+            article_id, product_id, article_values, product_values, linked_products)
+        if used_fallback and product_id not in fallback_logged:
+            fallback_logged.add(product_id)
+            _log.info(
+                "Class scope: product %s has no article-level BaseAttributeValues; "
+                "using product-level values (%d) for its articles.",
+                product_id, len(raw_values),
+            )
         for value_id in raw_values:
             value_id = str(value_id)
             property_id = property_by_value.get(value_id)

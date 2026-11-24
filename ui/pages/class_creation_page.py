@@ -896,11 +896,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # can equal ``str(value.id)``, and an article is listed once per occurrence in the snapshot.
         linked_by_value: dict[str, list[str]] = {}
         if snapshot and (article_values or product_values):
+            from services.engineering.article_value_links import (
+                carried_value_ids, products_with_article_links)
+            linked_products = products_with_article_links(snapshot.articles, article_values)
             for article in snapshot.articles:
-                carried = (
-                    article_values.get(str(article.id))
-                    or product_values.get(str(article.product_id), [])
-                )
+                carried, _fallback = carried_value_ids(
+                    str(article.id), str(article.product_id or ""),
+                    article_values, product_values, linked_products)
                 for carried_id in {c for c in carried if isinstance(c, str)}:
                     linked_by_value.setdefault(carried_id, []).append(article_codes[str(article.id)])
         for value in _by_display_order(displayed):

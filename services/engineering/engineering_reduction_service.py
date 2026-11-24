@@ -14,6 +14,7 @@ assignments. It performs no validation, generation, or synchronization.
 """
 from __future__ import annotations
 
+from services.engineering.article_value_links import carried_value_ids, products_with_article_links
 from services.engineering.class_naming import is_attribute_class
 from core.cancellation import checkpoint, OperationCancelled
 
@@ -411,31 +412,18 @@ class EngineeringReductionService(BaseService):
             if getattr(snapshot, "base_length_overrides_original", None) is not None
             else None
         )
+        linked_products = products_with_article_links(snapshot.articles, article_values)
         for article in snapshot.articles:
             checkpoint()
             article_id = str(getattr(article, "id", "") or "")
             product_id = str(getattr(article, "product_id", "") or "")
 
-            # BaseAttributeValues are the concrete PDM Item truth. When
-            # Item-level rows exist, use that complete selection as the
-            # signature. ProductAttributeValues are only the fallback for Items
-            # for which PDM supplied no BaseAttributeValues at all.
-            selected_ids = [str(v) for v in article_values.get(article_id, [])]
-            product_ids = [str(v) for v in product_values.get(product_id, [])]
-
-            # Item-level BaseAttributeValues are authoritative. Do not
-            # build the product-level signature when the Item already has its
-            # concrete selection; large products can carry a very large
-            # ProductAttributeValues vocabulary and that work is otherwise
-            # completely discarded.
-            if selected_ids:
-                signature_values = {
-                    value_prop[v] for v in selected_ids if v in value_prop
-                }
-            else:
-                signature_values = {
-                    value_prop[v] for v in product_ids if v in value_prop
-                }
+            # BaseAttributeValues are the concrete PDM Item truth. Once any article of the
+            # product has them, an article without them carries nothing; the product menu
+            # (ProductAttributeValues) is used only for products with no Item-level rows.
+            carried, _fallback = carried_value_ids(
+                article_id, product_id, article_values, product_values, linked_products)
+            signature_values = {value_prop[v] for v in carried if v in value_prop}
             signature = tuple(sorted(signature_values))
             scope = str(range_of.get(product_id, "") or "")
             overlay_length = (
@@ -530,8 +518,10 @@ class EngineeringReductionService(BaseService):
         article_value_ids = getattr(snapshot, 'article_property_value_ids', {}) or {}
         product_value_ids = getattr(snapshot, 'product_property_value_ids', {}) or {}
         product_id = str(getattr(article, 'product_id', '') or '')
-        carried_value_ids = [str(v) for v in article_value_ids.get(str(article.id), [])] or [str(v) for v in product_value_ids.get(product_id, [])]
-        carried_pids = {str(p.id) for p in getattr(snapshot, 'properties', []) or [] if any(str(v.id) in carried_value_ids for v in getattr(p, 'values', []) or [])}
+        carried_ids, _fallback = carried_value_ids(
+            str(article.id), product_id, article_value_ids, product_value_ids,
+            products_with_article_links(snapshot.articles, article_value_ids))
+        carried_pids = {str(p.id) for p in getattr(snapshot, 'properties', []) or [] if any(str(v.id) in carried_ids for v in getattr(p, 'values', []) or [])}
         assignments, seen = [], set()
         for cls in getattr(getattr(snapshot, 'engineering', None), 'classes', []) or []:
             if not is_attribute_class(getattr(cls, 'name', '')): continue
@@ -1216,16 +1206,21 @@ class EngineeringReductionService(BaseService):
         # of scanning the carrier list, which was quadratic for a value shared
         # by thousands of articles.
         recorded: set[tuple[str, str]] = set()
-        article_value_ids = article_value_ids or {}
+        # Item-level BaseAttributeValues win for a whole product once any of its articles has
+        # them; the product menu is used only for products with no Item-level rows. Callers that
+        # pass no ``article_value_ids`` (options) resolve at product level by design.
+        if article_value_ids is None:
+            article_value_ids = {}
+            linked_products: set[str] = set()
+        else:
+            linked_products = {
+                product_of.get(str(a), "") for a, v in article_value_ids.items() if v
+            }
         for article_id in article_ids:
             checkpoint()
             product_id = product_of.get(article_id, "")
-            # PDM Item-level BaseAttributeValues are authoritative when
-            # present. Product-level values are a fallback only when the Item
-            # has no BaseAttributeValues rows.
-            selected = [str(v) for v in article_value_ids.get(article_id, [])]
-            product_values = [str(v) for v in product_value_ids.get(product_id, [])]
-            value_ids = selected if selected else product_values
+            value_ids, _fallback = carried_value_ids(
+                article_id, product_id, article_value_ids, product_value_ids, linked_products)
             for value_id in value_ids:
                 info = value_lookup.get(str(value_id))
                 if info is None:

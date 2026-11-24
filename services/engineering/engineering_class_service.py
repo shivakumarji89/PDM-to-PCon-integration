@@ -30,6 +30,7 @@ from models.engineering_class import (
 from models.snapshot import Snapshot
 from services.base_service import BaseService
 from services.engineering import class_naming
+from services.engineering.article_value_links import carried_value_ids, products_with_article_links
 
 
 @dataclass(frozen=True)
@@ -822,6 +823,7 @@ class EngineeringClassService(BaseService):
             str(a.id): str(getattr(a, "product_id", "") or "")
             for a in snapshot.articles
         }
+        linked_products = products_with_article_links(snapshot.articles, apv)
         head_of: dict[str, str] = {}
         assign: dict[str, dict[str, str]] = defaultdict(dict)
         for article in snapshot.articles:
@@ -830,7 +832,8 @@ class EngineeringClassService(BaseService):
                 continue
             aid = str(article.id)
             head_of[aid] = code.split(".", 1)[0]
-            vids = apv.get(aid) or ppv.get(product_of.get(aid, ""), [])
+            vids, _fallback = carried_value_ids(
+                aid, product_of.get(aid, ""), apv, ppv, linked_products)
             for vid in vids:
                 pid = value_to_prop.get(str(vid))
                 if pid is not None:
