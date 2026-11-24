@@ -29,6 +29,7 @@ from models.engineering_class import (
 )
 from models.snapshot import Snapshot
 from services.base_service import BaseService
+from services.engineering import class_naming
 
 
 @dataclass(frozen=True)
@@ -347,20 +348,23 @@ class EngineeringClassService(BaseService):
         return result
 
     # -- standard classes + attribute-sourced resolution -----------------
-    #: Standard class name suffixes (``<Category>_<suffix>``).
-    STANDARD_SUFFIXES = ("Attribute", "Options", "Visual")
+    #: Standard class kinds (names are composed only by ``class_naming``).
+    STANDARD_KINDS = class_naming.KINDS
 
     def ensure_standard_classes(
-        self, snapshot: Snapshot | None, category: str
+        self, snapshot: Snapshot | None, category: str,
+        groups: list[ClassGroup] | None = None, exact_tokens: bool = False,
     ) -> list[EngineeringClass]:
-        """Create/refresh the standard ``<Group>_*`` classes, one set per group.
+        """Create/refresh the standard ``<Group>_ATTRIBUTE/_OPTION/_VISUAL`` classes.
 
         Idempotent and additive. When the load spans one product range the
-        group is the ``category`` (the historical flat ``<Category>_Attribute`` /
-        ``_Options`` / ``_Visual``). When it spans several ranges (desk / screen /
-        wire management) each becomes its own ``<Group>_*`` set, scoped to the
-        properties, options and values that group carries. Existing classes,
-        properties and widths are left untouched.
+        group is the ``category``. When it spans several ranges (or ``groups``
+        is passed, e.g. one per base article) each becomes its own set, scoped to
+        the properties, options and values that group carries. Existing classes,
+        properties and widths are left untouched; a legacy-named class
+        (``Token_Attribute`` / ``Token_Options``) is renamed in place, keeping its
+        assignments. With ``exact_tokens`` the group name is the class token
+        verbatim (a base article code) and all three kinds are always created.
         """
         if snapshot is None or snapshot.engineering is None:
             return []
@@ -370,27 +374,36 @@ class EngineeringClassService(BaseService):
         prop_name = {str(p.id): (p.name or "") for p in snapshot.properties}
         opt_name = {str(o.id): (o.name or "") for o in snapshot.options}
         vis_name = {str(d.id): (d.name or "") for d in engineering.properties}
-        groups = self.resolve_class_groups(snapshot, category)
-        split = len(groups) > 1
+        if groups is None:
+            groups = self.resolve_class_groups(snapshot, category)
+        split = len(groups) > 1 and not exact_tokens
+        tokens = [g.name if exact_tokens else self._group_token(g.name) for g in groups]
+        clashes = class_naming.casefold_collisions(tokens)
+        if clashes:
+            raise ValueError(
+                "Base article codes collide case-insensitively, so their classes would "
+                "be shared in the MDB: " + "; ".join(f"{a} / {b}" for a, b in clashes)
+            )
         created: set[str] = set()
-        for group in groups:
-            token = self._group_token(group.name)
+        for group, token in zip(groups, tokens):
             members = {
-                "Attribute": [(pid, prop_name.get(str(pid), "")) for pid in group.prop_ids],
-                "Options": [(oid, opt_name.get(str(oid), "")) for oid in group.option_ids],
-                "Visual": [(vid, vis_name.get(str(vid), "")) for vid in group.visual_ids],
+                class_naming.ATTRIBUTE: [(pid, prop_name.get(str(pid), "")) for pid in group.prop_ids],
+                class_naming.OPTION: [(oid, opt_name.get(str(oid), "")) for oid in group.option_ids],
+                class_naming.VISUAL: [(vid, vis_name.get(str(vid), "")) for vid in group.visual_ids],
             }
-            for suffix in self.STANDARD_SUFFIXES:
-                entries = members[suffix]
+            for kind in self.STANDARD_KINDS:
+                entries = members[kind]
                 if split and not entries:
                     continue  # a split group only gets the class kinds it has
-                name = f"{token}_{suffix}"
-                created.add(name)
-                cls = self._find_by_name(engineering.classes, name)
+                name = class_naming.standard_class_name(token, kind)
+                cls = self.find_standard_class(engineering.classes, token, kind)
                 if cls is None:
                     cls = self.create_class(snapshot, name)
+                elif cls.name != name:
+                    cls.name = name  # migrate a legacy-named class in place
                 if cls is None:
                     continue
+                created.add(str(cls.id))
                 used = {a.property_id for a in cls.properties}
                 for pid, pname in entries:
                     if pid and pid not in used:
@@ -401,15 +414,115 @@ class EngineeringClassService(BaseService):
                         used.add(pid)
         # Prune standard classes left over from the OTHER grouping mode so a
         # toggle never leaves both flat and split classes (which would export
-        # twice). Only auto-managed ``*_Attribute/_Options/_Visual`` names.
+        # twice). Only auto-managed ``*_ATTRIBUTE/_OPTION/_VISUAL`` names.
         stale = [
             c for c in engineering.classes
-            if c.name not in created
-            and c.name.rsplit("_", 1)[-1] in self.STANDARD_SUFFIXES
+            if str(c.id) not in created and class_naming.is_standard_class(c.name)
         ]
         for c in stale:
             engineering.classes.remove(c)
         return engineering.classes
+
+    @staticmethod
+    def find_standard_class(classes, token: str, kind: str):
+        """The class for ``(token, kind)``: the standard name, else its legacy spelling."""
+        wanted = class_naming.standard_class_name(token, kind).casefold()
+        legacy = f"{token}_{'Options' if kind == class_naming.OPTION else kind}".casefold()
+        exact = next((c for c in classes if c.name.casefold() == wanted), None)
+        if exact is not None:
+            return exact
+        return next((c for c in classes if c.name.casefold() == legacy), None)
+
+    def base_article_groups(
+        self, snapshot: Snapshot, selected_article_ids: set[str] | None = None
+    ) -> list[ClassGroup]:
+        """One independent group per base article.
+
+        Base codes come from the existing resolution
+        (``XocdExportService.base_code_entries``: price base, then the reduced
+        article) - never re-derived here. Every variant of a base shares that
+        base's group; the group carries exactly the PDM properties, options and
+        values the base's articles carry (``build_class_creation_scope``). Visual
+        definitions are product-wide, like the article-set mode.
+        """
+        from services.class_creation_selection_service import build_class_creation_scope
+
+        entries = self.context.xocd_export_service.base_code_entries(snapshot)
+        selected = (
+            {str(v) for v in selected_article_ids} if selected_article_ids is not None else None
+        )
+        articles_by_base: dict[str, list[str]] = {}
+        for article_id, base in entries:
+            base = (base or "").strip()
+            if not base or (selected is not None and article_id not in selected):
+                continue
+            ids = articles_by_base.setdefault(base, [])
+            if article_id not in ids:
+                ids.append(article_id)
+        prop_order = {str(p.id): i for i, p in enumerate(snapshot.properties)}
+        opt_order = {str(o.id): i for i, o in enumerate(snapshot.options)}
+        visual_ids = tuple(str(d.id) for d in snapshot.engineering.properties if d.id)
+        # A snapshot without any per-article / per-product attribute links (cached or
+        # reduced loads) cannot scope a base; every base then carries the product-wide
+        # lists, exactly like the flat Class Creation mode (never drop data).
+        has_links = bool(
+            getattr(snapshot, "article_property_value_ids", None)
+            or getattr(snapshot, "product_property_value_ids", None)
+            or getattr(snapshot, "product_option_value_ids", None)
+            or any(getattr(a, "properties", None) or getattr(a, "options", None)
+                   for a in (getattr(snapshot, "article_sets", None) or []))
+        )
+        groups: list[ClassGroup] = []
+        for base, ids in articles_by_base.items():
+            if not has_links:
+                groups.append(ClassGroup(
+                    base,
+                    tuple(str(p.id) for p in snapshot.properties if p.id),
+                    tuple(str(o.id) for o in snapshot.options if o.id),
+                    visual_ids, None, (base,),
+                ))
+                continue
+            scope = build_class_creation_scope(snapshot, set(ids))
+            value_ids = frozenset(
+                v for values in scope.property_value_ids.values() for v in values
+            ) | frozenset(v for values in scope.option_value_ids.values() for v in values)
+            groups.append(ClassGroup(
+                base,
+                tuple(sorted(scope.property_ids, key=lambda i: prop_order.get(i, 10_000))),
+                tuple(sorted(scope.option_ids, key=lambda i: opt_order.get(i, 10_000))),
+                visual_ids,
+                value_ids or None,
+                (base,),
+            ))
+        return groups
+
+    def standardise_by_base_article(
+        self, snapshot: Snapshot, selected_article_ids: set[str] | None = None
+    ) -> dict[str, dict[str, str]]:
+        """(Re)build the standard classes for the full selected series, one set per
+        base article, and re-point relation-object ArticleClass references at them.
+
+        Returns ``{base_code: {kind: class name}}``. Different base articles never
+        share a class, even when their properties are identical.
+        """
+        if snapshot.engineering is None:
+            return {}
+        groups = self.base_article_groups(snapshot, selected_article_ids)
+        if not groups:
+            return {}
+        self.ensure_standard_classes(snapshot, "", groups=groups, exact_tokens=True)
+        names = {g.name: class_naming.standard_class_names(g.name) for g in groups}
+        for relation in getattr(snapshot, "relation_objects", []) or []:
+            pairs = list(getattr(relation, "article_classes", []) or [])
+            if not pairs:
+                continue
+            remapped = []
+            for code, class_name in pairs:
+                kind = class_naming.class_kind(class_name)
+                target = names.get(str(code), {}).get(kind) if kind else None
+                remapped.append((code, target or class_name))
+            relation.article_classes = remapped
+        return names
 
     def resolve_class_groups(
         self, snapshot: Snapshot | None, category: str

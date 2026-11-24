@@ -1438,11 +1438,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     def _attribute_class(self):
         """The active group's ``<Group>_Attribute`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Attribute"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "attribute")
 
     def _attribute_class_for_group(self, group_name: str | None):
         """Return the Attribute class belonging to a displayed split group."""
@@ -1450,11 +1447,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             return self._attribute_class()
         service = self._context.engineering_class_service
         token = service._group_token(group_name)
-        name = f"{token}_Attribute"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), token, "attribute")
 
     def _group_name_for_attr_item(self, item) -> str | None:
         """Find the split-group owner of an Attribute property/value row."""
@@ -1479,29 +1473,20 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             return self._options_class()
         service = self._context.engineering_class_service
         token = service._group_token(group_name)
-        name = f"{token}_Options"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), token, "option")
 
     def _options_class(self):
         """The active group's ``<Group>_Options`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Options"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "option")
 
     def _visual_class(self):
         """The active group's ``<Group>_Visual`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Visual"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "visual")
 
     def _split_members(self) -> list[tuple[str, str]]:
         """(article code, remaining) for every member with a persisted split."""

@@ -9,6 +9,8 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
+from services.engineering.class_naming import ATTRIBUTE, OPTION, VISUAL, class_kind
+
 
 @dataclass(frozen=True)
 class ClassCreationArticleScope:
@@ -238,15 +240,15 @@ def classes_for_article(snapshot, classes, article_id: str) -> list:
         name = str(getattr(cls, "name", "") or "")
         if token and name.rsplit("_", 1)[0] != token:
             continue
-        suffix = name.rsplit("_", 1)[-1].casefold()
+        suffix = class_kind(name) or ""
         relevant = []
         for assignment in getattr(cls, "properties", []) or []:
             pid = str(getattr(assignment, "property_id", "") or "")
-            if suffix == "attribute" and pid in scope.property_ids:
+            if suffix == ATTRIBUTE and pid in scope.property_ids:
                 relevant.append(assignment)
-            elif suffix == "options" and pid in scope.option_ids:
+            elif suffix == OPTION and pid in scope.option_ids:
                 relevant.append(assignment)
-            elif suffix == "visual":
+            elif suffix == VISUAL:
                 relevant.append(assignment)
             elif pid in scope.property_ids or pid in scope.option_ids:
                 relevant.append(assignment)

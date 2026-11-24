@@ -168,6 +168,7 @@ class OcdExportService(BaseService):
     def export(
         self, snapshot: Snapshot, dest: str | Path, template_kind: str | None = None,
         selected_article_ids: set[str] | None = None, overwrite: bool = False,
+        standardise_classes: bool = False,
     ) -> OcdExportResult:
         """Export ``snapshot`` into a copied template MDB at ``dest``.
 
@@ -239,7 +240,7 @@ class OcdExportService(BaseService):
             except OSError as exc:
                 result.error = f"Copy template failed: {exc}"
                 return result
-            self._populate(snapshot, work, result, selected_article_ids)
+            self._populate(snapshot, work, result, selected_article_ids, standardise_classes)
             if result.error or not result.ok:
                 result.ok = False
                 return result
@@ -277,7 +278,7 @@ class OcdExportService(BaseService):
 
     def _populate(
         self, snapshot: Snapshot, mdb: Path, result: OcdExportResult,
-        selected_article_ids: set[str] | None,
+        selected_article_ids: set[str] | None, standardise_classes: bool = False,
     ) -> None:
         """Fill the freshly copied template ``mdb`` (the temporary file) with the snapshot."""
         mdb_svc = self.context.mdb_service
@@ -318,6 +319,15 @@ class OcdExportService(BaseService):
             mdb, package_id, self.context.material_picking_service.DEFAULT_MAP
         )
         price_lists = self._price_lists_by_currency(mdb, snapshot)
+        if standardise_classes:
+            # Full-series rebuild: one independent <BASE>_ATTRIBUTE/_OPTION/_VISUAL set per base
+            # article. Runs on the export snapshot only; every later stage reads these classes.
+            try:
+                self.context.engineering_class_service.standardise_by_base_article(
+                    snapshot, selected_article_ids)
+            except ValueError as exc:
+                result.error = str(exc)
+                return
         inserts = self._build(
             snapshot, package_id, comgroup_id, series_id, protos, price_lists,
             material_map_id, result, selected_article_ids

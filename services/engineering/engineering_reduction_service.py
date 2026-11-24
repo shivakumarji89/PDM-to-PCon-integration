@@ -13,6 +13,8 @@ The engine is strictly read-only: it never mutates Engineering, members, or
 assignments. It performs no validation, generation, or synchronization.
 """
 from __future__ import annotations
+
+from services.engineering.class_naming import is_attribute_class
 from core.cancellation import checkpoint, OperationCancelled
 
 import re
@@ -532,7 +534,7 @@ class EngineeringReductionService(BaseService):
         carried_pids = {str(p.id) for p in getattr(snapshot, 'properties', []) or [] if any(str(v.id) in carried_value_ids for v in getattr(p, 'values', []) or [])}
         assignments, seen = [], set()
         for cls in getattr(getattr(snapshot, 'engineering', None), 'classes', []) or []:
-            if not str(getattr(cls, 'name', '')).endswith('_Attribute'): continue
+            if not is_attribute_class(getattr(cls, 'name', '')): continue
             for assignment in getattr(cls, 'properties', []) or []:
                 pid = str(getattr(assignment, 'property_id', '') or '')
                 if pid and pid in carried_pids and pid not in seen: seen.add(pid); assignments.append(assignment)
@@ -612,7 +614,7 @@ class EngineeringReductionService(BaseService):
         engineering = getattr(snapshot, "engineering", None)
         sequence = 0
         for cls in getattr(engineering, "classes", []) or []:
-            if not str(getattr(cls, "name", "")).endswith("_Attribute"):
+            if not is_attribute_class(getattr(cls, "name", "")):
                 continue
             for assignment in getattr(cls, "properties", []) or []:
                 pid = str(getattr(assignment, "property_id", "") or "")
@@ -1018,7 +1020,7 @@ class EngineeringReductionService(BaseService):
         head_layout: dict = {}
         class_assignments: dict[str, object] = {}
         for cls in getattr(getattr(snapshot, "engineering", None), "classes", []) or []:
-            if not str(getattr(cls, "name", "")).endswith("_Attribute"):
+            if not is_attribute_class(getattr(cls, "name", "")):
                 continue
             for assignment in getattr(cls, "properties", []) or []:
                 pid = str(getattr(assignment, "property_id", "") or "")

@@ -2182,6 +2182,11 @@ class MainWindow(QMainWindow):
 
                 emit("Preparing the price relations...")
                 prepare_price_relation_export(self._context, export_snapshot, generated_relations)
+            emit("Standardising classes per base article...")
+            # One independent <BASE>_ATTRIBUTE/_OPTION/_VISUAL set per base article, built on the
+            # isolated export copy so Development classes are never touched.
+            self._context.engineering_class_service.standardise_by_base_article(
+                export_snapshot, selected_article_ids)
             emit("Writing the MDB export...")
             options = {"overwrite": True} if overwrite else {}
             return service.export(

@@ -466,6 +466,11 @@ class XocdExportService(BaseService):
         base_of = self._price_base_of(snapshot)
         code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
         out: dict[str, str] = {}
+        # Base-article classes (``<BASE>_ATTRIBUTE/_OPTION/_VISUAL``) bind by exact base code: two
+        # bases with identical properties must never be matched by property overlap.
+        for base in self._base_codes(snapshot):
+            if base in token_ents:
+                out[base] = base
         for aset in getattr(snapshot, "article_sets", None) or []:
             set_ents = {str(a.id) for a in aset.properties} | {str(a.id) for a in aset.options}
             # Best fit = most overlap, then the SMALLEST group (most specific) so a
@@ -483,7 +488,7 @@ class XocdExportService(BaseService):
             for aid in aset.article_ids:
                 code = code_by_id.get(str(aid), "")
                 base = base_of.get(code) or code
-                if base:
+                if base and base not in out:
                     out[base] = best
         return out
 
