@@ -462,9 +462,10 @@ class EngineeringClassService(BaseService):
         prop_order = {str(p.id): i for i, p in enumerate(snapshot.properties)}
         opt_order = {str(o.id): i for i, o in enumerate(snapshot.options)}
         visual_ids = tuple(str(d.id) for d in snapshot.engineering.properties if d.id)
-        # A snapshot without any per-article / per-product attribute links (cached or
-        # reduced loads) cannot scope a base; every base then carries the product-wide
-        # lists, exactly like the flat Class Creation mode (never drop data).
+        # No per-article / per-product attribute links at all: the snapshot cannot say which
+        # base carries what. A single base may take the product-wide lists (nothing else
+        # exists to assign); several bases cannot be told apart, so refuse rather than
+        # give every base unrelated properties.
         has_links = bool(
             getattr(snapshot, "article_property_value_ids", None)
             or getattr(snapshot, "product_property_value_ids", None)
@@ -472,6 +473,12 @@ class EngineeringClassService(BaseService):
             or any(getattr(a, "properties", None) or getattr(a, "options", None)
                    for a in (getattr(snapshot, "article_sets", None) or []))
         )
+        if not has_links and len(articles_by_base) > 1:
+            raise ValueError(
+                "The PDM snapshot has no per-article property/option links, so its "
+                f"{len(articles_by_base)} base articles cannot be assigned their own "
+                "properties. Reload the product from PDM before rebuilding."
+            )
         groups: list[ClassGroup] = []
         for base, ids in articles_by_base.items():
             if not has_links:

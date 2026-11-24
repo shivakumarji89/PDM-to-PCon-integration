@@ -152,11 +152,20 @@ def test_downstream_group_token_resolves_each_base_to_its_own_classes():
     assert tokens == {"AAA": "AAA", "BBB": "BBB", "CCC": "CCC"}
 
 
-def test_snapshot_without_attribute_links_falls_back_to_product_wide_lists():
+def test_no_links_and_several_bases_is_refused_not_guessed():
     snap = _snapshot()
     snap.product_property_value_ids = {}
     snap.product_option_value_ids = {}
-    _service(ENTRIES).standardise_by_base_article(snap)
+    with pytest.raises(ValueError, match="no per-article"):
+        _service(ENTRIES).standardise_by_base_article(snap)
+    assert snap.engineering.classes == []
+
+
+def test_no_links_and_a_single_base_takes_the_product_wide_lists():
+    snap = _snapshot()
+    snap.product_property_value_ids = {}
+    snap.product_option_value_ids = {}
+    _service([("a1", "AAA"), ("a2", "AAA")]).standardise_by_base_article(snap)
     classes = _by_name(snap)
     assert {a.property_id for a in classes["AAA_ATTRIBUTE"].properties} == {"p1", "p2"}
-    assert [a.property_id for a in classes["CCC_OPTION"].properties] == ["o1"]
+    assert [a.property_id for a in classes["AAA_OPTION"].properties] == ["o1"]

@@ -250,6 +250,29 @@ def test_full_mdb_export_runs_in_the_background_on_an_isolated_copy(window, monk
     assert "35 rows across 2 table(s)" in text and str(tmp_path / "x.mdb") in text
 
 
+def test_full_mdb_export_standardises_classes_only_on_the_isolated_copy(window, monkeypatch, tmp_path):
+    from services.engineering import class_naming
+
+    dialogs = Dialogs(monkeypatch)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
+    live = window._context.active_snapshot
+    live_names = [c.name for c in live.engineering.classes]
+    seen = {}
+
+    def export(snapshot, directory, kind, selected_article_ids=None):
+        seen["names"] = [c.name for c in snapshot.engineering.classes]
+        return SimpleNamespace(ok=True, error="", template="seating", mdb_path=str(tmp_path / "x.mdb"),
+                               table_counts={"tCOMd_Article": 1})
+
+    _install(monkeypatch, window, "ocd_export_service", SimpleNamespace(export=export))
+    window._on_export_mdb()
+    assert pump(lambda: not window._exports().busy)
+    assert seen["names"], dialogs.messages
+    assert all(class_naming.is_standard_class(n) and n.isascii() and n.endswith(("_ATTRIBUTE", "_OPTION", "_VISUAL"))
+               for n in seen["names"])
+    assert [c.name for c in live.engineering.classes] == live_names, "live snapshot must stay untouched"
+
+
 def test_full_mdb_export_reports_a_failed_result_and_an_exception(window, monkeypatch, tmp_path):
     dialogs = Dialogs(monkeypatch)
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
