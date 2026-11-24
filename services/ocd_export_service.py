@@ -28,6 +28,8 @@ from services.engineering.engineering_reduction_service import collapse_duplicat
 from services.engineering.engineering_text_service import text_block_name
 from services.price_update_service import _mdb_date_literal
 from core.export_readiness import resolve_entity_bindings
+from services.mdb_manufacturer import (
+    ManufacturerLookupError, read_package_manufacturer, resolve_package_manufacturer)
 from services.xocd_export_service import XocdExportService
 
 #: Broad "always valid" fallback window (YYYYMMDD) when neither the price list
@@ -282,21 +284,14 @@ class OcdExportService(BaseService):
         """Fill the freshly copied template ``mdb`` (the temporary file) with the snapshot."""
         mdb_svc = self.context.mdb_service
         # Package/ComGroup ids to rename; prototype rows for NOT-NULL boilerplate.
-        pkg = mdb_svc.read_table(mdb, "SELECT com_PackageID, com_ComGroupID, com_ManufacturerID FROM tCOMd_Package")
-        if not pkg:
-            result.error = "Template tCOMd_Package is empty."
+        try:
+            found = read_package_manufacturer(mdb_svc, mdb)
+        except ManufacturerLookupError as exc:
+            result.error = str(exc)
             return
-        package_id = pkg[0]["com_PackageID"]
-        comgroup_id = pkg[0]["com_ComGroupID"]
-        manufacturer_rows = mdb_svc.read_table(
-            mdb,
-            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-            + "WHERE com_ManufacturerID = " + str(pkg[0].get("com_ManufacturerID") or 0)
-        )
-        result.manufacturer_id = str(
-            manufacturer_rows[0].get("reg_ManufacturerCode")
-            if manufacturer_rows else _MATERIAL_MANUFACTURER
-        )
+        package_id = found.package["com_PackageID"]
+        comgroup_id = found.comgroup_id
+        result.manufacturer_id = found.manufacturer_code or _MATERIAL_MANUFACTURER
         protos = {t: self._prototype(mdb, t) for t in _PRODUCT_TABLES}
         price_list_rows = self._price_list_rows(snapshot, mdb)
 
@@ -404,12 +399,15 @@ class OcdExportService(BaseService):
         effective_overrides.update(manual_overrides)
         preview_snapshot.base_length_overrides = effective_overrides
 
-        pkg = self.context.mdb_service.read_table(
-            template, "SELECT * FROM tCOMd_Package"
-        )
-        groups = self.context.mdb_service.read_table(
-            template, "SELECT * FROM tCOMd_ComGroup"
-        )
+        try:
+            tables = self.context.mdb_service.read_tables(template, {
+                "package": "SELECT * FROM tCOMd_Package",
+                "group": "SELECT * FROM tCOMd_ComGroup",
+            })
+        except RuntimeError as exc:
+            result.error = f"Template schema is not usable: {exc}"
+            return result
+        pkg, groups = tables["package"], tables["group"]
         if not pkg:
             result.error = "Template tCOMd_Package is empty."
             return result
@@ -450,16 +448,12 @@ class OcdExportService(BaseService):
         # Manufacturer information is retained from the template. Keep both
         # the table row and any package/group/article manufacturer reference
         # visible in Review.
-        manufacturer_id = final_pkg.get("com_ManufacturerID") or final_group.get("com_ManufacturerID")
-        manufacturer_rows = self.context.mdb_service.read_table(
-            template,
-            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-            + "WHERE com_ManufacturerID = " + str(manufacturer_id or 0)
-        )
-        result.manufacturer_id = str(
-            manufacturer_rows[0].get("reg_ManufacturerCode")
-            if manufacturer_rows else _MATERIAL_MANUFACTURER
-        )
+        try:
+            found = resolve_package_manufacturer(self.context.mdb_service, template, pkg, groups)
+        except ManufacturerLookupError as exc:
+            result.error = str(exc)
+            return result
+        result.manufacturer_id = found.manufacturer_code or _MATERIAL_MANUFACTURER
 
         # Export MDB copies the whole template, so every user table not in
         # _PRODUCT_TABLES survives into the final database. Discover those tables

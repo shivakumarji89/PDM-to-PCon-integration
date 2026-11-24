@@ -27,6 +27,7 @@ from models.mdb_export_session import MdbExportSession
 from models.snapshot import Snapshot
 from services import ocd_export_service as _ocd
 from services.base_service import BaseService
+from services.mdb_manufacturer import ManufacturerLookupError, resolve_package_manufacturer
 from services.xocd_export_service import XocdExportService
 
 DEFAULT_MDB_NAME = "pcr_data_com_ocd.mdb"
@@ -109,6 +110,7 @@ class MdbExportSessionService(BaseService):
 
         queries = {
             "package": "SELECT * FROM tCOMd_Package",
+            "group": "SELECT * FROM tCOMd_ComGroup",
             **{f"proto:{table}": f"SELECT TOP 1 * FROM [{table}]"
                for table in _ocd._PRODUCT_TABLES},
         }
@@ -124,15 +126,11 @@ class MdbExportSessionService(BaseService):
             raise ExportSessionError("Selected repository MDB package has no ID.")
 
         comgroup_id = package.get("com_ComGroupID")
-        manufacturer_id = _ocd._MATERIAL_MANUFACTURER
-        if package.get("com_ManufacturerID") is not None:
-            rows = mdb_svc.read_table(
-                mdb,
-                "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-                f"WHERE com_ManufacturerID = {int(package['com_ManufacturerID'])}",
-            )
-            if rows and rows[0].get("reg_ManufacturerCode"):
-                manufacturer_id = str(rows[0]["reg_ManufacturerCode"])
+        try:
+            found = resolve_package_manufacturer(mdb_svc, mdb, data["package"], data["group"])
+        except ManufacturerLookupError as exc:
+            raise ExportSessionError(str(exc)) from exc
+        manufacturer_id = found.manufacturer_code or _ocd._MATERIAL_MANUFACTURER
 
         prototypes = {}
         for table in _ocd._PRODUCT_TABLES:
@@ -303,15 +301,11 @@ class MdbExportSessionService(BaseService):
             package_id = package["com_PackageID"]
             comgroup_id = package.get("com_ComGroupID")
 
-            manufacturer_id = _ocd._MATERIAL_MANUFACTURER
-            if package.get("com_ManufacturerID") is not None:
-                rows = mdb_svc.read_table(
-                    staging,
-                    "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-                    f"WHERE com_ManufacturerID = {int(package['com_ManufacturerID'])}",
-                )
-                if rows and rows[0].get("reg_ManufacturerCode"):
-                    manufacturer_id = str(rows[0]["reg_ManufacturerCode"])
+            try:
+                found = resolve_package_manufacturer(mdb_svc, staging, data["package"], data["group"])
+            except ManufacturerLookupError as exc:
+                raise ExportSessionError(str(exc)) from exc
+            manufacturer_id = found.manufacturer_code or _ocd._MATERIAL_MANUFACTURER
 
             prototypes = {}
             for table in _ocd._PRODUCT_TABLES:
