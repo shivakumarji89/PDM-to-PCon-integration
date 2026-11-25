@@ -95,7 +95,7 @@ def _world(tmp_path, shared=True, monkeypatch=None):
 @pytest.fixture(autouse=True)
 def _classes(monkeypatch):
     monkeypatch.setattr(module, "classes_for_article",
-                        lambda _snapshot, classes, _aid: [copy_cls for copy_cls in classes])
+                        lambda _snapshot, classes, _aid, base_of=None: [copy_cls for copy_cls in classes])
 
 
 def ids(*indexes):

@@ -56,8 +56,35 @@ def _article_set_group_name(snapshot, article_id: str) -> str:
     return ""
 
 
-def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationArticleScope:
-    """Resolve selected article IDs to the exact property/option IDs and values."""
+def _uses_base_basis(snapshot) -> bool:
+    return (
+        bool(getattr(snapshot, "split_classes_by_group", False))
+        and str(getattr(snapshot, "class_group_basis", "") or "").lower() == "base_article"
+    )
+
+
+def _explicit_base_of(snapshot, article_id: str) -> str:
+    """Canonical base of one article from the resolver's own explicit tiers (reduced article,
+    base-length override) - no price base, which needs the application context."""
+    from services.engineering.base_identity import explicit_base
+
+    code = next((str(getattr(a, "code", "") or "").strip() for a in (getattr(snapshot, "articles", []) or [])
+                 if str(getattr(a, "id", "")) == str(article_id)), "")
+    overrides = getattr(snapshot, "base_length_overrides", None) or {}
+    for family in getattr(getattr(snapshot, "engineering", None), "families", None) or []:
+        for member in getattr(family, "members", None) or []:
+            if str(getattr(member, "article_id", "")) == str(article_id):
+                return (explicit_base(member, code, overrides)[0] or "").strip()
+    return ""
+
+
+def build_class_creation_scope(
+    snapshot, selected_article_ids, base_of=None
+) -> ClassCreationArticleScope:
+    """Resolve selected article IDs to the exact property/option IDs and values.
+
+    ``base_of`` (``{article id: canonical base}``) is only used on the base-article grouping
+    basis to name the selected groups; callers hold it from ``base_code_entries``."""
     selected = {str(value) for value in (selected_article_ids or set()) if str(value)}
     articles = {
         str(getattr(article, "id", "")): article
@@ -163,7 +190,15 @@ def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationA
                     option_value_ids.setdefault(option_id, set()).add(value_id)
 
     group_names: set[str] = set()
-    if getattr(snapshot, "split_classes_by_group", False):
+    if _uses_base_basis(snapshot):
+        if base_of is None:
+            from services.engineering.base_identity import resolve_base_identities
+
+            base_of = resolve_base_identities(snapshot).by_article
+        group_names = {
+            str(base_of.get(a) or "").strip() for a in selected if str(base_of.get(a) or "").strip()
+        }
+    elif getattr(snapshot, "split_classes_by_group", False):
         service = getattr(getattr(snapshot, "_context", None), "engineering_class_service", None)
         # Resolve group labels from the same persisted grouping rules used by
         # Class Creation; this is best-effort and does not mutate the snapshot.
@@ -202,19 +237,28 @@ def build_class_creation_scope(snapshot, selected_article_ids) -> ClassCreationA
     )
 
 
-def classes_for_article(snapshot, classes, article_id: str) -> list:
+def classes_for_article(snapshot, classes, article_id: str, base_of=None) -> list:
     """Return copies of the classes applicable to one selected article.
 
     The class prefix follows the same split-by-range/article-set configuration
     used by Class Creation. Visual definitions remain product-wide.
     """
-    scope = build_class_creation_scope(snapshot, {str(article_id)})
+    base_token = ""
+    if _uses_base_basis(snapshot):
+        base_token = str((base_of or {}).get(str(article_id)) or "").strip() \
+            or _explicit_base_of(snapshot, article_id)
+        if not base_token:
+            return []  # the base is unresolved here: never guess another base's classes
+        base_of = {str(article_id): base_token}
+    scope = build_class_creation_scope(snapshot, {str(article_id)}, base_of=base_of)
     if not scope.article_ids:
         return []
     product = getattr(snapshot, "product", None)
     category = _category(snapshot)
     token = ""
-    if getattr(snapshot, "split_classes_by_group", False):
+    if base_token:
+        token = base_token  # exact canonical base code, never re-spelled
+    elif getattr(snapshot, "split_classes_by_group", False):
         basis = str(getattr(snapshot, "class_group_basis", "") or "range").lower()
         group_name = ""
         if basis == "article_set":
@@ -256,7 +300,9 @@ def classes_for_article(snapshot, classes, article_id: str) -> list:
     result = []
     for cls in classes or []:
         name = str(getattr(cls, "name", "") or "")
-        if token and name.rsplit("_", 1)[0] != token:
+        class_token = name.rsplit("_", 1)[0]
+        if token and (class_token.casefold() != token.casefold() if base_token
+                      else class_token != token):
             continue
         suffix = class_kind(name) or ""
         relevant = []

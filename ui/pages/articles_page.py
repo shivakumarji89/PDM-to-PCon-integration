@@ -1517,6 +1517,14 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 name = groups[index].name
                 for article_id in getattr(aset, "article_ids", []) or []:
                     article_group[str(article_id)] = name
+        elif basis == "base_article":
+            # Groups ARE the canonical bases: bucket each row by the same identity the exports use.
+            identities = self._identities()
+            names = {g.name for g in groups}
+            for _family, member, article in rows:
+                base, _source = self._canonical_base(identities, member, article)
+                if base in names and article is not None:
+                    article_group[str(article.id)] = base
         else:
             product_ranges = getattr(snapshot, "product_range", None) or {}
             rename = getattr(snapshot, "class_group_names", None) or {}

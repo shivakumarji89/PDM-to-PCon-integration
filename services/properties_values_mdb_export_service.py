@@ -53,11 +53,11 @@ class PropertiesValuesMdbExportService(BaseService):
         return None
 
     @staticmethod
-    def _assignment_union(snapshot: Snapshot, classes: list, selected_ids: set[str]):
+    def _assignment_union(snapshot: Snapshot, classes: list, selected_ids: set[str], base_of=None):
         """Union selected articles' class assignments without mutating source classes."""
         by_name: dict[str, dict[str, Any]] = {}
         for article_id in sorted(selected_ids):
-            for cls in classes_for_article(snapshot, classes, article_id):
+            for cls in classes_for_article(snapshot, classes, article_id, base_of=base_of):
                 name = str(getattr(cls, "name", "") or "").strip()
                 if not name:
                     continue
@@ -127,6 +127,9 @@ class PropertiesValuesMdbExportService(BaseService):
 
         xocd = self.context.xocd_export_service
         entries = xocd.base_code_entries(snapshot)
+        # Canonical base of every article from the context-aware resolver (price tier
+        # included), resolved once and handed to the class selection below.
+        base_of = {str(_aid): str(_base or "") for _aid, _base in entries}
         selected_entries = [
             (str(article_id), str(base_code))
             for article_id, base_code in entries
@@ -150,7 +153,7 @@ class PropertiesValuesMdbExportService(BaseService):
             )}
 
         classes = self.context.engineering_class_service.get_classes(snapshot)
-        assignments_by_class = self._assignment_union(snapshot, classes, selected)
+        assignments_by_class = self._assignment_union(snapshot, classes, selected, base_of=base_of)
         if not assignments_by_class:
             return {"ok": False, "error": "No Class Creation properties are related to the selected article(s)."}
 

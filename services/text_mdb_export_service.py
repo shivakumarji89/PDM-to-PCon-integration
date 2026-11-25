@@ -92,6 +92,9 @@ class TextMdbExportService(BaseService):
 
         xocd = self.context.xocd_export_service
         entries = xocd.base_code_entries(snapshot)
+        # Canonical base of every article from the context-aware resolver (price tier
+        # included), resolved once and handed to the class selection below.
+        base_of = {str(_aid): str(_base or "") for _aid, _base in entries}
         selected_entries = [(str(aid), str(code)) for aid, code in entries
                             if str(aid) in selected and str(code or "").strip()]
         found = {aid for aid, _ in selected_entries}
@@ -108,7 +111,7 @@ class TextMdbExportService(BaseService):
         assignment_text_names: dict[str, str] = {}
         assignment_property_names: dict[str, str] = {}
         for article_id in selected:
-            for cls in classes_for_article(snapshot, classes, article_id):
+            for cls in classes_for_article(snapshot, classes, article_id, base_of=base_of):
                 for assignment in getattr(cls, "properties", []) or []:
                     source_id = str(getattr(assignment, "property_id", "") or "")
                     property_name = str(getattr(assignment, "property_name", "") or "")
@@ -333,7 +336,7 @@ class TextMdbExportService(BaseService):
         # class/property natural keys; source IDs are not MDB surrogate IDs.
         assignments_by_class: dict[str, dict[str, Any]] = {}
         for article_id in selected:
-            for cls in classes_for_article(snapshot, classes, article_id):
+            for cls in classes_for_article(snapshot, classes, article_id, base_of=base_of):
                 bucket = assignments_by_class.setdefault(str(cls.name), {})
                 for assignment in getattr(cls, "properties", []) or []:
                     source_id = str(getattr(assignment, "property_id", "") or "")

@@ -214,7 +214,7 @@ def test_shared_class_union_does_not_mutate_engineering_source(monkeypatch, tmp_
     monkeypatch.setattr(
         export_module,
         "classes_for_article",
-        lambda _snapshot, _classes, article_id: by_article[article_id],
+        lambda _snapshot, _classes, article_id, base_of=None: by_article[article_id],
     )
 
     result = ClassCreationMdbExportService(context).export_to_session(

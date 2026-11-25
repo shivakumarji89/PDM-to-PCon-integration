@@ -70,6 +70,9 @@ class RelationMdbExportService(BaseService):
 
         xocd = self.context.xocd_export_service
         entries = xocd.base_code_entries(snapshot)
+        # Canonical base of every article from the context-aware resolver (price tier
+        # included), resolved once and handed to the class selection below.
+        base_of = {str(_aid): str(_base or "") for _aid, _base in entries}
         selected_entries = [(str(aid), str(code)) for aid, code in entries
                             if str(aid) in selected and str(code or "").strip()]
         found = {aid for aid, _ in selected_entries}
@@ -87,7 +90,7 @@ class RelationMdbExportService(BaseService):
         selected_class_names: dict[str, set[str]] = {}
         property_class_names: dict[str, set[str]] = {}
         for aid, code in selected_entries:
-            applicable = classes_for_article(snapshot, classes, aid)
+            applicable = classes_for_article(snapshot, classes, aid, base_of=base_of)
             selected_class_names.setdefault(code, set()).update(
                 str(getattr(cls, "name", "") or "") for cls in applicable
                 if getattr(cls, "name", "")

@@ -329,10 +329,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo = QComboBox(box)
         self._basis_combo.addItem("by Product range", "range")
         self._basis_combo.addItem("by Article set", "article_set")
-        self._basis_combo.setToolTip(
-            "Group basis: one class set per PDM product range, or one per "
-            "article set (base article)."
+        self._basis_combo.addItem("by Base article", "base_article")
+        self._basis_combo_tip = (
+            "Group basis: one class set per PDM product range, per article set, or per "
+            "canonical base article (the Articles workflow's base, exact code as class name)."
         )
+        self._basis_combo.setToolTip(self._basis_combo_tip)
         self._basis_combo.currentIndexChanged.connect(self._on_basis_changed)
         self._basis_combo.setVisible(False)
         layout.addWidget(self._basis_combo)
@@ -1240,7 +1242,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not self.is_mdb_view():
             # The imported MDB baseline is displayed as-is: no standard-class
             # creation and no Development article-set synchronisation.
-            service.ensure_standard_classes(snap, category)
+            service.ensure_classes_for_basis(snap, category)
             self._sync_development_article_sets()
 
         self._active_article_scope = self._selected_article_scope()
@@ -1276,6 +1278,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo.setCurrentIndex(basis_idx if basis_idx >= 0 else 0)
         self._basis_combo.blockSignals(False)
         self._basis_combo.setVisible(split_checked)
+        # The base-article basis degrades to the flat group when the canonical bases cannot
+        # be told apart; say why instead of silently showing the wrong grouping.
+        basis_problem = service.base_basis_error(snap)
+        self._basis_combo.setToolTip(
+            f"Base article grouping unavailable: {basis_problem}" if basis_problem
+            else self._basis_combo_tip
+        )
+        self._basis_combo.setStyleSheet("color: #b22222;" if basis_problem else "")
 
         token = self._active_token()
         # Keep the functional workspace names visible as the card titles.
@@ -1364,7 +1374,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         service = self._context.engineering_class_service
         if group is None:
             return self._category_label()
-        return service._group_token(group.name)
+        return service.token_for_group(self._context.active_snapshot, group.name)
 
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
@@ -1406,7 +1416,18 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
         )
         overrides = getattr(snapshot, "config_code_overrides", None) or {}
+        # The base-article basis derives its groups from the canonical base identity:
+        # explicit reductions are above; the length overrides and the basis itself here.
+        base_inputs = (
+            bool(getattr(snapshot, "split_classes_by_group", False)),
+            str(getattr(snapshot, "class_group_basis", "") or ""),
+            tuple(sorted(
+                (str(k), str(v))
+                for k, v in (getattr(snapshot, "base_length_overrides", None) or {}).items()
+            )),
+        )
         return (
+            base_inputs,
             id(snapshot),
             len(snapshot.properties),
             len(snapshot.articles),
@@ -1448,7 +1469,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not group_name:
             return self._attribute_class()
         service = self._context.engineering_class_service
-        token = service._group_token(group_name)
+        token = service.token_for_group(self._context.active_snapshot, group_name)
         return service.find_standard_class(
             service.get_classes(self._context.active_snapshot), token, "attribute")
 
@@ -1474,7 +1495,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not group_name:
             return self._options_class()
         service = self._context.engineering_class_service
-        token = service._group_token(group_name)
+        token = service.token_for_group(self._context.active_snapshot, group_name)
         return service.find_standard_class(
             service.get_classes(self._context.active_snapshot), token, "option")
 
@@ -2212,7 +2233,18 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 break
         if not selected:
             return None
-        scope = build_class_creation_scope(snapshot, selected)
+        base_of = None
+        service = self._context.engineering_class_service
+        if service.uses_base_basis(snapshot):
+            # Name the selected groups by the canonical base (all tiers, incl. price base).
+            try:
+                base_of = {
+                    str(aid): (base or "").strip()
+                    for aid, base in self._context.xocd_export_service.base_code_entries(snapshot)
+                }
+            except Exception:
+                base_of = None
+        scope = build_class_creation_scope(snapshot, selected, base_of=base_of)
         return scope if scope.article_ids else None
 
     def _on_code_selected(

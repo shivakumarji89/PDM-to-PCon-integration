@@ -60,6 +60,24 @@ class ClassGroup:
     source_ranges: tuple[str, ...] = ()
 
 
+#: Group basis whose groups are the canonical base articles (see ``base_article_groups``).
+BASE_ARTICLE_BASIS = "base_article"
+
+#: Per-class lookup states for :meth:`EngineeringClassService.resolve_base_class_sets`.
+CLASS_FOUND = "found"
+CLASS_MISSING = "missing"
+CLASS_AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class ClassLookup:
+    """Read-only result of looking up one ``{BASE}_{KIND}`` class."""
+
+    expected: str
+    state: str
+    names: tuple[str, ...] = ()
+
+
 
 class EngineeringClassService(BaseService):
     """Create / rename / delete classes and manage their property assignments."""
@@ -364,6 +382,7 @@ class EngineeringClassService(BaseService):
         self, snapshot: Snapshot | None, category: str,
         groups: list[ClassGroup] | None = None, exact_tokens: bool = False,
         protected_tokens: frozenset[str] | set[str] | None = None,
+        prune: bool = True, protect_base_classes: bool = False,
     ) -> list[EngineeringClass]:
         """Create/refresh the standard ``<Group>_ATTRIBUTE/_OPTION/_VISUAL`` classes.
 
@@ -385,6 +404,11 @@ class EngineeringClassService(BaseService):
           not a base article code (``protected_tokens`` carries every base of the
           product, selected or not) and whose properties are all carried by a created
           class. Classes of other bases, and anything that would lose a property, stay.
+
+        ``prune=False`` never removes a class (Class Creation's base-article basis uses it so
+        switching basis cannot delete another basis's classes). ``protect_base_classes`` keeps
+        the per-base ``{BASE}_*`` classes out of the flat/split pruning; when the canonical
+        bases cannot be resolved nothing is pruned.
         """
         if snapshot is None or snapshot.engineering is None:
             return []
@@ -440,15 +464,19 @@ class EngineeringClassService(BaseService):
                         if exact_tokens and assignment is not None:
                             self._inherit_settings(
                                 assignment, sources, kind, pid, [p for p, _ in entries])
-        if exact_tokens:
+        if not prune:
+            stale = []
+        elif exact_tokens:
             stale = self._superseded_classes(engineering.classes, created, base_tokens)
         else:
             # Prune standard classes left over from the OTHER grouping mode so a
             # toggle never leaves both flat and split classes (which would export
             # twice). Only auto-managed ``*_ATTRIBUTE/_OPTION/_VISUAL`` names.
-            stale = [
+            keep = self._base_class_tokens(snapshot) if protect_base_classes else frozenset()
+            stale = [] if keep is None else [
                 c for c in engineering.classes
                 if str(c.id) not in created and class_naming.is_standard_class(c.name)
+                and class_naming.class_token(c.name).casefold() not in keep
             ]
         for c in stale:
             engineering.classes.remove(c)
@@ -531,6 +559,123 @@ class EngineeringClassService(BaseService):
             return exact
         return next((c for c in classes if c.name.casefold() == legacy), None)
 
+    def _base_class_tokens(self, snapshot: Snapshot) -> frozenset[str] | None:
+        """Casefolded canonical base codes (their ``{BASE}_*`` classes), or ``None`` if unresolvable."""
+        xocd = getattr(self.context, "xocd_export_service", None)
+        if xocd is None:
+            return frozenset()
+        try:
+            return frozenset(
+                (base or "").strip().casefold() for _aid, base in xocd.base_code_entries(snapshot)
+                if (base or "").strip()
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def standard_class_candidates(classes, token: str, kind: str) -> list:
+        """Every class :meth:`find_standard_class` could return for ``(token, kind)``: the
+        standard-name matches, else the legacy-spelling matches (more than one = ambiguous)."""
+        wanted = class_naming.standard_class_name(token, kind).casefold()
+        legacy = f"{token}_{'Options' if kind == class_naming.OPTION else kind}".casefold()
+        exact = [c for c in classes if c.name.casefold() == wanted]
+        return exact or [c for c in classes if c.name.casefold() == legacy]
+
+    def lookup_standard_class(self, classes, token: str, kind: str) -> ClassLookup:
+        """Read-only lookup of one standard class, detecting missing and ambiguous ones."""
+        expected = class_naming.standard_class_name(token, kind)
+        candidates = self.standard_class_candidates(classes, token, kind)
+        if len(candidates) > 1:
+            return ClassLookup(expected, CLASS_AMBIGUOUS, tuple(dict.fromkeys(c.name for c in candidates)))
+        found = self.find_standard_class(classes, token, kind)
+        if found is None:
+            return ClassLookup(expected, CLASS_MISSING)
+        return ClassLookup(expected, CLASS_FOUND, (found.name,))
+
+    def resolve_base_class_sets(
+        self, snapshot: Snapshot | None
+    ) -> dict[str, dict[str, ClassLookup]]:
+        """``{base: {kind: ClassLookup}}`` for every canonical base article. Never creates,
+        renames or assigns a class. Bases differing only by case share MDB classes, so
+        their cells are reported ambiguous. Raises what ``base_article_groups`` raises."""
+        if snapshot is None or snapshot.engineering is None:
+            return {}
+        groups = self.base_article_groups(snapshot)
+        classes = list(snapshot.engineering.classes)
+        clash: set[str] = set()
+        for a, b in class_naming.casefold_collisions([g.name for g in groups]):
+            clash.update((a, b))
+        result: dict[str, dict[str, ClassLookup]] = {}
+        for group in groups:
+            cells = {k: self.lookup_standard_class(classes, group.name, k) for k in class_naming.KINDS}
+            if group.name in clash:
+                cells = {k: ClassLookup(c.expected, CLASS_AMBIGUOUS, c.names or (c.expected,))
+                         for k, c in cells.items()}
+            result[group.name] = cells
+        return result
+
+    def base_basis_groups(self, snapshot: Snapshot) -> list[ClassGroup]:
+        """The base-article groups for Class Creation's ``base_article`` basis. Raises
+        ``ValueError`` when they cannot be told apart (no per-article links, or base codes
+        that collide case-insensitively)."""
+        groups = self.base_article_groups(snapshot)
+        clashes = class_naming.casefold_collisions([g.name for g in groups])
+        if clashes:
+            raise ValueError(
+                "Base article codes collide case-insensitively, so their classes would be "
+                "shared in the MDB: " + "; ".join(f"{a} / {b}" for a, b in clashes)
+            )
+        return groups
+
+    @staticmethod
+    def uses_base_basis(snapshot: Snapshot | None) -> bool:
+        return (
+            snapshot is not None
+            and bool(getattr(snapshot, "split_classes_by_group", False))
+            and str(getattr(snapshot, "class_group_basis", "") or "").lower() == BASE_ARTICLE_BASIS
+        )
+
+    def base_basis_error(self, snapshot: Snapshot | None) -> str:
+        """Why the ``base_article`` basis cannot be used for ``snapshot`` ('' when it can)."""
+        if not self.uses_base_basis(snapshot) or snapshot.engineering is None:
+            return ""
+        try:
+            self.base_basis_groups(snapshot)
+        except Exception as exc:  # BaseIdentityConflict, ValueError
+            return str(exc)
+        return ""
+
+    def token_for_group(self, snapshot: Snapshot | None, group_name: str) -> str:
+        """Class-name token of a group: the exact base code on the base-article basis
+        (when it is usable), else the capitalised ``_group_token``."""
+        if self.uses_base_basis(snapshot) and not self.base_basis_error(snapshot):
+            return group_name
+        return self._group_token(group_name)
+
+    def ensure_classes_for_basis(self, snapshot: Snapshot | None, category: str) -> list[EngineeringClass]:
+        """Class Creation's class maintenance, scoped to the active grouping basis.
+
+        * ``base_article`` basis: create the missing ``{BASE}_ATTRIBUTE/_OPTION/_VISUAL``
+          classes with exact canonical base tokens and **never prune** - range, article-set
+          and flat classes of the other bases stay untouched.
+        * any other basis: the historical flat/split creation, but the per-base ``{BASE}_*``
+          classes are protected from its pruning.
+        """
+        if snapshot is None or snapshot.engineering is None:
+            return []
+        if self.uses_base_basis(snapshot) and not self.base_basis_error(snapshot):
+            groups = self.base_basis_groups(snapshot)
+            all_bases = {
+                (b or "").strip()
+                for _aid, b in self.context.xocd_export_service.base_code_entries(snapshot)
+                if (b or "").strip()
+            }
+            return self.ensure_standard_classes(
+                snapshot, category, groups=groups, exact_tokens=True,
+                protected_tokens=all_bases, prune=False,
+            )
+        return self.ensure_standard_classes(snapshot, category, protect_base_classes=True)
+
     def base_article_groups(
         self, snapshot: Snapshot, selected_article_ids: set[str] | None = None
     ) -> list[ClassGroup]:
@@ -549,6 +694,7 @@ class EngineeringClassService(BaseService):
         selected = (
             {str(v) for v in selected_article_ids} if selected_article_ids is not None else None
         )
+        base_of = {str(aid): (b or '').strip() for aid, b in entries}
         articles_by_base: dict[str, list[str]] = {}
         for article_id, base in entries:
             base = (base or "").strip()
@@ -587,7 +733,7 @@ class EngineeringClassService(BaseService):
                     visual_ids, None, (base,),
                 ))
                 continue
-            scope = build_class_creation_scope(snapshot, set(ids))
+            scope = build_class_creation_scope(snapshot, set(ids), base_of=base_of)
             value_ids = frozenset(
                 v for values in scope.property_value_ids.values() for v in values
             ) | frozenset(v for values in scope.option_value_ids.values() for v in values)
@@ -692,6 +838,21 @@ class EngineeringClassService(BaseService):
                 tuple(str(d.id) for d in visuals),
                 None,
             )]
+
+        # Canonical base articles: the same groups the export standardises on.
+        if str(getattr(snapshot, "class_group_basis", "") or "").lower() == BASE_ARTICLE_BASIS:
+            try:
+                return self.base_basis_groups(snapshot)
+            except Exception:
+                # Unusable (no per-article links / colliding codes / identity conflict):
+                # degrade to the flat group; ``base_basis_error`` reports why.
+                return [ClassGroup(
+                    category,
+                    tuple(str(p.id) for p in props),
+                    tuple(str(o.id) for o in opts),
+                    tuple(str(d.id) for d in visuals),
+                    None,
+                )]
 
         # Split basis chosen by the user: one group per article set (base
         # article) or per PDM product range (default).
