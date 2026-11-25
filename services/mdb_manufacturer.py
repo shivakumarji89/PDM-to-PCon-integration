@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from services.mdb_service import MDBProviderUnavailableError
+
 LAYOUT_PACKAGE = "A"
 LAYOUT_COMGROUP = "B"
 
@@ -38,6 +40,8 @@ def read_package_manufacturer(mdb_svc, mdb: str | Path) -> PackageManufacturer:
             "package": "SELECT * FROM tCOMd_Package",
             "group": "SELECT * FROM tCOMd_ComGroup",
         })
+    except MDBProviderUnavailableError:
+        raise  # a missing provider is not a schema problem
     except RuntimeError as exc:
         raise ManufacturerLookupError(f"Template schema is not usable: {exc}") from exc
     return resolve_package_manufacturer(mdb_svc, mdb, data["package"], data["group"])
@@ -97,6 +101,8 @@ def resolve_package_manufacturer(
             "manufacturer": "SELECT reg_ManufacturerCode FROM tCOMd_Manufacturer "
                             f"WHERE com_ManufacturerID = {int(manufacturer_id)}",
         })["manufacturer"]
+    except MDBProviderUnavailableError:
+        raise  # a missing provider is not a manufacturer read problem
     except (RuntimeError, TypeError, ValueError) as exc:
         raise ManufacturerLookupError(f"Manufacturer {manufacturer_id!r} cannot be read: {exc}") from exc
     if len(rows) != 1 or not rows[0].get("reg_ManufacturerCode"):

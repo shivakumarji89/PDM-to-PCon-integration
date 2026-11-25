@@ -28,6 +28,7 @@ from models.snapshot import Snapshot
 from services import ocd_export_service as _ocd
 from services.base_service import BaseService
 from services.mdb_manufacturer import ManufacturerLookupError, resolve_package_manufacturer
+from services.mdb_service import MDBProviderUnavailableError
 from services.xocd_export_service import XocdExportService
 
 DEFAULT_MDB_NAME = "pcr_data_com_ocd.mdb"
@@ -116,6 +117,8 @@ class MdbExportSessionService(BaseService):
         }
         try:
             data = mdb_svc.read_tables(mdb, queries)
+        except MDBProviderUnavailableError:
+            raise  # a missing provider is not a schema problem
         except RuntimeError as exc:
             raise ExportSessionError(f"Selected repository MDB schema is not usable: {exc}") from exc
         if not data["package"]:
