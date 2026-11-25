@@ -1400,7 +1400,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         from ui.widgets.xocd_publish_progress import XocdPublishProgress
 
-        if not self._context.snapshot_manager.has_snapshot():
+        if self._xocd_source_snapshot() is None:
             QMessageBox.information(self, "Export XOCD", "Load a product first.")
             return
 
@@ -1551,9 +1551,11 @@ class MainWindow(QMainWindow):
             return
 
         if stage == "update":
-            snapshot = self._context.active_snapshot
-            psvc = self._context.price_update_service
-            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+            try:
+                snapshot, standardised = self._prepare_xocd_snapshot()
+            except Exception as exc:
+                self._xocd_publish_failed(f"XOCD export failed:\n\n{exc}")
+                return
             self._xocd_publish_standardised = standardised
 
             self._set_xocd_publish_stage(
@@ -1562,6 +1564,7 @@ class MainWindow(QMainWindow):
             self._run_xocd_export(
                 snapshot, xocd, self._on_xocd_export_done,
                 lambda message: self._xocd_publish_failed(f"XOCD export failed:\n\n{message}"),
+                copy_snapshot=False,
             )
             return
 
@@ -1714,7 +1717,33 @@ class MainWindow(QMainWindow):
             )
             return
 
-    def _run_xocd_export(self, snapshot, xocd, on_result, on_error) -> None:
+    def _xocd_source_snapshot(self):
+        """The snapshot XOCD is exported from.
+
+        Maintenance always exports the PDM snapshot (like the other Maintenance exports), never
+        the active one, which may be the released-MDB import. Other modules keep the active one.
+        """
+        if self._active_module == WorkbenchModule.MAINTENANCE:
+            return self._context.pdm_snapshot
+        return self._context.active_snapshot
+
+    def _prepare_xocd_snapshot(self):
+        """``(export_copy, standardised)`` shared by the SVN and TortoiseSVN paths.
+
+        The registry's base-length overrides are applied to an isolated copy, so neither the live
+        PDM snapshot nor the MDB import is modified. Raises ``RuntimeError`` without a product.
+        """
+        import copy
+
+        source = self._xocd_source_snapshot()
+        if source is None or source.product is None:
+            raise RuntimeError("No PDM product is loaded. Load a product first.")
+        export_snapshot = copy.deepcopy(source)
+        psvc = self._context.price_update_service
+        standardised = psvc.apply_registry(export_snapshot, psvc.registry_path())
+        return export_snapshot, standardised
+
+    def _run_xocd_export(self, snapshot, xocd, on_result, on_error, copy_snapshot: bool = True) -> None:
         """Run ``export_series`` on a worker thread from an isolated copy of the snapshot.
 
         ``on_result(result)`` / ``on_error(message)`` run on the GUI thread. The publish dialog
@@ -1727,7 +1756,7 @@ class MainWindow(QMainWindow):
             on_error("Another export is still running. Wait for it to finish first.")
             return
         try:
-            export_snapshot = copy.deepcopy(snapshot)
+            export_snapshot = copy.deepcopy(snapshot) if copy_snapshot else snapshot
             service = self._context.xocd_export_service
         except Exception:
             runner.end()
@@ -1794,9 +1823,7 @@ class MainWindow(QMainWindow):
 
         if stage == "update":
             try:
-                snapshot = self._context.active_snapshot
-                psvc = self._context.price_update_service
-                standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+                snapshot, standardised = self._prepare_xocd_snapshot()
             except Exception as exc:
                 self._xocd_publish_failed(f"XOCD export failed: {exc}")
                 return
@@ -1804,6 +1831,7 @@ class MainWindow(QMainWindow):
                 snapshot, xocd,
                 lambda result: self._on_xocd_tortoise_export_done(result, standardised),
                 lambda message: self._xocd_publish_failed(f"XOCD export failed: {message}"),
+                copy_snapshot=False,
             )
             return
 
