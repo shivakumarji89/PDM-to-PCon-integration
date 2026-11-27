@@ -208,15 +208,10 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
-        # Reserve space for the QGroupBox title so it remains visible above controls.
-        layout.setContentsMargins(8, 18, 8, 6)
+        # Match the other workflow toolbars so the QGroupBox caption is visible.
+        layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(theme.SPACE_2)
 
-        # Identify this toolbar section while keeping the controls grouped at the right edge.
-        title_label = QLabel("Articles", box)
-        title_label.setObjectName("toolbarTitle")
-        title_label.setStyleSheet("font-weight: 600;")
-        layout.addWidget(title_label)
         layout.addStretch(1)
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search code or description...")
