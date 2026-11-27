@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.pricing_relation_service import PricingRelationService
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
 from ui.widgets.maintenance_source_tabs import (
@@ -56,12 +57,19 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._toolbar = self._build_toolbar()
         self._view = self._build_view()
         self._varcond_workflow = self._build_varcond_workflow(context)
-        self._source_controls_row = QWidget(self)
-        source_controls = QHBoxLayout(self._source_controls_row)
-        source_controls.setContentsMargins(0, 0, 0, 0)
-        source_controls.setSpacing(8)
-        source_controls.addWidget(self._source_tabs, 0)
-        source_controls.addWidget(self._varcond_panel.controls_widget, 1)
+        self._dot_base_button = QPushButton("Base to Dot (All)", self)
+        self._dot_base_button.setToolTip(
+            "Set every article's reduced base to the characters before its first dot."
+        )
+        self._dot_base_button.clicked.connect(self._on_base_to_dot_all)
+        self._source_controls_row = SharedSourceToolbarRow(
+            self._source_tabs, self._varcond_panel.controls_widget, self
+        )
+        # Keep Base to Dot on the same horizontal line as Filter,
+        # Exclusion, Substitution and Relation Prefix Length.
+        self._varcond_panel.controls_widget.layout().addWidget(
+            self._dot_base_button
+        )
         self.add_content(self._source_controls_row)
         self.add_content(self._toolbar)
         self.add_content(self._view)
@@ -69,8 +77,8 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._apply_source_layout()
 
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Generate", self)
-        layout = QHBoxLayout(box)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
         self._name_label = QLabel("", box)
         layout.addWidget(self._name_label, 1)
         self._copy_btn = QPushButton("Copy", box)
@@ -109,6 +117,9 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_workflow.setVisible(not mdb)
         self._varcond_panel.setEnabled(not mdb)
         self._varcond_panel.controls_widget.setVisible(not mdb)
+        self._dot_base_button.setVisible(
+            not mdb and self.is_maintenance_module()
+        )
 
     #: on_enter() does not call refresh() for the PDM view (it regenerates the relations).
     ENTER_IS_PLAIN_REFRESH = False
@@ -123,11 +134,18 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._varcond_panel.refresh_from_snapshot()
 
     def refresh(self) -> None:
-        """Maintenance MDB view only; PDM keeps its enter-time generation."""
+        """Reload the current source; PDM refresh also reloads relation data."""
         if self._begin_refresh():
             return
         if self.is_mdb_view():
             self._render_mdb()
+            return
+        if self.is_maintenance_module():
+            # The single page-level Reload action performs the explicit PDM
+            # source refresh as well as rebuilding the relation display.
+            self._varcond_panel._on_reload_relations()
+        else:
+            self._varcond_panel.refresh_from_snapshot()
 
     def _on_source_changed(self, _source: str) -> None:
         if self._begin_refresh():
@@ -228,6 +246,10 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
                 "\r\n" + (r.body or "")
             )
         self._editor.setPlainText("\r\n\r\n".join(blocks) or "(nothing generated)")
+
+    def _on_base_to_dot_all(self) -> None:
+        """Reduce the Pricing Relation left list to each article's pre-dot base."""
+        self._varcond_panel.reduce_relations_to_dot()
 
     def _on_copy(self) -> None:
         QApplication.clipboard().setText(self._editor.toPlainText())

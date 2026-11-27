@@ -5,7 +5,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from core.application_context import ApplicationContext
 from core.modules import WorkbenchModule
@@ -40,6 +40,8 @@ def _page(records, text_blocks=()):
     ctx.register_pdm_snapshot(snap)
     ctx.activate_snapshot_source("pdm")
     page = PricingPage(ctx)
+    # The export action is now hosted by the shared Maintenance workflow header.
+    page._maintenance_export_mdb_button = QPushButton()
     page._active_module = WorkbenchModule.MAINTENANCE
     page.refresh()
     return page
@@ -166,7 +168,7 @@ def test_old_fabric_snapshot_is_explicitly_stale_and_cannot_open_export(monkeypa
     snap = page._context.active_snapshot
     assert pricing_requires_recompute(snap)
     assert "outdated" in page._summary.text()
-    assert not page._preview_btn.isEnabled() and not page._export_btn.isEnabled()
+    assert not page._maintenance_export_mdb_button.isEnabled()
     assert [r[1] for r in _rows(page)] == [f"{ITEM} 8={f[0]}" for f in FAMILIES]
     warnings = []
     monkeypatch.setattr(pp.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
@@ -228,7 +230,7 @@ def test_actual_compute_refresh_and_snapshot_roundtrip_display_resolved_conditio
     assert [r.pdm_lookup_code for r in snap.price_records] == [
         f"{ITEM} 8={f[0]}#" for _ in ("EUR", "GBP") for f in FAMILIES
     ]
-    assert page._preview_btn.isEnabled() and page._export_btn.isEnabled()
+    assert page._maintenance_export_mdb_button.isEnabled()
     restored = snapshot_from_dict(snapshot_to_dict(snap))
     assert restored.price_records == snap.price_records
     assert not pricing_requires_recompute(restored)
@@ -246,7 +248,7 @@ def test_failed_recompute_restores_historical_rows_without_enabling_export(monke
     monkeypatch.setattr(pp.QMessageBox, "critical", lambda *args: None)
     page._on_pricing_failed("PDM unavailable")
     assert _rows(page) == old
-    assert not page._preview_btn.isEnabled() and not page._export_btn.isEnabled()
+    assert not page._maintenance_export_mdb_button.isEnabled()
     assert "outdated" in page._summary.text()
 
 
@@ -269,7 +271,7 @@ def test_previously_resolved_snapshots_do_not_require_recomputation():
     snap.price_records = [replace(r, pricing_revision=0) for r in records()]
     assert not pricing_requires_recompute(snap)
     page.refresh()
-    assert page._preview_btn.isEnabled() and page._export_btn.isEnabled()
+    assert page._maintenance_export_mdb_button.isEnabled()
 
 
 @pytest.mark.parametrize("dry_run", [True, False])
@@ -298,22 +300,18 @@ def test_unverified_text_is_never_shown_as_an_id():
     assert _rows(page)[0][4] == "Unverified"
 
 
-def test_filter_and_search_cover_text_blocks():
-    globals_ = [{"com_GlobalPriceID": 100, "com_PackageID": 1, "com_PriceListID": 21, "com_VariantCondition": "U.1",
-                 "com_PriceLevelCode": "X", "sys_ISOCurrencyCode": "EUR", "com_PriceValue": 1.0, "com_TextID": None}]
-    mdb = _OptimizedFake(_eur_gbp_lists(), globals_=globals_, linked=[21, 22],
-                         texts=[{"com_TextID": 88, "com_TextName": "OLD.", "com_Text_1_en": "Old thing"}])
-    records = [_global("U.1", 5.0), _global("OLD."), _rec(9.0, "EUR")]
+def test_search_covers_text_block_content_and_id():
+    mdb = _OptimizedFake(
+        _eur_gbp_lists(), linked=[21, 22],
+        texts=[{"com_TextID": 88, "com_TextName": "OLD.", "com_Text_1_en": "Old thing"}],
+    )
+    records = [_global("OLD."), _global("NEW.1"), _rec(9.0, "EUR")]
     page = _page(records)
     page._apply_text_results(_export_dry(mdb, records))
-    page._filter.setCurrentText(pp._FILTER_TEXT_ISSUES)
-    assert [r[1] for r in _rows(page)] == ["U.1"]          # only the unlinked existing row
-    assert _rows(page)[0][4] == "Missing"
-    page._filter.setCurrentText(pp._FILTER_ALL)
-    page._search.setText("old thing")                       # search matches text content
-    page._apply_filter()                                    # (typing is debounced)
+    page._search.setText("old thing")
+    page._apply_filter()  # typing is debounced in the interactive UI
     assert [r[1] for r in _rows(page)] == ["OLD."]
-    page._search.setText("88")                              # ... and the text id
+    page._search.setText("88")
     page._apply_filter()
     assert [r[1] for r in _rows(page)] == ["OLD."]
 

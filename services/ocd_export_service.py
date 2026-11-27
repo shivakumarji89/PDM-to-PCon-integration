@@ -28,6 +28,8 @@ from services.engineering.engineering_reduction_service import collapse_duplicat
 from services.engineering.engineering_text_service import text_block_name
 from services.price_update_service import _mdb_date_literal
 from core.export_readiness import resolve_entity_bindings
+from services.mdb_manufacturer import (
+    ManufacturerLookupError, read_package_manufacturer, resolve_package_manufacturer)
 from services.xocd_export_service import XocdExportService
 
 #: Broad "always valid" fallback window (YYYYMMDD) when neither the price list
@@ -191,6 +193,22 @@ class OcdExportService(BaseService):
             result.error = "Relation binding conflict: " + "; ".join(m for _, m in conflicts)
             return result
 
+        xocd = getattr(self.context, "xocd_export_service", None)
+        if xocd is not None and hasattr(xocd, "resolve_base_identities"):
+            from services.engineering.base_identity import (
+                BaseIdentityConflict, describe_price_base_conflicts, stale_price_bases)
+
+            try:
+                identities = xocd.resolve_base_identities(snapshot)
+            except BaseIdentityConflict as exc:
+                result.error = str(exc)
+                return result
+            stale = stale_price_bases(snapshot, identities)
+            if stale:
+                # Prices are keyed by base article; never attach them to another base (or drop them).
+                result.error = describe_price_base_conflicts(stale)
+                return result
+
         mdb_svc = self.context.mdb_service
         if not mdb_svc.is_available():
             result.error = "32-bit PowerShell / ACE OLEDB bridge unavailable."
@@ -282,21 +300,14 @@ class OcdExportService(BaseService):
         """Fill the freshly copied template ``mdb`` (the temporary file) with the snapshot."""
         mdb_svc = self.context.mdb_service
         # Package/ComGroup ids to rename; prototype rows for NOT-NULL boilerplate.
-        pkg = mdb_svc.read_table(mdb, "SELECT com_PackageID, com_ComGroupID, com_ManufacturerID FROM tCOMd_Package")
-        if not pkg:
-            result.error = "Template tCOMd_Package is empty."
+        try:
+            found = read_package_manufacturer(mdb_svc, mdb)
+        except ManufacturerLookupError as exc:
+            result.error = str(exc)
             return
-        package_id = pkg[0]["com_PackageID"]
-        comgroup_id = pkg[0]["com_ComGroupID"]
-        manufacturer_rows = mdb_svc.read_table(
-            mdb,
-            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-            + "WHERE com_ManufacturerID = " + str(pkg[0].get("com_ManufacturerID") or 0)
-        )
-        result.manufacturer_id = str(
-            manufacturer_rows[0].get("reg_ManufacturerCode")
-            if manufacturer_rows else _MATERIAL_MANUFACTURER
-        )
+        package_id = found.package["com_PackageID"]
+        comgroup_id = found.comgroup_id
+        result.manufacturer_id = found.manufacturer_code or _MATERIAL_MANUFACTURER
         protos = {t: self._prototype(mdb, t) for t in _PRODUCT_TABLES}
         price_list_rows = self._price_list_rows(snapshot, mdb)
 
@@ -404,12 +415,15 @@ class OcdExportService(BaseService):
         effective_overrides.update(manual_overrides)
         preview_snapshot.base_length_overrides = effective_overrides
 
-        pkg = self.context.mdb_service.read_table(
-            template, "SELECT * FROM tCOMd_Package"
-        )
-        groups = self.context.mdb_service.read_table(
-            template, "SELECT * FROM tCOMd_ComGroup"
-        )
+        try:
+            tables = self.context.mdb_service.read_tables(template, {
+                "package": "SELECT * FROM tCOMd_Package",
+                "group": "SELECT * FROM tCOMd_ComGroup",
+            })
+        except RuntimeError as exc:
+            result.error = f"Template schema is not usable: {exc}"
+            return result
+        pkg, groups = tables["package"], tables["group"]
         if not pkg:
             result.error = "Template tCOMd_Package is empty."
             return result
@@ -450,16 +464,12 @@ class OcdExportService(BaseService):
         # Manufacturer information is retained from the template. Keep both
         # the table row and any package/group/article manufacturer reference
         # visible in Review.
-        manufacturer_id = final_pkg.get("com_ManufacturerID") or final_group.get("com_ManufacturerID")
-        manufacturer_rows = self.context.mdb_service.read_table(
-            template,
-            "SELECT TOP 1 reg_ManufacturerCode FROM tCOMd_Manufacturer "
-            + "WHERE com_ManufacturerID = " + str(manufacturer_id or 0)
-        )
-        result.manufacturer_id = str(
-            manufacturer_rows[0].get("reg_ManufacturerCode")
-            if manufacturer_rows else _MATERIAL_MANUFACTURER
-        )
+        try:
+            found = resolve_package_manufacturer(self.context.mdb_service, template, pkg, groups)
+        except ManufacturerLookupError as exc:
+            result.error = str(exc)
+            return result
+        result.manufacturer_id = found.manufacturer_code or _MATERIAL_MANUFACTURER
 
         # Export MDB copies the whole template, so every user table not in
         # _PRODUCT_TABLES survives into the final database. Discover those tables
@@ -662,7 +672,9 @@ class OcdExportService(BaseService):
 
         ``selected_article_ids`` limits the base articles (``None`` = all)."""
         xocd = self.context.xocd_export_service
-        classes = self.context.engineering_class_service.get_classes(snapshot)
+        # Export-only class copies: properties unticked in Class Creation ("Export MDB")
+        # are left out. With no overrides this is the live class list, as before.
+        classes = self._mdb_export_classes(snapshot)
         codes = xocd._value_code_map(snapshot)
         digits = xocd._value_lengths(snapshot)
         base_codes = xocd._base_codes(snapshot, selected_article_ids)
@@ -697,6 +709,7 @@ class OcdExportService(BaseService):
         article_rows, article_index = self._articles(
             base_codes, comgroup_id, package_id, text_index, scheme_index,
             scheme_by_code, protos["tCOMd_Article"], entity_bindings.get("article"),
+            self._article_text_keys(snapshot, base_codes, text_index),
         )
         articleclass_rows = self._article_classes(
             base_codes, token_by_base, classes, article_index, class_index,
@@ -1033,20 +1046,23 @@ class OcdExportService(BaseService):
         self, snapshot: Snapshot, classes: list, class_index: dict[str, int],
         text_index: dict[tuple[str, str], int], digits: dict[str, int],
         property_relobj: dict[str, int], proto: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        """tCOMd_Property rows + ``{property_id: com_PropertyID}`` index.
+    ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], int]]:
+        """tCOMd_Property rows + ``{(class_id, property_id): com_PropertyID}`` index.
+
+        A source property may sit in several classes (one per base article), and each class owns
+        its own exported property row, so the index is keyed by the class as well.
 
         ``com_PropName`` is the normalized identifier so relations and the code
         scheme reference the same token; ``com_PropDigits`` is the max value-code
         length so the property accepts its values."""
         rows: list[dict[str, Any]] = []
-        index: dict[str, int] = {}
+        index: dict[tuple[str, str], int] = {}
         pid = 0
         for cls in classes:
             class_pk = class_index[str(cls.id)]
             for position, a in enumerate(cls.properties):
                 pid += 1
-                index[str(a.property_id)] = pid
+                index[(str(cls.id), str(a.property_id))] = pid
                 prop_key = XocdExportService._prop_ident(a.property_name)
                 source_prop = next(
                     (p for p in snapshot.properties if str(p.id) == str(a.property_id)),
@@ -1137,7 +1153,7 @@ class OcdExportService(BaseService):
         return package_rows, article_rows
 
     def _property_values(
-        self, snapshot: Snapshot, classes: list, prop_index: dict[str, int],
+        self, snapshot: Snapshot, classes: list, prop_index: dict[tuple[str, str], int],
         text_index: dict[tuple[str, str], int], value_relobj: dict[str, int],
         codes: dict[str, str], proto: dict[str, Any],
     ) -> list[dict[str, Any]]:
@@ -1156,7 +1172,7 @@ class OcdExportService(BaseService):
                 # Free-text (T) properties take no enumerated values.
                 if (a.type or "").strip().upper().startswith("T"):
                     continue
-                prop_pk = prop_index.get(str(a.property_id))
+                prop_pk = prop_index.get((str(cls.id), str(a.property_id)))
                 if prop_pk is None:
                     continue
                 values = values_by.get(str(a.property_id), [])
@@ -1188,11 +1204,16 @@ class OcdExportService(BaseService):
         text_index: dict[tuple[str, str], int], scheme_index: dict[str, int],
         scheme_by_code: dict[str, str], proto: dict[str, Any],
         article_relobj: dict[str, int] | None = None,
+        text_keys: dict[str, str] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        """tCOMd_Article rows (one per base article) + ``{code: com_ArticleID}``."""
+        """tCOMd_Article rows (one per base article) + ``{code: com_ArticleID}``.
+
+        ``text_keys`` maps a base code to the key its article text block is stored under
+        when that differs from the base code (see :meth:`_article_text_keys`)."""
         rows: list[dict[str, Any]] = []
         index: dict[str, int] = {}
         article_relobj = article_relobj or {}
+        text_keys = text_keys or {}
         for aid, code in enumerate(base_codes, start=1):
             index[code] = aid
             scheme_pk = scheme_index.get(scheme_by_code.get(code, ""))
@@ -1200,11 +1221,39 @@ class OcdExportService(BaseService):
                 "com_ArticleID": aid, "com_ArticleCode": code, "com_ArticleTypeCode": "C",
                 "com_ComGroupID": comgroup_id, "com_PackageID": package_id,
                 "com_CodeSchemeID": scheme_pk, "com_RelObjID": article_relobj.get(code),
-                "com_ShortTextID": text_index.get(("artshort", code)),
-                "com_LongTextID": text_index.get(("artlong", code)),
+                "com_ShortTextID": text_index.get(("artshort", text_keys.get(code, code))),
+                "com_LongTextID": text_index.get(("artlong", text_keys.get(code, code))),
                 "com_Discountable": True, "com_OrderUnitCode": "C62",
             }))
         return rows, index
+
+    def _article_text_keys(
+        self, snapshot: Snapshot, base_codes: list[str],
+        text_index: dict[tuple[str, str], int],
+    ) -> dict[str, str]:
+        """``{base: text key}`` for bases whose article text is not stored under the base.
+
+        Text blocks are keyed by ``member.reduced_article or article.code``; the article
+        row's base is resolved price-base first (``base_code_entries``). When the two
+        differ the base has no block of its own, so its text is found through the
+        member's key. A block stored under the base code always wins."""
+        entries = self.context.xocd_export_service.base_code_entries(snapshot)
+        code_by_id = {str(a.id): a.code for a in snapshot.articles if a.code}
+        members = [m for family in snapshot.engineering.families for m in family.members]
+        wanted = set(base_codes)
+
+        def has_text(key: str) -> bool:
+            return ("artshort", key) in text_index or ("artlong", key) in text_index
+
+        keys: dict[str, str] = {}
+        for (_article_id, base), member in zip(entries, members):
+            if base not in wanted or base in keys or has_text(base):
+                continue
+            legacy = (getattr(member, "reduced_article", "") or "").strip() or code_by_id.get(
+                str(getattr(member, "article_id", "")), "")
+            if legacy and has_text(legacy):
+                keys[base] = legacy
+        return keys
 
     def _article_classes(
         self, base_codes: list[str], token_by_base: dict[str, str], classes: list,

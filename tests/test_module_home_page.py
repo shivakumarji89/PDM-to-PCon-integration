@@ -8,6 +8,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.modules import WorkbenchModule
+from core.workflow import WorkflowStep
 from ui.pages.module_home_page import ModuleHomePage
 
 PRIMARY = (
@@ -42,6 +43,16 @@ def isolated_settings(tmp_path):
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     yield
     QSettings.setDefaultFormat(previous)
+
+
+@pytest.fixture(autouse=True)
+def no_live_pdm_catalogue(monkeypatch):
+    """MainWindow's Product page loads the catalogue on a worker. Without a fresh on-disk registry
+    cache that is a live SQL Server query (and a cache write), so the worker's duration - and the
+    10 s drain in ``_dispose_window`` - depended on the machine's PDM access. Serve an empty one."""
+    from services.pdm_service import PDMService
+
+    monkeypatch.setattr(PDMService, "get_cached_products", lambda self, force_refresh=False: [])
 
 
 @pytest.fixture
@@ -198,7 +209,12 @@ def test_database_selector_lives_on_home_page_and_header_drops_pdm_status(app):
         for page in maintenance_pages:
             if getattr(page, "header", None) is None or not hasattr(page.header, "add_action"):
                 continue
-            assert not page._maintenance_reload_button.isHidden()
+            if page is window._pages[WorkflowStep.PRODUCT]:
+                # The Product page omits the redundant Reload and offers Refresh PDM instead.
+                assert not hasattr(page, "_maintenance_reload_button")
+                assert not page._maintenance_refresh_pdm_button.isHidden()
+            else:
+                assert not page._maintenance_reload_button.isHidden()
             assert not page._maintenance_export_mdb_button.isHidden()
 
     finally:

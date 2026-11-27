@@ -250,6 +250,29 @@ def test_full_mdb_export_runs_in_the_background_on_an_isolated_copy(window, monk
     assert "35 rows across 2 table(s)" in text and str(tmp_path / "x.mdb") in text
 
 
+def test_full_mdb_export_standardises_classes_only_on_the_isolated_copy(window, monkeypatch, tmp_path):
+    from services.engineering import class_naming
+
+    dialogs = Dialogs(monkeypatch)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
+    live = window._context.active_snapshot
+    live_names = [c.name for c in live.engineering.classes]
+    seen = {}
+
+    def export(snapshot, directory, kind, selected_article_ids=None):
+        seen["names"] = [c.name for c in snapshot.engineering.classes]
+        return SimpleNamespace(ok=True, error="", template="seating", mdb_path=str(tmp_path / "x.mdb"),
+                               table_counts={"tCOMd_Article": 1})
+
+    _install(monkeypatch, window, "ocd_export_service", SimpleNamespace(export=export))
+    window._on_export_mdb()
+    assert pump(lambda: not window._exports().busy)
+    assert seen["names"], dialogs.messages
+    assert all(class_naming.is_standard_class(n) and n.isascii() and n.endswith(("_ATTRIBUTE", "_OPTION", "_VISUAL"))
+               for n in seen["names"])
+    assert [c.name for c in live.engineering.classes] == live_names, "live snapshot must stay untouched"
+
+
 def test_full_mdb_export_reports_a_failed_result_and_an_exception(window, monkeypatch, tmp_path):
     dialogs = Dialogs(monkeypatch)
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path)))
@@ -585,3 +608,91 @@ def test_varcond_relation_export_is_refused_while_an_export_runs(window, monkeyp
 
     assert dialogs.last()[0] == "information" and "still running" in dialogs.last()[2]
     window._exports().end()
+
+
+# -- XOCD snapshot source (Maintenance) ---------------------------------------------------
+def _maintenance_xocd(window, monkeypatch):
+    """Maintenance with the MDB import active, and a registry that writes onto what it receives."""
+    ctx = window._context
+    window._active_module = WorkbenchModule.MAINTENANCE
+    pdm = ctx.pdm_snapshot
+    mdb = copy.deepcopy(pdm)
+    mdb.product = Product(id="m1", code="MDB", name="Released", category="Desks")
+    ctx.register_mdb_import_snapshot(mdb)
+    ctx.activate_snapshot_source("mdb_import")
+    assert ctx.active_snapshot is mdb and ctx.pdm_snapshot is pdm
+
+    received = []
+
+    def apply_registry(snapshot, path):
+        received.append(snapshot)
+        snapshot.base_length_overrides = {"X": 1}
+        return 1
+
+    psvc = SimpleNamespace(registry_path=lambda: "registry.csv", apply_registry=apply_registry)
+    monkeypatch.setattr(type(ctx), "price_update_service", property(lambda self: psvc))
+    return pdm, mdb, received
+
+
+def test_xocd_in_maintenance_exports_a_copy_of_the_pdm_snapshot_not_the_active_mdb(window, monkeypatch):
+    pdm, mdb, received = _maintenance_xocd(window, monkeypatch)
+    pdm_overrides = dict(pdm.base_length_overrides)
+
+    export, standardised = window._prepare_xocd_snapshot()
+
+    assert export.product.code == "DSK" and export is not pdm and export is not mdb
+    assert standardised == 1 and received == [export]
+    assert export.base_length_overrides == {"X": 1}
+    assert pdm.base_length_overrides == pdm_overrides and mdb.base_length_overrides == {}
+
+
+def test_xocd_without_a_pdm_snapshot_aborts_in_both_svn_paths(window, monkeypatch, tmp_path):
+    pdm, mdb, received = _maintenance_xocd(window, monkeypatch)
+    window._context.register_pdm_snapshot(None)  # MDB import stays the active source
+    assert window._context.active_snapshot is mdb
+    dialog_events, started, failures = _xocd_window(window, monkeypatch, tmp_path)
+    ran = []
+    window._run_xocd_export = lambda *a, **k: ran.append(a)
+    window._set_xocd_publish_stage = lambda *a, **k: None
+    dialogs = Dialogs(monkeypatch)
+
+    with pytest.raises(RuntimeError):
+        window._prepare_xocd_snapshot()
+    window._on_xocd_tortoise_finished("update", 0)
+    window._xocd_publish_tortoise = False
+    window._xocd_publish_stage = "update"
+    window._xocd_publish_process = SimpleNamespace(
+        readAllStandardOutput=lambda: b"", readAllStandardError=lambda: b"")
+    window._on_xocd_svn_finished(0, None)
+
+    assert ran == [] and received == [] and len(failures) == 2
+    assert all("No PDM product is loaded" in message for message in failures)
+    window._on_export_xocd()
+    assert dialogs.last()[1:] == ("Export XOCD", "Load a product first.")
+
+
+def test_standard_svn_and_tortoise_prepare_the_same_export_copy(window, monkeypatch, tmp_path):
+    pdm, mdb, received = _maintenance_xocd(window, monkeypatch)
+    dialog_events, started, failures = _xocd_window(window, monkeypatch, tmp_path)
+    calls = []
+    window._run_xocd_export = lambda snapshot, xocd, ok, bad, **kw: calls.append((snapshot, kw))
+    window._set_xocd_publish_stage = lambda *a, **k: None
+
+    window._on_xocd_tortoise_finished("update", 0)
+    window._xocd_publish_tortoise = False
+    window._xocd_publish_stage = "update"
+    window._xocd_publish_process = SimpleNamespace(
+        readAllStandardOutput=lambda: b"", readAllStandardError=lambda: b"")
+    window._on_xocd_svn_finished(0, None)
+
+    assert failures == [] and len(calls) == 2
+    for snapshot, kwargs in calls:
+        assert snapshot.product.code == "DSK" and snapshot is not pdm
+        assert snapshot.base_length_overrides == {"X": 1} and kwargs == {"copy_snapshot": False}
+    assert calls[0][0] is not calls[1][0] and pdm.base_length_overrides == {}
+    assert window._xocd_publish_standardised == 1
+
+
+def test_xocd_outside_maintenance_keeps_the_active_snapshot(window, monkeypatch):
+    window._active_module = WorkbenchModule.DEVELOPMENT
+    assert window._xocd_source_snapshot() is window._context.active_snapshot

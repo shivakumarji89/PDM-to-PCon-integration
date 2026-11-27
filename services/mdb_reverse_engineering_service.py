@@ -63,6 +63,12 @@ PACKAGE_TABLES: tuple[str, ...] = (
     "tCOMd_ComGroup",
 )
 
+# Tables that can hold 100k+ rows in a full catalogue (Catalogue MDB: PropValue ~149k,
+# Text ~127k, Price ~649k, GlobalPrice ~461k).  Each is read in its own bridge process.
+HEAVY_TABLES = frozenset({
+    "tCOMd_Text", "tCOMd_PropValue", "tCOMd_Price", "tCOMd_GlobalPrice",
+})
+
 READABLE_TABLES = frozenset(PACKAGE_TABLES + STRUCTURAL_TABLES + PRICE_TABLES)
 
 
@@ -116,6 +122,14 @@ class MdbReverseEngineeringService(BaseService):
     MDB abstraction.
     """
 
+    @staticmethod
+    def _read_batches(table_names: Iterable[str]) -> list[tuple[str, ...]]:
+        """Group tables into bridge batches: each heavy table alone, the rest together."""
+        names = tuple(table_names)
+        light = tuple(name for name in names if name not in HEAVY_TABLES)
+        heavy = tuple((name,) for name in names if name in HEAVY_TABLES)
+        return ([light] if light else []) + list(heavy)
+
     def read(
         self,
         mdb_path: str | Path,
@@ -143,16 +157,18 @@ class MdbReverseEngineeringService(BaseService):
         if invalid:
             raise ValueError(f"Unsupported MDB table(s): {', '.join(invalid)}")
 
-        # Read the complete requested structural scope in one MDB/ADODB
-        # session.  The bridge is comparatively expensive to start, so doing
-        # one process per table makes large MDB imports unnecessarily slow.
-        table_names = ("tCOMd_Package", "tCOMd_ComGroup") + tuple(requested)
-        sql_by_name = {
-            table: f"SELECT * FROM [{table}]"
-            for table in dict.fromkeys(table_names)
-        }
-        checkpoint()
-        rows_by_table = self.context.mdb_service.read_tables(path, sql_by_name)
+        # Read the requested scope in a few bridge batches.  Each batch is its own
+        # 32-bit PowerShell process, so its rows are released when it exits; one
+        # batch over a large catalogue exhausts that process's address space.
+        # The bridge is comparatively expensive to start, so the many small
+        # tables still share one batch and only the heavy tables get their own.
+        table_names = tuple(dict.fromkeys(("tCOMd_Package", "tCOMd_ComGroup") + tuple(requested)))
+        rows_by_table: dict[str, list[dict[str, Any]]] = {}
+        for batch in self._read_batches(table_names):
+            checkpoint()
+            rows_by_table.update(self.context.mdb_service.read_tables(
+                path, {table: f"SELECT * FROM [{table}]" for table in batch},
+            ))
         checkpoint()
 
         package_rows = rows_by_table.get("tCOMd_Package", [])

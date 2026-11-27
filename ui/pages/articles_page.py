@@ -48,10 +48,23 @@ from PySide6.QtWidgets import (
 from core.engines.filtering import text_match
 from core.modules import WorkbenchModule
 from core.engines.status import warnings_text
+from PySide6.QtGui import QColor
+from services.engineering.base_identity import (
+    SOURCE_OVERRIDE,
+    SOURCE_PRICE_BASE,
+    SOURCE_REDUCED,
+    explicit_base,
+    resolve_base_identities,
+)
+
+# Base identity sources the user confirmed in the Articles page (vs. fallback / proposal).
+_CONFIRMED_SOURCES = frozenset({SOURCE_REDUCED, SOURCE_OVERRIDE})
+_PROPOSAL = "proposal"
 from ui import theme
 from ui.components.flow_layout import FlowFrame
 from ui.components import CardRow, DataCard, DetailTabs, KpiCard, WorkflowHeader
 from ui.components.workflow_styles import set_button_role, style_table
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     SOURCE_PDM,
@@ -194,12 +207,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox(self)
-        layout = QHBoxLayout(box)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SPACE_2)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
 
-        # Keep the complete control strip grouped at the right edge.
         layout.addStretch(1)
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search code or description...")
@@ -254,6 +264,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._actions_combo.addItem("Clear Long Text", "clear_long")
         self._actions_combo.addItem("Clear Short Text", "clear_short")
         self._actions_combo.setToolTip("Choose an article action.")
+        # Keep the compact toolbar control, but widen its popup so action labels
+        # are fully readable instead of being elided to the combo's button width.
+        self._actions_combo.view().setMinimumWidth(210)
         self._actions_combo.activated.connect(self._on_actions_combo_activated)
         layout.addWidget(self._actions_combo)
 
@@ -316,20 +329,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         top_layout.addWidget(self._build_details_panel(), 1)
 
         layout.addWidget(top_row, 0)
+        # Match Class Creation's top-row construction exactly: tabs, stretch,
+        # then the titled Toolbar group box as a sibling in the same row.
         self._toolbar_box = self._build_toolbar()
-        # Keep the source tabs and article controls on the same horizontal
-        # strip so the table starts immediately beneath them.
         self._content.removeWidget(self._source_tabs)
-        self._source_toolbar_row = QWidget(self)
-        source_toolbar_layout = QHBoxLayout(self._source_toolbar_row)
-        source_toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        source_toolbar_layout.setSpacing(theme.SPACE_3)
-        source_toolbar_layout.addWidget(self._source_tabs, 0)
-        source_toolbar_layout.addStretch(1)
-        self._toolbar_box.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
-        )
-        source_toolbar_layout.addWidget(self._toolbar_box, 0, Qt.AlignmentFlag.AlignRight)
+        self._source_toolbar_row = SharedSourceToolbarRow(self._source_tabs, self._toolbar_box, self)
         self.add_content(self._source_toolbar_row)
         layout.addWidget(self._build_table(), 1)
         return container
@@ -1126,6 +1130,59 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 break
         return prefix
 
+    def _identities(self):
+        """The canonical base identities of the active snapshot (same rule as every export)."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return None
+        xocd = getattr(self._context, "xocd_export_service", None)
+        price_base_of = {}
+        if xocd is not None and hasattr(xocd, "_price_base_of"):
+            try:
+                price_base_of = xocd._price_base_of(snapshot)
+            except (AttributeError, TypeError, ValueError):
+                price_base_of = {}
+        return resolve_base_identities(snapshot, price_base_of)
+
+    @staticmethod
+    def _canonical_base(identities, member, article) -> tuple[str, str]:
+        """``(base, source)`` the exports will use for this row; ``("", "")`` when unresolved."""
+        if identities is not None and article is not None:
+            base = identities.base_of(article.id)
+            if base:
+                return base, identities.sources.get(str(article.id), "")
+        if article is None:       # a member without a source article keeps its reduced base
+            return explicit_base(member, "", None)
+        return "", ""
+
+    @staticmethod
+    def _group_status(sources: set[str]) -> str:
+        """A base group is confirmed only when every member's base is user-confirmed."""
+        for status in (_PROPOSAL, SOURCE_PRICE_BASE):
+            if status in sources:
+                return status
+        return next(iter(sources), "")
+
+    @staticmethod
+    def _mark_base_status(item: QTableWidgetItem, source: str) -> None:
+        """Make an unconfirmed base visibly different from a confirmed canonical one."""
+        if source in _CONFIRMED_SOURCES or not source:
+            return
+        font = item.font()
+        font.setItalic(True)
+        item.setFont(font)
+        item.setForeground(QColor(theme.COLOR_WARNING))
+        if source == _PROPOSAL:
+            item.setToolTip(
+                "Proposal only (default length). No base article is resolved for this row, so the "
+                "MDB export has no base for it until a base length is applied."
+            )
+        else:
+            item.setToolTip(
+                "Fallback base from the article-set / prefix rules - not confirmed. This is the base "
+                "the MDB export uses; set the length to confirm it."
+            )
+
     def _applied_length(self, member) -> int | None:
         """A member's applied base length: the in-memory override, else the
         persisted ``reduced_article`` length; ``None`` when not applied."""
@@ -1452,6 +1509,14 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 name = groups[index].name
                 for article_id in getattr(aset, "article_ids", []) or []:
                     article_group[str(article_id)] = name
+        elif basis == "base_article":
+            # Groups ARE the canonical bases: bucket each row by the same identity the exports use.
+            identities = self._identities()
+            names = {g.name for g in groups}
+            for _family, member, article in rows:
+                base, _source = self._canonical_base(identities, member, article)
+                if base in names and article is not None:
+                    article_group[str(article.id)] = base
         else:
             product_ranges = getattr(snapshot, "product_range", None) or {}
             rename = getattr(snapshot, "class_group_names", None) or {}
@@ -1492,25 +1557,27 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         )
         self._table.setColumnHidden(_COL_REMAINING, False)
         default_len = self._default_base_len()
+        identities = self._identities()
         for order, (family, member, article) in enumerate(rows):
             row = self._table.rowCount()
             self._table.insertRow(row)
-    
+
             code = article.code if article is not None else ""
             applied = self._applied_length(member)
             has_length = applied is not None
             length = applied if applied is not None else default_len
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
+            base, source = self._canonical_base(identities, member, article)
+            if base:
                 remaining = code[len(base):] if base and code.startswith(base) else ""
-                length = len(base)
-                has_length = True
+                if source in _CONFIRMED_SOURCES:
+                    length = len(base)
+                    has_length = True
+                else:
+                    has_length = False
             else:
                 base, remaining = self._split_base(code, length)
-    
+                source = _PROPOSAL
+
             source_item = QTableWidgetItem(code)
             source_item.setData(Qt.ItemDataRole.UserRole, (family, member, article))
             self._set_readonly(source_item)
@@ -1518,6 +1585,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     
             base_item = QTableWidgetItem(base)
             self._set_readonly(base_item)
+            self._mark_base_status(base_item, source)
             self._table.setItem(row, _COL_BASE, base_item)
     
             remaining_item = QTableWidgetItem(remaining)
@@ -1575,6 +1643,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # Grouped view has no per-line "Remaining"; hide that column here.
         self._table.setColumnHidden(_COL_REMAINING, True)
         default_len = self._default_base_len()
+        identities = self._identities()
+        sources_by_base: dict[str, set[str]] = {}
         groups: dict[str, dict] = {}
         order_keys: list[str] = []
         # id(member) -> the bases it was grouped under, so each group's export ids can be
@@ -1582,16 +1652,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         bases_of_member: dict[int, list[str]] = {}
         for family, member, article in rows:
             code = article.code if article is not None else ""
-            if (
-                getattr(self.window(), "_active_module", None) == WorkbenchModule.DEVELOPMENT
-                and getattr(member, "reduced_article", "")
-            ):
-                base = member.reduced_article
+            base, source = self._canonical_base(identities, member, article)
+            if base:
                 remaining = code[len(base):] if base and code.startswith(base) else ""
             else:
                 base, remaining = self._split_base(
                     code, self._applied_length(member) or default_len
                 )
+                source = _PROPOSAL
+            sources_by_base.setdefault(base, set()).add(source)
             group = groups.get(base)
             if group is None:
                 group = {"members": [], "remainders": set(),
@@ -1623,6 +1692,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
                 ("__base__", base, tuple(members), family),
             )
             self._set_readonly(base_item)
+            self._mark_base_status(base_item, self._group_status(sources_by_base.get(base, set())))
             self._table.setItem(row, _COL_SOURCE, base_item)
 
             count_item = QTableWidgetItem()

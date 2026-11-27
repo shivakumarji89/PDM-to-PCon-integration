@@ -12,6 +12,8 @@ the relationship-knowledge ``TABLE()`` call.
 """
 from __future__ import annotations
 
+from services.engineering.class_naming import ATTRIBUTE, standard_class_name
+
 from collections import defaultdict
 
 from models.property import Property
@@ -363,7 +365,7 @@ class EngineeringValueTableService(BaseService):
 
     @staticmethod
     def _article_class(snapshot: Snapshot) -> str:
-        """The property class the constraint binds to (``<Category>_Attribute``),
+        """The property class the constraint binds to (``<Category>_ATTRIBUTE``),
         mirroring the Class Creation page's class naming, sanitised to a valid
         OFML identifier (no spaces)."""
         product = getattr(snapshot, "product", None)
@@ -377,7 +379,7 @@ class EngineeringValueTableService(BaseService):
         safe = "".join(c if c.isalnum() else "_" for c in label).strip("_")
         while "__" in safe:
             safe = safe.replace("__", "_")
-        return f"{safe or 'Class'}_Attribute"
+        return standard_class_name(safe or "Class", ATTRIBUTE)
 
     @staticmethod
     def _ordered_properties(snapshot: Snapshot) -> list[Property]:

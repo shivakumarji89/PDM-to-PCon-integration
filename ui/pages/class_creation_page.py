@@ -53,7 +53,9 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QSplitter,
+    QScrollArea,
     QStackedWidget,
+    QSizePolicy,
     QWidget,
 )
 
@@ -63,7 +65,9 @@ from services.engineering.engineering_reduction_service import (
     collapse_duplicate_values,
 )
 from services.mdb_classification_service import MdbClassificationService
+from services.class_creation_selection_service import build_class_creation_scope
 from ui import theme
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -196,7 +200,7 @@ class _CollapsibleCard(QGroupBox):
             QGroupBox#classCreationCard {{
                 border: 1px solid {theme.LINE};
                 border-radius: {theme.RADIUS_LG}px;
-                margin-top: 14px;
+                margin-top: 0px;
                 background: {theme.SURFACE};
             }}
             QGroupBox#classCreationCard::title {{
@@ -297,14 +301,19 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._selected_attr_prop = None
         self._selected_attr_value = None
 
-        self.add_content(self._build_toolbar())
+        self.add_content(self._build_top_row())
         self.add_content(self._build_body())
+        # Tighten the vertical spacing between the source toolbar row and the
+        # explorer selector/body, without changing the shared workflow spacing.
+        self._content.setSpacing(theme.SPACE_1)
         self.refresh()
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
+        # Match the Articles workflow's compact toolbar presentation: controls
+        # only, without a visible "Toolbar" group-box caption.
+        box = SharedToolbar(self)
+        layout = box.controls_layout
 
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search attributes, options or values...")
@@ -328,10 +337,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo = QComboBox(box)
         self._basis_combo.addItem("by Product range", "range")
         self._basis_combo.addItem("by Article set", "article_set")
-        self._basis_combo.setToolTip(
-            "Group basis: one class set per PDM product range, or one per "
-            "article set (base article)."
+        self._basis_combo.addItem("by Base article", "base_article")
+        self._basis_combo_tip = (
+            "Group basis: one class set per PDM product range, per article set, or per "
+            "canonical base article (the Articles workflow's base, exact code as class name)."
         )
+        self._basis_combo.setToolTip(self._basis_combo_tip)
         self._basis_combo.currentIndexChanged.connect(self._on_basis_changed)
         self._basis_combo.setVisible(False)
         layout.addWidget(self._basis_combo)
@@ -367,98 +378,102 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._inferred_hint.setVisible(False)
         layout.addWidget(self._inferred_hint)
 
-        layout.addStretch(1)
-
         self._maintenance_export_component = "Class Creation"
-
-
+        box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         return box
+
+    def _build_top_row(self) -> QWidget:
+        return SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self)
 
     def _build_body(self) -> QWidget:
         container = QWidget(self)
         self._body_layout = QVBoxLayout(container)
         self._body_layout.setContentsMargins(0, 0, 0, 0)
-        self._body_layout.setSpacing(theme.SECTION_SPACING)
+        self._body_layout.setSpacing(0)
 
-        # Class Creation has three functional workspaces. Keep them as explicit
-        # cards, but show one workspace at a time so the user gets the full area
-        # for the task instead of three compressed tables stacked vertically.
-        self._workspace_nav = QHBoxLayout()
-        self._workspace_nav.setSpacing(theme.CONTROL_SPACING)
-        self._workspace_buttons = []
-        for index, (label, subtitle) in enumerate((
-            ("ATTRIBUTE", "Properties & values"),
-            ("OPTIONS", "Class options"),
-            ("VISUAL", "Engineering properties"),
-        )):
-            button = QPushButton(label)
-            button.setToolTip(subtitle)
-            button.setCheckable(True)
-            button.setMinimumHeight(42)
-            button.setObjectName("classCreationWorkspaceButton")
-            button.setStyleSheet(
-                f"""
-                QPushButton#classCreationWorkspaceButton {{
-                    border: 1px solid {theme.LINE};
-                    border-radius: {theme.RADIUS_MD}px;
-                    background: {theme.SURFACE};
-                    color: {theme.INK_SOFT};
-                    font-weight: 600;
-                    padding: 8px 12px;
-                    text-align: center;
-                }}
-                QPushButton#classCreationWorkspaceButton:hover {{
-                    border-color: {theme.LINE_STRONG};
-                    background: {theme.SURFACE_ALT};
-                }}
-                QPushButton#classCreationWorkspaceButton:checked {{
-                    border: 2px solid {theme.ACCENT};
-                    background: {theme.ACCENT_SOFT};
-                    color: {theme.ACCENT_DARK};
-                }}
-                """
-            )
-            button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
-            self._workspace_buttons.append(button)
-            self._workspace_nav.addWidget(button, 1)
-        self._body_layout.addLayout(self._workspace_nav)
+        cards = (self._build_attributes_card(), self._build_options_card(), self._build_visual_card())
+        labels = ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer")
+        tables = (self._attr_master, self._opt_master, self._visual_master)
+        self._cards = list(cards)
+        self._explorer_title_buttons = []
 
-        self._workspace_stack = QStackedWidget(self)
-        self._workspace_stack.setObjectName("classCreationWorkspaceStack")
-        cards = (
-            self._build_attributes_card(),
-            self._build_options_card(),
-            self._build_visual_card(),
-        )
+        # The explorer is selected from the nested workflow sidebar. Keep only
+        # the stacked content in the workspace, so the tables start directly
+        # below the source toolbar without a second selector row.
+        stack = QStackedWidget(container)
+        self._explorer_stack = stack
         for card in cards:
-            self._cards.append(card)
-            # The card itself is the visible workspace surface. Its checkable
-            # title is disabled because workspace selection is handled above.
             card.setCheckable(False)
-            self._workspace_stack.addWidget(card)
-        self._body_layout.addWidget(self._workspace_stack, 1)
-        self._select_workspace(0)
+            card.setTitle("")
+            page = QWidget(stack)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(0)
+            page_layout.addWidget(card)
+            stack.addWidget(page)
+
+        self._body_layout.addWidget(stack, 1)
+        self._select_explorer(0)
         return container
 
-    def _select_workspace(self, index: int) -> None:
-        if not self._workspace_buttons or not self._workspace_stack:
+    def _select_explorer(self, index: int) -> None:
+        if not hasattr(self, "_explorer_stack") or not 0 <= index < self._explorer_stack.count():
             return
-        index = max(0, min(index, len(self._workspace_buttons) - 1))
-        self._workspace_stack.setCurrentIndex(index)
+        self._explorer_stack.setCurrentIndex(index)
+        for i, title in enumerate(self._explorer_title_buttons):
+            title.setChecked(i == index)
+        tables = (self._attr_master, self._opt_master, self._visual_master)
+        header = tables[index].horizontalHeader()
+        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(True)
 
-        # Re-fit the selected workspace every time the workflow is selected.
-        # This is intentionally done after switching the stack so Qt measures
-        # the currently visible tables, not a hidden table with stale widths.
+    def _filter_explorer_table(self, table: QTableWidget, term: str) -> None:
+        term = (term or "").strip()
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            meta = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            # Keep group headings visible when the group contains matching rows.
+            is_group_header = item is not None and not meta and item.text().strip()
+            if is_group_header:
+                next_row = row + 1
+                matched = False
+                while next_row < table.rowCount():
+                    next_item = table.item(next_row, 0)
+                    next_meta = next_item.data(Qt.ItemDataRole.UserRole) if next_item else None
+                    if next_item is not None and not next_meta:
+                        break
+                    row_text = " ".join(
+                        table.item(next_row, col).text()
+                        for col in range(table.columnCount())
+                        if table.item(next_row, col) is not None
+                    )
+                    if not term or text_match(term, row_text):
+                        matched = True
+                        break
+                    next_row += 1
+                table.setRowHidden(row, bool(term) and not matched)
+                continue
+            if table is self._visual_master and item is not None and item.text() == "Type to add a property...":
+                table.setRowHidden(row, False)
+                continue
+            row_text = " ".join(
+                table.item(row, col).text()
+                for col in range(table.columnCount())
+                if table.item(row, col) is not None
+            )
+            table.setRowHidden(row, bool(term) and not text_match(term, row_text))
+
+    def _select_workspace(self, index: int) -> None:
+        if not self._workspace_tabs:
+            return
+        index = max(0, min(index, self._workspace_tabs.count() - 1))
         self._fit_workspace_columns(index)
-
-        for i, button in enumerate(self._workspace_buttons):
-            button.setChecked(i == index)
-            button.setProperty("active", i == index)
-            button.style().unpolish(button)
-            button.style().polish(button)
-        # Structural reordering is available contextually on an Attribute
-        # property rather than as a persistent toolbar action. Keep the toolbar
-        # focused on navigation and status information.
+        token = self._active_token()
+        labels = ("Attribute", "Options", "Visual / Misc")
+        for tab_index, label in enumerate(labels):
+            self._workspace_tabs.setTabText(
+                tab_index, f"{label} — {token}" if token else label
+            )
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _fit_workspace_columns(self, index: int) -> None:
@@ -895,11 +910,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # can equal ``str(value.id)``, and an article is listed once per occurrence in the snapshot.
         linked_by_value: dict[str, list[str]] = {}
         if snapshot and (article_values or product_values):
+            from services.engineering.article_value_links import (
+                carried_value_ids, products_with_article_links)
+            linked_products = products_with_article_links(snapshot.articles, article_values)
             for article in snapshot.articles:
-                carried = (
-                    article_values.get(str(article.id))
-                    or product_values.get(str(article.product_id), [])
-                )
+                carried, _fallback = carried_value_ids(
+                    str(article.id), str(article.product_id or ""),
+                    article_values, product_values, linked_products)
                 for carried_id in {c for c in carried if isinstance(c, str)}:
                     linked_by_value.setdefault(carried_id, []).append(article_codes[str(article.id)])
         for value in _by_display_order(displayed):
@@ -1237,10 +1254,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not self.is_mdb_view():
             # The imported MDB baseline is displayed as-is: no standard-class
             # creation and no Development article-set synchronisation.
-            service.ensure_standard_classes(snap, category)
+            service.ensure_classes_for_basis(snap, category)
             self._sync_development_article_sets()
 
+        self._active_article_scope = self._selected_article_scope()
         groups = service.resolve_class_groups(snap, category) if snap else []
+        scope = self._active_article_scope
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
         split_on = bool(getattr(snap, "split_classes_by_group", False)) and len(groups) > 1
         self._split_cb.blockSignals(True)
         self._split_cb.setChecked(bool(getattr(snap, "split_classes_by_group", False)))
@@ -1269,15 +1290,15 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo.setCurrentIndex(basis_idx if basis_idx >= 0 else 0)
         self._basis_combo.blockSignals(False)
         self._basis_combo.setVisible(split_checked)
+        # The base-article basis degrades to the flat group when the canonical bases cannot
+        # be told apart; say why instead of silently showing the wrong grouping.
+        basis_problem = service.base_basis_error(snap)
+        self._basis_combo.setToolTip(
+            f"Base article grouping unavailable: {basis_problem}" if basis_problem
+            else self._basis_combo_tip
+        )
+        self._basis_combo.setStyleSheet("color: #b22222;" if basis_problem else "")
 
-        token = self._active_token()
-        # Keep the functional workspace names visible as the card titles.
-        # The active class token is shown alongside the card name so users can
-        # distinguish Attribute / Options / Visual without losing the class
-        # context (for example: "Attribute — Bolster").
-        self._attr_box.setTitle(f"Attribute — {token}")
-        self._opt_box.setTitle(f"Options — {token}")
-        self._misc_box.setTitle(f"Visual / Misc — {token}")
         self._populate_attributes()
         self._populate_attribute_tables()
         self._populate_options()
@@ -1290,6 +1311,11 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # The rebuild replaced the views' contents (and their cell editors):
         # register whatever is new and lock the fresh editors in the MDB view.
         self._apply_lock_state()
+        for edit, table in zip(
+            getattr(self, "_explorer_filters", []),
+            (self._attr_master, self._opt_master, self._visual_master),
+        ):
+            self._filter_explorer_table(table, edit.text())
         if self.is_mdb_view():
             self._lock_embedded_editors()
 
@@ -1357,7 +1383,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         service = self._context.engineering_class_service
         if group is None:
             return self._category_label()
-        return service._group_token(group.name)
+        return service.token_for_group(self._context.active_snapshot, group.name)
 
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
@@ -1399,7 +1425,18 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
         )
         overrides = getattr(snapshot, "config_code_overrides", None) or {}
+        # The base-article basis derives its groups from the canonical base identity:
+        # explicit reductions are above; the length overrides and the basis itself here.
+        base_inputs = (
+            bool(getattr(snapshot, "split_classes_by_group", False)),
+            str(getattr(snapshot, "class_group_basis", "") or ""),
+            tuple(sorted(
+                (str(k), str(v))
+                for k, v in (getattr(snapshot, "base_length_overrides", None) or {}).items()
+            )),
+        )
         return (
+            base_inputs,
             id(snapshot),
             len(snapshot.properties),
             len(snapshot.articles),
@@ -1433,23 +1470,17 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     def _attribute_class(self):
         """The active group's ``<Group>_Attribute`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Attribute"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "attribute")
 
     def _attribute_class_for_group(self, group_name: str | None):
         """Return the Attribute class belonging to a displayed split group."""
         if not group_name:
             return self._attribute_class()
         service = self._context.engineering_class_service
-        token = service._group_token(group_name)
-        name = f"{token}_Attribute"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        token = service.token_for_group(self._context.active_snapshot, group_name)
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), token, "attribute")
 
     def _group_name_for_attr_item(self, item) -> str | None:
         """Find the split-group owner of an Attribute property/value row."""
@@ -1473,30 +1504,21 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not group_name:
             return self._options_class()
         service = self._context.engineering_class_service
-        token = service._group_token(group_name)
-        name = f"{token}_Options"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        token = service.token_for_group(self._context.active_snapshot, group_name)
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), token, "option")
 
     def _options_class(self):
         """The active group's ``<Group>_Options`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Options"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "option")
 
     def _visual_class(self):
         """The active group's ``<Group>_Visual`` class, or None."""
         service = self._context.engineering_class_service
-        name = f"{self._active_token()}_Visual"
-        for cls in service.get_classes(self._context.active_snapshot):
-            if cls.name == name:
-                return cls
-        return None
+        return service.find_standard_class(
+            service.get_classes(self._context.active_snapshot), self._active_token(), "visual")
 
     def _split_members(self) -> list[tuple[str, str]]:
         """(article code, remaining) for every member with a persisted split."""
@@ -1706,6 +1728,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         mdb_attribute_ids = self._mdb_classified_property_ids("Attribute")
         if mdb_attribute_ids:
             props = [p for p in props if str(getattr(p, "id", "")) in mdb_attribute_ids]
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            props = [p for p in props if str(getattr(p, "id", "")) in scope.property_ids]
         development = (
             getattr(self.window(), "_active_module", None)
             == WorkbenchModule.DEVELOPMENT
@@ -1734,6 +1759,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         def _prop_kept(pid, source_props):
             rs = ranges.get(str(pid))
+            if scope is not None and scope.product_ranges and rs:
+                return any(r in scope.product_ranges and r not in ignored for r in rs)
             return (not rs) or any(r not in ignored for r in rs)
 
         def _class_ordered_props(source_props, class_obj):
@@ -1780,6 +1807,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         props = [p for p in props if _prop_kept(p.id, props)]
         split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
         groups = service.resolve_class_groups(snapshot, self._category_label()) if split_checked else []
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
         if split_checked and len(groups) > 1:
             # One Attribute table, with each split class represented by a group header.
             collapsed_groups = set()
@@ -1791,6 +1820,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             for group in groups:
                 group_cls = self._attribute_class_for_group(group.name)
                 if group_cls is None:
+                    continue
+                if not any(str(p.id) in set(str(x) for x in group.prop_ids) for p in props):
                     continue
                 header = self._make_group_node(
                     self._attr_tree, group.name, group.name, collapsed_groups
@@ -1862,6 +1893,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 v for v in prop.values
                 if value_ids is None or str(v.id) in value_ids
             ]
+            scope = getattr(self, "_active_article_scope", None)
+            if scope is not None:
+                selected_values = scope.property_value_ids.get(str(prop.id), frozenset())
+                prop_values = [
+                    value for value in prop_values
+                    if str(getattr(value, "id", "")) in selected_values
+                ]
             # Resolve the persisted class assignment and inferred codes before
             # calculating the effective value codes. These must be available
             # below because Class Creation values can come from either source.
@@ -2189,6 +2227,34 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if snapshot is None or getattr(window, "_active_module", None) != WorkbenchModule.DEVELOPMENT:
             return
         self._context.engineering_reduction_service.materialize_class_creation_article_sets(snapshot)
+
+    def _selected_article_scope(self):
+        """Selection shared with the Articles page's Export-column checkboxes."""
+        snapshot = self._context.active_snapshot
+        if snapshot is None:
+            return None
+        window = self.window()
+        selected: set[str] = set()
+        for page in (getattr(window, "_pages", {}) or {}).values():
+            getter = getattr(page, "selected_export_article_ids", None)
+            if callable(getter):
+                selected = {str(value) for value in getter() if str(value)}
+                break
+        if not selected:
+            return None
+        base_of = None
+        service = self._context.engineering_class_service
+        if service.uses_base_basis(snapshot):
+            # Name the selected groups by the canonical base (all tiers, incl. price base).
+            try:
+                base_of = {
+                    str(aid): (base or "").strip()
+                    for aid, base in self._context.xocd_export_service.base_code_entries(snapshot)
+                }
+            except Exception:
+                base_of = None
+        scope = build_class_creation_scope(snapshot, selected, base_of=base_of)
+        return scope if scope.article_ids else None
 
     def _on_code_selected(
         self, value, text: str, prop_node, prop, value_item=None
@@ -3232,6 +3298,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # options under a header per range and show only that range's values;
         # a single-range load stays flat.
         snapshot = self._context.active_snapshot
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            options = [option for option in options
+                       if str(getattr(option, "id", "")) in scope.option_ids]
         self._related_values = (
             self._context.engineering_relation_service.related_value_ids(snapshot)
         )
@@ -3250,6 +3320,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             rs: set = set()
             for v in getattr(option, "values", []):
                 rs |= optval_ranges.get(str(v.id), set())
+            if scope is not None and scope.product_ranges:
+                rs.intersection_update(scope.product_ranges)
             opt_ranges[str(option.id)] = rs
 
         split_checked = bool(getattr(snapshot, "split_classes_by_group", False))
@@ -3259,6 +3331,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
             if split_checked else []
         )
+        if scope is not None and scope.group_names:
+            groups = [group for group in groups if str(group.name) in scope.group_names]
 
         # When split classes are enabled, mirror the real generated class
         # structure in the backing tree: one group header per class, with only
@@ -3270,10 +3344,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 group_cls = self._options_class_for_group(group.name)
                 if group_cls is None:
                     continue
+                group_option_ids = set(str(x) for x in group.option_ids)
+                if scope is not None:
+                    group_option_ids.intersection_update(scope.option_ids)
+                if not group_option_ids:
+                    continue
                 gnode = self._make_group_node(
                     self._opt_tree, group.name, group.name, collapsed_groups
                 )
-                group_option_ids = set(str(x) for x in group.option_ids)
                 for option in options:
                     if str(option.id) in group_option_ids:
                         self._add_option_node(gnode, option, cls)
@@ -3318,6 +3396,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             v for v in getattr(option, "values", [])
             if value_ids is None or str(v.id) in value_ids
         ]
+        scope = getattr(self, "_active_article_scope", None)
+        if scope is not None:
+            selected_values = scope.option_value_ids.get(str(option.id), frozenset())
+            values = [
+                value for value in values
+                if str(getattr(value, "id", "")) in selected_values
+            ]
         # Options carry standard codes -> fully-coded independent display:
         # Width = code length, Sliced = the value codes (no article slicing).
         value_codes: list[str] = []

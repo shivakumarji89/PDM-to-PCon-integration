@@ -57,7 +57,16 @@ class MdbReverseEngineeringServiceTests(unittest.TestCase):
         self.assertEqual(result.first("tCOMd_Article")["com_ArticleCode"], "A100")
         self.assertNotIn("tCOMd_Price", result.tables)
         self.assertEqual(set(result.tables), set(STRUCTURAL_TABLES))
-        self.assertEqual(len(self.context.mdb_service.calls), 1)
+        # One batch of light tables plus one bridge process per heavy table.
+        calls = [set(c[1]) for c in self.context.mdb_service.calls]
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            set().union(*calls),
+            set(STRUCTURAL_TABLES) | {"tCOMd_Package", "tCOMd_ComGroup"},
+        )
+        self.assertEqual(sum(len(c) for c in calls), len(set().union(*calls)))  # no table read twice
+        self.assertIn({"tCOMd_Text"}, calls)
+        self.assertIn({"tCOMd_PropValue"}, calls)
 
     def test_read_can_explicitly_include_prices(self):
         result = self.service.read(self.mdb, include_prices=True)

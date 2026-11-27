@@ -42,10 +42,10 @@ class GeneratePage(BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
+        layout.addStretch(1)
         self._run_btn = QPushButton("Run Dry-Run Generation", box)
         self._run_btn.clicked.connect(self.refresh)
         layout.addWidget(self._run_btn)
-        layout.addStretch(1)
         return box
 
     def _build_main_row(self) -> QWidget:

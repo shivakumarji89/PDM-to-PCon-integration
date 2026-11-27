@@ -85,11 +85,11 @@ class ProjectService(BaseService):
         snapshot.status = SnapshotStatus.READY
         return target
 
-    def load_project(self, path: str | Path) -> Project:
-        """Restore a ``.mkproj`` file and make its snapshot active.
+    def read_project(self, path: str | Path) -> Project:
+        """Read and reconstruct a project without changing active application state.
 
-        Returns a :class:`Project` carrying the restored name, product, snapshot
-        and workflow step. Raises :class:`ValueError` for an unrecognised file.
+        Safe to run in a worker thread: this performs file I/O and pure snapshot
+        deserialization only. The returned Project is activated on the GUI thread.
         """
         source = Path(path)
         document = json.loads(source.read_text(encoding="utf-8"))
@@ -97,20 +97,34 @@ class ProjectService(BaseService):
             raise ValueError(f"Not a {PROJECT_SUFFIX} project file: {source}")
 
         snapshot = snapshot_from_dict(document.get("snapshot") or {})
-        self.context.snapshot_manager.load_snapshot(snapshot)
-        # A saved project is a PDM-side working snapshot: publish it as such so
-        # Maintenance's PDM tab resolves it (the MDB snapshot is left alone).
-        self.context.adopt_loaded_pdm_snapshot()
-
-        project = Project(
+        return Project(
             name=document.get("name", "") or source.stem,
             selected_product=snapshot.product,
             snapshot=snapshot,
             current_step=self._step_from(document.get("current_step")),
         )
+
+    def activate_project(self, project: Project, path: str | Path) -> Project:
+        """Publish a previously-read project into active application state.
+
+        Must be called on the GUI thread because it mutates the shared context.
+        """
+        self.context.snapshot_manager.load_snapshot(project.snapshot)
+        # A saved project is a PDM-side working snapshot: publish it as such so
+        # Maintenance's PDM tab resolves it (the MDB snapshot is left alone).
+        self.context.adopt_loaded_pdm_snapshot()
         self._name = project.name
-        self._path = source
+        self._path = Path(path)
         return project
+
+    def load_project(self, path: str | Path) -> Project:
+        """Synchronously restore a project for existing non-UI callers/tests.
+
+        The UI uses read_project in a worker and activate_project on the GUI
+        thread so large project files do not block the event loop.
+        """
+        project = self.read_project(path)
+        return self.activate_project(project, path)
 
     def close_project(self) -> None:
         """Discard the active snapshot and clear project state."""

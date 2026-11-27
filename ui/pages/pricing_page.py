@@ -9,6 +9,8 @@ the stored baseline so only changed cells stand out.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import shiboken6
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QBrush, QColor
@@ -49,6 +51,7 @@ from services.price_list_targets import computation_date, default_names
 from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog, list_lines
 from ui.dialogs.price_list_target_dialog import PriceListTargetDialog
 from ui.dialogs.progress_dialog import ProgressDialog
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -256,31 +259,16 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         # Keep the PDM / MDB source selector and pricing controls on one row.
         # The source widget owns its indicator stretch, so it expands between
         # the tabs and the right-aligned Compute controls.
-        toolbar_row = QWidget(self)
-        toolbar_layout = QHBoxLayout(toolbar_row)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(8)
-        toolbar_layout.addWidget(self._source_tabs, 1)
-        toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
-        self.add_content(toolbar_row)
+        self.add_content(SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self))
         self.add_content(self._build_table())
         self.add_content(self._build_summary())
         self.refresh()
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Compute", self)
-        box.setObjectName("pricingComputeGroup")
-        box.setStyleSheet(
-            "QGroupBox#pricingComputeGroup {"
-            " margin-top: 8px; padding: 4px 6px 4px 6px;"
-            "}"
-        )
-        controls = QHBoxLayout(box)
-        controls.setContentsMargins(6, 7, 6, 4)
-        controls.setSpacing(6)
+        box = SharedToolbar(self)
+        controls = box.controls_layout
 
-        controls.addWidget(QLabel("Currency:", box))
         self._currency = QComboBox(box)
         self._currency.addItems(["All", "GBP", "EUR"])
         self._currency.setToolTip(
@@ -617,14 +605,84 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 "The computed prices carry no computation date. Recompute prices first; "
                 "today's date is never substituted.")
             return
-        mdb_path, _ = QFileDialog.getOpenFileName(
-            self, "Select existing OCD MDB" + (" to export prices into" if write else " to preview against"),
-            self._last_mdb_path, "Access database (*.mdb)",
-        )
-        if not mdb_path:
-            return
+        export_snapshot = snapshot
+        if self.is_maintenance_module():
+            # Maintenance pricing belongs to the same one-product MDB session
+            # as Articles/Class Creation. Never ask for or create a second MDB.
+            try:
+                session = self._context.mdb_export_session_service.get_active(snapshot)
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Prices", str(exc))
+                self._restore_export_buttons()
+                return
+            if session is None:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "Export Articles first to initialize this product's MDB session.",
+                )
+                self._restore_export_buttons()
+                return
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(
+                    self, self._context.mdb_export_session_service, session, "Export Prices"):
+                self._restore_export_buttons()
+                return
+            window = self.window()
+            articles_page = next(
+                (page for page in (getattr(window, "_pages", {}) or {}).values()
+                 if callable(getattr(page, "selected_export_article_ids", None))),
+                None,
+            )
+            selected_ids = (
+                articles_page.selected_export_article_ids()
+                if articles_page is not None else set()
+            )
+            if not selected_ids:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "Select one or more articles in the Articles page Export column first.",
+                )
+                self._restore_export_buttons()
+                return
+            base_codes = {
+                str(code) for article_id, code in self._context.xocd_export_service.base_code_entries(snapshot)
+                if str(article_id) in {str(value) for value in selected_ids} and str(code or "").strip()
+            }
+            has_article_prices = any(
+                not bool(getattr(record, "is_global", False))
+                for record in snapshot.price_records
+            )
+            if has_article_prices and not base_codes:
+                QMessageBox.warning(
+                    self, "Export Prices",
+                    "The selected articles do not resolve to base article codes.",
+                )
+                self._restore_export_buttons()
+                return
+            import copy
+            export_snapshot = copy.copy(snapshot)
+            export_snapshot.price_records = [
+                record for record in snapshot.price_records
+                if bool(getattr(record, "is_global", False))
+                or str(getattr(record, "article_code", "") or "").strip() in base_codes
+            ]
+            if not export_snapshot.price_records:
+                QMessageBox.information(
+                    self, "Export Prices",
+                    "No computed price records match the selected articles.",
+                )
+                self._restore_export_buttons()
+                return
+            mdb_path = session.mdb_path
+        else:
+            mdb_path, _ = QFileDialog.getOpenFileName(
+                self, "Select existing OCD MDB" + (" to export prices into" if write else " to preview against"),
+                self._last_mdb_path, "Access database (*.mdb)",
+            )
+            if not mdb_path:
+                return
         self._last_mdb_path = mdb_path
-        self._wf = {"write": write, "path": mdb_path, "snapshot": snapshot, "targets": {}}
+        self._wf = {"write": write, "path": mdb_path, "snapshot": export_snapshot, "targets": {}}
         self._set_header_export_enabled(False)
         self._summary.setText("Reading price lists from the MDB...")
         self._lists_task = BackgroundTask(
@@ -714,6 +772,24 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
                 self, "Export Prices", result.get("error") or "Price export failed."
             )
             return
+        if self.is_maintenance_module():
+            try:
+                sessions = self._context.mdb_export_session_service
+                session = sessions.get_active(self._wf["snapshot"])
+                if session is not None and Path(session.mdb_path).resolve() == Path(mdb_path).resolve():
+                    sessions.record_workflow(session, "pricing", {
+                        "inserted_prices": result.get("inserted_prices", 0),
+                        "inserted_global_prices": result.get("inserted_global_prices", 0),
+                        "updated_prices": result.get("updated_prices", 0),
+                        "updated_global_prices": result.get("updated_global_prices", 0),
+                        "inserted_price_lists": result.get("inserted_price_lists", 0),
+                    })
+                    sessions.save(session)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self, "Price Export Session",
+                    f"Price rows were exported, but workflow status could not be saved: {exc}",
+                )
         self._summary.setText(
             f"Export complete: {result.get('inserted_prices', 0) + result.get('inserted_global_prices', 0):,} "
             f"rows added, {result.get('updated_prices', 0) + result.get('updated_global_prices', 0):,} corrected."

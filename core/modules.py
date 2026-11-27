@@ -15,8 +15,15 @@ from core.enums import WorkflowStep
 class WorkbenchModule(Enum):
     """Top-level functional modules of the workbench."""
 
+    # ARCHIVED: legacy Development module. Not offered in MODULE_ITEMS or
+    # MODULE_WORKFLOWS. The member and the Development-specific branches in the
+    # Articles / Class Creation pages are kept so it can be restored later.
     DEVELOPMENT = "development"
+    # LEGACY INTERNAL IDENTITY of ProductStudio. The value "maintenance" is kept
+    # because pages, snapshot/export rules and tests key off it. Prefer the
+    # PRODUCT_STUDIO alias in new code.
     MAINTENANCE = "maintenance"
+    PRODUCT_STUDIO = "maintenance"  # alias of MAINTENANCE (same member)
     QA_VALIDATION = "qa_validation"
     METATYPE = "metatype"
     OAP = "oap"
@@ -34,11 +41,6 @@ class ModuleItem:
 
 
 MODULE_ITEMS: tuple[ModuleItem, ...] = (
-    ModuleItem(
-        WorkbenchModule.DEVELOPMENT,
-        "Development",
-        "Create and develop product engineering data.",
-    ),
     ModuleItem(
         WorkbenchModule.MAINTENANCE,
         "ProductStudio",
@@ -72,6 +74,11 @@ MODULE_ITEMS: tuple[ModuleItem, ...] = (
 )
 
 
+def is_active_module(module: WorkbenchModule | None) -> bool:
+    """Return True if the module is offered in the active module launcher."""
+    return any(item.module == module for item in MODULE_ITEMS)
+
+
 def module_title(module: WorkbenchModule) -> str:
     """Return the display title for a module."""
     for item in MODULE_ITEMS:
@@ -87,14 +94,11 @@ def snapshot_source_for_module(module: WorkbenchModule | None) -> str:
     return "pdm"
 
 
-# Workflows exposed after entering each module. Existing workflow/page
-# implementations are reused; this mapping only controls which ones are shown.
-# Engineering remains available to the application internally, but is not
-# exposed as a user-facing workflow step for now.
-MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
-    # Development: Articles establishes the full article code and the manual
-    # Base Length first. Class Creation then consumes the remaining Variant
-    # Condition in property order.
+# Archived Development workflow definition. Keep this intact for reference and
+# possible future reactivation, but do not route users into it from the active
+# module selector. To restore Development: add a ModuleItem to MODULE_ITEMS and
+# move this entry back into MODULE_WORKFLOWS.
+ARCHIVED_MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.DEVELOPMENT: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -105,6 +109,13 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     ),
+}
+
+# Workflows exposed after entering each module. Existing workflow/page
+# implementations are reused; this mapping only controls which ones are shown.
+# Engineering remains available to the application internally, but is not
+# exposed as a user-facing workflow step for now.
+MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     # Maintenance keeps its existing workflow order.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,

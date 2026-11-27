@@ -9,6 +9,7 @@ batch of operations in a single session.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -19,11 +20,45 @@ from typing import Any
 
 from services.base_service import BaseService
 
+_log = logging.getLogger(__name__)
+
 #: 32-bit Windows PowerShell - the only host with a working ACE OLEDB provider.
 _PS32 = r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 
 #: Bridge script, resolved relative to the repository root.
 _BRIDGE = Path(__file__).resolve().parent.parent / "resources" / "mdb_bridge.ps1"
+
+
+#: Lightweight provider probe, run in the same 32-bit host as the bridge. It
+#: instantiates the ACE OLEDB data-source COM object (no MDB file is opened), which
+#: fails when the provider is missing, mis-registered or of the wrong bitness.
+_PROVIDER_PROGID = "Microsoft.ACE.OLEDB.16.0"
+_PROBE_SCRIPT = (
+    "$t=[Type]::GetTypeFromProgID('" + _PROVIDER_PROGID + "');"
+    "if(-not $t){exit 3};"
+    "try{$o=[Activator]::CreateInstance($t);"
+    "[void][Runtime.InteropServices.Marshal]::ReleaseComObject($o)}catch{exit 4};"
+    "exit 0"
+)
+_PROBE_TIMEOUT_SECONDS = 60
+
+PROVIDER_MISSING_TITLE = "MDB Reader Dependency Missing"
+PROVIDER_MISSING_MESSAGE = (
+    f"{PROVIDER_MISSING_TITLE}\n\n"
+    "Microsoft Access Database Engine (ACE OLEDB 16.0, 32-bit) is required to read "
+    "MDB files using this application.\n\n"
+    "The required provider was not detected or could not be initialized in the "
+    "32-bit PowerShell environment.\n\n"
+    "Please contact your IT support to install or configure the compatible database engine."
+)
+
+
+class MDBProviderUnavailableError(RuntimeError):
+    """The ACE OLEDB provider cannot be used; ``str(error)`` is user-facing."""
+
+    def __init__(self, reason: str = "") -> None:
+        super().__init__(PROVIDER_MISSING_MESSAGE)
+        self.reason = reason
 
 
 @dataclass
@@ -49,6 +84,8 @@ class MDBBatchResult:
     def first_error(self) -> str | None:
         for r in self.results:
             if not r.ok:
+                if r.op == "provider":
+                    return r.error  # already a complete, user-facing message
                 return f"{r.op}({r.error})"
         return None
 
@@ -62,6 +99,44 @@ class MDBService(BaseService):
     def is_available() -> bool:
         """True when the 32-bit PowerShell host and bridge script both exist."""
         return os.path.isfile(_PS32) and _BRIDGE.is_file()
+
+    #: Successful probe result, cached for the process (a failure is re-probed
+    #: so installing the provider takes effect without restarting the app).
+    _provider_ok: bool = False
+
+    def check_provider(self) -> tuple[bool, str]:
+        """Return ``(usable, reason)`` for the ACE provider in the bridge's host.
+
+        Verifies that the provider COM class can actually be created by the same
+        32-bit PowerShell used for MDB reads. No MDB file is opened.
+        """
+        if MDBService._provider_ok:
+            return True, ""
+        if not os.path.isfile(_PS32):
+            return False, "32-bit Windows PowerShell was not found."
+        if not _BRIDGE.is_file():
+            return False, "MDB bridge script was not found."
+        try:
+            proc = subprocess.run(
+                [_PS32, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _PROBE_SCRIPT],
+                capture_output=True, text=True, timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            return False, f"Provider probe could not run: {error}"
+        if proc.returncode == 0:
+            MDBService._provider_ok = True
+            return True, ""
+        detail = {3: "provider is not registered", 4: "provider could not be initialized"}.get(
+            proc.returncode, f"probe exited with code {proc.returncode}"
+        )
+        return False, f"{_PROVIDER_PROGID}: {detail}."
+
+    def require_provider(self) -> None:
+        """Raise :class:`MDBProviderUnavailableError` when the provider is unusable."""
+        ok, reason = self.check_provider()
+        if not ok:
+            _log.warning("MDB provider unavailable: %s", reason)  # IT diagnostic; the UI shows the plain message
+            raise MDBProviderUnavailableError(reason)
 
     # -- File-level helpers (no ACE provider needed) ---------------------
 
@@ -90,6 +165,15 @@ class MDBService(BaseService):
             return MDBBatchResult(
                 ok=False,
                 results=[MDBOpResult(op="env", ok=False, error="32-bit PowerShell/ACE bridge unavailable")],
+            )
+        # Same preflight as read_tables, but as a failed result (callers already
+        # handle ``batch.ok``), so no bridge operation runs without a usable provider.
+        provider_ok, provider_reason = self.check_provider()
+        if not provider_ok:
+            _log.warning("MDB provider unavailable: %s", provider_reason)  # IT diagnostic only
+            return MDBBatchResult(
+                ok=False,
+                results=[MDBOpResult(op="provider", ok=False, error=PROVIDER_MISSING_MESSAGE)],
             )
 
         payload = {"mdb": str(Path(mdb_path)), "ops": ops, "transaction": bool(transaction)}
@@ -159,6 +243,8 @@ class MDBService(BaseService):
         """
         if not sql_by_name:
             return {}
+        # Fail once, clearly, before any table query rather than once per table.
+        self.require_provider()
         ops = [{"op": "query", "sql": sql} for sql in sql_by_name.values()]
         batch = self.execute_batch(mdb_path, ops)
         names = list(sql_by_name)

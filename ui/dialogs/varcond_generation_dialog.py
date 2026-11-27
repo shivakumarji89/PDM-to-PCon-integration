@@ -7,8 +7,8 @@ does not rewrite component target codes inside the VARCOND rules.
 from __future__ import annotations
 
 from typing import Callable
-
 from dataclasses import dataclass, field
+import re
 
 from PySide6.QtCore import QThreadPool, QTimer, Qt
 from PySide6.QtGui import QKeySequence
@@ -24,6 +24,26 @@ from services.pricing_relation_service import price_relation_names
 from services.varcond_service import VarCondService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
+from ui.components.shared_toolbar import SharedToolbar
+
+
+def _article_code_matches_filter(code: str, query: str) -> bool:
+    """Match article-code filters; * is many chars, ? and _ are one char.
+
+    Plain text retains the existing starts-with behaviour. Wildcard patterns
+    are also anchored at the start so users can filter article-code prefixes.
+    """
+    pattern = (query or "").strip().casefold()
+    candidate = (code or "").casefold()
+    if not pattern:
+        return True
+    if not any(char in pattern for char in "*?_"):
+        return candidate.startswith(pattern)
+    regex = "".join(
+        ".*" if char == "*" else "." if char in "?_" else re.escape(char)
+        for char in pattern
+    )
+    return re.match(regex, candidate, flags=re.DOTALL) is not None
 
 
 @dataclass
@@ -90,18 +110,26 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_snapshot = None
         self._maintenance_reporter = None
         self._maintenance_monitor = None
+        self._relation_store = None
+        self._reload_requested = False
+        self._base_to_dot = False
         self.setObjectName("varcondGenerationPanel")
 
         root = QVBoxLayout(self)
 
-        # Expose these controls so the page can align them with PDM / MDB.
-        self.controls_widget = QWidget(self)
-        controls = QHBoxLayout(self.controls_widget)
-        controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(8)
-        controls.addWidget(QLabel("Filter:", self.controls_widget))
+        # Use the shared workflow toolbar shell; this panel contributes controls only.
+        self.controls_widget = SharedToolbar(self)
+        controls = self.controls_widget.controls_layout
+        self._filter_label = QLabel("Filter:", self.controls_widget)
+        controls.addWidget(self._filter_label)
         self._filter = QLineEdit(self.controls_widget)
-        self._filter.setPlaceholderText("Article code starts with...")
+        self._filter.setPlaceholderText("Article code... (* = any, ? or _ = one)")
+        self._filter.setToolTip(
+            "Filter article-code prefixes. Use * for any number of characters; "
+            "? or _ for exactly one character. Example: RY?XS or RY*XS."
+        )
+        self._filter.setMinimumWidth(170)
+        self._filter.setMaximumWidth(230)
         # Typing rebuilds the relation list (and, in Development, regenerates from PDM): wait for a
         # pause instead of doing it per keystroke.
         self._filter_timer = QTimer(self)
@@ -109,7 +137,6 @@ class VarCondGenerationPanel(QWidget):
         self._filter_timer.setInterval(self.FILTER_DEBOUNCE_MS)
         self._filter_timer.timeout.connect(self._refresh_relations)
         self._filter.textChanged.connect(lambda *_: self._filter_timer.start())
-        controls.addWidget(self._filter, 1)
         self._exclusion_button = QPushButton("Exclusion…", self.controls_widget)
         self._exclusion_button.clicked.connect(self._edit_exclusions)
         controls.addWidget(self._exclusion_button)
@@ -123,6 +150,7 @@ class VarCondGenerationPanel(QWidget):
             "Unique relation names are built from the first N characters of each "
             "parent article. Articles sharing that prefix are generated together."
         )
+        self._relation_length.setMinimumWidth(220)
         self._relation_length.valueChanged.connect(self._refresh_relations)
         controls.addWidget(self._relation_length)
 
@@ -145,7 +173,6 @@ class VarCondGenerationPanel(QWidget):
         self._substitutions.setReadOnly(True)
         self._substitutions.hide()
         self._summary = QLabel("Merged Article VARCOND Relations", self)
-        right.addWidget(self._summary)
         self._output = _CopyableVarCondTable(self)
         self._output.setColumnCount(1)
         self._output.setHorizontalHeaderLabels(["VARCOND Rule"])
@@ -156,6 +183,9 @@ class VarCondGenerationPanel(QWidget):
         self._output.verticalHeader().setVisible(False)
         self._output.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self._output, 1)
+        # Keep the relation list and VARCOND table aligned at the top;
+        # place the status/details line beneath the table.
+        right.addWidget(self._summary)
         split.addLayout(right, 4)
         root.addLayout(split, 1)
 
@@ -180,6 +210,7 @@ class VarCondGenerationPanel(QWidget):
             self._article_rows.append((code, label, str(article_id)))
         self._article_rows.sort(key=lambda row: row[0].casefold())
 
+        self._reset_base_to_dot_mode()
         max_length = max((len(row[0]) for row in self._article_rows), default=1)
         self._relation_length.setRange(1, max_length)
         self._relation_length.setValue(max_length)
@@ -206,6 +237,7 @@ class VarCondGenerationPanel(QWidget):
             # the result rather than let old-product data repopulate this cache.
             self._maintenance_service.clear_cache()
             self._maintenance_snapshot = self._snapshot
+            self._bind_relation_store(self._maintenance_service)
         self._article_rows = []
         snapshot = self._snapshot
         if snapshot is not None:
@@ -235,9 +267,55 @@ class VarCondGenerationPanel(QWidget):
         else:
             self._generate_all()
 
+    def _reset_base_to_dot_mode(self) -> None:
+        """Restore absolute prefix-length behaviour for a newly loaded snapshot."""
+        self._base_to_dot = False
+        self._relation_length.blockSignals(True)
+        self._relation_length.setRange(1, 30)
+        self._relation_length.setPrefix("Relation Prefix Length: ")
+        self._relation_length.setToolTip(
+            "Unique relation names are built from the first N characters of each "
+            "parent article. Articles sharing that prefix are generated together."
+        )
+        self._relation_length.blockSignals(False)
+
+    def reduce_relations_to_dot(self) -> None:
+        """Group the left relation list by each article code's pre-dot base.
+
+        Original full article codes remain intact for source loading and
+        VARCOND generation; only relation grouping/display keys are reduced.
+        """
+        if self._base_to_dot:
+            return
+        self._base_to_dot = True
+        # In Base to Dot mode the spinbox is an offset from each article's
+        # own dot position, not one absolute prefix length shared by all rows.
+        self._relation_length.blockSignals(True)
+        self._relation_length.setRange(-30, 30)
+        self._relation_length.setValue(0)
+        self._relation_length.setPrefix("Base Length Offset: ")
+        self._relation_length.setToolTip(
+            "Adjust each article's own pre-dot base length. 0 = stop before the "
+            "dot; +1/+2 extend by that many characters; -1/-2 shorten it."
+        )
+        self._relation_length.blockSignals(False)
+        self._filter_timer.stop()
+        self._refresh_relations()
+
+    def _relation_prefix(self, code: str, length: int | None = None) -> str:
+        value = str(code or "")
+        size = self._relation_length.value() if length is None else length
+        if self._base_to_dot:
+            dot_position = value.find(".")
+            base_length = dot_position if dot_position >= 0 else len(value)
+            adjusted_length = max(1, min(len(value), base_length + size))
+            return value[:adjusted_length]
+        return value[:size] if len(value) > size else value
+
     def _refresh_relations(self, *_args) -> None:
         """Mirror PDM updateItemList: unique PA_<prefix> entries from filtered items."""
         self._filter_timer.stop()          # this rebuild supersedes a pending debounced one
+        self._rules_by_relation.clear()    # prefix length / filter changed: cached rules no longer apply
         current = self._relations.currentItem().text() if self._relations.currentItem() else ""
         current_prefix = current[3:] if current.startswith("PA_") else current
         anchor_code = next(
@@ -249,15 +327,15 @@ class VarCondGenerationPanel(QWidget):
         length = self._relation_length.value()
         relation_names: set[str] = set()
         for code, _label, _article_id in self._article_rows:
-            if needle and not code.casefold().startswith(needle):
+            if not _article_code_matches_filter(code, needle):
                 continue
-            relation_prefix = code[:length] if len(code) > length else code
+            relation_prefix = self._relation_prefix(code, length)
             relation_names.add("PA_" + relation_prefix)
         self._relations.blockSignals(True)
         self._relations.clear()
         for name in sorted(relation_names, key=str.casefold):
             self._relations.addItem(QListWidgetItem(name))
-        target_prefix = anchor_code[:length] if anchor_code and len(anchor_code) > length else anchor_code
+        target_prefix = self._relation_prefix(anchor_code, length) if anchor_code else ""
         target_name = "PA_" + target_prefix if target_prefix else current
         match = self._relations.findItems(target_name, Qt.MatchFlag.MatchExactly) if target_name else []
         if match:
@@ -276,7 +354,14 @@ class VarCondGenerationPanel(QWidget):
         if current is None:
             self._output.setRowCount(0)
             return
-        self._display_relation_rules(current.text())
+        name = current.text()
+        if name not in self._rules_by_relation:
+            # Only the selected relation is ever generated, so selecting another one must request
+            # its rules (Development: live PDM worker; Maintenance: local, from the cached sources).
+            self._display_relation_rules(name)
+            self._generate_all()
+            return
+        self._display_relation_rules(name)
 
     def _display_relation_rules(self, relation_name: str) -> None:
         """Show only the rules belonging to the currently selected relation."""
@@ -290,8 +375,10 @@ class VarCondGenerationPanel(QWidget):
                 self._output.setItem(row, 0, item)
         finally:
             self._output.setUpdatesEnabled(True)
+        char_count = len("\\r\\n".join(rules))
         self._summary.setText(
-            f"{relation_name} · {len(rules):,} VARCOND definition(s)"
+            f"{relation_name} · {len(rules):,} VARCOND definition(s) · "
+            f"{char_count:,} characters"
             if rules else f"{relation_name} · Waiting for this relation to finish loading"
         )
 
@@ -301,7 +388,26 @@ class VarCondGenerationPanel(QWidget):
         if self._maintenance_service is None:
             self._maintenance_service = MaintenanceVarCondService(self._context)
             self._maintenance_snapshot = self._snapshot
+            self._bind_relation_store(self._maintenance_service)
         return self._maintenance_service
+
+    def _bind_relation_store(self, service) -> None:
+        """Back the service with this product's saved relation sources."""
+        from services.relation_source_store import RelationSourceStore, relation_scope
+
+        scope = relation_scope(self._snapshot, self._context)
+        if self._relation_store is None:
+            self._relation_store = RelationSourceStore()
+        service.bind_store(self._relation_store, scope)
+
+    def _on_reload_relations(self) -> None:
+        """Explicit user action: read the relation sources from PDM again."""
+        if not self._maintenance_check() or not self._article_rows:
+            return
+        self._reload_requested = True
+        self._load_maintenance_sources_async(
+            [row[0] for row in self._article_rows], refresh=True
+        )
 
     def _load_maintenance_sources_async(self, parent_codes: list[str], refresh: bool) -> None:
         """Load missing/refresh PDM source rows off the UI thread.
@@ -342,9 +448,9 @@ class VarCondGenerationPanel(QWidget):
         # every parent belonging to that prefix has completed source loading.
         relation_groups: dict[str, list[str]] = {}
         for code, _label, _article_id in self._article_rows:
-            if stream_filter_text and not code.casefold().startswith(stream_filter_text):
+            if not _article_code_matches_filter(code, stream_filter_text):
                 continue
-            prefix = code[:stream_prefix_length] if len(code) > stream_prefix_length else code
+            prefix = self._relation_prefix(code, stream_prefix_length)
             relation_groups.setdefault("PA_" + prefix, []).append(code)
 
         def load_sources(_progress):
@@ -456,12 +562,15 @@ class VarCondGenerationPanel(QWidget):
         self._maintenance_load_snapshot = None
         refresh = self._maintenance_pending_refresh
         self._maintenance_pending_refresh = False
+        if not refresh:
+            self._reload_requested = False
         if loaded_snapshot is not self._snapshot:
             # Snapshot changed while PDM was loading. Never render/cache results
             # from the previous product in the newly selected product's panel.
             if self._maintenance_service is not None:
                 self._maintenance_service.clear_cache()
-            self._maintenance_snapshot = self._snapshot
+                self._maintenance_snapshot = self._snapshot
+                self._bind_relation_store(self._maintenance_service)
             self._finish_maintenance_progress(False, "Product changed while loading; stale relation data discarded.")
             self._generate_all()
             return
@@ -472,17 +581,33 @@ class VarCondGenerationPanel(QWidget):
                 [row[0] for row in self._article_rows], refresh=True
             )
             return
+        selected = self._relations.currentItem()
+        selected_name = selected.text() if selected is not None else ""
+        selected_rules = self._rules_by_relation.get(selected_name, [])
+        char_count = len("\\r\\n".join(selected_rules))
         self._summary.setText(
             f"{self._relations.count():,} relation(s) | "
             f"{self._output.rowCount():,} definitions displayed | "
+            f"{char_count:,} characters displayed | "
             "All completed relations are ready"
         )
         self._finish_maintenance_progress(True, "VARCOND source data ready")
 
     def _on_maintenance_sources_failed(self, message: str) -> None:
+        was_reload = self._reload_requested
+        self._reload_requested = False
         self._finish_maintenance_load()
         self._maintenance_load_snapshot = None
         self._finish_maintenance_progress(False, "Price relation load failed")
+        service = self._maintenance_service
+        codes = [row[0] for row in self._article_rows]
+        if was_reload and service is not None and codes and service.has_sources(codes):
+            # The failed reload left the previous saved relations untouched.
+            self._generate_all()
+            self._summary.setText(
+                f"Reload failed - previous saved relations kept: {message}"
+            )
+            return
         self._summary.setText(f"Could not load relation data from PDM: {message}")
         self._output.setRowCount(0)
 
@@ -506,7 +631,7 @@ class VarCondGenerationPanel(QWidget):
         parent_codes = [
             code for code, _label, _article_id in self._article_rows
             if code.startswith(relation_prefix)
-            and (not needle or code.casefold().startswith(needle))
+            and _article_code_matches_filter(code, needle)
         ]
         if not parent_codes:
             self._rules_by_relation[relation_name] = []
@@ -552,7 +677,7 @@ class VarCondGenerationPanel(QWidget):
         parent_codes = [
             code for code, _label, _article_id in self._article_rows
             if code.startswith(relation_prefix)
-            and (not needle or code.casefold().startswith(needle))
+            and _article_code_matches_filter(code, needle)
         ]
         if not parent_codes:
             return
@@ -607,17 +732,53 @@ class VarCondGenerationPanel(QWidget):
         """
         return self.build_relation_objects(self.prepare_relation_export())
 
-    def prepare_relation_export(self) -> "_RelationExportPlan":
+    def prepare_relation_export(
+        self, selected_article_ids: set[str] | None = None,
+    ) -> "_RelationExportPlan":
         """GUI thread: validate and collect everything the relation build needs.
 
-        Raises ``RuntimeError`` with the user-facing message when nothing can be exported yet.
+        Maintenance incremental exports may pass the Articles-page selection.
+        A VARCOND relation is shared by every article in its prefix group, so a
+        partial group is rejected rather than replacing a shared relation body
+        with rules for only part of its existing article coverage.
         """
         if self._maintenance_load_task is not None:
             raise RuntimeError("Wait for PDM source loading to finish before exporting VARCOND relations.")
 
-        parent_codes = [row[0] for row in self._article_rows]
-        if not parent_codes:
+        all_rows = list(self._article_rows)
+        if not all_rows:
             raise RuntimeError("No parent articles with BOM data are available to export.")
+        selected = (
+            {str(value) for value in selected_article_ids if str(value)}
+            if selected_article_ids is not None else None
+        )
+        if selected is not None:
+            if not selected:
+                raise RuntimeError("Select one or more articles in the Articles page Export column first.")
+            rows_by_prefix: dict[str, list] = {}
+            length = self._relation_length.value()
+            for row in all_rows:
+                code, _label, article_id = row
+                prefix = self._relation_prefix(code, length)
+                rows_by_prefix.setdefault("PA_" + prefix, []).append(row)
+            selected_rows = []
+            for relation_name, rows in rows_by_prefix.items():
+                group_ids = {str(row[2]) for row in rows}
+                selected_in_group = group_ids & selected
+                if selected_in_group and selected_in_group != group_ids:
+                    raise RuntimeError(
+                        f"VARCOND relation {relation_name} is shared by {len(group_ids)} articles. "
+                        "Select every article in that relation group before exporting it."
+                    )
+                if selected_in_group:
+                    selected_rows.extend(rows)
+            article_rows = selected_rows
+        else:
+            article_rows = all_rows
+
+        parent_codes = [row[0] for row in article_rows]
+        if not parent_codes:
+            raise RuntimeError("The selected articles do not contain a complete VARCOND relation group.")
 
         if self._maintenance_check():
             service = self._ensure_maintenance_service()
@@ -626,8 +787,8 @@ class VarCondGenerationPanel(QWidget):
 
         length = self._relation_length.value()
         groups: dict[str, list[tuple[str, str]]] = {}
-        for code, _label, article_id in self._article_rows:
-            prefix = code[:length] if len(code) > length else code
+        for code, _label, article_id in article_rows:
+            prefix = self._relation_prefix(code, length)
             groups.setdefault("PA_" + prefix, []).append((code, article_id))
 
         xocd = getattr(self._context, "xocd_export_service", None)
@@ -761,10 +922,48 @@ class VarCondGenerationPanel(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._selected_exclusions = {name for name, row in rows.items() if row.checkState() == Qt.CheckState.Checked}
             self._exclusions.setText(",".join(sorted(self._selected_exclusions, key=str.casefold)))
+            self._rules_by_relation.clear()
             self._generate_all()
 
+    def _extract_relation_substitution_names(self, parent_codes: list[str]) -> list[str]:
+        """Return generated VARCOND property names plus option-increment names."""
+        names = set(self._extract_relation_properties(parent_codes))
+        snapshot = self._snapshot
+        if snapshot is None:
+            return sorted(names, key=str.casefold)
+
+        service = VarCondService(self._context)
+        id_by_code = {
+            str(article.id): (article.code or "")
+            for article in snapshot.articles if article.id is not None
+        }
+        id_for_code = {
+            code: article_id for article_id, code in id_by_code.items() if code
+        }
+        components_by_article = snapshot.article_components or {}
+        increments_by_prefix = snapshot.option_increments or {}
+
+        for parent_code in parent_codes:
+            article_id = id_for_code.get(parent_code)
+            if article_id is None:
+                continue
+            for component in components_by_article.get(article_id, []) or []:
+                sub_item = str(component.get("sub_item", "") or "").strip()
+                if not sub_item:
+                    continue
+                prefix = service._item_prefix(sub_item)
+                for increment in increments_by_prefix.get(prefix, []) or []:
+                    option_name = str(increment.get("option_name", "") or "").strip()
+                    if option_name:
+                        normalized = service._pcon_option_name(option_name)
+                        if normalized:
+                            names.add(normalized)
+        return sorted(names, key=str.casefold)
+
     def _edit_substitutions(self) -> None:
-        properties = self._extract_relation_properties([row[0] for row in self._article_rows])
+        properties = self._extract_relation_substitution_names(
+            [row[0] for row in self._article_rows]
+        )
         if not properties:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "Substitutions", "No properties were found for this relation.")
@@ -809,5 +1008,6 @@ class VarCondGenerationPanel(QWidget):
             self._substitutions.setText(",".join(
                 f"{old}={new}" for old, new in sorted(updated.items(), key=lambda pair: pair[0].casefold())
             ))
+            self._rules_by_relation.clear()
             self._generate_all()
 

@@ -232,7 +232,7 @@ class _Region(QWidget):
         super().__init__(parent)
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
-        self.layout_.setSpacing(theme.SPACE_3)
+        self.layout_.setSpacing(theme.SECTION_SPACING)
         self.setVisible(False)
 
     def add(self, widget: QWidget, stretch: int = 0) -> None:
@@ -249,7 +249,7 @@ class WorkflowPageLayout(QWidget):
         self.setObjectName("wfPage")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(theme.SPACE_3)
+        root.setSpacing(theme.SECTION_SPACING)
 
         self.header = WorkflowHeader(title, description, self, glyph)
         self._toolbar = _Region(self)
@@ -268,7 +268,11 @@ class WorkflowPageLayout(QWidget):
         return self._main.layout_
 
     def add_toolbar(self, widget: QWidget) -> None:
-        self._toolbar.add(widget)
+        # Keep the Toolbar surface compact and aligned to the right, matching
+        # the Articles workflow rather than stretching it across the page.
+        widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._toolbar.layout_.addWidget(widget, 0, Qt.AlignmentFlag.AlignRight)
+        self._toolbar.setVisible(True)
 
     def add_summary(self, widget: QWidget) -> None:
         self._summary.add(widget)

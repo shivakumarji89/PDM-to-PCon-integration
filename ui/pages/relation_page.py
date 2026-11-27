@@ -36,6 +36,7 @@ from models.relation_object import (
 )
 from services.engineering.engineering_relation_service import validate_relation_body
 from ui import theme
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -87,19 +88,23 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
         self._filter_timer.setInterval(200)
         self._filter_timer.timeout.connect(self._apply_filter)
 
-        self.add_content(self._build_toolbar())
+        # Keep source tabs and workflow controls in the same standard row.
+        self._content.removeWidget(self._source_tabs)
+        self.add_content(SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self))
         self.add_content(self._build_body())
         self.refresh()
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search relation name or body...")
         self._search.setClearButtonEnabled(True)
+        self._search.setMinimumWidth(220)
+        self._search.setMaximumWidth(320)
         self._search.textChanged.connect(self._schedule_filter)
-        layout.addWidget(self._search, 1)
+        layout.addWidget(self._search)
 
         layout.addWidget(QLabel("Type:", box))
         self._filter = QComboBox(box)

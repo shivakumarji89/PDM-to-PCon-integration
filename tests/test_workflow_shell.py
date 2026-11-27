@@ -201,7 +201,10 @@ def test_articles_shell_reverts_for_development(app):
     assert page._table.minimumHeight() == 280
     # every toolbar control is back in the original layout, same order
     layout = page._toolbar_box.layout()
-    assert [layout.itemAt(i).widget() for i in range(layout.count())] == [w for w, _ in page._toolbar_widgets]
+    # (the legacy layout also holds a leading stretch spacer, which has no widget)
+    restored = [layout.itemAt(i).widget() for i in range(layout.count()) if layout.itemAt(i).widget() is not None]
+    assert restored == [w for w, _ in page._toolbar_widgets]
+    assert layout.itemAt(0).widget() is None and layout.itemAt(0).spacerItem() is not None
 
 
 def test_articles_shell_kpis_use_real_counts(app):
@@ -216,10 +219,11 @@ def test_articles_shell_kpis_use_real_counts(app):
 
 def test_articles_shell_keeps_existing_controls_and_signals(app):
     page = _articles(WorkbenchModule.MAINTENANCE)
-    for name in ("_search", "_base_len_spin", "_apply_len_btn", "_actions_btn",
-                 "_view_combo", "_group_class_check"):
+    for name in ("_search", "_base_len_spin", "_apply_len_btn", "_actions_combo",
+                 "_view_combo"):
         assert page._shell_toolbar.isAncestorOf(getattr(page, name))
-    assert page._table.isSortingEnabled()
+    # Rows are always grouped under Class Creation headers, so column sorting is off by design.
+    assert not page._table.isSortingEnabled()
     # the original click handlers are still connected (signal receivers unchanged)
     assert page._copy_long_btn.receivers("2clicked(bool)") > 0
     assert page._apply_len_btn.receivers("2clicked(bool)") > 0

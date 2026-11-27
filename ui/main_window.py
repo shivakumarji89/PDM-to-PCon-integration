@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QProcess
+from PySide6.QtCore import Qt, QSettings, QProcess, QObject, QRunnable, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenuBar,
+    QProgressDialog,
     QSplitter,
     QSizePolicy,
     QStatusBar,
@@ -34,7 +35,7 @@ from core.config import AppConfig
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
-from core.modules import MODULE_ITEMS, WorkbenchModule, module_title, module_workflows
+from core.modules import MODULE_ITEMS, WorkbenchModule, is_active_module, module_title, module_workflows
 from ui.pages.articles_page import ArticlesPage
 from ui.pages.base_page import BasePage
 from ui.pages.class_creation_page import ClassCreationPage
@@ -71,6 +72,31 @@ from ui.widgets.data_table import standardize_table
 from ui.widgets.explorer_tree import standardize_tree
 
 
+class _ProjectOpenSignals(QObject):
+    """Signals emitted by the background saved-project reader."""
+
+    loaded = Signal(object)
+    failed = Signal(str)
+
+
+class _ProjectOpenWorker(QRunnable):
+    """Read and deserialize a saved project without blocking the GUI thread."""
+
+    def __init__(self, project_service, path: str, signals: _ProjectOpenSignals) -> None:
+        super().__init__()
+        self._project_service = project_service
+        self._path = path
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            project = self._project_service.read_project(self._path)
+        except Exception as error:  # defensive: report failures on the GUI thread
+            self._signals.failed.emit(str(error))
+        else:
+            self._signals.loaded.emit(project)
+
+
 class MainWindow(QMainWindow):
     """Top-level window hosting the workbench shell and workflow framework."""
 
@@ -92,6 +118,7 @@ class MainWindow(QMainWindow):
 
         self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
+        self._navigator.explorer_selected.connect(self._on_class_creation_explorer_selected)
         self._active_module: WorkbenchModule | None = None
         self._stack = CurrentPageStack(self)
         self._module_home = ModuleHomePage(self._context, self)
@@ -125,6 +152,16 @@ class MainWindow(QMainWindow):
         # collapse state) before activating the first workspace.
         self._restore_layout()
         self._geometry_fitted = False
+
+        # Keep the asynchronous project reader and staged UI refresh alive.
+        self._project_opening = False
+        self._project_open_worker = None
+        self._project_open_signals = None
+        self._project_open_progress = None
+        self._project_open_path = ""
+        self._project_open_pages: list[BasePage] = []
+        self._project_open_page_index = 0
+        self._project_open_project = None
 
         # Start at Level 1. No workflow is shown until a module is selected.
         self._show_module_home()
@@ -487,12 +524,22 @@ class MainWindow(QMainWindow):
         # reads state from the same manager and navigates via manager.jump_to.
         self._sidebar = WorkflowSidebar(container)
         self._sidebar.bind_manager(self._manager)
+        self._sidebar.explorer_selected.connect(self._on_class_creation_explorer_selected)
         self._sidebar.hide()
         layout.addWidget(self._sidebar, 1)
         return container
 
+    def _on_class_creation_explorer_selected(self, index: int) -> None:
+        """Route visible navigator sub-selection to the Class Creation explorer."""
+        page = self._pages.get(WorkflowStep.CLASS_CREATION)
+        if page is not None and hasattr(page, "_select_explorer"):
+            page._select_explorer(index)
+            self._navigator.set_explorer_selection(index)
+
     def _on_module_selected(self, module: WorkbenchModule) -> None:
         """Enter Level 2 and expose only the workflows for the selected module."""
+        if not is_active_module(module):
+            return  # archived modules (e.g. Development) cannot be entered
         self._active_module = module
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
@@ -647,6 +694,18 @@ class MainWindow(QMainWindow):
                 if step == WorkflowStep.PRICING and hasattr(page, "_restore_export_buttons"):
                     page._restore_export_buttons()
 
+            if step == WorkflowStep.CLASS_CREATION and not hasattr(page, "_maintenance_export_properties_values_button"):
+                properties_values_button = QPushButton("⇩  Export Properties & Values", page)
+                properties_values_button.setToolTip(
+                    "Export Properties and Values related to the selected Articles-page rows"
+                )
+                handler = getattr(page, "_on_export_properties_values_mdb", None)
+                if callable(handler):
+                    properties_values_button.clicked.connect(handler)
+                else:
+                    properties_values_button.setEnabled(False)
+                page._maintenance_export_properties_values_button = properties_values_button
+
             # A page may replace its header (Articles does this on first shell
             # activation). Attach the existing buttons once to the current header.
             if getattr(page, "_maintenance_actions_header", None) is not header:
@@ -655,6 +714,8 @@ class MainWindow(QMainWindow):
                 if step == WorkflowStep.PRODUCT:
                     header.add_action(page._maintenance_refresh_pdm_button, "secondary")
                 header.add_action(page._maintenance_export_mdb_button, "secondary")
+                if getattr(page, "_maintenance_export_properties_values_button", None) is not None:
+                    header.add_action(page._maintenance_export_properties_values_button, "secondary")
                 page._maintenance_actions_header = header
 
     def _refresh_app_header(self) -> None:
@@ -1036,10 +1097,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("New project")
 
     def _on_file_open(self) -> None:
-        """Open a saved ``.mkproj`` project and restore its session."""
-        if not self._confirm_discard_if_modified():
+        """Open a saved project with visible progress and background deserialization."""
+        if self._project_opening or not self._confirm_discard_if_modified():
             return
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1047,28 +1108,126 @@ class MainWindow(QMainWindow):
             self._last_project_dir(),
             "MK Project (*.mkproj);;All Files (*)",
         )
-        if not path:
-            return
+        if path:
+            self._start_project_open(path)
+
+    def _start_project_open(self, path: str) -> None:
+        """Show progress immediately, then deserialize the project off the UI thread."""
+        self._project_opening = True
+        self._project_open_path = path
+
+        progress = QProgressDialog("Reading saved project...", "", 0, 0, self)
+        progress.setWindowTitle("Opening Project")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setMinimumWidth(390)
+        self._project_open_progress = progress
+        progress.show()
+        progress.raise_()
+
+        signals = _ProjectOpenSignals(self)
+        signals.loaded.connect(self._on_project_open_loaded)
+        signals.failed.connect(self._on_project_open_failed)
+        self._project_open_signals = signals
+        worker = _ProjectOpenWorker(self._context.project_service, path, signals)
+        self._project_open_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_project_open_loaded(self, project) -> None:
+        """Activate the deserialized snapshot, then refresh pages in short UI steps."""
         try:
-            project = self._context.project_service.load_project(path)
-        except Exception as error:  # noqa: BLE001 (surface any load failure)
-            QMessageBox.critical(
-                self, "Open Project", f"Could not open project:\n{error}"
+            self._context.project_service.activate_project(project, self._project_open_path)
+            self._remember_project_dir(self._project_open_path)
+            self._remember_project_path(self._project_open_path)
+            if project.selected_product is not None:
+                label = (
+                    project.selected_product.code
+                    or project.selected_product.name
+                    or "Product"
+                )
+                self._product_status.setText(label)
+        except Exception as error:  # noqa: BLE001
+            self._on_project_open_failed(str(error))
+            return
+
+        self._project_open_project = project
+        self._project_open_pages = list(self._refreshable_pages)
+        self._project_open_page_index = 0
+        progress = self._project_open_progress
+        if progress is not None:
+            progress.setRange(0, max(1, len(self._project_open_pages) + 1))
+            progress.setValue(0)
+            progress.setLabelText("Restoring project workspaces...")
+        QTimer.singleShot(0, self._refresh_next_project_page)
+
+    def _refresh_next_project_page(self) -> None:
+        """Refresh one workspace per event-loop turn so progress stays visible."""
+        if not self._project_opening:
+            return
+
+        total = len(self._project_open_pages)
+        index = self._project_open_page_index
+        if index < total:
+            page = self._project_open_pages[index]
+            progress = self._project_open_progress
+            if progress is not None:
+                progress.setValue(index)
+                progress.setLabelText(f"Refreshing workspace {index + 1} of {total}...")
+            try:
+                page.refresh()
+            except Exception as error:  # noqa: BLE001
+                self._on_project_open_failed(
+                    f"Project data was loaded, but a workspace could not refresh:\n{error}"
+                )
+                return
+            self._project_open_page_index += 1
+            QTimer.singleShot(0, self._refresh_next_project_page)
+            return
+
+        try:
+            self._manager.refresh()
+            project = self._project_open_project
+            if project is not None and project.current_step is not None:
+                self._manager.jump_to(project.current_step)
+        except Exception as error:  # noqa: BLE001
+            self._on_project_open_failed(
+                f"Project data was loaded, but workspace finalization failed:\n{error}"
             )
             return
-        self._remember_project_dir(path)
-        self._remember_project_path(path)
-        if project.selected_product is not None:
-            label = (
-                project.selected_product.code
-                or project.selected_product.name
-                or "Product"
-            )
-            self._product_status.setText(label)
-        self.refresh_workspaces()
-        if project.current_step is not None:
-            self._manager.jump_to(project.current_step)
-        self.statusBar().showMessage(f"Opened {project.name or path}")
+
+        path = self._project_open_path
+        project = self._project_open_project
+        self.statusBar().showMessage(
+            f"Opened {project.name or path}" if project is not None else f"Opened {path}"
+        )
+        self._finish_project_open()
+
+    def _on_project_open_failed(self, message: str) -> None:
+        """Close the progress surface and report a project-open failure."""
+        self._finish_project_open()
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.critical(
+            self, "Open Project", f"Could not complete opening the project:\n{message}"
+        )
+
+    def _finish_project_open(self) -> None:
+        """Release worker/progress state after success or failure."""
+        self._project_opening = False
+        progress = self._project_open_progress
+        self._project_open_progress = None
+        if progress is not None:
+            progress.close()
+            progress.deleteLater()
+        self._project_open_worker = None
+        self._project_open_signals = None
+        self._project_open_path = ""
+        self._project_open_pages = []
+        self._project_open_page_index = 0
+        self._project_open_project = None
 
     def _on_file_save(self) -> bool:
         """Save the active project; prompt for a path on first save.
@@ -1252,7 +1411,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         from ui.widgets.xocd_publish_progress import XocdPublishProgress
 
-        if not self._context.snapshot_manager.has_snapshot():
+        if self._xocd_source_snapshot() is None:
             QMessageBox.information(self, "Export XOCD", "Load a product first.")
             return
 
@@ -1403,9 +1562,11 @@ class MainWindow(QMainWindow):
             return
 
         if stage == "update":
-            snapshot = self._context.active_snapshot
-            psvc = self._context.price_update_service
-            standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+            try:
+                snapshot, standardised = self._prepare_xocd_snapshot()
+            except Exception as exc:
+                self._xocd_publish_failed(f"XOCD export failed:\n\n{exc}")
+                return
             self._xocd_publish_standardised = standardised
 
             self._set_xocd_publish_stage(
@@ -1414,6 +1575,7 @@ class MainWindow(QMainWindow):
             self._run_xocd_export(
                 snapshot, xocd, self._on_xocd_export_done,
                 lambda message: self._xocd_publish_failed(f"XOCD export failed:\n\n{message}"),
+                copy_snapshot=False,
             )
             return
 
@@ -1566,7 +1728,33 @@ class MainWindow(QMainWindow):
             )
             return
 
-    def _run_xocd_export(self, snapshot, xocd, on_result, on_error) -> None:
+    def _xocd_source_snapshot(self):
+        """The snapshot XOCD is exported from.
+
+        Maintenance always exports the PDM snapshot (like the other Maintenance exports), never
+        the active one, which may be the released-MDB import. Other modules keep the active one.
+        """
+        if self._active_module == WorkbenchModule.MAINTENANCE:
+            return self._context.pdm_snapshot
+        return self._context.active_snapshot
+
+    def _prepare_xocd_snapshot(self):
+        """``(export_copy, standardised)`` shared by the SVN and TortoiseSVN paths.
+
+        The registry's base-length overrides are applied to an isolated copy, so neither the live
+        PDM snapshot nor the MDB import is modified. Raises ``RuntimeError`` without a product.
+        """
+        import copy
+
+        source = self._xocd_source_snapshot()
+        if source is None or source.product is None:
+            raise RuntimeError("No PDM product is loaded. Load a product first.")
+        export_snapshot = copy.deepcopy(source)
+        psvc = self._context.price_update_service
+        standardised = psvc.apply_registry(export_snapshot, psvc.registry_path())
+        return export_snapshot, standardised
+
+    def _run_xocd_export(self, snapshot, xocd, on_result, on_error, copy_snapshot: bool = True) -> None:
         """Run ``export_series`` on a worker thread from an isolated copy of the snapshot.
 
         ``on_result(result)`` / ``on_error(message)`` run on the GUI thread. The publish dialog
@@ -1579,7 +1767,7 @@ class MainWindow(QMainWindow):
             on_error("Another export is still running. Wait for it to finish first.")
             return
         try:
-            export_snapshot = copy.deepcopy(snapshot)
+            export_snapshot = copy.deepcopy(snapshot) if copy_snapshot else snapshot
             service = self._context.xocd_export_service
         except Exception:
             runner.end()
@@ -1646,9 +1834,7 @@ class MainWindow(QMainWindow):
 
         if stage == "update":
             try:
-                snapshot = self._context.active_snapshot
-                psvc = self._context.price_update_service
-                standardised = psvc.apply_registry(snapshot, psvc.registry_path())
+                snapshot, standardised = self._prepare_xocd_snapshot()
             except Exception as exc:
                 self._xocd_publish_failed(f"XOCD export failed: {exc}")
                 return
@@ -1656,6 +1842,7 @@ class MainWindow(QMainWindow):
                 snapshot, xocd,
                 lambda result: self._on_xocd_tortoise_export_done(result, standardised),
                 lambda message: self._xocd_publish_failed(f"XOCD export failed: {message}"),
+                copy_snapshot=False,
             )
             return
 
@@ -1724,6 +1911,155 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(self, "Export XOCD", message)
 
+    def _on_export_varcond_relations_session(self, page, snapshot) -> None:
+        """Incrementally export selected complete VARCOND groups into the product MDB."""
+        from copy import copy
+        from PySide6.QtWidgets import QMessageBox
+        from services.pricing_relation_service import prepare_price_relation_export
+        from services.relation_mdb_export_service import RelationMdbExportService
+
+        title = "Export VARCOND Relations"
+        articles_page = next(
+            (item for item in (getattr(self, "_pages", {}) or {}).values()
+             if callable(getattr(item, "selected_export_article_ids", None))),
+            None,
+        )
+        selected_ids = (
+            articles_page.selected_export_article_ids() if articles_page is not None else set()
+        )
+        if not selected_ids:
+            QMessageBox.information(
+                self, title,
+                "Select one or more articles in the Articles page Export column first.",
+            )
+            return
+        try:
+            sessions = self._context.mdb_export_session_service
+            session = sessions.get_active(snapshot)
+        except Exception as exc:
+            QMessageBox.warning(self, title, str(exc))
+            return
+        if session is None:
+            QMessageBox.information(
+                self, title, "Export Articles first to initialize this product's MDB session."
+            )
+            return
+        from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+        if not ensure_workspace_type_known(self, sessions, session, title):
+            return
+        panel = page._varcond_panel
+        try:
+            plan = panel.prepare_relation_export(selected_article_ids=selected_ids)
+        except RuntimeError as exc:
+            QMessageBox.information(self, title, str(exc))
+            return
+
+        if QMessageBox.question(
+            self, title,
+            "This updates the existing product MDB session with the generated VARCOND "
+            "relations for the selected complete relation groups. It does not create a "
+            "second MDB or rebuild unrelated product data.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        runner = self._exports()
+        if not runner.begin(title):
+            self._export_already_running(title)
+            return
+
+        def failed(message: str) -> None:
+            runner.end()
+            QMessageBox.warning(self, title, message)
+
+        def generation_finished(payload) -> None:
+            runner.end()
+            kind, value = payload
+            if kind == "message":
+                QMessageBox.information(self, title, value)
+                return
+            export_snapshot = copy(snapshot)
+            service = RelationMdbExportService(self._context)
+            if not runner.begin(title + " Preview"):
+                self._export_already_running(title)
+                return
+
+            def preview_finished(preview: dict) -> None:
+                runner.end()
+                if not preview.get("ok"):
+                    QMessageBox.warning(
+                        self, title, preview.get("error", "VARCOND export preview failed.")
+                    )
+                    return
+                counts = preview.get("counts", {})
+                summary = (
+                    f"Destination: {session.mdb_path}\n\n"
+                    + "\n".join(
+                        f"{name.replace('_', ' ').title()}: {count}"
+                        for name, count in counts.items()
+                    )
+                    + "\n\nExisting relation and relation-object IDs will be preserved. "
+                      "Only missing rows and changed relation bodies / entity links will be written."
+                )
+                if preview.get("warnings"):
+                    summary += (
+                        "\n\nExisting relation-object links (kept, NOT overwritten):\n"
+                        + "\n".join(f"• {m}" for m in preview["warnings"][:8])
+                    )
+                if QMessageBox.question(
+                    self, "Confirm " + title, summary,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
+                    return
+                if not runner.begin(title):
+                    self._export_already_running(title)
+                    return
+
+                def write_finished(result: dict) -> None:
+                    runner.end()
+                    if not result.get("ok"):
+                        QMessageBox.critical(
+                            self, title, result.get("error", "VARCOND relation export failed.")
+                        )
+                        return
+                    QMessageBox.information(
+                        self, title,
+                        "VARCOND relations were exported to the existing product MDB.\n\n"
+                        + "\n".join(
+                            f"{name.replace('_', ' ').title()}: {count}"
+                            for name, count in result.get("counts", {}).items()
+                        )
+                        + f"\n\nRead-back verified: {'Yes' if result.get('verified') else 'No changes required'}",
+                    )
+
+                runner.run(
+                    lambda _emit: service.export_to_session(
+                        export_snapshot, session, selected_article_ids=selected_ids,
+                        workflow="pricing_relations",
+                    ),
+                    finished=write_finished,
+                    failed=failed,
+                )
+
+            def preview_work(_emit):
+                prepare_price_relation_export(self._context, export_snapshot, value)
+                return service.export_to_session(
+                    export_snapshot, session, selected_article_ids=selected_ids,
+                    dry_run=True, workflow="pricing_relations",
+                )
+
+            runner.run(preview_work, finished=preview_finished, failed=failed)
+
+        def work(emit):
+            try:
+                return "relations", panel.build_relation_objects(plan, emit)
+            except RuntimeError as exc:
+                return "message", str(exc)
+
+        runner.run(work, finished=generation_finished, failed=failed)
+
     def _on_export_varcond_relations_mdb(self, page) -> None:
         """Include the complete generated VARCOND relation set in the MDB export."""
         from PySide6.QtWidgets import QMessageBox
@@ -1743,6 +2079,9 @@ class MainWindow(QMainWindow):
         )
         if snapshot is None or snapshot.product is None:
             QMessageBox.information(self, "Export VARCOND Relations", "Load a product first.")
+            return
+        if self._active_module == WorkbenchModule.MAINTENANCE:
+            self._on_export_varcond_relations_session(page, snapshot)
             return
         title = "Export VARCOND Relations"
         panel = page._varcond_panel
@@ -1882,6 +2221,11 @@ class MainWindow(QMainWindow):
 
                 emit("Preparing the price relations...")
                 prepare_price_relation_export(self._context, export_snapshot, generated_relations)
+            emit("Standardising classes per base article...")
+            # One independent <BASE>_ATTRIBUTE/_OPTION/_VISUAL set per base article, built on the
+            # isolated export copy so Development classes are never touched.
+            self._context.engineering_class_service.standardise_by_base_article(
+                export_snapshot, selected_article_ids)
             emit("Writing the MDB export...")
             options = {"overwrite": True} if overwrite else {}
             return service.export(
@@ -1951,6 +2295,11 @@ class MainWindow(QMainWindow):
                 return
             sessions.discard(snapshot)
             session = None
+
+        if session is not None:
+            from ui.dialogs.workspace_type_dialog import ensure_workspace_type_known
+            if not ensure_workspace_type_known(self, sessions, session, title):
+                return
 
         prepare = None          # worker callable that creates / attaches the session
         created = False
@@ -2027,6 +2376,8 @@ class MainWindow(QMainWindow):
                     f"Articles updated: {result['updated']}\n"
                     f"Articles skipped (unchanged or ambiguous): {result['skipped']}\n"
                     f"Code schemes created: {result['schemes_created']}"
+                    + (f"\nExisting links preserved (not re-pointed): {result['links_preserved']}"
+                       if result.get("links_preserved") else "")
                 )
                 if result.get("warnings"):
                     text += "\n\nWarnings:\n" + "\n".join(f"• {m}" for m in result["warnings"][:8])

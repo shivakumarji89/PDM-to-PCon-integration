@@ -17,7 +17,7 @@ from core.pdm_connection import PdmConnectionState, switch_pdm_database, verify_
 from repositories.pdm_repository import PDMRepository
 from tests.ocd_engine.ocd_repo_fixture import write_plain_range
 
-KNOLL_WORKSPACE = r"C:\KnollSVN\Staging\HermanMiller\_repository"
+KNOLL_WORKSPACE = r"C:\KnollSVN\Staging\Knoll\_repository\kno"   # corrected default (a1a92d6)
 
 
 @pytest.fixture(scope="module")
