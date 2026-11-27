@@ -64,6 +64,7 @@ from ui import theme
 from ui.components.flow_layout import FlowFrame
 from ui.components import CardRow, DataCard, DetailTabs, KpiCard, WorkflowHeader
 from ui.components.workflow_styles import set_button_role, style_table
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     SOURCE_PDM,
@@ -206,10 +207,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(theme.CONTROL_SPACING)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
 
         layout.addStretch(1)
         self._search = QLineEdit(box)
