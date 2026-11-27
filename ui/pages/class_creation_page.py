@@ -413,8 +413,20 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             # This selected card's former group-box title space must not push
             # the selector away from the content; tabs replace that title.
             card.setStyleSheet(
-                "QGroupBox#classCreationCard { margin-top: 0px; }"
-                "QGroupBox#classCreationCard::title { padding: 0px; }"
+                f"""
+                QGroupBox#classCreationCard {{
+                    border: 1px solid {theme.LINE};
+                    border-radius: {theme.RADIUS_LG}px;
+                    margin-top: 0px;
+                    background: {theme.SURFACE};
+                }}
+                QGroupBox#classCreationCard::title {{
+                    left: 12px;
+                    padding: 0px;
+                    color: {theme.INK};
+                    font-weight: 600;
+                }}
+                """
             )
             page = QWidget(stack)
             page_layout = QVBoxLayout(page)
