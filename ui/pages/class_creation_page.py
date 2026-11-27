@@ -386,75 +386,43 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         container = QWidget(self)
         self._body_layout = QVBoxLayout(container)
         self._body_layout.setContentsMargins(0, 0, 0, 0)
-        self._body_layout.setSpacing(theme.SECTION_SPACING)
+        self._body_layout.setSpacing(0)
 
-        cards = (
-            self._build_attributes_card(),
-            self._build_options_card(),
-            self._build_visual_card(),
-        )
+        cards = (self._build_attributes_card(), self._build_options_card(), self._build_visual_card())
         labels = ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer")
         tables = (self._attr_master, self._opt_master, self._visual_master)
-        self._explorer_filters = []
         self._cards = list(cards)
+        self._explorer_filters = []
+        self._explorer_title_buttons = []
 
-        # The explorer heading row is the selector: no additional raised tab strip.
-        selector = QWidget(container)
-        selector_layout = QHBoxLayout(selector)
-        selector_layout.setContentsMargins(0, 0, 0, 0)
-        selector_layout.setSpacing(theme.SPACE_2)
-        self._explorer_selector_buttons = []
+        # The existing explorer title treatment is used as a compact title selector,
+        # not a tab strip: plain title text with a selected-title emphasis.
+        title_row = QWidget(container)
+        title_layout = QHBoxLayout(title_row)
+        title_layout.setContentsMargins(0, 0, 0, theme.SPACE_2)
+        title_layout.setSpacing(theme.SPACE_3)
         stack = QStackedWidget(container)
         self._explorer_stack = stack
 
         for index, (card, label, table) in enumerate(zip(cards, labels, tables)):
             card.setCheckable(False)
             card.setTitle("")
-            # This selected card's former group-box title space must not push
-            # the selector away from the content; tabs replace that title.
-            card.setStyleSheet(
-                f"""
-                QGroupBox#classCreationCard {{
-                    border: 1px solid {theme.LINE};
-                    border-radius: {theme.RADIUS_LG}px;
-                    margin-top: 0px;
-                    background: {theme.SURFACE};
-                }}
-                QGroupBox#classCreationCard::title {{
-                    left: 12px;
-                    padding: 0px;
-                    color: {theme.INK};
-                    font-weight: 600;
-                }}
-                """
+            title = QPushButton(label, title_row)
+            title.setFlat(True)
+            title.setCheckable(True)
+            title.setCursor(Qt.CursorShape.PointingHandCursor)
+            title.setStyleSheet(
+                "QPushButton { border: none; padding: 2px 0px; background: transparent; "
+                "color: " + theme.INK_SOFT + "; text-align: left; font-weight: 500; } "
+                "QPushButton:checked { color: " + theme.INK + "; font-weight: 600; }"
             )
-            page = QWidget(stack)
-            page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(0, 0, 0, 0)
-            page_layout.setSpacing(0)
-
-            # Compact clickable heading, visually replacing the old group heading.
-            heading = QPushButton(label, selector)
-            heading.setCheckable(True)
-            heading.setFlat(True)
-            heading.setCursor(Qt.CursorShape.PointingHandCursor)
-            heading.setStyleSheet(
-                "QPushButton { padding: 6px 12px; border: 1px solid "
-                + theme.LINE + "; border-bottom: 2px solid transparent; "
-                "background: transparent; color: "
-                + theme.INK_SOFT + "; } "
-                "QPushButton:checked { border-bottom: 2px solid "
-                + theme.ACCENT + "; color: " + theme.INK + "; "
-                "background: " + theme.SURFACE + "; font-weight: 600; }"
-            )
-            heading.clicked.connect(lambda checked=False, i=index: self._select_explorer(i))
-            selector_layout.addWidget(heading)
-            self._explorer_selector_buttons.append(heading)
+            title.clicked.connect(lambda checked=False, i=index: self._select_explorer(i))
+            title_layout.addWidget(title)
+            self._explorer_title_buttons.append(title)
 
             filter_row = QWidget(card)
             filter_layout = QHBoxLayout(filter_row)
-            filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
-                                            theme.SPACE_3, theme.SPACE_2)
+            filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2, theme.SPACE_3, theme.SPACE_2)
             filter_layout.setSpacing(theme.SPACE_2)
             filter_layout.addWidget(QLabel("Filter:", filter_row))
             edit = QLineEdit(filter_row)
@@ -465,12 +433,17 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
             filter_layout.addWidget(edit, 1)
             card.layout().insertWidget(0, filter_row)
-            page_layout.addWidget(card, 1)
+
+            page = QWidget(stack)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(0)
+            page_layout.addWidget(card)
             stack.addWidget(page)
             self._explorer_filters.append(edit)
 
-        selector_layout.addStretch(1)
-        self._body_layout.addWidget(selector)
+        title_layout.addStretch(1)
+        self._body_layout.addWidget(title_row)
         self._body_layout.addWidget(stack, 1)
         self._select_explorer(0)
         return container
@@ -479,11 +452,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         if not hasattr(self, "_explorer_stack") or not 0 <= index < self._explorer_stack.count():
             return
         self._explorer_stack.setCurrentIndex(index)
-        for i, button in enumerate(self._explorer_selector_buttons):
-            button.setChecked(i == index)
+        for i, title in enumerate(self._explorer_title_buttons):
+            title.setChecked(i == index)
         tables = (self._attr_master, self._opt_master, self._visual_master)
-        table = tables[index]
-        header = table.horizontalHeader()
+        header = tables[index].horizontalHeader()
         header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
 
