@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QSplitter,
+    QScrollArea,
     QTabWidget,
     QSizePolicy,
     QWidget,
@@ -387,53 +388,84 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Use the work-table card heading area itself for workspace navigation.
-        self._workspace_tabs = QTabWidget(container)
-        self._workspace_tabs.setObjectName("classCreationWorkspaceTabs")
-        self._workspace_tabs.setDocumentMode(False)
-        self._workspace_tabs.setStyleSheet(
-            f"""
-            QTabWidget#classCreationWorkspaceTabs::pane {{
-                border: 1px solid {theme.LINE};
-                border-radius: {theme.RADIUS_LG}px;
-                background: {theme.SURFACE};
-            }}
-            QTabWidget#classCreationWorkspaceTabs::tab-bar {{
-                alignment: left;
-            }}
-            QTabWidget#classCreationWorkspaceTabs QTabBar::tab {{
-                padding: 5px 12px;
-                border: 1px solid {theme.LINE};
-                border-bottom: none;
-                background: {theme.SURFACE_ALT};
-                color: {theme.INK_SOFT};
-            }}
-            QTabWidget#classCreationWorkspaceTabs QTabBar::tab:selected {{
-                border: 2px solid {theme.ACCENT};
-                background: {theme.ACCENT_SOFT};
-                color: {theme.ACCENT_DARK};
-                font-weight: 600;
-            }}
-            """
-        )
         cards = (
             self._build_attributes_card(),
             self._build_options_card(),
             self._build_visual_card(),
         )
-        for card in cards:
-            self._cards.append(card)
+        self._explorer_filters = []
+        for card, label, table in zip(
+            cards, ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer"),
+            (self._attr_master, self._opt_master, self._visual_master),
+        ):
             card.setCheckable(False)
-            card.setTitle("")
-            card.setStyleSheet(
-                f"QGroupBox#classCreationCard {{ border: none; margin-top: 0; "
-                f"background: {theme.SURFACE}; }}"
-            )
-            self._workspace_tabs.addTab(card, card.objectName() or "")
-        self._body_layout.addWidget(self._workspace_tabs, 1)
-        self._workspace_tabs.currentChanged.connect(self._select_workspace)
-        self._select_workspace(0)
+            card.setTitle(label)
+            card_layout = card.layout()
+            filter_row = QWidget(card)
+            filter_layout = QHBoxLayout(filter_row)
+            filter_layout.setContentsMargins(0, 0, 0, 4)
+            filter_layout.setSpacing(theme.SPACE_2)
+            filter_layout.addWidget(QLabel("Filter:", filter_row))
+            edit = QLineEdit(filter_row)
+            edit.setPlaceholderText("Filter the explorer...")
+            edit.setClearButtonEnabled(True)
+            edit.setMinimumWidth(180)
+            edit.setMaximumWidth(320)
+            edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
+            filter_layout.addWidget(edit, 1)
+            card_layout.insertWidget(0, filter_row)
+            self._explorer_filters.append(edit)
+            self._cards.append(card)
+
+        scroll = QScrollArea(container)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget(scroll)
+        stack = QVBoxLayout(content)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(theme.SECTION_SPACING)
+        for card in cards:
+            stack.addWidget(card)
+        stack.addStretch(1)
+        scroll.setWidget(content)
+        self._body_layout.addWidget(scroll, 1)
         return container
+
+    def _filter_explorer_table(self, table: QTableWidget, term: str) -> None:
+        term = (term or "").strip()
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            meta = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            # Keep group headings visible when the group contains matching rows.
+            is_group_header = item is not None and not meta and item.text().strip()
+            if is_group_header:
+                next_row = row + 1
+                matched = False
+                while next_row < table.rowCount():
+                    next_item = table.item(next_row, 0)
+                    next_meta = next_item.data(Qt.ItemDataRole.UserRole) if next_item else None
+                    if next_item is not None and not next_meta:
+                        break
+                    row_text = " ".join(
+                        table.item(next_row, col).text()
+                        for col in range(table.columnCount())
+                        if table.item(next_row, col) is not None
+                    )
+                    if not term or text_match(term, row_text):
+                        matched = True
+                        break
+                    next_row += 1
+                table.setRowHidden(row, bool(term) and not matched)
+                continue
+            if table is self._visual_master and item is not None and item.text() == "Type to add a property...":
+                table.setRowHidden(row, False)
+                continue
+            row_text = " ".join(
+                table.item(row, col).text()
+                for col in range(table.columnCount())
+                if table.item(row, col) is not None
+            )
+            table.setRowHidden(row, bool(term) and not text_match(term, row_text))
 
     def _select_workspace(self, index: int) -> None:
         if not self._workspace_tabs:
