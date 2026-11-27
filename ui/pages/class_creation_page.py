@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSplitter,
     QStackedWidget,
+    QSizePolicy,
     QWidget,
 )
 
