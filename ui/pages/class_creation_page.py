@@ -66,6 +66,7 @@ from services.engineering.engineering_reduction_service import (
 from services.mdb_classification_service import MdbClassificationService
 from services.class_creation_selection_service import build_class_creation_scope
 from ui import theme
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -307,10 +308,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         # Match the Articles workflow's compact toolbar presentation: controls
         # only, without a visible "Toolbar" group-box caption.
-        box = QGroupBox(self)
-        layout = QHBoxLayout(box)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(theme.CONTROL_SPACING)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
 
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search attributes, options or values...")
