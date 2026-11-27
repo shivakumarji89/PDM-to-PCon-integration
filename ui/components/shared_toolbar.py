@@ -5,7 +5,7 @@ container, spacing, sizing and presentation metrics.
 """
 from __future__ import annotations
 
-from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QSizePolicy, QWidget
 from ui import theme
 
 
@@ -15,7 +15,7 @@ class SharedToolbar(QGroupBox):
     def __init__(self, parent: QWidget | None = None, *, title: str = "") -> None:
         super().__init__(title, parent)
         self.setObjectName("sharedWorkflowToolbar")
-        self.setSizePolicy(self.sizePolicy().Policy.Maximum, self.sizePolicy().Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(
             theme.GROUP_PADDING, theme.GROUP_PADDING,
