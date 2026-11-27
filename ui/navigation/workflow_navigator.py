@@ -86,7 +86,8 @@ class WorkflowNavigator(QWidget):
             if item is self._subnav_item:
                 # QListWidget may report zero for an embedded row when its
                 # widget is hidden; reserve its full height explicitly.
-                total += 3 * 34 + 8
+                if not item.isHidden():
+                    total += 3 * 34 + 8
             else:
                 total += max(0, self._list.sizeHintForRow(row))
         self._list.setFixedHeight(total)
