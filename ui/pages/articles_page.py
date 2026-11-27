@@ -64,7 +64,7 @@ from ui import theme
 from ui.components.flow_layout import FlowFrame
 from ui.components import CardRow, DataCard, DetailTabs, KpiCard, WorkflowHeader
 from ui.components.workflow_styles import set_button_role, style_table
-from ui.components.shared_toolbar import SharedToolbar
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     SOURCE_PDM,
@@ -333,13 +333,7 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         # then the titled Toolbar group box as a sibling in the same row.
         self._toolbar_box = self._build_toolbar()
         self._content.removeWidget(self._source_tabs)
-        self._source_toolbar_row = QWidget(self)
-        source_toolbar_layout = QHBoxLayout(self._source_toolbar_row)
-        source_toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        source_toolbar_layout.setSpacing(theme.SECTION_SPACING)
-        source_toolbar_layout.addWidget(self._source_tabs)
-        source_toolbar_layout.addStretch(1)
-        source_toolbar_layout.addWidget(self._toolbar_box)
+        self._source_toolbar_row = SharedSourceToolbarRow(self._source_tabs, self._toolbar_box, self)
         self.add_content(self._source_toolbar_row)
         layout.addWidget(self._build_table(), 1)
         return container
