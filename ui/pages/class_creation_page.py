@@ -397,31 +397,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._cards = list(cards)
         self._explorer_title_buttons = []
 
-        # Plain explorer titles are the selector. Keep the approved title layout,
-        # while showing only the selected explorer's content below.
-        title_row = QWidget(container)
-        title_layout = QHBoxLayout(title_row)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(theme.SPACE_3)
-        stack = QStackedWidget(container)
-        self._explorer_stack = stack
-
-        for index, (card, label, table) in enumerate(zip(cards, labels, tables)):
+        # The explorer is selected from the nested workflow sidebar. Keep only
+        # the stacked content in the workspace, so the tables start directly
+        # below the source toolbar without a second selector row.
+        for card in cards:
             card.setCheckable(False)
             card.setTitle("")
-            title = QPushButton(label, title_row)
-            title.setFlat(True)
-            title.setCheckable(True)
-            title.setCursor(Qt.CursorShape.PointingHandCursor)
-            title.setStyleSheet(
-                "QPushButton { border: none; padding: 2px 0px; background: transparent; "
-                "color: " + theme.INK_SOFT + "; text-align: left; font-weight: 500; } "
-                "QPushButton:checked { color: " + theme.INK + "; font-weight: 600; }"
-            )
-            title.clicked.connect(lambda checked=False, i=index: self._select_explorer(i))
-            title_layout.addWidget(title)
-            self._explorer_title_buttons.append(title)
-
             page = QWidget(stack)
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(0, 0, 0, 0)
@@ -429,8 +410,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             page_layout.addWidget(card)
             stack.addWidget(page)
 
-        title_layout.addStretch(1)
-        self._body_layout.addWidget(title_row)
         self._body_layout.addWidget(stack, 1)
         self._select_explorer(0)
         return container
