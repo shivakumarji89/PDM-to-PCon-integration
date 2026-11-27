@@ -410,6 +410,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         for index, (card, label, table) in enumerate(zip(cards, labels, tables)):
             card.setCheckable(False)
             card.setTitle("")
+            # This selected card's former group-box title space must not push
+            # the selector away from the content; tabs replace that title.
+            card.setStyleSheet(
+                "QGroupBox#classCreationCard { margin-top: 0px; }"
+                "QGroupBox#classCreationCard::title { padding: 0px; }"
+            )
             page = QWidget(stack)
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(0, 0, 0, 0)
