@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from core.engines.filtering import text_match
 from models.text_block import TEXT_TYPE_CODES, TextBlock
 from ui import theme
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -79,8 +80,8 @@ class TextPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search text name or content...")
         self._search.setClearButtonEnabled(True)
