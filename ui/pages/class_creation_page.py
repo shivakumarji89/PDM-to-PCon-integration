@@ -401,41 +401,29 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         explorers = QTabWidget(container)
         explorers.setDocumentMode(True)
         explorers.setTabPosition(QTabWidget.TabPosition.North)
-        explorers.setStyleSheet(
-            "QTabWidget::pane { border: 1px solid " + theme.LINE + "; "
-            "border-radius: " + str(theme.RADIUS_LG) + "px; }"
-        )
         self._explorer_tabs = explorers
 
+        # Reuse the original explorer cards and headings directly as tab pages.
+        # Do not add another wrapper heading/card layer around them.
         for card, label, table in zip(cards, labels, tables):
             card.setCheckable(False)
-            card.setTitle("")
-            panel = QWidget(explorers)
-            panel_layout = QVBoxLayout(panel)
-            panel_layout.setContentsMargins(0, 0, 0, 0)
-            panel_layout.setSpacing(theme.SPACE_2)
-
-            header = QWidget(panel)
-            header_layout = QHBoxLayout(header)
-            header_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
+            card.setTitle(label)
+            filter_row = QWidget(card)
+            filter_layout = QHBoxLayout(filter_row)
+            filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
                                             theme.SPACE_3, theme.SPACE_2)
-            header_layout.setSpacing(theme.SPACE_2)
-            heading = QLabel(label, header)
-            heading.setFont(theme.font("card_title"))
-            header_layout.addWidget(heading)
-            header_layout.addStretch(1)
-            header_layout.addWidget(QLabel("Filter:", header))
-            edit = QLineEdit(header)
+            filter_layout.setSpacing(theme.SPACE_2)
+            filter_layout.addWidget(QLabel("Filter:", filter_row))
+            edit = QLineEdit(filter_row)
             edit.setPlaceholderText("Filter the explorer...")
             edit.setClearButtonEnabled(True)
             edit.setMinimumWidth(180)
             edit.setMaximumWidth(320)
             edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
-            header_layout.addWidget(edit)
-            panel_layout.addWidget(header)
-            panel_layout.addWidget(card, 1)
+            filter_layout.addWidget(edit, 1)
+            card.layout().insertWidget(0, filter_row)
             self._explorer_filters.append(edit)
-            explorers.addTab(panel, label)
+            explorers.addTab(card, label)
 
         self._explorer_tabs.currentChanged.connect(self._on_explorer_tab_changed)
         self._body_layout.addWidget(explorers, 1)
