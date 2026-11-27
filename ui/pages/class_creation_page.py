@@ -407,7 +407,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # Do not add another wrapper heading/card layer around them.
         for card, label, table in zip(cards, labels, tables):
             card.setCheckable(False)
-            card.setTitle(label)
+            card.setTitle("")
             filter_row = QWidget(card)
             filter_layout = QHBoxLayout(filter_row)
             filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
