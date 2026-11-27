@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.pricing_relation_service import PricingRelationService
-from ui.components.shared_toolbar import SharedToolbar
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
 from ui.widgets.maintenance_source_tabs import (
@@ -62,12 +62,9 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
             "Set every article's reduced base to the characters before its first dot."
         )
         self._dot_base_button.clicked.connect(self._on_base_to_dot_all)
-        self._source_controls_row = QWidget(self)
-        source_controls = QHBoxLayout(self._source_controls_row)
-        source_controls.setContentsMargins(0, 0, 0, 0)
-        source_controls.setSpacing(8)
-        source_controls.addWidget(self._source_tabs, 0)
-        source_controls.addWidget(self._varcond_panel.controls_widget, 1)
+        self._source_controls_row = SharedSourceToolbarRow(
+            self._source_tabs, self._varcond_panel.controls_widget, self
+        )
         # Keep Base to Dot on the same horizontal line as Filter,
         # Exclusion, Substitution and Relation Prefix Length.
         self._varcond_panel.controls_widget.layout().addWidget(
