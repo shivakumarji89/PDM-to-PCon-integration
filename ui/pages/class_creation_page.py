@@ -200,7 +200,7 @@ class _CollapsibleCard(QGroupBox):
             QGroupBox#classCreationCard {{
                 border: 1px solid {theme.LINE};
                 border-radius: {theme.RADIUS_LG}px;
-                margin-top: 14px;
+                margin-top: 6px;
                 background: {theme.SURFACE};
             }}
             QGroupBox#classCreationCard::title {{
@@ -392,14 +392,13 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         labels = ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer")
         tables = (self._attr_master, self._opt_master, self._visual_master)
         self._cards = list(cards)
-        self._explorer_filters = []
         self._explorer_title_buttons = []
 
-        # The existing explorer title treatment is used as a compact title selector,
-        # not a tab strip: plain title text with a selected-title emphasis.
+        # Plain explorer titles are the selector. Keep the approved title layout,
+        # while showing only the selected explorer's content below.
         title_row = QWidget(container)
         title_layout = QHBoxLayout(title_row)
-        title_layout.setContentsMargins(0, 0, 0, theme.SPACE_2)
+        title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(theme.SPACE_3)
         stack = QStackedWidget(container)
         self._explorer_stack = stack
@@ -420,27 +419,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             title_layout.addWidget(title)
             self._explorer_title_buttons.append(title)
 
-            filter_row = QWidget(card)
-            filter_layout = QHBoxLayout(filter_row)
-            filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2, theme.SPACE_3, theme.SPACE_2)
-            filter_layout.setSpacing(theme.SPACE_2)
-            filter_layout.addWidget(QLabel("Filter:", filter_row))
-            edit = QLineEdit(filter_row)
-            edit.setPlaceholderText("Filter the explorer...")
-            edit.setClearButtonEnabled(True)
-            edit.setMinimumWidth(180)
-            edit.setMaximumWidth(320)
-            edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
-            filter_layout.addWidget(edit, 1)
-            card.layout().insertWidget(0, filter_row)
-
             page = QWidget(stack)
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(0, 0, 0, 0)
             page_layout.setSpacing(0)
             page_layout.addWidget(card)
             stack.addWidget(page)
-            self._explorer_filters.append(edit)
 
         title_layout.addStretch(1)
         self._body_layout.addWidget(title_row)
