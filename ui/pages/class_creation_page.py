@@ -400,6 +400,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # The explorer is selected from the nested workflow sidebar. Keep only
         # the stacked content in the workspace, so the tables start directly
         # below the source toolbar without a second selector row.
+        stack = QStackedWidget(container)
+        self._explorer_stack = stack
         for card in cards:
             card.setCheckable(False)
             card.setTitle("")
