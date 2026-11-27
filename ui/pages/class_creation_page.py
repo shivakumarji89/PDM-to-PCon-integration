@@ -461,7 +461,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         token = self._active_token() if hasattr(self, "_attr_box") else ""
         tab_labels = ("ATTRIBUTE", "OPTIONS", "VISUAL")
         for i, button in enumerate(self._workspace_buttons):
-            button.setText(f"{tab_labels[i]}\\n{token}" if token else tab_labels[i])
+            button.setText(f"{tab_labels[i]}\n{token}" if token else tab_labels[i])
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
