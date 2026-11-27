@@ -82,7 +82,13 @@ class WorkflowNavigator(QWidget):
         """Size the list to show all rows so it never needs a scrollbar."""
         total = 2 * self._list.frameWidth()
         for row in range(self._list.count()):
-            total += self._list.sizeHintForRow(row)
+            item = self._list.item(row)
+            if item is self._subnav_item:
+                # QListWidget may report zero for an embedded row when its
+                # widget is hidden; reserve its full height explicitly.
+                total += 3 * 34 + 8
+            else:
+                total += max(0, self._list.sizeHintForRow(row))
         self._list.setFixedHeight(total)
 
     def set_manager(self, manager) -> None:
@@ -128,6 +134,7 @@ class WorkflowNavigator(QWidget):
                     button.clicked.connect(lambda checked=False, idx=index: self.explorer_selected.emit(idx))
                     sublayout.addWidget(button)
                     self._subnav_buttons.append(button)
+                subnav_widget.setMinimumHeight(3 * 34 + 8)
                 subnav_item.setSizeHint(subnav_widget.sizeHint().expandedTo(subnav_widget.minimumSizeHint()))
                 self._list.setItemWidget(subnav_item, subnav_widget)
                 self._subnav_item = subnav_item
@@ -159,6 +166,8 @@ class WorkflowNavigator(QWidget):
             if step is None:
                 if self._subnav_widget is not None:
                     self._subnav_widget.setVisible(current == WorkflowStep.CLASS_CREATION)
+                    if self._subnav_item is not None:
+                        self._subnav_item.setHidden(current != WorkflowStep.CLASS_CREATION)
                 continue
             state = self._manager.step_state(step)
 
