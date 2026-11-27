@@ -35,7 +35,7 @@ from core.config import AppConfig
 from core.workflow import WORKFLOW_ITEMS, WorkflowStep
 from ui import theme
 from ui.navigation.workflow_navigator import WorkflowNavigator
-from core.modules import MODULE_ITEMS, WorkbenchModule, module_title, module_workflows
+from core.modules import MODULE_ITEMS, WorkbenchModule, is_active_module, module_title, module_workflows
 from ui.pages.articles_page import ArticlesPage
 from ui.pages.base_page import BasePage
 from ui.pages.class_creation_page import ClassCreationPage
@@ -529,6 +529,8 @@ class MainWindow(QMainWindow):
 
     def _on_module_selected(self, module: WorkbenchModule) -> None:
         """Enter Level 2 and expose only the workflows for the selected module."""
+        if not is_active_module(module):
+            return  # archived modules (e.g. Development) cannot be entered
         self._active_module = module
         if module != WorkbenchModule.SYTELINE_EXPORT:
             self._product_page.set_module(module)
