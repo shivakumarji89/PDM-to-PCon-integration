@@ -389,28 +389,32 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Workspace selector follows the compact PDM/MDB tab pattern.
-        workspace_header = QWidget(container)
-        header_layout = QHBoxLayout(workspace_header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(0)
-        self._workspace_tabs = QTabBar(workspace_header)
-        self._workspace_tabs.setExpanding(False)
+        # The workspace tabs occupy the work-table card's title/header area.
+        workspace_frame = QGroupBox(container)
+        workspace_frame.setObjectName("classCreationWorkspaceFrame")
+        workspace_frame.setStyleSheet(
+            f"QGroupBox#classCreationWorkspaceFrame {{ border: 1px solid {theme.LINE}; "
+            f"border-radius: {theme.RADIUS_LG}px; background: {theme.SURFACE}; }}"
+        )
+        frame_layout = QVBoxLayout(workspace_frame)
+        frame_layout.setContentsMargins(theme.GROUP_PADDING, theme.GROUP_PADDING,
+                                       theme.GROUP_PADDING, theme.GROUP_PADDING)
+        frame_layout.setSpacing(0)
+
+        self._workspace_tabs = QTabBar(workspace_frame)
+        self._workspace_tabs.setExpanding(True)
         self._workspace_tabs.setDrawBase(False)
         self._workspace_tabs.setStyleSheet(
-            "QTabBar::tab { padding: 5px 22px; border: 1px solid #E3E7EC;"
-            " border-bottom: none; background: #F6F8FA; color: #5E6B7D;"
-            " border-top-left-radius: 6px; border-top-right-radius: 6px; }"
-            "QTabBar::tab:selected { background: #6DAE1F; color: white;"
-            " font-weight: bold; border-color: #6DAE1F; }"
+            "QTabBar::tab { padding: 8px 16px; border: 1px solid #E3E7EC;"
+            " background: #F6F8FA; color: #5E6B7D; }"
+            "QTabBar::tab:selected { background: #F0F6E8; color: #4B8F12;"
+            " font-weight: 600; border: 2px solid #6DAE1F; }"
         )
         for label in ("Attribute", "Options", "Visual / Misc"):
             self._workspace_tabs.addTab(label)
-        header_layout.addWidget(self._workspace_tabs)
-        header_layout.addStretch(1)
-        self._body_layout.addWidget(workspace_header)
+        frame_layout.addWidget(self._workspace_tabs)
 
-        self._workspace_stack = QStackedWidget(container)
+        self._workspace_stack = QStackedWidget(workspace_frame)
         self._workspace_stack.setObjectName("classCreationWorkspaceStack")
         cards = (
             self._build_attributes_card(),
@@ -420,10 +424,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         for card in cards:
             self._cards.append(card)
             card.setCheckable(False)
-            # The card title is represented by the workspace tab above.
             card.setTitle("")
+            # The shared frame above supplies the work-table border/header.
+            card.setStyleSheet("QGroupBox#classCreationCard { border: none; margin-top: 0; }")
             self._workspace_stack.addWidget(card)
-        self._body_layout.addWidget(self._workspace_stack, 1)
+        frame_layout.addWidget(self._workspace_stack, 1)
+        self._body_layout.addWidget(workspace_frame, 1)
         self._workspace_tabs.currentChanged.connect(self._select_workspace)
         self._select_workspace(0)
         return container
