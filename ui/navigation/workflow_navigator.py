@@ -8,7 +8,7 @@ own workflow state.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
     QLabel,
@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QPushButton,
+    QButtonGroup,
 )
 
 from core.workflow import WORKFLOW_ITEMS, WorkflowItem, WorkflowStep
@@ -37,6 +39,8 @@ _STATE_STATUS = {
 
 class WorkflowNavigator(QWidget):
     """Left-panel workflow navigator driven by the WorkflowManager."""
+
+    explorer_selected = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -62,6 +66,9 @@ class WorkflowNavigator(QWidget):
         self._list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._workflow_items: tuple[WorkflowItem, ...] = ()
         self._item_by_step: dict[WorkflowStep, WorkflowItem] = {}
+        self._subnav_item: QListWidgetItem | None = None
+        self._subnav_widget: QWidget | None = None
+        self._subnav_buttons: list[QPushButton] = []
         self._list.itemClicked.connect(self._on_item_clicked)
         self._fit_list_height()
         layout.addWidget(self._list)
@@ -91,12 +98,48 @@ class WorkflowNavigator(QWidget):
         self._workflow_items = tuple(items)
         self._item_by_step = {item.step: item for item in self._workflow_items}
         self._list.clear()
+        self._subnav_item = None
+        self._subnav_widget = None
+        self._subnav_buttons = []
         for item in self._workflow_items:
             list_item = QListWidgetItem(item.title, self._list)
             list_item.setData(Qt.ItemDataRole.UserRole, item.step)
             list_item.setToolTip(item.description)
+            if item.step == WorkflowStep.CLASS_CREATION:
+                subnav_item = QListWidgetItem(self._list)
+                subnav_item.setData(Qt.ItemDataRole.UserRole, None)
+                subnav_item.setFlags(Qt.ItemFlag.NoItemFlags)
+                subnav_widget = QWidget(self._list)
+                sublayout = QVBoxLayout(subnav_widget)
+                sublayout.setContentsMargins(42, 0, 8, 8)
+                sublayout.setSpacing(2)
+                for index, name in enumerate(("Attributes", "Options", "Visual / Misc")):
+                    button = QPushButton(name, subnav_widget)
+                    button.setObjectName(f"classCreationSubnav{index}")
+                    button.setFlat(True)
+                    button.setCheckable(True)
+                    button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    button.setStyleSheet(
+                        f"QPushButton {{ text-align: left; border: none; padding: 5px 8px; "
+                        f"color: {theme.WB_TEXT_SECONDARY}; background: transparent; }} "
+                        f"QPushButton:hover {{ color: {theme.WB_NAVY}; background: {theme.WB_GREEN_SOFT}; "
+                        f"border-radius: 5px; }} QPushButton:checked {{ color: {theme.WB_GREEN_DARK}; "
+                        f"font-weight: 600; background: {theme.WB_GREEN_SOFT}; }}"
+                    )
+                    button.clicked.connect(lambda checked=False, idx=index: self.explorer_selected.emit(idx))
+                    sublayout.addWidget(button)
+                    self._subnav_buttons.append(button)
+                subnav_item.setSizeHint(subnav_widget.sizeHint())
+                self._list.setItemWidget(subnav_item, subnav_widget)
+                self._subnav_item = subnav_item
+                self._subnav_widget = subnav_widget
+                self.set_explorer_selection(0)
         self._fit_list_height()
         self._render()
+
+    def set_explorer_selection(self, index: int) -> None:
+        for i, button in enumerate(self._subnav_buttons):
+            button.setChecked(i == index)
 
     # -- user actions ------------------------------------------------------
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
@@ -114,6 +157,10 @@ class WorkflowNavigator(QWidget):
         for row in range(self._list.count()):
             item = self._list.item(row)
             step = item.data(Qt.ItemDataRole.UserRole)
+            if step is None:
+                if self._subnav_widget is not None:
+                    self._subnav_widget.setVisible(current == WorkflowStep.CLASS_CREATION)
+                continue
             state = self._manager.step_state(step)
 
             status = theme.status_style(_STATE_STATUS[state])
