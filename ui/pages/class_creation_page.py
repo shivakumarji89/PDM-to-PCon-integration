@@ -436,6 +436,12 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         # Re-fit the selected workspace every time the workflow is selected.
         self._fit_workspace_columns(index)
+        token = self._active_token() if hasattr(self, "_attr_box") else ""
+        labels = ("Attribute", "Options", "Visual / Misc")
+        for tab_index, label in enumerate(labels):
+            self._workspace_tabs.setTabText(
+                tab_index, f"{label} — {token}" if token else label
+            )
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _fit_workspace_columns(self, index: int) -> None:
