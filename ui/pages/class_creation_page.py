@@ -403,14 +403,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             QTabWidget#classCreationWorkspaceTabs::tab-bar {{
                 alignment: left;
             }}
-            QTabBar::tab {{
+            QTabWidget#classCreationWorkspaceTabs QTabBar::tab {{
                 padding: 5px 12px;
                 border: 1px solid {theme.LINE};
                 border-bottom: none;
                 background: {theme.SURFACE_ALT};
                 color: {theme.INK_SOFT};
             }}
-            QTabBar::tab:selected {{
+            QTabWidget#classCreationWorkspaceTabs QTabBar::tab:selected {{
                 border: 2px solid {theme.ACCENT};
                 background: {theme.ACCENT_SOFT};
                 color: {theme.ACCENT_DARK};
