@@ -299,7 +299,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._selected_attr_prop = None
         self._selected_attr_value = None
 
-        self.add_content(self._build_toolbar())
+        self.add_content(self._build_top_row())
         self.add_content(self._build_body())
         self.refresh()
 
@@ -309,11 +309,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         layout = QHBoxLayout(box)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(theme.CONTROL_SPACING)
-
-        # Keep Maintenance's PDM/MDB source tabs on the same row as the
-        # Class Creation controls, matching the Articles workspace.
-        layout.addWidget(self._source_tabs)
-        layout.addStretch(1)
 
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search attributes, options or values...")
@@ -379,8 +374,18 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         layout.addWidget(self._inferred_hint)
 
         self._maintenance_export_component = "Class Creation"
-
+        box.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         return box
+
+    def _build_top_row(self) -> QWidget:
+        row = QWidget(self)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SECTION_SPACING)
+        layout.addWidget(self._source_tabs)
+        layout.addStretch(1)
+        layout.addWidget(self._build_toolbar())
+        return row
 
     def _build_body(self) -> QWidget:
         container = QWidget(self)
