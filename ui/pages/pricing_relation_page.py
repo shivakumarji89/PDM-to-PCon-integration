@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from services.pricing_relation_service import PricingRelationService
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.dialogs.varcond_generation_dialog import VarCondGenerationPanel
 from ui.widgets.maintenance_source_tabs import (
@@ -79,8 +80,8 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._apply_source_layout()
 
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
         self._name_label = QLabel("", box)
         layout.addWidget(self._name_label, 1)
         self._copy_btn = QPushButton("Copy", box)
