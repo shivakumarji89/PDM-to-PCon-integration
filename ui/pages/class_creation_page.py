@@ -304,8 +304,14 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
+        box = QWidget(self)
         layout = QHBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.CONTROL_SPACING)
+
+        # Keep Maintenance's PDM/MDB source tabs on the same row as the
+        # Class Creation controls, matching the Articles workspace.
+        layout.addWidget(self._source_tabs)
 
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search attributes, options or values...")
@@ -374,10 +380,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         self._maintenance_export_component = "Class Creation"
 
-
         return box
 
-    def _build_body(self) -> QWidget:
+        def _build_body(self) -> QWidget:
         container = QWidget(self)
         self._body_layout = QVBoxLayout(container)
         self._body_layout.setContentsMargins(0, 0, 0, 0)
