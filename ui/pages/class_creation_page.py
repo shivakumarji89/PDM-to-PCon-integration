@@ -394,11 +394,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         header_layout = QHBoxLayout(workspace_header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(theme.CONTROL_SPACING)
-        self._workspace_title = QLabel("Attribute", workspace_header)
-        self._workspace_title.setFont(theme.font("card_title"))
-        header_layout.addWidget(self._workspace_title)
-
-        header_layout.addStretch(1)
         self._workspace_buttons = []
         for index, (label, subtitle) in enumerate((
             ("ATTRIBUTE", "Properties & values"),
@@ -462,12 +457,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # Re-fit the selected workspace every time the workflow is selected.
         self._fit_workspace_columns(index)
 
-        labels = ("Attribute", "Options", "Visual / Misc")
-        if hasattr(self, "_workspace_title"):
-            token = self._active_token() if hasattr(self, "_attr_box") else ""
-            self._workspace_title.setText(
-                f"{labels[index]} — {token}" if token else labels[index]
-            )
+        token = self._active_token() if hasattr(self, "_attr_box") else ""
+        tab_labels = ("ATTRIBUTE", "OPTIONS", "VISUAL")
+        for i, button in enumerate(self._workspace_buttons):
+            button.setText(f"{tab_labels[i]} — {token}" if token else tab_labels[i])
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
