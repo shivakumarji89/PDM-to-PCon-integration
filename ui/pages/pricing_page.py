@@ -51,7 +51,7 @@ from services.price_list_targets import computation_date, default_names
 from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog, list_lines
 from ui.dialogs.price_list_target_dialog import PriceListTargetDialog
 from ui.dialogs.progress_dialog import ProgressDialog
-from ui.components.shared_toolbar import SharedToolbar
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -259,13 +259,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
         # Keep the PDM / MDB source selector and pricing controls on one row.
         # The source widget owns its indicator stretch, so it expands between
         # the tabs and the right-aligned Compute controls.
-        toolbar_row = QWidget(self)
-        toolbar_layout = QHBoxLayout(toolbar_row)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(8)
-        toolbar_layout.addWidget(self._source_tabs, 1)
-        toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
-        self.add_content(toolbar_row)
+        self.add_content(SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self))
         self.add_content(self._build_table())
         self.add_content(self._build_summary())
         self.refresh()
