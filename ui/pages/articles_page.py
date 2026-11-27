@@ -208,8 +208,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
-        layout.setContentsMargins(8, 18, 8, 6)
-        layout.setSpacing(theme.SPACE_2)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(theme.CONTROL_SPACING)
 
         layout.addStretch(1)
         self._search = QLineEdit(box)
@@ -330,20 +330,17 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         top_layout.addWidget(self._build_details_panel(), 1)
 
         layout.addWidget(top_row, 0)
+        # Match Class Creation's top-row construction exactly: tabs, stretch,
+        # then the titled Toolbar group box as a sibling in the same row.
         self._toolbar_box = self._build_toolbar()
-        # Keep the source tabs and article controls on the same horizontal
-        # strip so the table starts immediately beneath them.
         self._content.removeWidget(self._source_tabs)
         self._source_toolbar_row = QWidget(self)
         source_toolbar_layout = QHBoxLayout(self._source_toolbar_row)
         source_toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        source_toolbar_layout.setSpacing(theme.SPACE_3)
-        source_toolbar_layout.addWidget(self._source_tabs, 0)
+        source_toolbar_layout.setSpacing(theme.SECTION_SPACING)
+        source_toolbar_layout.addWidget(self._source_tabs)
         source_toolbar_layout.addStretch(1)
-        self._toolbar_box.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
-        )
-        source_toolbar_layout.addWidget(self._toolbar_box, 0, Qt.AlignmentFlag.AlignRight)
+        source_toolbar_layout.addWidget(self._toolbar_box)
         self.add_content(self._source_toolbar_row)
         layout.addWidget(self._build_table(), 1)
         return container
