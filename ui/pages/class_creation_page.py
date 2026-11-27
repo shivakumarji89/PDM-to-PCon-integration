@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSplitter,
     QStackedWidget,
-    QSizePolicy,
+    QTabBar,
     QWidget,
 )
 
@@ -389,48 +389,25 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Put the active class name and workspace tabs on one compact header
-        # row, replacing the separate three-button navigation row.
+        # Workspace selector follows the compact PDM/MDB tab pattern.
         workspace_header = QWidget(container)
         header_layout = QHBoxLayout(workspace_header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(0)
-        self._workspace_buttons = []
-        for index, (label, subtitle) in enumerate((
-            ("ATTRIBUTE", "Properties & values"),
-            ("OPTIONS", "Class options"),
-            ("VISUAL", "Engineering properties"),
-        )):
-            button = QPushButton(label, workspace_header)
-            button.setToolTip(subtitle)
-            button.setCheckable(True)
-            button.setObjectName("classCreationWorkspaceButton")
-            button.setMinimumHeight(48)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.setStyleSheet(
-                f"""
-                QPushButton#classCreationWorkspaceButton {{
-                    border: 1px solid {theme.LINE};
-                    border-radius: {theme.RADIUS_MD}px;
-                    background: {theme.SURFACE};
-                    color: {theme.INK_SOFT};
-                    font-weight: 600;
-                    padding: 8px 12px;
-                }}
-                QPushButton#classCreationWorkspaceButton:hover {{
-                    border-color: {theme.LINE_STRONG};
-                    background: {theme.SURFACE_ALT};
-                }}
-                QPushButton#classCreationWorkspaceButton:checked {{
-                    border: 2px solid {theme.ACCENT};
-                    background: {theme.ACCENT_SOFT};
-                    color: {theme.ACCENT_DARK};
-                }}
-                """
-            )
-            button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
-            self._workspace_buttons.append(button)
-            header_layout.addWidget(button, 1)
+        self._workspace_tabs = QTabBar(workspace_header)
+        self._workspace_tabs.setExpanding(False)
+        self._workspace_tabs.setDrawBase(False)
+        self._workspace_tabs.setStyleSheet(
+            "QTabBar::tab { padding: 5px 22px; border: 1px solid #E3E7EC;"
+            " border-bottom: none; background: #F6F8FA; color: #5E6B7D;"
+            " border-top-left-radius: 6px; border-top-right-radius: 6px; }"
+            "QTabBar::tab:selected { background: #6DAE1F; color: white;"
+            " font-weight: bold; border-color: #6DAE1F; }"
+        )
+        for label in ("Attribute", "Options", "Visual / Misc"):
+            self._workspace_tabs.addTab(label)
+        header_layout.addWidget(self._workspace_tabs)
+        header_layout.addStretch(1)
         self._body_layout.addWidget(workspace_header)
 
         self._workspace_stack = QStackedWidget(container)
@@ -447,28 +424,18 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             card.setTitle("")
             self._workspace_stack.addWidget(card)
         self._body_layout.addWidget(self._workspace_stack, 1)
+        self._workspace_tabs.currentChanged.connect(self._select_workspace)
         self._select_workspace(0)
         return container
 
     def _select_workspace(self, index: int) -> None:
-        if not self._workspace_buttons or not self._workspace_stack:
+        if not self._workspace_tabs or not self._workspace_stack:
             return
-        index = max(0, min(index, len(self._workspace_buttons) - 1))
+        index = max(0, min(index, self._workspace_tabs.count() - 1))
         self._workspace_stack.setCurrentIndex(index)
 
         # Re-fit the selected workspace every time the workflow is selected.
         self._fit_workspace_columns(index)
-
-        token = self._active_token() if hasattr(self, "_attr_box") else ""
-        tab_titles = ("Attribute", "Options", "Visual / Misc")
-        for i, button in enumerate(self._workspace_buttons):
-            button.setText(f"{tab_titles[i]} — {token}" if token else tab_titles[i])
-
-        for i, button in enumerate(self._workspace_buttons):
-            button.setChecked(i == index)
-            button.setProperty("active", i == index)
-            button.style().unpolish(button)
-            button.style().polish(button)
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _fit_workspace_columns(self, index: int) -> None:
