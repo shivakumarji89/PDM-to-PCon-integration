@@ -81,13 +81,14 @@ class ReviewPage(BasePage):
         self.refresh()
 
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Review Controls", self)
+        box = QGroupBox("Toolbar", self)
         # This is a compact toolbar, not a content panel. Prevent it from
         # claiming the full vertical space when the Review page is resized.
         box.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
         layout = QHBoxLayout(box)
+        layout.addStretch(1)
         self._refresh_btn = QPushButton("Refresh Review", box)
         # Explicit user refresh includes the potentially expensive MDB/XOCD
         # generation preview. Normal workspace finalization only refreshes the
