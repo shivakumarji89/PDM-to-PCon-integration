@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QSplitter,
-    QStackedWidget,
+    QTabWidget,
     QSizePolicy,
     QWidget,
 )
@@ -389,51 +389,35 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Class Creation has three functional workspaces. Keep them as explicit
-        # cards, but show one workspace at a time so the user gets the full area
-        # for the task instead of three compressed tables stacked vertically.
-        self._workspace_nav = QHBoxLayout()
-        self._workspace_nav.setSpacing(theme.CONTROL_SPACING)
-        self._workspace_buttons = []
-        for index, (label, subtitle) in enumerate((
-            ("ATTRIBUTE", "Properties & values"),
-            ("OPTIONS", "Class options"),
-            ("VISUAL", "Engineering properties"),
-        )):
-            button = QPushButton(label)
-            button.setToolTip(subtitle)
-            button.setCheckable(True)
-            button.setMinimumHeight(42)
-            button.setObjectName("classCreationWorkspaceButton")
-            button.setStyleSheet(
-                f"""
-                QPushButton#classCreationWorkspaceButton {{
-                    border: 1px solid {theme.LINE};
-                    border-radius: {theme.RADIUS_MD}px;
-                    background: {theme.SURFACE};
-                    color: {theme.INK_SOFT};
-                    font-weight: 600;
-                    padding: 8px 12px;
-                    text-align: center;
-                }}
-                QPushButton#classCreationWorkspaceButton:hover {{
-                    border-color: {theme.LINE_STRONG};
-                    background: {theme.SURFACE_ALT};
-                }}
-                QPushButton#classCreationWorkspaceButton:checked {{
-                    border: 2px solid {theme.ACCENT};
-                    background: {theme.ACCENT_SOFT};
-                    color: {theme.ACCENT_DARK};
-                }}
-                """
-            )
-            button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
-            self._workspace_buttons.append(button)
-            self._workspace_nav.addWidget(button, 1)
-        self._body_layout.addLayout(self._workspace_nav)
-
-        self._workspace_stack = QStackedWidget(self)
-        self._workspace_stack.setObjectName("classCreationWorkspaceStack")
+        # Use the work-table card heading area itself for workspace navigation.
+        self._workspace_tabs = QTabWidget(container)
+        self._workspace_tabs.setObjectName("classCreationWorkspaceTabs")
+        self._workspace_tabs.setDocumentMode(False)
+        self._workspace_tabs.setStyleSheet(
+            f"""
+            QTabWidget#classCreationWorkspaceTabs::pane {{
+                border: 1px solid {theme.LINE};
+                border-radius: {theme.RADIUS_LG}px;
+                background: {theme.SURFACE};
+            }}
+            QTabWidget#classCreationWorkspaceTabs::tab-bar {{
+                alignment: left;
+            }}
+            QTabBar::tab {{
+                padding: 5px 12px;
+                border: 1px solid {theme.LINE};
+                border-bottom: none;
+                background: {theme.SURFACE_ALT};
+                color: {theme.INK_SOFT};
+            }}
+            QTabBar::tab:selected {{
+                border: 2px solid {theme.ACCENT};
+                background: {theme.ACCENT_SOFT};
+                color: {theme.ACCENT_DARK};
+                font-weight: 600;
+            }}
+            """
+        )
         cards = (
             self._build_attributes_card(),
             self._build_options_card(),
@@ -441,33 +425,29 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         )
         for card in cards:
             self._cards.append(card)
-            # The card itself is the visible workspace surface. Its checkable
-            # title is disabled because workspace selection is handled above.
             card.setCheckable(False)
-            self._workspace_stack.addWidget(card)
-        self._body_layout.addWidget(self._workspace_stack, 1)
+            card.setTitle("")
+            card.setStyleSheet(
+                f"QGroupBox#classCreationCard {{ border: none; margin-top: 0; "
+                f"background: {theme.SURFACE}; }}"
+            )
+            self._workspace_tabs.addTab(card, card.objectName() or "")
+        self._body_layout.addWidget(self._workspace_tabs, 1)
+        self._workspace_tabs.currentChanged.connect(self._select_workspace)
         self._select_workspace(0)
         return container
 
     def _select_workspace(self, index: int) -> None:
-        if not self._workspace_buttons or not self._workspace_stack:
+        if not self._workspace_tabs:
             return
-        index = max(0, min(index, len(self._workspace_buttons) - 1))
-        self._workspace_stack.setCurrentIndex(index)
-
-        # Re-fit the selected workspace every time the workflow is selected.
-        # This is intentionally done after switching the stack so Qt measures
-        # the currently visible tables, not a hidden table with stale widths.
+        index = max(0, min(index, self._workspace_tabs.count() - 1))
         self._fit_workspace_columns(index)
-
-        for i, button in enumerate(self._workspace_buttons):
-            button.setChecked(i == index)
-            button.setProperty("active", i == index)
-            button.style().unpolish(button)
-            button.style().polish(button)
-        # Structural reordering is available contextually on an Attribute
-        # property rather than as a persistent toolbar action. Keep the toolbar
-        # focused on navigation and status information.
+        token = self._active_token()
+        labels = ("Attribute", "Options", "Visual / Misc")
+        for tab_index, label in enumerate(labels):
+            self._workspace_tabs.setTabText(
+                tab_index, f"{label} — {token}" if token else label
+            )
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _fit_workspace_columns(self, index: int) -> None:
