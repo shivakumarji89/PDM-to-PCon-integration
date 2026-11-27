@@ -232,7 +232,7 @@ class _Region(QWidget):
         super().__init__(parent)
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
-        self.layout_.setSpacing(theme.SPACE_3)
+        self.layout_.setSpacing(theme.SECTION_SPACING)
         self.setVisible(False)
 
     def add(self, widget: QWidget, stretch: int = 0) -> None:
@@ -249,7 +249,7 @@ class WorkflowPageLayout(QWidget):
         self.setObjectName("wfPage")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(theme.SPACE_3)
+        root.setSpacing(theme.SECTION_SPACING)
 
         self.header = WorkflowHeader(title, description, self, glyph)
         self._toolbar = _Region(self)
