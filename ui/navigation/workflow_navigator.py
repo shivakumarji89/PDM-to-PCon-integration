@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QPushButton,
-    QButtonGroup,
 )
 
 from core.workflow import WORKFLOW_ITEMS, WorkflowItem, WorkflowStep
@@ -62,7 +61,7 @@ class WorkflowNavigator(QWidget):
         # fit its rows and the surrounding panel absorbs any spare space.
         self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._list.setUniformItemSizes(True)
+        self._list.setUniformItemSizes(False)
         self._list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._workflow_items: tuple[WorkflowItem, ...] = ()
         self._item_by_step: dict[WorkflowStep, WorkflowItem] = {}
@@ -129,7 +128,7 @@ class WorkflowNavigator(QWidget):
                     button.clicked.connect(lambda checked=False, idx=index: self.explorer_selected.emit(idx))
                     sublayout.addWidget(button)
                     self._subnav_buttons.append(button)
-                subnav_item.setSizeHint(subnav_widget.sizeHint())
+                subnav_item.setSizeHint(subnav_widget.sizeHint().expandedTo(subnav_widget.minimumSizeHint()))
                 self._list.setItemWidget(subnav_item, subnav_widget)
                 self._subnav_item = subnav_item
                 self._subnav_widget = subnav_widget
