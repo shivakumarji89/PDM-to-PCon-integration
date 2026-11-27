@@ -35,11 +35,6 @@ class ModuleItem:
 
 MODULE_ITEMS: tuple[ModuleItem, ...] = (
     ModuleItem(
-        WorkbenchModule.DEVELOPMENT,
-        "Development",
-        "Create and develop product engineering data.",
-    ),
-    ModuleItem(
         WorkbenchModule.MAINTENANCE,
         "ProductStudio",
         "Product Development & Configuration",
@@ -87,14 +82,10 @@ def snapshot_source_for_module(module: WorkbenchModule | None) -> str:
     return "pdm"
 
 
-# Workflows exposed after entering each module. Existing workflow/page
-# implementations are reused; this mapping only controls which ones are shown.
-# Engineering remains available to the application internally, but is not
-# exposed as a user-facing workflow step for now.
-MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
-    # Development: Articles establishes the full article code and the manual
-    # Base Length first. Class Creation then consumes the remaining Variant
-    # Condition in property order.
+# Archived Development workflow definition. Keep this intact for reference and
+# possible future reactivation, but do not route users into it from the active
+# module selector.
+ARCHIVED_MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     WorkbenchModule.DEVELOPMENT: (
         WorkflowStep.PRODUCT,
         WorkflowStep.ARTICLES,
@@ -105,6 +96,13 @@ MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
         WorkflowStep.PRICING_RELATION,
         WorkflowStep.REVIEW,
     ),
+}
+
+# Workflows exposed after entering each module. Existing workflow/page
+# implementations are reused; this mapping only controls which ones are shown.
+# Engineering remains available to the application internally, but is not
+# exposed as a user-facing workflow step for now.
+MODULE_WORKFLOWS: dict[WorkbenchModule, tuple[WorkflowStep, ...]] = {
     # Maintenance keeps its existing workflow order.
     WorkbenchModule.MAINTENANCE: (
         WorkflowStep.PRODUCT,
