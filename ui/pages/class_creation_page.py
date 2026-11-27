@@ -200,7 +200,7 @@ class _CollapsibleCard(QGroupBox):
             QGroupBox#classCreationCard {{
                 border: 1px solid {theme.LINE};
                 border-radius: {theme.RADIUS_LG}px;
-                margin-top: 6px;
+                margin-top: 0px;
                 background: {theme.SURFACE};
             }}
             QGroupBox#classCreationCard::title {{
