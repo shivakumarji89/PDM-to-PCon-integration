@@ -15,6 +15,7 @@ class SharedToolbar(QFrame):
     def __init__(self, parent: QWidget | None = None, *, title: str = "") -> None:
         super().__init__(parent)
         self.setObjectName("wfShellToolbar")
+        self.setStyleSheet(f"QFrame#wfShellToolbar {{ background: {theme.WB_SURFACE}; border: 1px solid {theme.WB_BORDER}; border-radius: {theme.RADIUS_LG}px; }} QLabel, QCheckBox {{ background: transparent; }}")
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(
