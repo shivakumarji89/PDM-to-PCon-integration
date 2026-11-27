@@ -424,9 +424,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                 "QPushButton { padding: 6px 12px; border: 1px solid "
                 + theme.LINE + "; border-bottom: 2px solid transparent; "
                 "background: transparent; color: "
-                + theme.TEXT_SECONDARY + "; } "
+                + theme.INK_SOFT + "; } "
                 "QPushButton:checked { border-bottom: 2px solid "
-                + theme.ACCENT + "; color: " + theme.TEXT + "; "
+                + theme.ACCENT + "; color: " + theme.INK + "; "
                 "background: " + theme.SURFACE + "; font-weight: 600; }"
             )
             heading.clicked.connect(lambda checked=False, i=index: self._select_explorer(i))
