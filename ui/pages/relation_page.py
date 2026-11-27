@@ -36,6 +36,7 @@ from models.relation_object import (
 )
 from services.engineering.engineering_relation_service import validate_relation_body
 from ui import theme
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -93,8 +94,8 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        layout = QHBoxLayout(box)
+        box = SharedToolbar(self)
+        layout = box.controls_layout
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search relation name or body...")
         self._search.setClearButtonEnabled(True)
