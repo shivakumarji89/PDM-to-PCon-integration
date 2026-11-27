@@ -74,7 +74,15 @@ class TextPage(MaintenanceSourceMixin, BasePage):
         self._filter_timer.setInterval(200)
         self._filter_timer.timeout.connect(self._apply_filter)
 
-        self.add_content(self._build_toolbar())
+        # Keep source tabs and workflow controls in the same standard row.
+        self._content.removeWidget(self._source_tabs)
+        toolbar_row = QWidget(self)
+        toolbar_layout = QHBoxLayout(toolbar_row)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(theme.SECTION_SPACING)
+        toolbar_layout.addWidget(self._source_tabs, 1)
+        toolbar_layout.addWidget(self._build_toolbar(), 0, Qt.AlignmentFlag.AlignRight)
+        self.add_content(toolbar_row)
         self.add_content(self._build_table())
         self.refresh()
 
