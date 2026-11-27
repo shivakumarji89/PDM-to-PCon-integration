@@ -443,8 +443,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         for card in cards:
             self._cards.append(card)
             card.setCheckable(False)
-            # The custom header carries the active workspace and class token.
-            card.setTitle("")
+            # Preserve the work-table card title; it is updated with the active class token.
             self._workspace_stack.addWidget(card)
         self._body_layout.addWidget(self._workspace_stack, 1)
         self._select_workspace(0)
@@ -463,6 +462,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         tab_labels = ("ATTRIBUTE", "OPTIONS", "VISUAL")
         for i, button in enumerate(self._workspace_buttons):
             button.setText(f"{tab_labels[i]}\n{token}" if token else tab_labels[i])
+        card_titles = ("Attribute", "Options", "Visual / Misc")
+        for i, card in enumerate(self._cards):
+            card.setTitle(f"{card_titles[i]} — {token}" if token else card_titles[i])
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
