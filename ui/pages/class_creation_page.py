@@ -66,7 +66,7 @@ from services.engineering.engineering_reduction_service import (
 from services.mdb_classification_service import MdbClassificationService
 from services.class_creation_selection_service import build_class_creation_scope
 from ui import theme
-from ui.components.shared_toolbar import SharedToolbar
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -379,14 +379,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         return box
 
     def _build_top_row(self) -> QWidget:
-        row = QWidget(self)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SECTION_SPACING)
-        layout.addWidget(self._source_tabs)
-        layout.addStretch(1)
-        layout.addWidget(self._build_toolbar())
-        return row
+        return SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self)
 
     def _build_body(self) -> QWidget:
         container = QWidget(self)
