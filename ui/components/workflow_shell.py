@@ -475,6 +475,7 @@ class WorkflowStepNav(QWidget):
                     self._subnav_buttons.append(button)
                 self._class_creation_subnav = subnav
                 self._col.addWidget(subnav)
+                self.set_explorer_selection(0)
 
     def set_explorer_selection(self, index: int) -> None:
         for i, button in enumerate(self._subnav_buttons):
