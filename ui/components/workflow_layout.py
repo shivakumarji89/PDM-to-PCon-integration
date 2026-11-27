@@ -268,7 +268,11 @@ class WorkflowPageLayout(QWidget):
         return self._main.layout_
 
     def add_toolbar(self, widget: QWidget) -> None:
-        self._toolbar.add(widget)
+        # Keep the Toolbar surface compact and aligned to the right, matching
+        # the Articles workflow rather than stretching it across the page.
+        widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self._toolbar.layout_.addWidget(widget, 0, Qt.AlignmentFlag.AlignRight)
+        self._toolbar.setVisible(True)
 
     def add_summary(self, widget: QWidget) -> None:
         self._summary.add(widget)
