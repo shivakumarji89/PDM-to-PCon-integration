@@ -95,9 +95,11 @@ class RelationPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
+        layout.addStretch(1)
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search relation name or body...")
         self._search.setClearButtonEnabled(True)
+        self._search.setMaximumWidth(320)
         self._search.textChanged.connect(self._schedule_filter)
         layout.addWidget(self._search, 1)
 
