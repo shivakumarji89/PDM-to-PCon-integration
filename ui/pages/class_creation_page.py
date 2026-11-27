@@ -1303,10 +1303,6 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         )
         self._basis_combo.setStyleSheet("color: #b22222;" if basis_problem else "")
 
-        token = self._active_token()
-        # The custom workspace header displays the active workspace and token.
-        active_workspace = self._workspace_tabs.currentIndex()
-        self._select_workspace(active_workspace)
         self._populate_attributes()
         self._populate_attribute_tables()
         self._populate_options()
@@ -1319,6 +1315,11 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         # The rebuild replaced the views' contents (and their cell editors):
         # register whatever is new and lock the fresh editors in the MDB view.
         self._apply_lock_state()
+        for edit, table in zip(
+            getattr(self, "_explorer_filters", []),
+            (self._attr_master, self._opt_master, self._visual_master),
+        ):
+            self._filter_explorer_table(table, edit.text())
         if self.is_mdb_view():
             self._lock_embedded_editors()
 
