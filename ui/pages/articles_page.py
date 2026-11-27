@@ -271,6 +271,9 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         self._actions_combo.addItem("Clear Long Text", "clear_long")
         self._actions_combo.addItem("Clear Short Text", "clear_short")
         self._actions_combo.setToolTip("Choose an article action.")
+        # Keep the compact toolbar control, but widen its popup so action labels
+        # are fully readable instead of being elided to the combo's button width.
+        self._actions_combo.view().setMinimumWidth(210)
         self._actions_combo.activated.connect(self._on_actions_combo_activated)
         layout.addWidget(self._actions_combo)
 
