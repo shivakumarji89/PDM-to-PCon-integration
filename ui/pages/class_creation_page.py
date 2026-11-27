@@ -305,7 +305,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
+        # Match the Articles workflow's compact toolbar presentation: controls
+        # only, without a visible "Toolbar" group-box caption.
+        box = QGroupBox(self)
         layout = QHBoxLayout(box)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(theme.CONTROL_SPACING)
