@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from core.engines.filtering import text_match
 from models.text_block import TEXT_TYPE_CODES, TextBlock
 from ui import theme
-from ui.components.shared_toolbar import SharedToolbar
+from ui.components.shared_toolbar import SharedToolbar, SharedSourceToolbarRow
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -76,14 +76,7 @@ class TextPage(MaintenanceSourceMixin, BasePage):
 
         # Keep source tabs and workflow controls in the same standard row.
         self._content.removeWidget(self._source_tabs)
-        toolbar_row = QWidget(self)
-        toolbar_layout = QHBoxLayout(toolbar_row)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(theme.SECTION_SPACING)
-        toolbar_layout.addWidget(self._source_tabs)
-        toolbar_layout.addStretch(1)
-        toolbar_layout.addWidget(self._build_toolbar())
-        self.add_content(toolbar_row)
+        self.add_content(SharedSourceToolbarRow(self._source_tabs, self._build_toolbar(), self))
         self.add_content(self._build_table())
         self.refresh()
 
