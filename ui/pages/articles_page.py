@@ -212,7 +212,11 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
         layout.setContentsMargins(8, 18, 8, 6)
         layout.setSpacing(theme.SPACE_2)
 
-        # Keep the complete control strip grouped at the right edge.
+        # Identify this toolbar section while keeping the controls grouped at the right edge.
+        title_label = QLabel("Articles", box)
+        title_label.setObjectName("toolbarTitle")
+        title_label.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title_label)
         layout.addStretch(1)
         self._search = QLineEdit(box)
         self._search.setPlaceholderText("Search code or description...")
