@@ -460,9 +460,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._fit_workspace_columns(index)
 
         token = self._active_token() if hasattr(self, "_attr_box") else ""
-        tab_labels = ("ATTRIBUTE", "OPTIONS", "VISUAL")
+        tab_labels = ("Attribute", "Options", "Visual / Misc")
         for i, button in enumerate(self._workspace_buttons):
-            button.setText(f"{tab_labels[i]}\n{token}" if token else tab_labels[i])
+            button.setText(f"{tab_labels[i]} — {token}" if token else tab_labels[i])
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
