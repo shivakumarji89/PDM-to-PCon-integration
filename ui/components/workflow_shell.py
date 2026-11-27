@@ -419,9 +419,10 @@ class _StepRow(QWidget):
 
 
 class WorkflowStepNav(QWidget):
-    """Vertical list of :class:`_StepRow`s. Emits ``step_clicked(step)``."""
+    """Vertical list of workflow steps with optional Class Creation sub-navigation."""
 
     step_clicked = Signal(object)
+    explorer_selected = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -429,12 +430,19 @@ class WorkflowStepNav(QWidget):
         self._col.setContentsMargins(theme.SPACE_2, 0, theme.SPACE_2, 0)
         self._col.setSpacing(0)
         self._rows: dict = {}
+        self._class_creation_subnav: QWidget | None = None
+        self._subnav_buttons: list[QPushButton] = []
 
     def set_steps(self, items) -> None:
         """``items``: iterable of objects with ``step``, ``title``, ``description``."""
         for row in self._rows.values():
             self._col.removeWidget(row)
             row.deleteLater()
+        if self._class_creation_subnav is not None:
+            self._col.removeWidget(self._class_creation_subnav)
+            self._class_creation_subnav.deleteLater()
+            self._class_creation_subnav = None
+            self._subnav_buttons = []
         self._rows = {}
         items = list(items)
         for i, item in enumerate(items, start=1):
@@ -443,11 +451,41 @@ class WorkflowStepNav(QWidget):
             row.clicked.connect(self.step_clicked)
             self._rows[item.step] = row
             self._col.addWidget(row)
+            if getattr(item.step, "name", "") == "CLASS_CREATION":
+                subnav = QWidget(self)
+                subnav.setObjectName("classCreationSubnav")
+                sublayout = QVBoxLayout(subnav)
+                sublayout.setContentsMargins(48, 0, 8, 6)
+                sublayout.setSpacing(2)
+                for index, name in enumerate(("Attributes", "Options", "Visual / Misc")):
+                    button = QPushButton(name, subnav)
+                    button.setObjectName(f"classCreationSubnav{index}")
+                    button.setFlat(True)
+                    button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    button.setStyleSheet(
+                        f"QPushButton {{ text-align: left; border: none; padding: 5px 8px; "
+                        f"color: {theme.WB_TEXT_SECONDARY}; background: transparent; }} "
+                        f"QPushButton:hover {{ color: {theme.WB_NAVY}; background: {theme.WB_GREEN_SOFT}; "
+                        f"border-radius: 5px; }} QPushButton:checked {{ color: {theme.WB_GREEN_DARK}; "
+                        f"font-weight: 600; background: {theme.WB_GREEN_SOFT}; }}"
+                    )
+                    button.setCheckable(True)
+                    button.clicked.connect(lambda checked=False, idx=index: self.explorer_selected.emit(idx))
+                    sublayout.addWidget(button)
+                    self._subnav_buttons.append(button)
+                self._class_creation_subnav = subnav
+                self._col.addWidget(subnav)
+
+    def set_explorer_selection(self, index: int) -> None:
+        for i, button in enumerate(self._subnav_buttons):
+            button.setChecked(i == index)
 
     def set_state(self, step, state: str) -> None:
         row = self._rows.get(step)
         if row is not None:
             row.set_state(state)
+        if self._class_creation_subnav is not None:
+            self._class_creation_subnav.setVisible(state == "current")
         previous_done = False
         for current in self._rows.values():
             current.set_prev_done(previous_done)
@@ -500,6 +538,7 @@ class WorkflowTipsCard(Card):
 
 
 class WorkflowSidebar(QWidget):
+    explorer_selected = Signal(int)
     """Module identity + vertical workflow steps + tips, bound to the manager.
 
     Painted as one white rounded card with a faint corner tint (no images)."""
@@ -534,6 +573,7 @@ class WorkflowSidebar(QWidget):
         self._manager = None
         self._items: dict = {}
         self.nav.step_clicked.connect(self._on_step_clicked)
+        self.nav.explorer_selected.connect(self.explorer_selected)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
         """Render the sidebar's restrained editorial finish behind its controls."""
