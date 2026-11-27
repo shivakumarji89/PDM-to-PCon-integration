@@ -303,6 +303,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         self.add_content(self._build_top_row())
         self.add_content(self._build_body())
+        # Tighten the vertical spacing between the source toolbar row and the
+        # explorer selector/body, without changing the shared workflow spacing.
+        self._content.setSpacing(theme.SPACE_1)
         self.refresh()
 
     # -- construction ------------------------------------------------------
