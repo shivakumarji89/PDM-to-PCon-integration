@@ -1275,7 +1275,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         token = self._active_token()
         # The custom workspace header displays the active workspace and token.
-        active_workspace = self._workspace_stack.currentIndex()
+        active_workspace = self._workspace_tabs.currentIndex()
         self._select_workspace(active_workspace)
         self._populate_attributes()
         self._populate_attribute_tables()
