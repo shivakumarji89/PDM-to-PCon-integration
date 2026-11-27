@@ -51,6 +51,7 @@ from services.price_list_targets import computation_date, default_names
 from ui.dialogs.price_export_preview_dialog import PriceExportPreviewDialog, list_lines
 from ui.dialogs.price_list_target_dialog import PriceListTargetDialog
 from ui.dialogs.progress_dialog import ProgressDialog
+from ui.components.shared_toolbar import SharedToolbar
 from ui.pages.base_page import BasePage
 from ui.widgets.maintenance_source_tabs import (
     MaintenanceSourceMixin,
@@ -271,16 +272,8 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Toolbar", self)
-        box.setObjectName("pricingComputeGroup")
-        box.setStyleSheet(
-            "QGroupBox#pricingComputeGroup {"
-            " margin-top: 8px; padding: 4px 6px 4px 6px;"
-            "}"
-        )
-        controls = QHBoxLayout(box)
-        controls.setContentsMargins(6, 7, 6, 4)
-        controls.setSpacing(6)
+        box = SharedToolbar(self)
+        controls = box.controls_layout
 
         self._currency = QComboBox(box)
         self._currency.addItems(["All", "GBP", "EUR"])
