@@ -393,7 +393,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         workspace_header = QWidget(container)
         header_layout = QHBoxLayout(workspace_header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(theme.CONTROL_SPACING)
+        header_layout.setSpacing(0)
         self._workspace_buttons = []
         for index, (label, subtitle) in enumerate((
             ("ATTRIBUTE", "Properties & values"),
@@ -404,7 +404,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             button.setToolTip(subtitle)
             button.setCheckable(True)
             button.setObjectName("classCreationWorkspaceButton")
-            button.setMinimumHeight(30)
+            button.setMinimumHeight(48)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.setStyleSheet(
                 f"""
                 QPushButton#classCreationWorkspaceButton {{
@@ -413,7 +414,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                     background: {theme.SURFACE};
                     color: {theme.INK_SOFT};
                     font-weight: 600;
-                    padding: 4px 12px;
+                    padding: 8px 12px;
                 }}
                 QPushButton#classCreationWorkspaceButton:hover {{
                     border-color: {theme.LINE_STRONG};
@@ -428,7 +429,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
             button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
             self._workspace_buttons.append(button)
-            header_layout.addWidget(button)
+            header_layout.addWidget(button, 1)
         self._body_layout.addWidget(workspace_header)
 
         self._workspace_stack = QStackedWidget(container)
@@ -460,7 +461,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         token = self._active_token() if hasattr(self, "_attr_box") else ""
         tab_labels = ("ATTRIBUTE", "OPTIONS", "VISUAL")
         for i, button in enumerate(self._workspace_buttons):
-            button.setText(f"{tab_labels[i]} — {token}" if token else tab_labels[i])
+            button.setText(f"{tab_labels[i]}\\n{token}" if token else tab_labels[i])
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
