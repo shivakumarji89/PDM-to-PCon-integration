@@ -271,7 +271,7 @@ class PricingPage(MaintenanceSourceMixin, BasePage):
 
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Compute", self)
+        box = QGroupBox("Toolbar", self)
         box.setObjectName("pricingComputeGroup")
         box.setStyleSheet(
             "QGroupBox#pricingComputeGroup {"
