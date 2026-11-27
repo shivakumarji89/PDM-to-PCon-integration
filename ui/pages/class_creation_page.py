@@ -388,22 +388,28 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._body_layout.setContentsMargins(0, 0, 0, 0)
         self._body_layout.setSpacing(theme.SECTION_SPACING)
 
-        # Class Creation has three functional workspaces. Keep them as explicit
-        # cards, but show one workspace at a time so the user gets the full area
-        # for the task instead of three compressed tables stacked vertically.
-        self._workspace_nav = QHBoxLayout()
-        self._workspace_nav.setSpacing(theme.CONTROL_SPACING)
+        # Put the active class name and workspace tabs on one compact header
+        # row, replacing the separate three-button navigation row.
+        workspace_header = QWidget(container)
+        header_layout = QHBoxLayout(workspace_header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(theme.CONTROL_SPACING)
+        self._workspace_title = QLabel("Attribute", workspace_header)
+        self._workspace_title.setFont(theme.font("card_title"))
+        header_layout.addWidget(self._workspace_title)
+
+        header_layout.addStretch(1)
         self._workspace_buttons = []
         for index, (label, subtitle) in enumerate((
             ("ATTRIBUTE", "Properties & values"),
             ("OPTIONS", "Class options"),
             ("VISUAL", "Engineering properties"),
         )):
-            button = QPushButton(label)
+            button = QPushButton(label, workspace_header)
             button.setToolTip(subtitle)
             button.setCheckable(True)
-            button.setMinimumHeight(42)
             button.setObjectName("classCreationWorkspaceButton")
+            button.setMinimumHeight(30)
             button.setStyleSheet(
                 f"""
                 QPushButton#classCreationWorkspaceButton {{
@@ -412,8 +418,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
                     background: {theme.SURFACE};
                     color: {theme.INK_SOFT};
                     font-weight: 600;
-                    padding: 8px 12px;
-                    text-align: center;
+                    padding: 4px 12px;
                 }}
                 QPushButton#classCreationWorkspaceButton:hover {{
                     border-color: {theme.LINE_STRONG};
@@ -428,10 +433,10 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             )
             button.clicked.connect(lambda checked, i=index: self._select_workspace(i))
             self._workspace_buttons.append(button)
-            self._workspace_nav.addWidget(button, 1)
-        self._body_layout.addLayout(self._workspace_nav)
+            header_layout.addWidget(button)
+        self._body_layout.addWidget(workspace_header)
 
-        self._workspace_stack = QStackedWidget(self)
+        self._workspace_stack = QStackedWidget(container)
         self._workspace_stack.setObjectName("classCreationWorkspaceStack")
         cards = (
             self._build_attributes_card(),
@@ -440,9 +445,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         )
         for card in cards:
             self._cards.append(card)
-            # The card itself is the visible workspace surface. Its checkable
-            # title is disabled because workspace selection is handled above.
             card.setCheckable(False)
+            # The custom header carries the active workspace and class token.
+            card.setTitle("")
             self._workspace_stack.addWidget(card)
         self._body_layout.addWidget(self._workspace_stack, 1)
         self._select_workspace(0)
@@ -455,18 +460,20 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._workspace_stack.setCurrentIndex(index)
 
         # Re-fit the selected workspace every time the workflow is selected.
-        # This is intentionally done after switching the stack so Qt measures
-        # the currently visible tables, not a hidden table with stale widths.
         self._fit_workspace_columns(index)
+
+        labels = ("Attribute", "Options", "Visual / Misc")
+        if hasattr(self, "_workspace_title"):
+            token = self._active_token() if hasattr(self, "_attr_box") else ""
+            self._workspace_title.setText(
+                f"{labels[index]} — {token}" if token else labels[index]
+            )
 
         for i, button in enumerate(self._workspace_buttons):
             button.setChecked(i == index)
             button.setProperty("active", i == index)
             button.style().unpolish(button)
             button.style().polish(button)
-        # Structural reordering is available contextually on an Attribute
-        # property rather than as a persistent toolbar action. Keep the toolbar
-        # focused on navigation and status information.
         self._inferred_hint.setVisible(index == 0 and self._inferred_hint.text() != "")
 
     def _fit_workspace_columns(self, index: int) -> None:
@@ -1293,13 +1300,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._basis_combo.setStyleSheet("color: #b22222;" if basis_problem else "")
 
         token = self._active_token()
-        # Keep the functional workspace names visible as the card titles.
-        # The active class token is shown alongside the card name so users can
-        # distinguish Attribute / Options / Visual without losing the class
-        # context (for example: "Attribute — Bolster").
-        self._attr_box.setTitle(f"Attribute — {token}")
-        self._opt_box.setTitle(f"Options — {token}")
-        self._misc_box.setTitle(f"Visual / Misc — {token}")
+        # The custom workspace header displays the active workspace and token.
+        active_workspace = self._workspace_stack.currentIndex()
+        self._select_workspace(active_workspace)
         self._populate_attributes()
         self._populate_attribute_tables()
         self._populate_options()
