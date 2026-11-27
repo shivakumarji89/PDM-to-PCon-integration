@@ -118,6 +118,7 @@ class MainWindow(QMainWindow):
 
         self._pages: dict[WorkflowStep, BasePage] = {}
         self._navigator = WorkflowNavigator(self)
+        self._navigator.explorer_selected.connect(self._on_class_creation_explorer_selected)
         self._active_module: WorkbenchModule | None = None
         self._stack = CurrentPageStack(self)
         self._module_home = ModuleHomePage(self._context, self)
@@ -529,11 +530,11 @@ class MainWindow(QMainWindow):
         return container
 
     def _on_class_creation_explorer_selected(self, index: int) -> None:
-        """Route sidebar sub-selection to the Class Creation stacked explorer."""
+        """Route visible navigator sub-selection to the Class Creation explorer."""
         page = self._pages.get(WorkflowStep.CLASS_CREATION)
         if page is not None and hasattr(page, "_select_explorer"):
             page._select_explorer(index)
-            self._sidebar.nav.set_explorer_selection(index)
+            self._navigator.set_explorer_selection(index)
 
     def _on_module_selected(self, module: WorkbenchModule) -> None:
         """Enter Level 2 and expose only the workflows for the selected module."""
