@@ -204,5 +204,56 @@ finally {
     }
 }
 
-$json = $result | ConvertTo-Json -Depth 8
-[System.IO.File]::WriteAllText($OutputPath, $json, [System.Text.Encoding]::UTF8)
+# Stream the response instead of ``$result | ConvertTo-Json``. In this 32-bit PowerShell 5.1 host, one
+# ConvertTo-Json over a large aggregate (e.g. ~150k PropValue rows) throws OutOfMemoryException. Each op
+# header is serialised on its own and ``rows`` is written one row at a time, so no whole-result JSON string
+# exists. The JSON shape is unchanged: {"ok":..,"results":[{op,table,ok,error,..,"rows":[..]}]}.
+# Output goes to a temp file that replaces $OutputPath only after a complete, successful write, so a
+# failure can never leave a truncated file that the caller would mistake for a valid response.
+$tmpOutput = "$OutputPath.partial"
+$writer = $null
+try {
+    if (Test-Path -LiteralPath $tmpOutput) { Remove-Item -LiteralPath $tmpOutput -Force }
+    # UTF-8 with BOM, as before ([Text.Encoding]::UTF8); the Python reader uses utf-8-sig.
+    $writer = New-Object System.IO.StreamWriter($tmpOutput, $false, (New-Object System.Text.UTF8Encoding($true)))
+    $writer.Write('{"ok":' + $(if ($result.ok) { 'true' } else { 'false' }) + ',"results":[')
+    $firstItem = $true
+    foreach ($item in $result.results) {
+        if (-not $firstItem) { $writer.Write(',') }
+        $firstItem = $false
+        $hasRows = $null -ne $item.PSObject.Properties['rows']
+        $head = [ordered]@{}
+        foreach ($p in $item.PSObject.Properties) {
+            if ($p.Name -ne 'rows') { $head[$p.Name] = $p.Value }
+        }
+        $headJson = ([pscustomobject]$head) | ConvertTo-Json -Compress -Depth 8
+        if (-not $hasRows) {
+            $writer.Write($headJson)
+            continue
+        }
+        # headJson is a complete object ("{...}"); reopen it and append the rows array.
+        $writer.Write($headJson.Substring(0, $headJson.Length - 1))
+        $writer.Write(',"rows":[')
+        $firstRow = $true
+        foreach ($row in $item.rows) {
+            if (-not $firstRow) { $writer.Write(',') }
+            $firstRow = $false
+            $writer.Write(($row | ConvertTo-Json -Compress -Depth 8))
+        }
+        $writer.Write(']}')
+        $item.rows = $null  # release this table's rows before serialising the next one
+    }
+    $writer.Write(']}')
+    $writer.Flush()
+    $writer.Dispose()
+    $writer = $null
+    if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
+    [System.IO.File]::Move($tmpOutput, $OutputPath)
+}
+catch {
+    if ($writer) { try { $writer.Dispose() } catch {} ; $writer = $null }
+    try { if (Test-Path -LiteralPath $tmpOutput) { Remove-Item -LiteralPath $tmpOutput -Force } } catch {}
+    # No output file is left behind; the caller reports stderr as the bridge error.
+    [Console]::Error.WriteLine("mdb_bridge: failed to write response: $($_.Exception.Message)")
+    exit 1
+}
