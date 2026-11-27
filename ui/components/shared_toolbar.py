@@ -5,23 +5,22 @@ container, spacing, sizing and presentation metrics.
 """
 from __future__ import annotations
 
-from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QSizePolicy, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QWidget
 from ui import theme
 
 
-class SharedToolbar(QGroupBox):
+class SharedToolbar(QFrame):
     """Standard toolbar surface; controls and callbacks remain page-owned."""
 
     def __init__(self, parent: QWidget | None = None, *, title: str = "") -> None:
-        super().__init__(title, parent)
-        self.setObjectName("sharedWorkflowToolbar")
+        super().__init__(parent)
+        self.setObjectName("wfShellToolbar")
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(
-            theme.GROUP_PADDING, theme.GROUP_PADDING,
-            theme.GROUP_PADDING, theme.GROUP_PADDING,
+            theme.SPACE_3, 6, theme.SPACE_3, 6,
         )
-        self._layout.setSpacing(theme.CONTROL_SPACING)
+        self._layout.setSpacing(theme.SPACE_2)
 
     @property
     def controls_layout(self) -> QHBoxLayout:
