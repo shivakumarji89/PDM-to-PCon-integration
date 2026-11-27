@@ -208,7 +208,8 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
-        layout.setContentsMargins(0, 0, 0, 0)
+        # Reserve space for the QGroupBox title so it remains visible above controls.
+        layout.setContentsMargins(8, 18, 8, 6)
         layout.setSpacing(theme.SPACE_2)
 
         # Keep the complete control strip grouped at the right edge.
