@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSplitter,
     QScrollArea,
-    QTabWidget,
+    QStackedWidget,
     QSizePolicy,
     QWidget,
 )
@@ -398,16 +398,41 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._explorer_filters = []
         self._cards = list(cards)
 
-        explorers = QTabWidget(container)
-        explorers.setDocumentMode(True)
-        explorers.setTabPosition(QTabWidget.TabPosition.North)
-        self._explorer_tabs = explorers
+        # The explorer heading row is the selector: no additional raised tab strip.
+        selector = QWidget(container)
+        selector_layout = QHBoxLayout(selector)
+        selector_layout.setContentsMargins(0, 0, 0, 0)
+        selector_layout.setSpacing(theme.SPACE_2)
+        self._explorer_selector_buttons = []
+        stack = QStackedWidget(container)
+        self._explorer_stack = stack
 
-        # Reuse the original explorer cards and headings directly as tab pages.
-        # Do not add another wrapper heading/card layer around them.
-        for card, label, table in zip(cards, labels, tables):
+        for index, (card, label, table) in enumerate(zip(cards, labels, tables)):
             card.setCheckable(False)
             card.setTitle("")
+            page = QWidget(stack)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(0)
+
+            # Compact clickable heading, visually replacing the old group heading.
+            heading = QPushButton(label, selector)
+            heading.setCheckable(True)
+            heading.setFlat(True)
+            heading.setCursor(Qt.CursorShape.PointingHandCursor)
+            heading.setStyleSheet(
+                "QPushButton { padding: 6px 12px; border: 1px solid "
+                + theme.LINE + "; border-bottom: 2px solid transparent; "
+                "background: transparent; color: "
+                + theme.TEXT_SECONDARY + "; } "
+                "QPushButton:checked { border-bottom: 2px solid "
+                + theme.ACCENT + "; color: " + theme.TEXT + "; "
+                "background: " + theme.SURFACE + "; font-weight: 600; }"
+            )
+            heading.clicked.connect(lambda checked=False, i=index: self._select_explorer(i))
+            selector_layout.addWidget(heading)
+            self._explorer_selector_buttons.append(heading)
+
             filter_row = QWidget(card)
             filter_layout = QHBoxLayout(filter_row)
             filter_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
@@ -422,20 +447,27 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
             filter_layout.addWidget(edit, 1)
             card.layout().insertWidget(0, filter_row)
+            page_layout.addWidget(card, 1)
+            stack.addWidget(page)
             self._explorer_filters.append(edit)
-            explorers.addTab(card, label)
 
-        self._explorer_tabs.currentChanged.connect(self._on_explorer_tab_changed)
-        self._body_layout.addWidget(explorers, 1)
+        selector_layout.addStretch(1)
+        self._body_layout.addWidget(selector)
+        self._body_layout.addWidget(stack, 1)
+        self._select_explorer(0)
         return container
 
-    def _on_explorer_tab_changed(self, index: int) -> None:
+    def _select_explorer(self, index: int) -> None:
+        if not hasattr(self, "_explorer_stack") or not 0 <= index < self._explorer_stack.count():
+            return
+        self._explorer_stack.setCurrentIndex(index)
+        for i, button in enumerate(self._explorer_selector_buttons):
+            button.setChecked(i == index)
         tables = (self._attr_master, self._opt_master, self._visual_master)
-        if 0 <= index < len(tables):
-            table = tables[index]
-            header = table.horizontalHeader()
-            header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
-            header.setStretchLastSection(True)
+        table = tables[index]
+        header = table.horizontalHeader()
+        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(True)
 
     def _filter_explorer_table(self, table: QTableWidget, term: str) -> None:
         term = (term or "").strip()
