@@ -24,6 +24,7 @@ from services.pricing_relation_service import price_relation_names
 from services.varcond_service import VarCondService
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.background_task import BackgroundTask
+from ui.components.shared_toolbar import SharedToolbar
 
 
 def _article_code_matches_filter(code: str, query: str) -> bool:
@@ -116,18 +117,19 @@ class VarCondGenerationPanel(QWidget):
 
         root = QVBoxLayout(self)
 
-        # Expose these controls so the page can align them with PDM / MDB.
-        self.controls_widget = QWidget(self)
-        controls = QHBoxLayout(self.controls_widget)
-        controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(8)
-        controls.addWidget(QLabel("Filter:", self.controls_widget))
+        # Use the shared workflow toolbar shell; this panel contributes controls only.
+        self.controls_widget = SharedToolbar(self)
+        controls = self.controls_widget.controls_layout
+        self._filter_label = QLabel("Filter:", self.controls_widget)
+        controls.addWidget(self._filter_label)
         self._filter = QLineEdit(self.controls_widget)
         self._filter.setPlaceholderText("Article code... (* = any, ? or _ = one)")
         self._filter.setToolTip(
             "Filter article-code prefixes. Use * for any number of characters; "
             "? or _ for exactly one character. Example: RY?XS or RY*XS."
         )
+        self._filter.setMinimumWidth(170)
+        self._filter.setMaximumWidth(230)
         # Typing rebuilds the relation list (and, in Development, regenerates from PDM): wait for a
         # pause instead of doing it per keystroke.
         self._filter_timer = QTimer(self)
@@ -135,7 +137,6 @@ class VarCondGenerationPanel(QWidget):
         self._filter_timer.setInterval(self.FILTER_DEBOUNCE_MS)
         self._filter_timer.timeout.connect(self._refresh_relations)
         self._filter.textChanged.connect(lambda *_: self._filter_timer.start())
-        controls.addWidget(self._filter, 1)
         self._exclusion_button = QPushButton("Exclusion…", self.controls_widget)
         self._exclusion_button.clicked.connect(self._edit_exclusions)
         controls.addWidget(self._exclusion_button)
@@ -149,6 +150,7 @@ class VarCondGenerationPanel(QWidget):
             "Unique relation names are built from the first N characters of each "
             "parent article. Articles sharing that prefix are generated together."
         )
+        self._relation_length.setMinimumWidth(220)
         self._relation_length.valueChanged.connect(self._refresh_relations)
         controls.addWidget(self._relation_length)
 
