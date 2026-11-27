@@ -393,43 +393,61 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             self._build_options_card(),
             self._build_visual_card(),
         )
+        labels = ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer")
+        tables = (self._attr_master, self._opt_master, self._visual_master)
         self._explorer_filters = []
-        for card, label, table in zip(
-            cards, ("Attribute Explorer", "Option Explorer", "Visual / Misc Explorer"),
-            (self._attr_master, self._opt_master, self._visual_master),
-        ):
+        self._cards = list(cards)
+
+        explorers = QTabWidget(container)
+        explorers.setDocumentMode(True)
+        explorers.setTabPosition(QTabWidget.TabPosition.North)
+        explorers.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid " + theme.LINE + "; "
+            "border-radius: " + str(theme.RADIUS_LG) + "px; }"
+        )
+        self._explorer_tabs = explorers
+
+        for card, label, table in zip(cards, labels, tables):
             card.setCheckable(False)
-            card.setTitle(label)
-            card_layout = card.layout()
-            filter_row = QWidget(card)
-            filter_layout = QHBoxLayout(filter_row)
-            filter_layout.setContentsMargins(0, 0, 0, 4)
-            filter_layout.setSpacing(theme.SPACE_2)
-            filter_layout.addWidget(QLabel("Filter:", filter_row))
-            edit = QLineEdit(filter_row)
+            card.setTitle("")
+            panel = QWidget(explorers)
+            panel_layout = QVBoxLayout(panel)
+            panel_layout.setContentsMargins(0, 0, 0, 0)
+            panel_layout.setSpacing(theme.SPACE_2)
+
+            header = QWidget(panel)
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(theme.SPACE_3, theme.SPACE_2,
+                                            theme.SPACE_3, theme.SPACE_2)
+            header_layout.setSpacing(theme.SPACE_2)
+            heading = QLabel(label, header)
+            heading.setFont(theme.font("card_title"))
+            header_layout.addWidget(heading)
+            header_layout.addStretch(1)
+            header_layout.addWidget(QLabel("Filter:", header))
+            edit = QLineEdit(header)
             edit.setPlaceholderText("Filter the explorer...")
             edit.setClearButtonEnabled(True)
             edit.setMinimumWidth(180)
             edit.setMaximumWidth(320)
             edit.textChanged.connect(lambda term, t=table: self._filter_explorer_table(t, term))
-            filter_layout.addWidget(edit, 1)
-            card_layout.insertWidget(0, filter_row)
+            header_layout.addWidget(edit)
+            panel_layout.addWidget(header)
+            panel_layout.addWidget(card, 1)
             self._explorer_filters.append(edit)
-            self._cards.append(card)
+            explorers.addTab(panel, label)
 
-        scroll = QScrollArea(container)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content = QWidget(scroll)
-        stack = QVBoxLayout(content)
-        stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(theme.SECTION_SPACING)
-        for card in cards:
-            stack.addWidget(card)
-        stack.addStretch(1)
-        scroll.setWidget(content)
-        self._body_layout.addWidget(scroll, 1)
+        self._explorer_tabs.currentChanged.connect(self._on_explorer_tab_changed)
+        self._body_layout.addWidget(explorers, 1)
         return container
+
+    def _on_explorer_tab_changed(self, index: int) -> None:
+        tables = (self._attr_master, self._opt_master, self._visual_master)
+        if 0 <= index < len(tables):
+            table = tables[index]
+            header = table.horizontalHeader()
+            header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
+            header.setStretchLastSection(True)
 
     def _filter_explorer_table(self, table: QTableWidget, term: str) -> None:
         term = (term or "").strip()
