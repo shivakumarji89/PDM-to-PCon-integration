@@ -397,7 +397,8 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
             f"border-radius: {theme.RADIUS_LG}px; background: {theme.SURFACE}; }}"
         )
         frame_layout = QVBoxLayout(workspace_frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setContentsMargins(theme.GROUP_PADDING, theme.GROUP_PADDING,
+                                       theme.GROUP_PADDING, theme.GROUP_PADDING)
         frame_layout.setSpacing(0)
 
         self._workspace_tabs = QTabBar(workspace_frame)
@@ -405,11 +406,9 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
         self._workspace_tabs.setDrawBase(False)
         self._workspace_tabs.setStyleSheet(
             "QTabBar::tab { padding: 8px 16px; border: 1px solid #E3E7EC;"
-            " border-bottom: 1px solid #E3E7EC; background: #F6F8FA;"
-            " color: #5E6B7D; margin: 0px; }"
+            " background: #F6F8FA; color: #5E6B7D; }"
             "QTabBar::tab:selected { background: #F0F6E8; color: #4B8F12;"
-            " font-weight: 600; border: 2px solid #6DAE1F;"
-            " border-bottom: 2px solid #6DAE1F; }"
+            " font-weight: 600; border: 2px solid #6DAE1F; }"
         )
         for label in ("Attribute", "Options", "Visual / Misc"):
             self._workspace_tabs.addTab(label)
