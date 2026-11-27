@@ -382,7 +382,7 @@ class ClassCreationPage(MaintenanceSourceMixin, BasePage):
 
         return box
 
-        def _build_body(self) -> QWidget:
+    def _build_body(self) -> QWidget:
         container = QWidget(self)
         self._body_layout = QVBoxLayout(container)
         self._body_layout.setContentsMargins(0, 0, 0, 0)
