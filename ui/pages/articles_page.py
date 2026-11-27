@@ -207,9 +207,15 @@ class ArticlesPage(MaintenanceSourceMixin, BasePage):
     # -- construction ------------------------------------------------------
     def _build_toolbar(self) -> QWidget:
         box = QGroupBox("Toolbar", self)
+        box.setObjectName("articlesToolbar")
+        # Explicitly position the group-box caption above the controls, as in Class Creation.
+        box.setStyleSheet(
+            "QGroupBox#articlesToolbar::title { "
+            "subcontrol-origin: margin; subcontrol-position: top left; "
+            "padding: 0 4px; }"
+        )
         layout = QHBoxLayout(box)
-        # Match the other workflow toolbars so the QGroupBox caption is visible.
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(8, 18, 8, 6)
         layout.setSpacing(theme.SPACE_2)
 
         layout.addStretch(1)
