@@ -79,7 +79,7 @@ class PricingRelationPage(MaintenanceSourceMixin, BasePage):
         self._apply_source_layout()
 
     def _build_toolbar(self) -> QWidget:
-        box = QGroupBox("Generate", self)
+        box = QGroupBox("Toolbar", self)
         layout = QHBoxLayout(box)
         self._name_label = QLabel("", box)
         layout.addWidget(self._name_label, 1)
